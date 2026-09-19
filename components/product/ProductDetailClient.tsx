@@ -173,6 +173,14 @@ export default function ProductDetailClient({ product, relatedProducts }: { prod
 
   const handleAddToCart = () => {
     setIsAdding(true);
+
+    // 🚀 [MASTER_OS] Track Cart Interaction
+    OB_OS.track('ADD_TO_CART', {
+        productId: product.id,
+        amount: product.price,
+        details: { name: product.name, category: product.category, size: selectedVariant }
+    });
+
     addToCart({
       id: product.id,
       name: product.name,
@@ -201,8 +209,16 @@ export default function ProductDetailClient({ product, relatedProducts }: { prod
 
   const handleBuyNow = () => {
     trackClick('buy-now-btn', 'Buy Now', { productId: product.id });
+    OB_OS.track('PRODUCT_INTENT', { productId: product.id, details: { type: 'BUY_NOW' } });
     handleAddToCart();
     router.push('/cart');
+  };
+
+  const toggleLightbox = (open: boolean) => {
+      setIsLightboxOpen(open);
+      if (open) {
+          OB_OS.track('GALLERY_OPENED', { productId: product.id, details: { name: product.name } });
+      }
   };
 
   const handleShare = async (platform: string) => {
@@ -306,7 +322,10 @@ export default function ProductDetailClient({ product, relatedProducts }: { prod
                       fill
                       sizes="(max-width: 768px) 100vw, 50vw"
                       className="object-contain p-10 transform hover:scale-110 transition-transform duration-700 ease-out cursor-zoom-in"
-                      onClick={() => setIsLightboxOpen(true)}
+                      onClick={() => {
+                          toggleLightbox(true);
+                          OB_OS.track('PRODUCT_IMAGE_ZOOMED', { productId: product.id });
+                      }}
                       priority
                     />
                 )}
@@ -577,7 +596,7 @@ export default function ProductDetailClient({ product, relatedProducts }: { prod
                         <h4 className="text-xl font-black uppercase text-foreground tracking-tighter">{product.name}</h4>
                         <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mt-1">High-Resolution Payload View</p>
                     </div>
-                    <button onClick={() => setIsLightboxOpen(false)} className="h-14 w-14 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all border border-slate-100 shadow-sm"><X size={24} /></button>
+                    <button onClick={() => toggleLightbox(false)} className="h-14 w-14 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all border border-slate-100 shadow-sm"><X size={24} /></button>
                 </div>
                 <div className="flex-1 relative flex items-center justify-center p-12">
                     <div className="relative w-full h-full max-w-5xl">

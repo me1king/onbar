@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
   Environment,
@@ -12,6 +12,7 @@ import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { X, RotateCcw, Play, Pause, Zap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OB_OS } from "@/lib/onlineBarOS";
 
 type BottleProps = {
   modelUrl: string;
@@ -71,9 +72,17 @@ export default function Product3DViewer({
   const [autoRotate, setAutoRotate] = useState(true);
   const controlsRef = useRef<OrbitControlsImpl>(null);
 
+  // 🛡️ [INTELLIGENCE_NODE] Track Session Start
+  useEffect(() => {
+    OB_OS.track('PRODUCT_3D_STARTED', {
+        details: { name: productName, url: modelUrl }
+    });
+  }, [productName, modelUrl]);
+
   const handleReset = () => {
     if (controlsRef.current) {
         controlsRef.current.reset();
+        OB_OS.track('UI_INTERACTION', { details: { id: '3d.reset_view', name: productName } });
     }
   };
 
@@ -112,7 +121,11 @@ export default function Product3DViewer({
       {/* COMMAND CONTROLS */}
       <div className="absolute bottom-10 right-10 z-20 flex gap-3">
         <Button
-          onClick={() => setAutoRotate((v) => !v)}
+          onClick={() => {
+              const next = !autoRotate;
+              setAutoRotate(next);
+              OB_OS.track('UI_INTERACTION', { details: { id: '3d.toggle_autorotate', active: next, name: productName } });
+          }}
           variant="outline"
           className="rounded-2xl border-slate-200 bg-white/70 px-6 h-14 text-[10px] font-black uppercase tracking-widest text-foreground backdrop-blur-xl hover:bg-primary hover:text-white transition-all active:scale-95 shadow-sm"
         >

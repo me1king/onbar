@@ -183,10 +183,22 @@ function MunchieContent() {
       };
 
       if (editingId) {
-          await supabase.from('products').update(productData).eq('id', editingId);
+          const { error: upError } = await supabase.from('products').update(productData).eq('id', editingId);
+          if (upError) throw upError;
+
+          // 🤝 [FINAL_HANDSHAKE] Verify update success
+          const { data: verify } = await supabase.from('products').select('updated_at').eq('id', editingId).single();
+          if (!verify) throw new Error("Synchronization Handshake Failed: Node not found after update.");
+
           await logAuditAction(email || 'admin', 'UPDATE_SNACK', { id: editingId, name: productData.name });
       } else {
-          await supabase.from('products').insert([productData]);
+          const { data: insData, error: insError } = await supabase.from('products').insert([productData]).select('id').single();
+          if (insError) throw insError;
+
+          // 🤝 [FINAL_HANDSHAKE] Verify insert success
+          const { data: verify } = await supabase.from('products').select('id').eq('id', insData.id).single();
+          if (!verify) throw new Error("Synchronization Handshake Failed: Node not found after insert.");
+
           await logAuditAction(email || 'admin', 'CREATE_SNACK', { name: productData.name });
       }
 

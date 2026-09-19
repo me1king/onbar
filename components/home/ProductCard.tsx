@@ -12,6 +12,7 @@ import RestockNotifyButton from "@/components/product/RestockNotifyButton";
 import { useWishlist } from "@/context/WishlistContext";
 import { useSettings } from "@/lib/useSettings";
 import { useInteractionTracking } from "@/lib/utils/useInteractionTracking";
+import { OB_OS } from "@/lib/onlineBarOS";
 
 interface Product {
   id: number;
@@ -74,7 +75,12 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
     const variant = selectedVariant || (product.sizes && product.sizes.length > 0 ? product.sizes[0] : undefined);
 
     setIsAdding(true);
-    // await new Promise((resolve) => setTimeout(resolve, 300));
+    // 🚀 [MASTER_OS] Track Cart Interaction
+    OB_OS.track('ADD_TO_CART', {
+        productId: product.id,
+        amount: product.price,
+        details: { name: product.name, category: product.category, size: variant }
+    });
 
     addToCart({
       id: product.id,

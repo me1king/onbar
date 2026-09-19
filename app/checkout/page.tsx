@@ -255,8 +255,10 @@ function CheckoutContent() {
       const coupon = await validateCoupon(couponCode);
       if (coupon) {
           setActiveCoupon(coupon);
+          OB_OS.track('PROMO_CODE_USED', { details: { code: couponCode, status: 'SUCCESS', discount: coupon.discount_percent } });
       } else {
           alert("Invalid or expired coupon code.");
+          OB_OS.track('PROMO_CODE_USED', { details: { code: couponCode, status: 'FAILED' } });
       }
       setIsValidatingCoupon(false);
   };
@@ -278,10 +280,12 @@ function CheckoutContent() {
     }
 
     if (!customerName.trim() || !customerPhone.trim()) {
+      const msg = "Enter your full name and phone number before placing the order.";
       setCheckoutStatus({
         type: "error",
-        message: "Enter your full name and phone number before placing the order.",
+        message: msg,
       });
+      OB_OS.track('FORM_VALIDATION_FAILED', { details: { reason: 'MISSING_REQUIRED_FIELDS' } });
       return;
     }
 
@@ -483,6 +487,14 @@ function CheckoutContent() {
   const finalizeOrder = async (orderId?: number) => {
     const finalId = orderId || placedOrderId;
 
+    // 🚀 [MASTER_OS] Track Purchase Completion
+    OB_OS.track('PURCHASE_COMPLETED', {
+        userId: user?.id,
+        orderId: finalId || undefined,
+        amount: total,
+        details: { cart_size: cart.length }
+    });
+
     // Meta Tracking: Purchase
     if (typeof window !== 'undefined' && window.fbq) {
         window.fbq('track', 'Purchase', {
@@ -626,6 +638,7 @@ function CheckoutContent() {
             onConfirm={(lat, lng) => {
                 setCoords({ lat, lng });
                 setIsPickingLocation(false);
+                OB_OS.track('UI_INTERACTION', { details: { id: 'checkout.location_locked', lat, lng } });
             }}
             onClose={() => setIsPickingLocation(false)}
           />
@@ -752,7 +765,11 @@ function CheckoutContent() {
             <Card className={cn(
                 "p-8 rounded-[2.5rem] border-2 transition-all cursor-pointer relative overflow-hidden",
                 isGift ? "border-primary/20 bg-primary/5" : "border-slate-50 bg-slate-50/50"
-            )} onClick={() => setIsGift(!isGift)}>
+            )} onClick={() => {
+                const next = !isGift;
+                setIsGift(next);
+                OB_OS.track('UI_INTERACTION', { details: { id: 'checkout.gifting_toggled', active: next } });
+            }}>
                 <div className="flex items-center justify-between relative z-10">
                     <div className="flex items-center gap-4">
                         <div className={cn(

@@ -200,8 +200,14 @@ class OnlineBarOS {
             }
 
             // 2.5 Update Taste DNA on Discovery
-            if (eventType === 'PRODUCT_VIEW' && payload.userId && payload.productId) {
-                this.evolveTasteDNA(payload.userId, payload.productId).catch(() => {});
+            if (payload.userId && payload.productId) {
+                if (eventType === 'PRODUCT_VIEW') {
+                    this.evolveTasteDNA(payload.userId, payload.productId, 2).catch(() => {});
+                } else if (eventType === 'ADD_TO_CART') {
+                    this.evolveTasteDNA(payload.userId, payload.productId, 8).catch(() => {});
+                } else if (eventType === 'PURCHASE_COMPLETED') {
+                    this.evolveTasteDNA(payload.userId, payload.productId, 25).catch(() => {});
+                }
             }
 
             // 3. Heartbeat/Session Management
@@ -217,7 +223,7 @@ class OnlineBarOS {
         }
     }
 
-    private async evolveTasteDNA(userId: string, productId: number) {
+    private async evolveTasteDNA(userId: string, productId: number, weight: number = 2) {
         if (!supabase) return;
         try {
             // Fetch category
@@ -231,7 +237,7 @@ class OnlineBarOS {
             const dna = (prof?.taste_dna as Record<string, number>) || { whiskey: 0, wine: 0, gin: 0, beer: 0, vodka: 0, tequila: 0 };
 
             if (dna[cat] !== undefined) {
-                dna[cat] = Math.min(100, (dna[cat] || 0) + 2); // Cap at 100
+                dna[cat] = Math.min(100, (dna[cat] || 0) + weight); // Cap at 100
                 await supabase.from('profiles').update({ taste_dna: dna }).eq('id', userId);
             }
         } catch (err) {
