@@ -46,10 +46,12 @@ export default function PersonalizedFeed() {
 
                 if (viewedIds.length > 0) {
                     // 1. Fetch details of viewed products to get categories
-                    const { data: viewedDetails } = await supabase
+                    const { data: viewedDetails, error: detailsErr } = await supabase
                         .from('products')
                         .select('category, id')
                         .in('id', viewedIds);
+
+                    if (detailsErr) throw detailsErr;
 
                     const categories = Array.from(new Set(viewedDetails?.map(p => p.category).filter(Boolean)));
 
@@ -69,12 +71,14 @@ export default function PersonalizedFeed() {
                     });
 
                     // 3. Fetch suggestions from these categories (excluding already viewed)
-                    const { data: suggestions } = await supabase
+                    const { data: suggestions, error: suggestionErr } = await supabase
                         .from('products')
                         .select('*')
                         .in('category', Array.from(new Set(relatedCategories)))
                         .not('id', 'in', `(${viewedIds.join(',')})`)
                         .limit(4);
+
+                    if (suggestionErr) throw suggestionErr;
 
                     if (suggestions && suggestions.length > 0) {
                         setSuggestedProducts(suggestions as Product[]);
@@ -85,7 +89,7 @@ export default function PersonalizedFeed() {
                     }
                 }
             } catch (err) {
-                console.error("Personalization Engine Error:", err);
+                console.warn("[Personalization] Feed calculation bypassed (Likely Schema Mismatch):", err);
             } finally {
                 setLoading(false);
             }

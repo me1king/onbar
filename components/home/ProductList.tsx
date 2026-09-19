@@ -75,7 +75,11 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
             supabase.from('products').select('*').order('created_at', { ascending: false }),
             supabase.auth.getSession().then(async ({ data: { session } }) => {
                 if (!session || !supabase) return { data: null };
-                return supabase.from('profiles').select('loyalty_points').eq('id', session.user.id).maybeSingle();
+                try {
+                    return await supabase.from('profiles').select('loyalty_points').eq('id', session.user.id).maybeSingle();
+                } catch {
+                    return { data: null };
+                }
             })
         ]);
 
@@ -86,8 +90,8 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
           setProducts(prodRes.data as Product[] || []);
         }
 
-        if (tierRes.data) {
-            const pts = tierRes.data.loyalty_points || 0;
+        if (tierRes?.data) {
+            const pts = (tierRes.data as { loyalty_points?: number }).loyalty_points || 0;
             if (pts >= 5000) setUserTier('Legend');
             else if (pts >= 2000) setUserTier('Diamond');
             else if (pts >= 1000) setUserTier('Gold');

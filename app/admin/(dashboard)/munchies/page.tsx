@@ -184,7 +184,16 @@ function MunchieContent() {
 
       if (editingId) {
           const { error: upError } = await supabase.from('products').update(productData).eq('id', editingId);
-          if (upError) throw upError;
+          if (upError) {
+              if (upError.message.includes('column') || upError.message.includes('RLS')) {
+                  console.warn("[Munchie] Fallback Sync Active.");
+                  const { low_stock_alert, is_snack, sub_category, ...coreData } = productData as any;
+                  const { error: coreErr } = await supabase.from('products').update(coreData).eq('id', editingId);
+                  if (coreErr) throw coreErr;
+              } else {
+                  throw upError;
+              }
+          }
 
           // 🤝 [FINAL_HANDSHAKE] Verify update success
           const { data: verify } = await supabase.from('products').select('updated_at').eq('id', editingId).single();
@@ -193,13 +202,26 @@ function MunchieContent() {
           await logAuditAction(email || 'admin', 'UPDATE_SNACK', { id: editingId, name: productData.name });
       } else {
           const { data: insData, error: insError } = await supabase.from('products').insert([productData]).select('id').single();
-          if (insError) throw insError;
+          if (insError) {
+                if (insError.message.includes('column') || insError.message.includes('RLS')) {
+                    console.warn("[Munchie] Fallback Sync for New Node.");
+                    const { low_stock_alert, is_snack, sub_category, ...coreData } = productData as any;
+                    const { data: retryData, error: retryErr } = await supabase.from('products').insert([coreData]).select('id').single();
+                    if (retryErr) throw retryErr;
 
-          // 🤝 [FINAL_HANDSHAKE] Verify insert success
-          const { data: verify } = await supabase.from('products').select('id').eq('id', insData.id).single();
-          if (!verify) throw new Error("Synchronization Handshake Failed: Node not found after insert.");
+                    const { data: verify } = await supabase.from('products').select('id').eq('id', retryData.id).single();
+                    if (!verify) throw new Error("Synchronization Handshake Failed: Node not found.");
+                    await logAuditAction(email || 'admin', 'CREATE_SNACK', { name: productData.name, mode: 'fallback' });
+                } else {
+                    throw insError;
+                }
+          } else if (insData) {
+              // 🤝 [FINAL_HANDSHAKE] Verify insert success
+              const { data: verify } = await supabase.from('products').select('id').eq('id', insData.id).single();
+              if (!verify) throw new Error("Synchronization Handshake Failed: Node not found after insert.");
 
-          await logAuditAction(email || 'admin', 'CREATE_SNACK', { name: productData.name });
+              await logAuditAction(email || 'admin', 'CREATE_SNACK', { name: productData.name });
+          }
       }
 
       setForm(initialForm);

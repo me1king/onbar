@@ -232,16 +232,22 @@ class OnlineBarOS {
 
             const cat = prod.category.toLowerCase();
 
-            // Online Bar OS: Incremental taste weight logic
-            const { data: prof } = await supabase.from('profiles').select('taste_dna').eq('id', userId).single();
+            // Online Bar OS: Resilient taste weight logic
+            const { data: prof, error: fetchErr } = await supabase.from('profiles').select('taste_dna').eq('id', userId).single();
+
+            if (fetchErr) {
+                console.warn("[OB_OS] Taste DNA fetch failed (Schema mismatch?):", fetchErr.message);
+                return;
+            }
+
             const dna = (prof?.taste_dna as Record<string, number>) || { whiskey: 0, wine: 0, gin: 0, beer: 0, vodka: 0, tequila: 0 };
 
-            if (dna[cat] !== undefined) {
+            if (dna && typeof dna === 'object' && dna[cat] !== undefined) {
                 dna[cat] = Math.min(100, (dna[cat] || 0) + weight); // Cap at 100
                 await supabase.from('profiles').update({ taste_dna: dna }).eq('id', userId);
             }
         } catch (err) {
-            console.warn("Taste DNA evolution failed:", err);
+            console.warn("[OB_OS] Taste DNA evolution failed (Silent Catch):", err);
         }
     }
 
