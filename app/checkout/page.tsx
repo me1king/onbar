@@ -19,6 +19,7 @@ import { useSettings } from "@/lib/useSettings";
 import dynamic from "next/dynamic";
 import { OB_OS } from "@/lib/onlineBarOS";
 import { v4 as uuidv4 } from 'uuid';
+import ErrorBoundary from "@/components/layout/ErrorBoundary";
 
 const LocationPicker = dynamic(() => import("@/components/profile/LocationPicker"), {
     ssr: false,
@@ -1064,7 +1065,9 @@ function CheckoutContent() {
 export default function CheckoutPage() {
     return (
         <Suspense fallback={<div className="p-20 text-center uppercase font-black text-slate-400">Loading Checkout...</div>}>
-            <CheckoutContent />
+            <ErrorBoundary>
+                <CheckoutContent />
+            </ErrorBoundary>
         </Suspense>
     );
 }

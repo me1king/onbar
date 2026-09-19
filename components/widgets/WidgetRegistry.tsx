@@ -4,6 +4,7 @@ import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, ShieldAlert } from 'lucide-react';
+import ErrorBoundary from '../layout/ErrorBoundary';
 
 /**
  * ONLINE BAR OS: MASTER WIDGET REGISTRY
@@ -88,7 +89,11 @@ function WidgetIntersectionNode({ widget }: { widget: WidgetNode }) {
 
     return (
         <div ref={nodeRef} className="animate-in fade-in slide-in-from-bottom-8 duration-1000">
-            {isVisible ? renderWidget(widget.widget_key, widget.config) : <div className="h-96 bg-slate-50/50 rounded-[3rem]" />}
+            {isVisible ? (
+                <ErrorBoundary>
+                    {renderWidget(widget.widget_key, widget.config)}
+                </ErrorBoundary>
+            ) : <div className="h-96 bg-slate-50/50 rounded-[3rem]" />}
         </div>
     );
 }

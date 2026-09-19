@@ -84,10 +84,15 @@ export default function AnalyticsTracker() {
                 const { data: { session } } = await supabase.auth.getSession();
 
                 // 🛡️ [IDENTITY_NODE] Instant Identity Generation
-                let anonId = typeof window !== 'undefined' ? localStorage.getItem('ob_anonymous_id') : null;
-                if (!anonId) {
-                    anonId = `anon-${uuidv4().substring(0, 8)}`;
-                    localStorage.setItem('ob_anonymous_id', anonId);
+                let anonId = null;
+                if (typeof window !== 'undefined') {
+                    try {
+                        anonId = localStorage.getItem('ob_anonymous_id');
+                        if (!anonId) {
+                            anonId = `anon-${uuidv4().substring(0, 8)}`;
+                            localStorage.setItem('ob_anonymous_id', anonId);
+                        }
+                    } catch { /* Silent */ }
                 }
 
                 const activeSessId = OB_OS.getSessionId();

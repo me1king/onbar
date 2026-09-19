@@ -201,6 +201,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
   useEffect(() => {
     try {
+        if (typeof window === 'undefined') return;
         const saved = localStorage.getItem('ob_recent_views');
         if (saved) {
             const parsed = JSON.parse(saved) as RecentView[];
@@ -210,7 +211,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
         }
     } catch (e) {
         console.warn("Recent views parse error:", e);
-        localStorage.removeItem('ob_recent_views');
+        if (typeof window !== 'undefined') localStorage.removeItem('ob_recent_views');
     }
   }, [isSearchFocused]);
 

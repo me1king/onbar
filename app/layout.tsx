@@ -19,6 +19,7 @@ import AnalyticsTracker from "@/components/layout/AnalyticsTracker";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import InstallAppWidget from "@/components/layout/InstallAppWidget";
 import ExperienceNotificationHost from "@/components/layout/ExperienceNotificationHost";
+import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import { DEFAULT_SETTINGS } from "@/lib/useSettings";
 import { Suspense } from "react";
 
@@ -30,23 +31,25 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans antialiased bg-white text-foreground`}>
-        <CartProvider>
-          <WishlistProvider>
-            <PublicLayoutShield initialSettings={DEFAULT_SETTINGS}>
-                {children}
-            </PublicLayoutShield>
+        <ErrorBoundary>
+            <CartProvider>
+            <WishlistProvider>
+                <PublicLayoutShield initialSettings={DEFAULT_SETTINGS}>
+                    {children}
+                </PublicLayoutShield>
 
-            <Suspense fallback={null}>
-                <AnalyticsTracker />
-            </Suspense>
+                <Suspense fallback={null}>
+                    <AnalyticsTracker />
+                </Suspense>
 
-            <Suspense fallback={null}>
-                <InstallAppWidget />
-                <ExperienceNotificationHost />
-                <MobileBottomNav />
-            </Suspense>
-          </WishlistProvider>
-        </CartProvider>
+                <Suspense fallback={null}>
+                    <InstallAppWidget />
+                    <ExperienceNotificationHost />
+                    <MobileBottomNav />
+                </Suspense>
+            </WishlistProvider>
+            </CartProvider>
+        </ErrorBoundary>
 
         <JsonLd />
       </body>
