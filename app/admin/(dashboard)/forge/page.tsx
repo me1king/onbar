@@ -201,10 +201,10 @@ export default function ProductForgeDashboard() {
                                             <Sparkles className="text-slate-200" />
                                         )}
                                     </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-[9px] font-black uppercase text-primary tracking-widest mb-1">{item.brand}</p>
+                                    <div className="min-w-0 flex-1 text-left">
+                                        <p className="text-[9px] font-black uppercase text-primary tracking-widest mb-1 truncate">{item.brand}</p>
                                         <h3 className="text-xl font-black text-foreground uppercase tracking-tight truncate leading-tight italic">{item.name}</h3>
-                                        <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">{formatPrice(item.price)} • {item.stock} Units</p>
+                                        <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase truncate">{formatPrice(item.price)} • {item.stock} Units</p>
                                     </div>
                                 </div>
 

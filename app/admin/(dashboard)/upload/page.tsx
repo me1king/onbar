@@ -15,6 +15,7 @@ import {
     TrendingUp as ProfitIcon,
     Wine,
     Info,
+    Search,
     ImageIcon,
     Layers,
     Loader2,
@@ -661,36 +662,65 @@ function UploadContent() {
                       {openSections.media ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
                   </button>
                   {openSections.media && (
-                      <CardContent className="p-10 pt-0 space-y-8">
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <CardContent className="p-10 pt-0 space-y-10">
+                          {/* Master Media Audit Summary */}
+                          {Object.keys(imageAudits).length > 0 && (
+                              <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex items-center justify-between">
+                                  <div className="flex items-center gap-4">
+                                      <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center text-primary shadow-sm border border-slate-100">
+                                          <Search size={20} />
+                                      </div>
+                                      <div>
+                                          <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Master Media Audit</p>
+                                          <h4 className="text-sm font-black uppercase text-foreground">
+                                              {Object.values(imageAudits).every(a => a.isApproved)
+                                                ? "✓ All Assets Market Ready"
+                                                : "⚠ Action Required on Low-Quality Assets"}
+                                          </h4>
+                                      </div>
+                                  </div>
+                              </div>
+                          )}
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
                               {existingImages.map((url, i) => {
                                   const fileName = url.split('/').pop() || '';
                                   const audit = imageAudits[fileName];
                                   return (
-                                      <div key={i} className="aspect-square rounded-2xl bg-slate-50 border border-slate-100 relative group overflow-hidden">
-                                          <Image src={url} width={400} height={400} className="w-full h-full object-contain" alt="" />
-                                          <button type="button" onClick={() => removeExistingImage(i)} className="absolute top-2 right-2 bg-rose-500 text-white rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity z-40"><X size={12}/></button>
+                                      <div key={i} className="aspect-square rounded-[2.5rem] bg-slate-50 border border-slate-100 relative group overflow-hidden shadow-sm hover:shadow-xl transition-all">
+                                          <Image src={url} width={400} height={400} className="w-full h-full object-contain p-4" alt="" />
+                                          <button type="button" onClick={() => removeExistingImage(i)} className="absolute top-4 right-4 bg-rose-500 text-white rounded-xl p-2 opacity-0 group-hover:opacity-100 transition-opacity z-40 shadow-lg"><X size={14}/></button>
 
-                                          {/* Audit Tooltip on Hover */}
+                                          {/* Visible Quality Badge */}
+                                          {audit && (
+                                              <div className={cn(
+                                                  "absolute top-4 left-4 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-md z-30",
+                                                  audit.isApproved ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"
+                                              )}>
+                                                  {audit.score} - {audit.isApproved ? 'Optimal' : 'Low Quality'}
+                                              </div>
+                                          )}
+
+                                          {/* Audit Details on Hover */}
                                           {audit && audit.issues.length > 0 && (
-                                              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm p-4 flex flex-col justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-30 overflow-y-auto no-scrollbar">
-                                                  <p className="text-[8px] font-black uppercase text-primary tracking-widest">Quality Audit</p>
+                                              <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm p-6 flex flex-col justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity z-20 overflow-y-auto no-scrollbar">
+                                                  <p className="text-[10px] font-black uppercase text-primary tracking-[0.3em]">Issue Radar</p>
                                                   {audit.issues.map((iss, i) => (
-                                                      <p key={i} className="text-[7px] text-white font-medium leading-tight">• {iss}</p>
+                                                      <p key={i} className="text-[9px] text-white font-medium leading-relaxed">• {iss}</p>
                                                   ))}
                                               </div>
                                           )}
                                       </div>
                                   );
                               })}
-                              <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all text-slate-300 hover:text-primary group relative overflow-visible">
+                              <label className="aspect-square rounded-[2.5rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all text-slate-300 hover:text-primary group relative overflow-visible shadow-inner">
                                   <input type="file" multiple accept="image/*" onChange={handleFileChange} className="hidden" />
-                                  <Camera size={24} />
-                                  <span className="text-[8px] font-black uppercase">Add Photo</span>
+                                  <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform"><Camera size={28} /></div>
+                                  <span className="text-[9px] font-black uppercase tracking-widest">Add Asset</span>
                                   {selectedFiles.length > 0 && (
-                                      <div className="absolute -bottom-10 left-0 right-0 flex gap-1 z-20">
-                                          <Button type="button" onClick={handleVisionScan} disabled={isVisionScanning} className="flex-1 h-8 rounded-lg bg-indigo-600 text-white text-[7px] font-black uppercase">
-                                              {isVisionScanning ? <Loader2 size={10} className="animate-spin" /> : <><Eye size={10} className="mr-1"/> Cloud Vision</>}
+                                      <div className="absolute -bottom-12 left-0 right-0 flex gap-2 z-20">
+                                          <Button type="button" onClick={handleVisionScan} disabled={isVisionScanning} className="flex-1 h-10 rounded-xl bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest shadow-xl">
+                                              {isVisionScanning ? <Loader2 size={12} className="animate-spin" /> : <><Eye size={12} className="mr-2"/> Vision Scan</>}
                                           </Button>
                                       </div>
                                   )}

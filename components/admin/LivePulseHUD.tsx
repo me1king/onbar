@@ -55,9 +55,9 @@ export default function LivePulseHUD() {
                         )}>
                             <m.icon size={20} className={cn(m.val > 0 && "animate-pulse")} />
                         </div>
-                        <div className="text-left">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">{m.label}</p>
-                            <h3 className="text-xl font-black text-foreground mt-1 tabular-nums">{m.val.toLocaleString()}</h3>
+                        <div className="text-left min-w-0 flex-1">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none truncate">{m.label}</p>
+                            <h3 className="text-xl font-black text-foreground mt-1 tabular-nums truncate">{m.val.toLocaleString()}</h3>
                             {m.label === 'Visitors Live' && pulse.active_zones && pulse.active_zones.length > 0 && (
                                 <p className="text-[7px] font-black text-primary uppercase mt-1 truncate">
                                     Zones: {pulse.active_zones.join(', ')}

@@ -288,7 +288,7 @@ export default function AdminLayoutClient({
                           title={isSidebarCollapsed ? item.name : ""}
                           onClick={() => setIsSidebarOpen(false)}
                           className={cn(
-                            "flex items-center rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 group",
+                            "flex items-center rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 group overflow-hidden",
                             isSidebarCollapsed ? "justify-center p-3.5" : "gap-4 px-5 py-3",
                             isActive(item.href)
                               ? "bg-primary text-white shadow-lg shadow-primary/20"
@@ -299,7 +299,7 @@ export default function AdminLayoutClient({
                             "h-4 w-4 transition-colors shrink-0",
                             isActive(item.href) ? "text-white" : "text-slate-300 group-hover:text-slate-500"
                           )} />
-                          {!isSidebarCollapsed && <span className="truncate">{item.name}</span>}
+                          {!isSidebarCollapsed && <span className="truncate flex-1">{item.name}</span>}
                         </Link>
                       ))}
                     </div>
