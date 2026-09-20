@@ -206,8 +206,8 @@ function UploadContent() {
       if (prodRes.error) throw prodRes.error;
       setProducts(prodRes.data || []);
       setHubs(hubRes.data || []);
-    } catch (err: unknown) {
-      console.error(err);
+    } catch {
+      // Failed silently in background
     }
   };
 
@@ -416,46 +416,22 @@ function UploadContent() {
 
       if (editingId) {
           const { error: upError } = await supabase.from('products').update(productData).eq('id', editingId);
-          if (upError) {
-              if (upError.message.includes('column') || upError.message.includes('RLS')) {
-                  console.warn("[Upload] Partial Sync Active. Falling back to Core Schema.");
-                  // Fallback: Strip new intelligence columns and try again
-                  const { low_stock_alert, is_snack, ...coreData } = productData as any;
-                  const { error: coreErr } = await supabase.from('products').update(coreData).eq('id', editingId);
-                  if (coreErr) throw coreErr;
-              } else {
-                  throw upError;
-              }
-          }
+          if (upError) throw upError;
 
-          // 🤝 [FINAL_HANDSHAKE] Verify update success
-          const { data: verify } = await supabase.from('products').select('updated_at').eq('id', editingId).single();
-          if (!verify) throw new Error("Synchronization Handshake Failed: Node not found after update.");
+          // 🤝 [FINAL_HANDSHAKE] Verify high-fidelity update
+          const { data: verify, error: vErr } = await supabase.from('products').select('updated_at, is_snack, low_stock_alert').eq('id', editingId).single();
+          if (vErr || !verify) throw new Error("Synchronization Handshake Failed: Integrity mismatch.");
 
           await logAuditAction(email || 'admin', 'UPDATE_PRODUCT', { id: editingId, name: productData.name });
       } else {
           const { data: insData, error: insError } = await supabase.from('products').insert([productData]).select('id').single();
-          if (insError) {
-                if (insError.message.includes('column') || insError.message.includes('RLS')) {
-                    console.warn("[Upload] Partial Sync Active. Falling back to Core Schema for New Node.");
-                    const { low_stock_alert, is_snack, ...coreData } = productData as any;
-                    const { data: retryData, error: retryErr } = await supabase.from('products').insert([coreData]).select('id').single();
-                    if (retryErr) throw retryErr;
+          if (insError) throw insError;
 
-                    // 🤝 [FINAL_HANDSHAKE] Verify retry
-                    const { data: verify } = await supabase.from('products').select('id').eq('id', retryData.id).single();
-                    if (!verify) throw new Error("Synchronization Handshake Failed: Node not found after retry.");
-                    await logAuditAction(email || 'admin', 'CREATE_PRODUCT', { name: productData.name, mode: 'fallback' });
-                } else {
-                    throw insError;
-                }
-          } else if (insData) {
-              // 🤝 [FINAL_HANDSHAKE] Verify insert success
-              const { data: verify } = await supabase.from('products').select('id').eq('id', insData.id).single();
-              if (!verify) throw new Error("Synchronization Handshake Failed: Node not found after insert.");
+          // 🤝 [FINAL_HANDSHAKE] Verify high-fidelity insert
+          const { data: verify, error: vErr } = await supabase.from('products').select('id, is_snack').eq('id', insData.id).single();
+          if (vErr || !verify) throw new Error("Synchronization Handshake Failed: Node not established.");
 
-              await logAuditAction(email || 'admin', 'CREATE_PRODUCT', { name: productData.name });
-          }
+          await logAuditAction(email || 'admin', 'CREATE_PRODUCT', { name: productData.name });
       }
 
       cancelEditing();
