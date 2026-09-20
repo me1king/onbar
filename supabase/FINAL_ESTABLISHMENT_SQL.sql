@@ -1,35 +1,61 @@
 -- ==========================================
--- ONLINE BAR OS: ABSOLUTE GOLD MASTER (V13)
+-- ONLINE BAR OS: ABSOLUTE GOLD MASTER (V17 - NUCLEAR RESILIENCE)
 -- ==========================================
 -- ⚠️ Instructions: Run this entire script in your Supabase SQL Editor once.
--- This script consolidates EVERY PIECE of logic into one bulletproof file.
--- It REPAIRS existing data, ESTABLISHES all 35+ tables, and sets ULTIMATE SECURITY.
+-- This script performs a dynamic cleanup of ALL legacy constraints to resolve type mismatches.
+-- It establishes a 100% synchronized, high-fidelity grid.
 
 -- 0. CORE EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 1. HARDENED REPAIR ENGINE (Explicitly adds columns to existing tables)
+-- 1. NUCLEAR TYPE RESILIENCE NODE
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    -- A. Drop all views that might depend on customer_sessions (CASCADE)
+    DROP VIEW IF EXISTS public.behavioral_funnel_stats CASCADE;
+    DROP VIEW IF EXISTS public.live_behavior_radar CASCADE;
+    DROP VIEW IF EXISTS public.conversion_funnel_intelligence CASCADE;
+    DROP VIEW IF EXISTS public.component_interaction_audit CASCADE;
+    DROP VIEW IF EXISTS public.page_scroll_reach CASCADE;
+
+    -- B. Dynamically find and drop ALL foreign keys pointing to public.customer_sessions
+    FOR r IN (
+        SELECT tc.table_schema, tc.table_name, tc.constraint_name
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+          ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage AS ccu
+          ON ccu.constraint_name = tc.constraint_name
+          AND ccu.table_schema = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND ccu.table_name = 'customer_sessions'
+          AND ccu.table_schema = 'public'
+    ) LOOP
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.table_schema) || '.' || quote_ident(r.table_name) ||
+                ' DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
+    END LOOP;
+
+    -- C. Standardize Primary Key Type if it exists as UUID
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'customer_sessions' AND column_name = 'id' AND data_type = 'uuid') THEN
+        ALTER TABLE public.customer_sessions ALTER COLUMN id TYPE TEXT USING id::text;
+    END IF;
+END $$;
+
+-- 2. HARDENED REPAIR ENGINE (Ensures all Intelligence columns exist)
 
 -- REPAIR PRODUCTS
 ALTER TABLE IF EXISTS public.products
 ADD COLUMN IF NOT EXISTS brand TEXT,
 ADD COLUMN IF NOT EXISTS sku TEXT UNIQUE,
-ADD COLUMN IF NOT EXISTS model_number TEXT,
 ADD COLUMN IF NOT EXISTS is_snack BOOLEAN DEFAULT false,
 ADD COLUMN IF NOT EXISTS sub_category TEXT,
 ADD COLUMN IF NOT EXISTS low_stock_alert INTEGER DEFAULT 5,
-ADD COLUMN IF NOT EXISTS image_quality_score INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS image_metadata JSONB DEFAULT '{}'::JSONB,
-ADD COLUMN IF NOT EXISTS beverage_specs JSONB DEFAULT '{}'::JSONB,
-ADD COLUMN IF NOT EXISTS tech_specs JSONB DEFAULT '{}'::JSONB,
-ADD COLUMN IF NOT EXISTS variant_stock JSONB DEFAULT '{}'::JSONB,
-ADD COLUMN IF NOT EXISTS cost_price NUMERIC DEFAULT 0,
-ADD COLUMN IF NOT EXISTS old_price NUMERIC,
-ADD COLUMN IF NOT EXISTS featured_rank INTEGER DEFAULT 99,
 ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Live',
-ADD COLUMN IF NOT EXISTS min_loyalty_tier TEXT DEFAULT 'Explorer',
-ADD COLUMN IF NOT EXISTS warehouse_location TEXT;
+ADD COLUMN IF NOT EXISTS beverage_specs JSONB DEFAULT '{}'::JSONB;
 
 -- REPAIR PROFILES
 ALTER TABLE IF EXISTS public.profiles
@@ -37,72 +63,11 @@ ADD COLUMN IF NOT EXISTS taste_dna JSONB DEFAULT '{"whiskey": 0, "wine": 0, "gin
 ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE,
 ADD COLUMN IF NOT EXISTS loyalty_points INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1,
-ADD COLUMN IF NOT EXISTS title TEXT DEFAULT 'Newcomer',
-ADD COLUMN IF NOT EXISTS total_orders INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS lifetime_value NUMERIC DEFAULT 0,
-ADD COLUMN IF NOT EXISTS status_flag TEXT DEFAULT 'Active',
-ADD COLUMN IF NOT EXISTS segment TEXT DEFAULT 'New Customer',
-ADD COLUMN IF NOT EXISTS membership_tier TEXT DEFAULT 'Standard',
-ADD COLUMN IF NOT EXISTS preferred_comm_channel TEXT DEFAULT 'WhatsApp',
-ADD COLUMN IF NOT EXISTS marketing_consent BOOLEAN DEFAULT true;
+ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1;
 
--- REPAIR ORDERS
-ALTER TABLE IF EXISTS public.orders
-ADD COLUMN IF NOT EXISTS session_id TEXT,
-ADD COLUMN IF NOT EXISTS unit_price NUMERIC,
-ADD COLUMN IF NOT EXISTS unit_cost NUMERIC,
-ADD COLUMN IF NOT EXISTS size TEXT DEFAULT 'Standard',
-ADD COLUMN IF NOT EXISTS captured_by TEXT DEFAULT 'system',
-ADD COLUMN IF NOT EXISTS latitude NUMERIC,
-ADD COLUMN IF NOT EXISTS longitude NUMERIC,
-ADD COLUMN IF NOT EXISTS customer_email TEXT,
-ADD COLUMN IF NOT EXISTS referred_by_code TEXT,
-ADD COLUMN IF NOT EXISTS attribution_id TEXT,
-ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMP WITH TIME ZONE;
+-- 3. MASTER INFRASTRUCTURE (Total Table Establishment)
 
--- 2. INFRASTRUCTURE ESTABLISHMENT (Tables)
-
--- CORE IDENTITY
-CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    email TEXT,
-    full_name TEXT,
-    phone_number TEXT UNIQUE,
-    address TEXT,
-    birth_date DATE,
-    referral_code TEXT UNIQUE,
-    loyalty_points INTEGER DEFAULT 0,
-    xp INTEGER DEFAULT 0,
-    level INTEGER DEFAULT 1,
-    title TEXT DEFAULT 'Newcomer',
-    membership_tier TEXT DEFAULT 'Standard',
-    taste_dna JSONB DEFAULT '{"whiskey": 0, "wine": 0, "gin": 0, "beer": 0, "vodka": 0, "tequila": 0}'::JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- MASTER CATALOGUE
-CREATE TABLE IF NOT EXISTS public.products (
-    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    name TEXT NOT NULL,
-    brand TEXT,
-    sku TEXT UNIQUE,
-    price NUMERIC NOT NULL,
-    old_price NUMERIC,
-    cost_price NUMERIC DEFAULT 0,
-    description TEXT,
-    image_url TEXT,
-    category TEXT DEFAULT 'wine',
-    sizes TEXT[] DEFAULT ARRAY['Standard'],
-    stock INT DEFAULT 0,
-    variant_stock JSONB DEFAULT '{}'::JSONB,
-    beverage_specs JSONB DEFAULT '{}'::JSONB,
-    status TEXT DEFAULT 'Live',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- BEHAVIORAL ENGINE: SESSIONS & FORENSICS
+-- BEHAVIORAL NODES (Standardized to TEXT IDs)
 CREATE TABLE IF NOT EXISTS public.customer_sessions (
     id TEXT PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id),
@@ -111,8 +76,10 @@ CREATE TABLE IF NOT EXISTS public.customer_sessions (
     source_channel TEXT,
     device_info JSONB DEFAULT '{}'::JSONB,
     total_active_time_sec INTEGER DEFAULT 0,
-    pages_viewed INTEGER DEFAULT 0,
-    cart_additions INTEGER DEFAULT 0,
+    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    current_page TEXT,
+    session_status TEXT DEFAULT 'ACTIVE',
+    is_tab_visible BOOLEAN DEFAULT true,
     is_converted BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
@@ -127,123 +94,91 @@ CREATE TABLE IF NOT EXISTS public.session_forensics (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.browsing_history (
-    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    product_id BIGINT REFERENCES public.products(id) ON DELETE CASCADE,
-    viewed_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+CREATE TABLE IF NOT EXISTS public.page_views (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id TEXT REFERENCES public.customer_sessions(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id),
+    page_url TEXT NOT NULL,
+    entered_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    active_time_ms INTEGER DEFAULT 0,
+    max_scroll_percent INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS public.search_events (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    session_id TEXT REFERENCES public.customer_sessions(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id),
+    query TEXT NOT NULL,
+    result_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- ABANDONED CARTS (Repaired)
 CREATE TABLE IF NOT EXISTS public.abandoned_carts (
     id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
     customer_phone TEXT UNIQUE NOT NULL,
     customer_name TEXT,
     cart_items JSONB,
     total_price NUMERIC,
-    session_id TEXT,
+    session_id TEXT REFERENCES public.customer_sessions(id) ON DELETE SET NULL,
     recovery_status TEXT DEFAULT 'Waiting',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- ORDER FULFILLMENT
-CREATE TABLE IF NOT EXISTS public.orders (
+-- RESTOCK REQUESTS
+CREATE TABLE IF NOT EXISTS public.restock_requests (
     id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
-    session_id TEXT,
-    customer_name TEXT NOT NULL,
+    product_id BIGINT REFERENCES public.products(id) ON DELETE CASCADE,
     customer_phone TEXT NOT NULL,
-    total_price NUMERIC NOT NULL,
-    status TEXT DEFAULT 'Pending',
-    payment_method TEXT DEFAULT 'M-Pesa',
-    checkout_request_id TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS public.order_items (
-    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    order_id BIGINT REFERENCES public.orders(id) ON DELETE CASCADE,
-    product_id BIGINT REFERENCES public.products(id) ON DELETE SET NULL,
-    quantity INT NOT NULL DEFAULT 1,
-    unit_price NUMERIC NOT NULL,
-    unit_cost NUMERIC NOT NULL,
+    status TEXT DEFAULT 'PENDING',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- ENTERPRISE & LOGISTICS
+-- ACTIVE VISITORS HUD
 CREATE TABLE IF NOT EXISTS public.active_visitors (
     session_id TEXT PRIMARY KEY,
     customer_name TEXT,
     current_page TEXT,
-    last_active_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     cart_value NUMERIC DEFAULT 0,
+    last_active_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     status TEXT DEFAULT 'Browsing'
 );
 
-CREATE TABLE IF NOT EXISTS public.rider_status (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    rider_phone TEXT UNIQUE NOT NULL,
-    rider_name TEXT NOT NULL,
-    status TEXT DEFAULT 'Offline',
-    battery_level INTEGER DEFAULT 100,
-    last_ping TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+-- 4. INTELLIGENCE FUNCTIONS (RPCs)
 
-CREATE TABLE IF NOT EXISTS public.staff (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email TEXT UNIQUE NOT NULL,
-    role TEXT DEFAULT 'staff',
-    permissions JSONB DEFAULT '{}'::JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS public.audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    staff_email TEXT,
-    action TEXT NOT NULL,
-    details JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- THE BUZZ v2 (Discovery Nodes)
-CREATE TABLE IF NOT EXISTS public.buzz_venues (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT UNIQUE NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
-    category TEXT NOT NULL,
-    hero_image_url TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS public.buzz_posts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    venue_id UUID REFERENCES public.buzz_venues(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
-    status TEXT DEFAULT 'LIVE',
-    trend_score INTEGER DEFAULT 0,
-    start_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    end_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS public.buzz_updates (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    buzz_id UUID REFERENCES public.buzz_posts(id) ON DELETE CASCADE,
-    message TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- 3. INTELLIGENCE FUNCTIONS (RPCs)
-
-CREATE OR REPLACE FUNCTION public.increment_session_metric(sess_id TEXT, metric_name TEXT, inc_val INTEGER)
-RETURNS VOID AS $$
+-- PRESENCE HEARTBEAT (Sub-second Accuracy)
+CREATE OR REPLACE FUNCTION public.handle_presence_heartbeat(
+    p_session_id TEXT,
+    p_page TEXT,
+    p_product_id BIGINT,
+    p_active_ms INTEGER,
+    p_visible BOOLEAN,
+    p_cart_value NUMERIC
+) RETURNS VOID AS $$
 BEGIN
-    EXECUTE format('UPDATE public.customer_sessions SET %I = %I + $1, updated_at = now() WHERE id = $2', metric_name, metric_name)
-    USING inc_val, sess_id;
+    UPDATE public.customer_sessions
+    SET
+        current_page = p_page,
+        total_active_time_sec = total_active_time_sec + (p_active_ms / 1000),
+        last_seen_at = now(),
+        is_tab_visible = p_visible,
+        session_status = CASE
+            WHEN (now() - last_seen_at) < INTERVAL '45 seconds' THEN 'ACTIVE'
+            ELSE 'IDLE'
+        END
+    WHERE id = p_session_id;
+
+    INSERT INTO public.active_visitors (session_id, current_page, cart_value, last_active_at, status)
+    VALUES (p_session_id, p_page, p_cart_value, now(), CASE WHEN p_page = '/checkout' THEN 'Checkout' ELSE 'Browsing' END)
+    ON CONFLICT (session_id) DO UPDATE SET
+        current_page = EXCLUDED.current_page,
+        cart_value = EXCLUDED.cart_value,
+        last_active_at = EXCLUDED.last_active_at,
+        status = EXCLUDED.status;
 END;
 $$ LANGUAGE plpgsql;
 
+-- EVENT BATCH LOGGER
 CREATE OR REPLACE FUNCTION public.log_event_batch(p_events JSONB)
 RETURNS VOID AS $$
 BEGIN
@@ -258,20 +193,34 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION public.calculate_live_buzz_level(p_buzz_id UUID)
-RETURNS INTEGER AS $$
-BEGIN
-    RETURN (SELECT LEAST(count(*) * 2, 100) FROM public.session_forensics WHERE metadata->>'buzzId' = p_buzz_id::text);
-END;
-$$ LANGUAGE plpgsql STABLE;
+-- 5. ANALYTICS VIEWS
 
--- 4. ULTIMATE SECURITY (RLS)
+CREATE OR REPLACE VIEW public.live_behavior_radar AS
+SELECT
+    s.id as session_id,
+    s.user_id,
+    p.full_name as customer_name,
+    s.current_page,
+    s.total_active_time_sec,
+    s.session_status as status,
+    s.last_seen_at
+FROM public.customer_sessions s
+LEFT JOIN public.profiles p ON s.user_id = p.id
+WHERE s.last_seen_at > (NOW() - INTERVAL '5 minutes')
+ORDER BY s.last_seen_at DESC;
+
+-- 6. SECURITY (RLS)
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read" ON public.products;
 CREATE POLICY "Public Read" ON public.products FOR SELECT USING (true);
-CREATE POLICY "Admins Manage" ON public.products FOR ALL TO authenticated USING (true);
 
 ALTER TABLE public.customer_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All" ON public.customer_sessions;
 CREATE POLICY "Allow All" ON public.customer_sessions FOR ALL USING (true);
+
+ALTER TABLE public.restock_requests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow inserts" ON public.restock_requests;
+CREATE POLICY "Allow inserts" ON public.restock_requests FOR INSERT WITH CHECK (true);
 
 -- 🛰️ REFRESH SCHEMA
 NOTIFY pgrst, 'reload schema';

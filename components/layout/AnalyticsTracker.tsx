@@ -225,31 +225,26 @@ export default function AnalyticsTracker() {
             const target = e.target as HTMLElement;
             const now = Date.now();
 
-            // 1. Capture Click Metadata
-            const interactive = target.closest('button, a, input, select, [role="button"]');
-            const elementId = target.id || target.getAttribute('data-audit-id') || target.getAttribute('data-behavior-id');
+            // 🛡️ [INTERACTION_HANDSHAKE] Capture Analytics IDs
+            const interactive = target.closest('button, a, input, select, [role="button"], [data-analytics-id]');
+            const elementId = target.getAttribute('data-analytics-id') || target.id || target.getAttribute('data-behavior-id');
             const elementText = target.innerText?.substring(0, 30).trim();
 
             if (interactive) {
-                // Tracking behavior-specific events if marked
-                const behaviorEvent = target.getAttribute('data-behavior-event');
-                if (behaviorEvent) {
-                    OB_OS.track(behaviorEvent as OSEventType, {
-                        details: { id: elementId, text: elementText }
-                    });
-                }
-
                 OB_OS.track('UI_INTERACTION', {
                     details: {
                         type: target.tagName,
-                        id: elementId,
+                        analyticsId: elementId,
                         text: elementText,
                         x: e.clientX,
                         y: e.clientY
                     }
                 });
+
+                // Specific Action Tracking
+                if (elementId?.includes('add_to_cart')) OB_OS.track('ADD_TO_CART');
+                if (elementId?.includes('checkout')) OB_OS.track('CHECKOUT_START');
             } else {
-                // 2. Dead Click Detection
                 OB_OS.track('DEAD_CLICK', { details: { x: e.clientX, y: e.clientY } });
             }
 

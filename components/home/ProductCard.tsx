@@ -252,22 +252,22 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
           </h2>
         </Link>
 
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 sm:gap-2 border-b border-slate-50 pb-3 sm:pb-4 min-h-[2.8rem] sm:min-h-[3.5rem]">
-          <div className="flex flex-col justify-end">
-              {isSale && <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 line-through leading-none mb-1">{formatPrice(Number(product.old_price))}</span>}
-              <span className="text-[15px] sm:text-xl font-black text-primary leading-none tracking-tighter">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 sm:gap-2 border-b border-slate-50 pb-3 sm:pb-4 min-h-[2.8rem] sm:min-h-[3.5rem] overflow-hidden">
+          <div className="flex flex-col justify-end min-w-0 flex-1">
+              {isSale && <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 line-through leading-none mb-1 truncate">{formatPrice(Number(product.old_price))}</span>}
+              <span className="text-[15px] sm:text-xl font-black text-primary leading-none tracking-tighter truncate">
                 {formatPrice(product.price)}
               </span>
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end flex-shrink-0">
             {product.stock !== undefined && (
                 <span
                 className={cn(
-                    "text-[8px] sm:text-[9px] font-black uppercase tracking-widest px-2 py-0.5 sm:px-2 sm:py-1 rounded-lg w-fit border shadow-sm transition-colors",
+                    "text-[8px] sm:text-[9px] font-black uppercase tracking-widest px-2 py-0.5 sm:px-2 sm:py-1 rounded-lg w-fit border shadow-sm transition-colors whitespace-nowrap",
                     product.stock > 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
                 )}
                 >
-                {product.stock > 0 ? 'Available' : 'Restocking'}
+                {product.stock > 0 ? 'Available' : 'Restock'}
                 </span>
             )}
           </div>

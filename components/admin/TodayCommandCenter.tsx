@@ -99,24 +99,24 @@ export default function OperatingBrainHUD() {
         <section className="space-y-6">
             <div className="flex items-center justify-between px-2">
                 <div className="flex items-center gap-3 text-left">
-                    <div className="h-3 w-3 rounded-full bg-primary animate-ping"></div>
-                    <h2 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none">Operating Brain HUD</h2>
+                    <div className="h-3 w-3 rounded-full bg-primary animate-ping flex-shrink-0"></div>
+                    <h2 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none truncate">Operating Brain HUD</h2>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                     <Zap size={10} className="text-primary animate-pulse" />
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground">Network Synchronized</span>
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground hidden sm:inline">Network Synchronized</span>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 lg:gap-10">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 lg:gap-10">
                 {nodes.map((node) => (
                     <Card
                         key={node.label}
                         onClick={() => router.push(node.href)}
-                        className="aspect-[4/5] rounded-[4rem] bg-white border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-xl transition-all flex flex-col items-center justify-center gap-4 text-center p-4 min-w-[140px] cursor-pointer"
+                        className="aspect-[4/5] rounded-[4rem] bg-white border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-xl transition-all flex flex-col items-center justify-center gap-4 text-center p-4 min-w-0 cursor-pointer"
                     >
                         <div className={cn(
-                            "h-12 w-12 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 shadow-inner",
+                            "h-12 w-12 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 shadow-inner flex-shrink-0",
                             node.color === 'primary' ? 'bg-primary/10 text-primary' :
                             node.color === 'indigo' ? 'bg-indigo-50 text-indigo-500' :
                             node.color === 'emerald' ? 'bg-emerald-50 text-emerald-500' :
@@ -125,9 +125,9 @@ export default function OperatingBrainHUD() {
                         )}>
                             <node.icon size={22} />
                         </div>
-                        <div className="space-y-1.5 min-w-0 w-full px-2">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight truncate">{node.label}</p>
-                            <h3 className="text-xl font-black text-foreground tracking-tighter uppercase leading-tight truncate">{node.val}</h3>
+                        <div className="space-y-1 min-w-0 w-full px-2 overflow-hidden">
+                            <p className="text-[8px] lg:text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight truncate">{node.label}</p>
+                            <h3 className="text-sm lg:text-lg font-black text-foreground tracking-tighter uppercase leading-tight truncate">{node.val}</h3>
                         </div>
                     </Card>
                 ))}

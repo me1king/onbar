@@ -111,32 +111,83 @@ class OnlineBarOS {
         timestamp: string;
     }[] = [];
     private flushInterval: NodeJS.Timeout | null = null;
+    private heartbeatInterval: NodeJS.Timeout | null = null;
+    private isInitialized: boolean = false;
+    private lastInteractionTime: number = Date.now();
+    private consecutiveFailures: number = 0;
 
-    private constructor() {
-        if (typeof window !== 'undefined') {
-            this.sessionId = localStorage.getItem('ob_session_active_id');
-            if (!this.sessionId) {
-                this.sessionId = uuidv4();
-                localStorage.setItem('ob_session_active_id', this.sessionId);
-            }
-
-            // 🛡️ [IDENTITY_NODE] Ensure Anonymous ID exists immediately
-            let anonId = localStorage.getItem('ob_anonymous_id');
-            if (!anonId) {
-                anonId = `anon-${uuidv4().substring(0, 8)}`;
-                localStorage.setItem('ob_anonymous_id', anonId);
-            }
-
-            // Start the Intelligence Flusher (Every 15s)
-            this.flushInterval = setInterval(() => this.flushQueue(), 15000);
-        }
-    }
+    private constructor() {}
 
     public static getInstance(): OnlineBarOS {
         if (!OnlineBarOS.instance) {
             OnlineBarOS.instance = new OnlineBarOS();
         }
         return OnlineBarOS.instance;
+    }
+
+    /**
+     * Bootstraps the OS on the client side.
+     */
+    public init() {
+        if (typeof window === 'undefined' || this.isInitialized) return;
+
+        try {
+            this.sessionId = localStorage.getItem('ob_session_active_id');
+            if (!this.sessionId) {
+                this.sessionId = uuidv4();
+                localStorage.setItem('ob_session_active_id', this.sessionId);
+            }
+
+            let anonId = localStorage.getItem('ob_anonymous_id');
+            if (!anonId) {
+                anonId = `anon-${uuidv4().substring(0, 8)}`;
+                localStorage.setItem('ob_anonymous_id', anonId);
+            }
+
+            // High-fidelity Batch Flusher (15s)
+            this.flushInterval = setInterval(() => this.flushQueue(), 15000);
+
+            // 💓 [HEARTBEAT_NODE] High-fidelity Presence (30s)
+            this.heartbeatInterval = setInterval(() => this.pulsePresence(), 30000);
+
+            this.isInitialized = true;
+            this.track('SESSION_START');
+        } catch (e) {
+            console.warn("[OB_OS] Boot Failure:", e);
+        }
+    }
+
+    private async pulsePresence() {
+        if (!this.sessionId || !supabase) return;
+
+        const now = Date.now();
+        const activeMs = now - this.lastInteractionTime < 30000 ? 30000 : 0; // If interaction in last 30s
+        const isVisible = document.visibilityState === 'visible';
+
+        // Use RPC to update presence in one shot
+        await supabase.rpc('handle_presence_heartbeat', {
+            p_session_id: this.sessionId,
+            p_page: window.location.pathname,
+            p_product_id: this.getCurrentProductId(),
+            p_active_ms: activeMs,
+            p_visible: isVisible,
+            p_cart_value: this.getCartValue()
+        });
+
+        this.track('HEARTBEAT');
+    }
+
+    private getCurrentProductId(): number | null {
+        const parts = window.location.pathname.split('/');
+        if (parts[1] === 'product' && parts[2]) return parseInt(parts[2]);
+        return null;
+    }
+
+    private getCartValue(): number {
+        try {
+            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            return cart.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+        } catch { return 0; }
     }
 
     private async flushQueue() {
@@ -148,12 +199,22 @@ class OnlineBarOS {
         try {
             const { error } = await supabase.rpc('log_event_batch', { p_events: batch });
             if (error) {
-                console.error("[OB_OS] Intelligence Flush Failure:", error);
-                // Re-queue to try again next time? (Basic persistence)
-                this.eventQueue = [...batch, ...this.eventQueue];
+                this.consecutiveFailures++;
+                // Silently re-queue with a max limit to prevent memory bloat
+                if (this.eventQueue.length < 100) {
+                    this.eventQueue = [...batch, ...this.eventQueue];
+                }
+
+                // Only log to console after 5 consecutive failures
+                if (this.consecutiveFailures >= 5) {
+                    console.warn("[OB_OS] Intelligence sync delayed. Grid re-synchronizing...");
+                    this.consecutiveFailures = 0; // Reset after warning
+                }
+            } else {
+                this.consecutiveFailures = 0;
             }
-        } catch (err) {
-            console.error("[OB_OS] Intelligence Exception:", err);
+        } catch {
+            // Silently catch network exceptions to prevent UI panic signals
         }
     }
 

@@ -31,27 +31,27 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`font-sans antialiased bg-white text-foreground`}>
+      <body className={`font-sans antialiased bg-white text-foreground selection:bg-primary/20`}>
         <RootStabilityGuard>
             <ErrorBoundary>
                 <CartProvider>
-                <WishlistProvider>
-                    <PublicLayoutShield initialSettings={DEFAULT_SETTINGS}>
-                        <Suspense fallback={<div className="min-h-screen bg-slate-50 animate-pulse" />}>
-                            {children}
+                    <WishlistProvider>
+                        <PublicLayoutShield initialSettings={DEFAULT_SETTINGS}>
+                            <Suspense fallback={<div className="min-h-screen bg-white" />}>
+                                {children}
+                            </Suspense>
+                        </PublicLayoutShield>
+
+                        <Suspense fallback={null}>
+                            <AnalyticsTracker />
                         </Suspense>
-                    </PublicLayoutShield>
 
-                    <Suspense fallback={null}>
-                        <AnalyticsTracker />
-                    </Suspense>
-
-                    <Suspense fallback={null}>
-                        <InstallAppWidget />
-                        <ExperienceNotificationHost />
-                        <MobileBottomNav />
-                    </Suspense>
-                </WishlistProvider>
+                        <Suspense fallback={null}>
+                            <InstallAppWidget />
+                            <ExperienceNotificationHost />
+                            <MobileBottomNav />
+                        </Suspense>
+                    </WishlistProvider>
                 </CartProvider>
             </ErrorBoundary>
         </RootStabilityGuard>

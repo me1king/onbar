@@ -254,13 +254,13 @@ export default function AdminLayoutClient({
                       <GlassWater className="h-6 w-6 text-white" />
                     </div>
                     {!isSidebarCollapsed && (
-                        <div className="animate-in fade-in duration-500 text-left">
-                          <select className="font-black text-foreground uppercase tracking-tight text-sm bg-transparent border-none outline-none appearance-none cursor-pointer">
+                        <div className="animate-in fade-in duration-500 text-left min-w-0 flex-1">
+                          <select className="font-black text-foreground uppercase tracking-tight text-sm bg-transparent border-none outline-none appearance-none cursor-pointer w-full truncate">
                               <option>Online Bar Master</option>
                               <option>Nairobi Branch</option>
                               <option>VVIP Cellar</option>
                           </select>
-                          <p className="text-[9px] font-black text-primary uppercase tracking-[0.2em] mt-1.5">Bar Command</p>
+                          <p className="text-[9px] font-black text-primary uppercase tracking-[0.2em] mt-1.5 truncate">Bar Command</p>
                         </div>
                     )}
                 </div>
