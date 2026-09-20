@@ -17,6 +17,18 @@ export default function GlobalError({
     console.error("[APEX_OS] Global Node Failure:", error);
   }, [error]);
 
+  const handleNuclearReset = () => {
+    if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+        // Clear all cookies
+        document.cookie.split(";").forEach(function(c) {
+            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        });
+        window.location.href = '/';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center">
       <div className="space-y-8 max-w-lg animate-in fade-in zoom-in-95 duration-700">
@@ -53,14 +65,13 @@ export default function GlobalError({
                 <RefreshCcw className="mr-3 h-5 w-5" /> Re-Sync Interface
             </Button>
 
-            <Link href="/" className="w-full">
-                <Button
-                    variant="outline"
-                    className="w-full h-16 rounded-2xl border-2 border-slate-100 bg-white text-foreground font-black uppercase text-xs tracking-widest hover:bg-slate-50 transition-all active:scale-95"
-                >
-                    <Home className="mr-3 h-5 w-5 text-primary" /> Return Home
-                </Button>
-            </Link>
+            <Button
+                variant="outline"
+                onClick={handleNuclearReset}
+                className="w-full h-16 rounded-2xl border-2 border-slate-100 bg-white text-foreground font-black uppercase text-xs tracking-widest hover:bg-slate-50 transition-all active:scale-95"
+            >
+                <Home className="mr-3 h-5 w-5 text-primary" /> Nuclear Reset
+            </Button>
         </div>
 
         <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest animate-pulse">

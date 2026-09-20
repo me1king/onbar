@@ -38,6 +38,7 @@ interface NotificationNode {
 function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
   const [displayEmail, setDisplayEmail] = useState<string | null>(null);
   const [points, setPoints] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   const fetchProfile = async (userId: string) => {
       if (!supabase) return;
@@ -46,6 +47,7 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
   };
 
   useEffect(() => {
+    setMounted(true);
     let isMounted = true;
 
     if (!supabase) {
@@ -78,6 +80,8 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  if (!mounted) return <div className="h-10 w-24 bg-slate-50 animate-pulse rounded-full" />;
 
   if (displayEmail) {
     return (

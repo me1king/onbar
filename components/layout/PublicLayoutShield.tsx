@@ -125,7 +125,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
                 latitude: lat,
                 longitude: lon,
                 status: pathname === '/checkout' ? 'Checkout' : cartValue > 0 ? 'Browsing' : 'Idle'
-            });
+            }, { onConflict: 'session_id' });
         };
 
         sendHeartbeat();
@@ -138,6 +138,14 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
 
     if (isAdmin) {
         return <main className="flex-grow">{children}</main>;
+    }
+
+    if (!mounted) {
+        return (
+            <main className="flex-grow min-h-screen bg-white">
+                {children}
+            </main>
+        );
     }
 
     return (
