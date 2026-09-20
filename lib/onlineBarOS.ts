@@ -200,21 +200,22 @@ class OnlineBarOS {
             const { error } = await supabase.rpc('log_event_batch', { p_events: batch });
             if (error) {
                 this.consecutiveFailures++;
-                // Silently re-queue with a max limit to prevent memory bloat
                 if (this.eventQueue.length < 100) {
                     this.eventQueue = [...batch, ...this.eventQueue];
                 }
 
-                // Only log to console after 5 consecutive failures
                 if (this.consecutiveFailures >= 5) {
-                    console.warn("[OB_OS] Intelligence sync delayed. Grid re-synchronizing...");
-                    this.consecutiveFailures = 0; // Reset after warning
+                    // One-time console hint instead of repeated error noise
+                    if (process.env.NODE_ENV === 'development') {
+                        console.warn("[OB_OS] Grid synchronization delayed. This is normal during schema updates.");
+                    }
+                    this.consecutiveFailures = 0;
                 }
             } else {
                 this.consecutiveFailures = 0;
             }
         } catch {
-            // Silently catch network exceptions to prevent UI panic signals
+            // Absolute silence for flush network exceptions
         }
     }
 

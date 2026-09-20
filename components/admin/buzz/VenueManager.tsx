@@ -19,21 +19,35 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
+interface VenueNode {
+    id: string;
+    name: string;
+    city: string;
+    category: string;
+    is_verified: boolean;
+    rating: number;
+    is_active: boolean;
+    address?: string;
+}
+
 export default function VenueManager() {
-    const [venues, setVenues] = React.useState<{ id: string, name: string, city: string, category: string, is_verified: boolean, rating: number, is_active: boolean, address?: string }[]>([]);
+    const [venues, setVenues] = React.useState<VenueNode[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [search, setSearch] = React.useState('');
     const [isEditing, setIsEditing] = React.useState(false);
-    const [editForm, setEditForm] = React.useState<{ id?: string, name: string, city: string, category: string, is_active: boolean, address?: string, rating?: number } | null>(null);
+    const [editForm, setEditForm] = React.useState<Partial<VenueNode> | null>(null);
 
     const fetchVenues = React.useCallback(async () => {
         if (!supabase) return;
         setLoading(true);
         try {
             const { data } = await supabase.from('buzz_venues').select('*').order('name');
-            if (data) setVenues(data);
-        } catch (err) { console.error(err); }
-        finally { setLoading(false); }
+            if (data) setVenues(data as VenueNode[]);
+        } catch {
+            // Silent sync failure
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     React.useEffect(() => {

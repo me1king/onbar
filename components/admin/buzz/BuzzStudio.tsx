@@ -74,13 +74,18 @@ export default function BuzzStudio({ postId, onClose, onSave }: BuzzStudioProps)
         setLoading(true);
         try {
             const slug = form.title.toLowerCase().replace(/\s+/g, '-');
+
+            // 📅 [TEMPORAL_GUARD] Safe date parsing
+            const startAt = form.start_at ? new Date(form.start_at).toISOString() : new Date().toISOString();
+            const endAt = form.end_at ? new Date(form.end_at).toISOString() : new Date(Date.now() + 86400000).toISOString();
+
             const payload = {
                 ...form,
                 slug,
-                latitude: parseFloat(form.latitude),
-                longitude: parseFloat(form.longitude),
-                start_at: new Date(form.start_at).toISOString(),
-                end_at: new Date(form.end_at).toISOString()
+                latitude: parseFloat(form.latitude) || 0,
+                longitude: parseFloat(form.longitude) || 0,
+                start_at: startAt,
+                end_at: endAt
             };
 
             let res;
