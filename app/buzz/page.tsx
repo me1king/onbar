@@ -27,7 +27,7 @@ import PulseDetailModal from '@/components/buzz/PulseDetailModal';
 import BuildMyNightWidget from '@/components/widgets/concierge/BuildMyNightWidget';
 import BuzzStoryCard, { BuzzStory } from '@/components/buzz/BuzzStoryCard';
 
-const LiveBuzzMap = dynamic(() => import('@/components/admin/dispatch/LiveDispatchMap'), {
+const LiveBuzzMap = dynamic(() => import('@/components/buzz/TheBuzzMap'), {
     ssr: false,
     loading: () => <div className="h-full w-full bg-slate-100 animate-pulse rounded-[3.5rem]" />
 });
@@ -40,6 +40,20 @@ interface BuzzArea {
     active_visitors: number;
     active_orders: number;
     confidence?: number;
+}
+
+interface DBBuzzPost {
+    id: string;
+    title: string;
+    description: string | null;
+    area_zone: string | null;
+    category: { label: string } | null;
+    status: string;
+    trend_score: number;
+    latitude: number;
+    longitude: number;
+    start_at: string;
+    media: Array<{ media_type: string, url: string }> | null;
 }
 
 export default function TheBuzzDiscovery() {
@@ -66,30 +80,37 @@ export default function TheBuzzDiscovery() {
         try {
             const [hotspotsRes, storiesRes] = await Promise.all([
                 supabase.from('buzz_metrics').select('*').order('buzz_score', { ascending: false }),
-                supabase.from('buzz_posts').select('*, buzz_categories(label), buzz_media(*)').eq('status', 'LIVE').order('trend_score', { ascending: false })
+                supabase.from('buzz_posts').select('*, category:buzz_categories(label), media:buzz_media(*)').in('status', ['LIVE', 'TRENDING', 'STARTING_SOON']).order('trend_score', { ascending: false })
             ]);
 
             if (hotspotsRes.data) {
-                const data = (hotspotsRes.data as { zone_name: string, buzz_score: number, buzz_status: 'BUZZING' | 'BUSY' | 'ACTIVE' | 'QUIET', active_visitors: number, active_orders: number }[]).map((h, i) => ({ ...h, id: String(i), confidence: 92 }));
-                setHotspots(data);
-                setSelectedArea(data[0]);
+                const data = (hotspotsRes.data as Array<{ zone_name: string, buzz_score: number, buzz_status: string, active_visitors: number, active_orders: number }>).map((h, i) => ({
+                    id: String(i),
+                    zone_name: h.zone_name,
+                    buzz_score: h.buzz_score,
+                    buzz_status: h.buzz_status as 'BUZZING' | 'BUSY' | 'ACTIVE' | 'QUIET',
+                    active_visitors: h.active_visitors,
+                    active_orders: h.active_orders,
+                    confidence: 92
+                }));
+                setHotspots(data as BuzzArea[]);
+                if (data.length > 0) setSelectedArea(data[0] as BuzzArea);
             }
 
             if (storiesRes.data) {
-                setStories((storiesRes.data as { id: string, title: string, description: string | null, area_zone: string | null, buzz_categories: { label: string } | null, status: string, trend_score: number, latitude: number, longitude: number, start_at: string, buzz_media: { media_type: string, url: string }[] }[]).map((s) => ({
+                setStories((storiesRes.data as unknown as DBBuzzPost[]).map((s) => ({
                     id: s.id,
                     title: s.title,
                     description: s.description || '',
                     area_zone: s.area_zone || 'Nairobi',
-                    category: s.buzz_categories?.label || 'General',
+                    category: s.category?.label || 'General',
                     status: s.status,
                     trend_score: s.trend_score,
                     latitude: Number(s.latitude),
                     longitude: Number(s.longitude),
                     starts_at: s.start_at,
-                    media: s.buzz_media.map((m) => ({ type: m.media_type as 'IMAGE' | 'VIDEO', url: m.url })),
-                    distance: '1.2 km',
-                    confidence: 88
+                    media: s.media?.map((m) => ({ type: m.media_type as 'IMAGE' | 'VIDEO', url: m.url })) || [],
+                    distance: '1.2 km'
                 })));
             }
         } catch (err) { console.error(err); }
@@ -169,29 +190,64 @@ export default function TheBuzzDiscovery() {
                     ))}
                 </div>
 
-                {/* 🎞️ CINEMATIC STORY GRID */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-                    {stories.filter(s => {
-                        if (filter === 'trending') return s.trend_score > 70;
-                        if (filter === 'near-me') return true; // Simulate proximity
-                        if (filter === 'tonight') return s.starts_at?.startsWith(new Date().toISOString().split('T')[0]);
-                        return true;
-                    }).length === 0 ? (
-                        <div className="col-span-full py-40 text-center opacity-20 border-2 border-dashed border-slate-100 rounded-[4rem]">
+                {/* 🎞️ CINEMATIC DISCOVERY FEED */}
+                <section className="space-y-12">
+                    {stories.filter(s => s.status === 'LIVE').length > 0 && (
+                        <div className="space-y-8">
+                            <div className="flex items-center gap-3 px-4">
+                                <div className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Live Now</h2>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+                                {stories.filter(s => s.status === 'LIVE').map(story => (
+                                    <BuzzStoryCard key={story.id} story={story} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {stories.filter(s => s.status === 'STARTING_SOON').length > 0 && (
+                        <div className="space-y-8">
+                            <div className="flex items-center gap-3 px-4">
+                                <div className="h-2 w-2 rounded-full bg-amber-500" />
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Starting Soon</h2>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+                                {stories.filter(s => s.status === 'STARTING_SOON').map(story => (
+                                    <BuzzStoryCard key={story.id} story={story} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {stories.filter(s => s.status === 'TRENDING').length > 0 && (
+                        <div className="space-y-8">
+                            <div className="flex items-center gap-3 px-4">
+                                <div className="h-2 w-2 rounded-full bg-indigo-500" />
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Trending Tonight</h2>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+                                {stories.filter(s => s.status === 'TRENDING').map(story => (
+                                    <BuzzStoryCard key={story.id} story={story} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {stories.length === 0 && (
+                        <div className="py-40 text-center opacity-20 border-2 border-dashed border-slate-100 rounded-[4rem]">
                             <Flame size={64} className="mx-auto mb-6" />
                             <p className="text-xl font-black uppercase tracking-widest">Awaiting the next Buzz...</p>
                         </div>
-                    ) : stories.map(story => (
-                        <BuzzStoryCard key={story.id} story={story} />
-                    ))}
-                </div>
+                    )}
+                </section>
 
                 <div className="grid lg:grid-cols-12 gap-12 pt-10 text-left">
 
                     {/* 🗺️ THE PULSE MAP (LIGHT THEME) */}
                     <div className="lg:col-span-8 space-y-10">
                         <Card className="h-[700px] rounded-[4.5rem] bg-white border-8 border-slate-50 shadow-2xl relative overflow-hidden group">
-                            <LiveBuzzMap riders={[]} />
+                            <LiveBuzzMap />
 
                             <div className="absolute top-10 left-10 right-10 z-10 flex justify-between items-start pointer-events-none">
                                 <div className="p-8 rounded-[3rem] bg-white/90 backdrop-blur-xl border border-slate-100 shadow-2xl pointer-events-auto animate-in slide-in-from-top-6 duration-1000">

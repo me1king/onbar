@@ -115,7 +115,7 @@ export default function BuzzStoryCard({ story }: { story: BuzzStory }) {
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
                     <Button
-                        onClick={() => window.location.href = `/buzz?id=${story.id}`}
+                        onClick={() => window.location.href = `/buzz/${story.id}`}
                         className="h-14 rounded-2xl bg-white text-slate-900 font-black uppercase text-[9px] tracking-widest shadow-xl hover:bg-primary hover:text-white transition-all active:scale-95"
                     >
                         View Details

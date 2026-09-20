@@ -203,11 +203,16 @@ function UploadContent() {
         supabase.from('hubs').select('id, name').eq('is_active', true)
       ]);
 
-      if (prodRes.error) throw prodRes.error;
+      if (prodRes.error) {
+          if (prodRes.error.message.includes('column')) {
+              setMessage({ type: 'error', text: "Database Schema Outdated. Run the updated FINAL_ESTABLISHMENT_SQL.sql script." });
+          }
+          throw prodRes.error;
+      }
       setProducts(prodRes.data || []);
       setHubs(hubRes.data || []);
     } catch {
-      // Failed silently in background
+      // Handled in message state
     }
   };
 
