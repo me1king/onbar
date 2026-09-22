@@ -311,10 +311,13 @@ export default function AdminAuditPage() {
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
                   <p className="text-[10px] font-black uppercase text-slate-300 tracking-widest">Retrieving Logs...</p>
               </div>
-          ) : filteredLogs.length === 0 ? (
+          ) : logs.length === 0 ? (
               <div className="p-32 text-center flex flex-col items-center gap-6">
                   <div className="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center text-slate-100"><ShieldCheck className="h-10 w-10" /></div>
-                  <p className="text-lg font-black text-slate-300 uppercase tracking-tight italic">No activity recorded yet.</p>
+                  <div className="space-y-2">
+                      <p className="text-lg font-black text-slate-300 uppercase tracking-tight italic">No activity recorded yet.</p>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">If you have performed actions, check your Uplink Status.</p>
+                  </div>
               </div>
           ) : (
               <div className="overflow-x-auto">

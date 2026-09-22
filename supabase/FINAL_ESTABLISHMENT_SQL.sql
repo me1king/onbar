@@ -322,6 +322,33 @@ CREATE TABLE IF NOT EXISTS public.buzz_posts (
 );
 
 -- 8. INTELLIGENCE CORE: LOGS & SESSIONS
+CREATE TABLE IF NOT EXISTS public.security_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    device_name TEXT,
+    device_type TEXT, -- 'Mobile' | 'Desktop'
+    browser TEXT,
+    ip_address TEXT,
+    last_active_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    is_current_session BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.support_tickets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    customer_name TEXT,
+    customer_email TEXT,
+    subject TEXT,
+    description TEXT,
+    category TEXT DEFAULT 'General',
+    priority TEXT DEFAULT 'Medium',
+    status TEXT DEFAULT 'Open',
+    admin_response TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS public.audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     staff_email TEXT,

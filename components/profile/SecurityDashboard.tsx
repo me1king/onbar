@@ -32,16 +32,29 @@ export default function SecurityDashboard({ userId }: { userId: string }) {
     const [isRevoking, setIsRevoking] = React.useState<string | null>(null);
 
     const fetchSessions = React.useCallback(async () => {
-        if (!supabase || !userId) return;
+        if (!supabase || !userId) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('security_sessions')
                 .select('*')
                 .eq('user_id', userId)
                 .order('last_active_at', { ascending: false });
 
+            if (error) {
+                if (error.message.includes('not found') || error.message.includes('does not exist')) {
+                    console.warn("[OB_OS] Security sessions node offline. Database table missing.");
+                } else {
+                    throw error;
+                }
+            }
+
             if (data) setSessions(data as Session[]);
+        } catch (err) {
+            console.error(err);
         } finally {
             setLoading(false);
         }
