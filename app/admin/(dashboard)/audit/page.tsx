@@ -20,7 +20,7 @@ import { formatPrice } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 
 interface AuditLog {
-  id: number;
+  id: string;
   staff_email: string;
   action: string;
   details: Record<string, unknown> | null;
@@ -132,7 +132,10 @@ export default function AdminAuditPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchLogs = async () => {
-    if (!supabase) return;
+    if (!supabase) {
+        setLoading(false);
+        return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -140,10 +143,23 @@ export default function AdminAuditPage() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+          if (error.message.includes('not found') || error.message.includes('does not exist')) {
+              throw new Error("Audit Node Offline: The audit_logs table is missing. Run the establishment SQL in Supabase. 🛰️");
+          }
+          throw error;
+      }
       setLogs(data || []);
-    } catch (err) {
-      console.error(err);
+    } catch (err: unknown) {
+      const error = err as { message?: string, stack?: string };
+      console.error("[OB_OS] Audit Fetch Failure:", error);
+
+      const isFetchError = error.message?.toLowerCase().includes('failed to fetch') || !error.message;
+      const alertMsg = isFetchError
+        ? "Uplink Blocked: Possible Supabase Key mismatch (Stripe key detected). Check your .env.local and restart the server. 🛡️"
+        : error.message;
+
+      alert(alertMsg);
     } finally {
       setLoading(false);
     }
@@ -156,11 +172,24 @@ export default function AdminAuditPage() {
   const clearLogs = async () => {
       if (!supabase || !confirm("Clear all audit history? This cannot be undone.")) return;
       try {
-          const { error } = await supabase.from('audit_logs').delete().neq('id', 0); // Delete all
+          const { error } = await supabase.from('audit_logs').delete().neq('action', 'NUCLEAR_RESET');
           if (error) throw error;
           setLogs([]);
+          alert("Audit Node Purged Successfully. 🛡️");
       } catch (err) {
           console.error(err);
+      }
+  };
+
+  const runNuclearPing = async () => {
+      if (!supabase) return alert("Supabase Node not initialized.");
+      try {
+          const { error } = await supabase.from('audit_logs').select('count', { count: 'exact', head: true }).limit(1);
+          if (error) throw error;
+          alert("🛰️ Grid Uplink: HEALTHY. Audit node is online.");
+      } catch (err: unknown) {
+          const error = err as { message: string, code?: string };
+          alert(`🛑 Grid Uplink: FAILED.\nMessage: ${error.message}\nCode: ${error.code || 'UNKNOWN'}\n\nHint: Check your .env.local for Key Mismatch!`);
       }
   };
 
@@ -187,6 +216,9 @@ export default function AdminAuditPage() {
           <p className="text-slate-500 text-sm font-medium mt-1">Review staff actions and maintain bar security.</p>
         </div>
         <div className="flex gap-2">
+            <Button onClick={runNuclearPing} variant="outline" className="rounded-xl h-12 px-6 border-primary/20 bg-primary/5 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all">
+                Test Uplink
+            </Button>
             {role === 'owner' && (
                 <Button onClick={clearLogs} variant="outline" className="rounded-xl h-12 px-6 border-rose-100 text-rose-500 hover:bg-rose-50 font-black uppercase text-[10px]">
                     Clear History

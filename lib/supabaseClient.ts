@@ -6,7 +6,10 @@ const supabaseKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 // 🔍 KEY INTEGRITY AUDIT: V30 Protocol
 if (typeof window !== 'undefined') {
     if (supabaseKey.startsWith('sb_publishable_')) {
-        console.error("🛑 CRITICAL: KEY MISMATCH DETECTED. Your NEXT_PUBLIC_SUPABASE_ANON_KEY appears to be a STRIPE key. Auth will fail.");
+        console.error("🛑 CRITICAL: KEY MISMATCH DETECTED. Your NEXT_PUBLIC_SUPABASE_ANON_KEY appears to be a STRIPE key. Auth will fail. Replace it with your Supabase Anon key (starts with eyJ).");
+    }
+    if (supabaseKey.includes('service_role')) {
+         console.error("🛑 CRITICAL: SECURITY RISK. You are using a SERVICE_ROLE key in the public frontend. This key can bypass all security rules. Immediately replace it with the ANON PUBLIC key.");
     }
     if (supabaseKey && !supabaseKey.startsWith('eyJ')) {
         console.warn("⚠️ WARNING: INVALID ANON KEY. Supabase keys must be JWTs (start with eyJ). Check your .env.local");
