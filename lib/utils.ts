@@ -6,21 +6,27 @@ export function cn(...inputs: ClassValue[]) {
 }
 /**
  * Normalizes image URLs and provides robust fallbacks for missing or legacy assets.
+ * Standardizes empty strings and objects to a valid fallback path.
  */
-export const normalizeImage = (url: string | undefined | null) => {
-    if (!url) return '/images/NoImage.jpg';
+export const normalizeImage = (url: any) => {
+    if (!url || typeof url !== 'string' || url.trim() === "") {
+        return '/images/NoImage.jpg';
+    }
+
+    const trimmedUrl = url.trim();
 
     // Check if it's exactly the placeholder or contains it
     const isPlaceholder =
-        url === '/placeholder.jpg' ||
-        url === 'placeholder.jpg' ||
-        url.includes('placeholder.jpg') ||
-        url === 'https://onlinebar.co.ke/placeholder.jpg';
+        trimmedUrl === '/placeholder.jpg' ||
+        trimmedUrl === 'placeholder.jpg' ||
+        trimmedUrl.includes('placeholder.jpg') ||
+        trimmedUrl === 'https://onlinebar.co.ke/placeholder.jpg';
 
     if (isPlaceholder) {
         return '/images/NoImage.jpg';
     }
-    return url;
+
+    return trimmedUrl;
 };
 
 export const formatPrice = (price: number | string | undefined | null) => {

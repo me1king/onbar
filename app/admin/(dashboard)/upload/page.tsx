@@ -74,6 +74,12 @@ const initialForm = {
   length_cm: '',
   width_cm: '',
   height_cm: '',
+  sensory_metrics_body: '60',
+  sensory_metrics_sweet: '60',
+  sensory_metrics_smoke: '20',
+  sensory_metrics_spice: '40',
+  pairing_suggestions: '',
+  bought_together_ids: ''
 };
 
 interface Product {
@@ -112,6 +118,9 @@ interface Product {
   height_cm?: number;
   variant_stock?: Record<string, number>;
   beverage_specs?: Record<string, string>;
+  sensory_metrics?: Record<string, number>;
+  pairing_suggestions?: string[];
+  bought_together_ids?: number[];
   status?: string;
   supplier_id?: number;
   min_loyalty_tier?: string;
@@ -337,6 +346,12 @@ function UploadContent() {
       stock: String(product.stock ?? '0'),
       is_featured: product.is_featured || false,
       is_snack: product.is_snack || false,
+      sensory_metrics_body: String(product.sensory_metrics?.body ?? '60'),
+      sensory_metrics_sweet: String(product.sensory_metrics?.sweet ?? '60'),
+      sensory_metrics_smoke: String(product.sensory_metrics?.smoke ?? '20'),
+      sensory_metrics_spice: String(product.sensory_metrics?.spice ?? '40'),
+      pairing_suggestions: Array.isArray(product.pairing_suggestions) ? product.pairing_suggestions.join(', ') : '',
+      bought_together_ids: Array.isArray(product.bought_together_ids) ? product.bought_together_ids.join(', ') : ''
     });
 
     setExistingImages(product.images || [product.image_url]);
@@ -417,7 +432,15 @@ function UploadContent() {
           is_featured: form.is_featured,
           is_snack: form.is_snack,
           // 🛡️ [SCHEMA_SAFETY] Optional Fields
-          low_stock_alert: Number(form.low_stock_alert) || 5
+          low_stock_alert: Number(form.low_stock_alert) || 5,
+          sensory_metrics: {
+              body: Number(form.sensory_metrics_body),
+              sweet: Number(form.sensory_metrics_sweet),
+              smoke: Number(form.sensory_metrics_smoke),
+              spice: Number(form.sensory_metrics_spice)
+          },
+          pairing_suggestions: form.pairing_suggestions ? form.pairing_suggestions.split(',').map(s => s.trim()) : [],
+          bought_together_ids: form.bought_together_ids ? form.bought_together_ids.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n)) : []
       };
 
       if (editingId) {
@@ -770,6 +793,40 @@ function UploadContent() {
                                   ))}
                               </div>
                           </div>
+
+                          <div className="pt-6 border-t border-slate-50 space-y-6">
+                                <h3 className="text-xs font-black uppercase text-foreground">Sensory Intelligence (0-100)</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    {[
+                                        { k: 'sensory_metrics_body', l: 'Body' },
+                                        { k: 'sensory_metrics_sweet', l: 'Sweet' },
+                                        { k: 'sensory_metrics_smoke', l: 'Smoke' },
+                                        { k: 'sensory_metrics_spice', l: 'Spice' },
+                                    ].map(m => (
+                                        <div key={m.k} className="space-y-2">
+                                            <label className="text-[8px] font-black uppercase text-slate-400 ml-1">{m.l}</label>
+                                            <Input
+                                                name={m.k}
+                                                type="number"
+                                                value={String(form[m.k as keyof typeof form])}
+                                                onChange={handleInputChange}
+                                                className="h-10 rounded-xl bg-slate-50 border-slate-100 font-bold"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid sm:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Pairing Suggestions (CSV)</label>
+                                    <Input name="pairing_suggestions" value={form.pairing_suggestions} onChange={handleInputChange} placeholder="e.g. Meat, Cheese" className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Bought Together IDs (CSV)</label>
+                                    <Input name="bought_together_ids" value={form.bought_together_ids} onChange={handleInputChange} placeholder="e.g. 12, 45" className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-mono" />
+                                </div>
+                            </div>
                       </CardContent>
                   )}
               </Card>

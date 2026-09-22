@@ -10,16 +10,10 @@ import {
     Plus,
     Loader2,
     Trash2,
-    Power,
-    CheckCircle2,
-    AlertTriangle,
-    Database,
-    ChevronRight,
-    TrendingUp
+    Power
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { cn, formatPrice } from '@/lib/utils';
 import Image from 'next/image';
 

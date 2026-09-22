@@ -265,12 +265,6 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
                   </button>
               ))}
           </div>
-
-          <Link href="/shop/snacks">
-              <Button className="h-14 px-8 rounded-2xl bg-indigo-600 text-white font-black uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 shrink-0">
-                  Quick Munchies 🍿
-              </Button>
-          </Link>
       </div>
 
       {/* 2. Pro Filters Bar */}

@@ -12,6 +12,7 @@ export type OSEventType =
     | SystemEventType
     | 'USER_REGISTERED'
     | 'USER_LOGIN'
+    | 'SESSION_START'
     | 'PAGE_VIEW'
     | 'CATEGORY_VIEW'
     | 'PRODUCT_VIEW'
@@ -185,8 +186,10 @@ class OnlineBarOS {
 
     private getCartValue(): number {
         try {
-            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
-            return cart.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+            const cartStr = localStorage.getItem('cart');
+            if (!cartStr) return 0;
+            const cart = JSON.parse(cartStr);
+            return cart.reduce((sum: number, item: { price: number, quantity: number }) => sum + (item.price * item.quantity), 0);
         } catch { return 0; }
     }
 

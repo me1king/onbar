@@ -109,7 +109,7 @@ export default function NeuralHero() {
                     </div>
 
                     <h1 className={cn(
-                        "text-6xl lg:text-8xl font-black tracking-tighter uppercase leading-[0.85] text-balance",
+                        "text-5xl sm:text-6xl lg:text-8xl font-black tracking-tighter uppercase leading-[0.85] text-balance break-words",
                         persona?.vibe === 'ELITE' ? "text-white" : "text-foreground"
                     )}>
                         {config.title.split('.').map((part, i) => (

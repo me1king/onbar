@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
-import { formatPrice, cn } from '@/lib/utils';
+import { formatPrice, cn, normalizeImage } from '@/lib/utils';
 import { ShoppingBag, Zap, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import Image from 'next/image';
@@ -35,7 +35,7 @@ export default function PerfectServeCommerce({ mainProduct, mixerId, glassware }
         const bundle = [{
             ...mainProduct,
             base_price: mainProduct.price,
-            image: mainProduct.image_url,
+            image: normalizeImage(mainProduct.image_url),
             quantity: 1,
             category: 'spirit'
         }];
@@ -44,7 +44,7 @@ export default function PerfectServeCommerce({ mainProduct, mixerId, glassware }
             bundle.push({
                 ...mixer,
                 base_price: mixer.price,
-                image: mixer.image_url,
+                image: normalizeImage(mixer.image_url),
                 quantity: 1,
                 category: 'mixer'
             });
@@ -80,11 +80,11 @@ export default function PerfectServeCommerce({ mainProduct, mixerId, glassware }
 
                 <div className="flex items-center gap-6 justify-center py-6">
                     <div className="relative h-24 w-24 bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                        <Image src={mainProduct.image_url} alt="" fill className="object-contain p-2" />
+                        <Image src={normalizeImage(mainProduct.image_url)} alt="" fill className="object-contain p-2" />
                     </div>
                     <div className="text-primary font-black text-2xl animate-in zoom-in duration-500">+</div>
                     <div className="relative h-24 w-24 bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                        <Image src={mixer.image_url} alt="" fill className="object-contain p-2" />
+                        <Image src={normalizeImage(mixer.image_url)} alt="" fill className="object-contain p-2" />
                     </div>
                 </div>
 

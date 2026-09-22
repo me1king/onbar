@@ -3,17 +3,9 @@
 import { useState } from 'react';
 import { X, Zap, Trophy, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, normalizeImage } from '@/lib/utils';
 import Image from 'next/image';
-
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-  image_url?: string;
-  image?: string;
-  beverage_specs?: Record<string, string>;
-}
+import { Product } from '@/types/product';
 
 export default function CompareModal({
     p1,
@@ -27,11 +19,29 @@ export default function CompareModal({
     const [img1Error, setImg1Error] = useState(false);
     const [img2Error, setImg2Error] = useState(false);
 
-    // Collect all unique spec keys
-    const allSpecKeys = Array.from(new Set([
-        ...Object.keys(p1.beverage_specs || {}),
-        ...Object.keys(p2.beverage_specs || {})
-    ]));
+    // Build a flat list of specs to compare
+    const getSpecs = (p: Product) => {
+        const specs: Record<string, string> = {};
+        if (p.category) specs['Category'] = p.category;
+        if (p.brand) specs['Brand'] = p.brand;
+        if (p.origin) specs['Origin'] = p.origin;
+        if (p.abv_label) specs['ABV'] = p.abv_label;
+        if (p.size_label) specs['Size'] = p.size_label;
+        if (p.manufacturer) specs['Producer'] = p.manufacturer;
+
+        // Include any manual specs
+        if (p.specifications) {
+            p.specifications.forEach(s => {
+                specs[s.key] = s.value;
+            });
+        }
+
+        return specs;
+    };
+
+    const s1 = getSpecs(p1);
+    const s2 = getSpecs(p2);
+    const allKeys = Array.from(new Set([...Object.keys(s1), ...Object.keys(s2)]));
 
     const cheaperProduct = p1.price < p2.price ? p1 : p2;
 
@@ -44,7 +54,7 @@ export default function CompareModal({
                         <h2 className="text-3xl font-black text-foreground uppercase tracking-tighter">Premium Comparison</h2>
                         <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mt-1">Deep Spec Analysis Active</p>
                     </div>
-                    <button onClick={onClose} className="h-14 w-14 rounded-full bg-white shadow-xl flex items-center justify-center text-slate-400 hover:text-rose-500 hover:rotate-90 transition-all duration-300 border border-slate-100">
+                    <button onClick={onClose} className="h-14 w-14 rounded-full bg-white shadow-xl flex items-center justify-center text-slate-400 hover:text-brand-red hover:rotate-90 transition-all duration-300 border border-slate-100">
                         <X className="h-6 w-6" />
                     </button>
                 </header>
@@ -64,7 +74,7 @@ export default function CompareModal({
                             <div className="aspect-square rounded-[2.5rem] bg-white flex items-center justify-center p-2 border border-slate-100 shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden relative">
                                 {!img1Error ? (
                                     <Image
-                                        src={p1.image_url || p1.image || '/images/NoImage.jpg'}
+                                        src={normalizeImage(p1.image || p1.image_url)}
                                         alt={p1.name}
                                         fill
                                         className="object-contain p-4 transform group-hover:scale-110 transition-transform duration-700"
@@ -78,7 +88,7 @@ export default function CompareModal({
                                 )}
                             </div>
                             <div className="px-2">
-                                <h3 className="font-black text-foreground uppercase text-[11px] sm:text-xs tracking-tight mb-2 h-8 line-clamp-2 leading-none">{p1.name}</h3>
+                                <h3 className="font-black text-foreground uppercase text-[11px] sm:text-xs tracking-tight mb-2 h-8 line-clamp-2 leading-none italic">{p1.name}</h3>
                                 <p className="text-2xl font-black text-primary tracking-tighter">{formatPrice(p1.price)}</p>
                             </div>
                         </div>
@@ -91,7 +101,7 @@ export default function CompareModal({
                             <div className="aspect-square rounded-[2.5rem] bg-white flex items-center justify-center p-2 border border-slate-100 shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden relative">
                                 {!img2Error ? (
                                     <Image
-                                        src={p2.image_url || p2.image || '/images/NoImage.jpg'}
+                                        src={normalizeImage(p2.image || p2.image_url)}
                                         alt={p2.name}
                                         fill
                                         className="object-contain p-4 transform group-hover:scale-110 transition-transform duration-700"
@@ -105,7 +115,7 @@ export default function CompareModal({
                                 )}
                             </div>
                             <div className="px-2">
-                                <h3 className="font-black text-foreground uppercase text-[11px] sm:text-xs tracking-tight mb-2 h-8 line-clamp-2 leading-none">{p2.name}</h3>
+                                <h3 className="font-black text-foreground uppercase text-[11px] sm:text-xs tracking-tight mb-2 h-8 line-clamp-2 leading-none italic">{p2.name}</h3>
                                 <p className="text-2xl font-black text-primary tracking-tighter">{formatPrice(p2.price)}</p>
                             </div>
                         </div>
@@ -118,24 +128,24 @@ export default function CompareModal({
                             <span className="text-[10px] font-black uppercase tracking-widest text-foreground text-center">Unit Beta</span>
                         </div>
 
-                        {allSpecKeys.map(key => (
+                        {allKeys.map(key => (
                             <div key={key} className="grid grid-cols-3 gap-8 items-center py-6 border-b border-slate-50 hover:bg-slate-50/50 rounded-2xl transition-colors group/row">
                                 <div className="pl-6">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover/row:text-primary transition-colors">{key}</span>
                                 </div>
                                 <div className="text-center">
-                                    <span className="text-xs font-bold text-foreground">{p1.beverage_specs?.[key] || 'Not specified'}</span>
+                                    <span className="text-xs font-bold text-foreground">{s1[key] || 'Not specified'}</span>
                                 </div>
                                 <div className="text-center">
-                                    <span className="text-xs font-bold text-foreground">{p2.beverage_specs?.[key] || 'Not specified'}</span>
+                                    <span className="text-xs font-bold text-foreground">{s2[key] || 'Not specified'}</span>
                                 </div>
                             </div>
                         ))}
                     </div>
 
-                    <div className="mt-16 p-8 bg-primary/5 rounded-[2rem] border border-primary/10 flex items-center justify-between">
+                    <div className="mt-16 p-8 bg-brand-red/5 rounded-[2rem] border border-brand-red/10 flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <div className="h-12 w-12 rounded-xl bg-white flex items-center justify-center text-primary shadow-sm border border-primary/10"><Trophy className="h-6 w-6" /></div>
+                            <div className="h-12 w-12 rounded-xl bg-white flex items-center justify-center text-brand-red shadow-sm border border-brand-red/10"><Trophy className="h-6 w-6" /></div>
                             <div>
                                 <p className="font-black text-foreground uppercase text-xs">Apex Recommendation</p>
                                 <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest italic">Best choice for your selection</p>
@@ -143,13 +153,13 @@ export default function CompareModal({
                         </div>
                         <div className="text-right">
                             <p className="text-[10px] font-black uppercase text-emerald-600 mb-1">Pick of the day</p>
-                            <p className="font-black text-foreground uppercase text-[10px] sm:text-xs tracking-tight">{cheaperProduct.name}</p>
+                            <p className="font-black text-foreground uppercase text-[10px] sm:text-xs tracking-tight italic">{cheaperProduct.name}</p>
                         </div>
                     </div>
                 </div>
 
                 <footer className="p-8 border-t border-slate-50 flex gap-4 shrink-0 bg-white">
-                    <Button onClick={onClose} className="flex-1 h-16 rounded-[1.5rem] bg-primary text-white font-black uppercase text-[11px] tracking-widest shadow-2xl shadow-primary/20 hover:bg-primary/90 hover:scale-[1.01] active:scale-95 transition-all">Close Comparison View</Button>
+                    <Button onClick={onClose} className="flex-1 h-16 rounded-[1.5rem] bg-brand-red text-white font-black uppercase text-[11px] tracking-widest shadow-2xl shadow-brand-red/30 hover:bg-brand-red/90 hover:scale-[1.01] active:scale-95 transition-all border-none">Close Comparison View</Button>
                 </footer>
 
             </div>

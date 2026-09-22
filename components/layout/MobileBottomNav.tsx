@@ -44,16 +44,16 @@ export default function MobileBottomNav() {
                             className="relative flex flex-col items-center justify-center w-full h-full group"
                         >
                             <div className={cn(
-                                "flex flex-col items-center gap-1 transition-all duration-300",
+                                "flex flex-col items-center gap-1 transition-all duration-300 min-w-0 px-1",
                                 isActive ? "text-primary scale-110" : "text-slate-400 group-active:scale-95"
                             )}>
-                                <div className="relative">
-                                    <Icon className={cn("h-6 w-6", isActive && "fill-current")} />
+                                <div className="relative shrink-0">
+                                    <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6", isActive && "fill-current")} />
                                     {item.label === 'Orders' && (
-                                        <div className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full animate-pulse" />
+                                        <div className="absolute -top-1 -right-1 h-1.5 w-1.5 bg-primary rounded-full animate-pulse" />
                                     )}
                                 </div>
-                                <span className="text-[10px] font-black uppercase tracking-tighter">{item.label}</span>
+                                <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-tighter truncate w-full text-center">{item.label}</span>
                             </div>
 
                             {/* Active Indicator Bar */}

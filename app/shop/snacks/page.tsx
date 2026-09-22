@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import ProductCard from '@/components/home/ProductCard';
+import { Product } from '@/types/product';
 
 const SUBCATS = [
     { label: 'Trending', icon: Flame },
@@ -26,17 +27,8 @@ const SUBCATS = [
     { label: 'Healthy', icon: Star },
 ];
 
-interface SnackProduct {
-    id: number;
-    name: string;
-    price: number;
-    image_url: string;
-    sub_category: string;
-    stock: number;
-}
-
 export default function SnackShopPage() {
-    const [products, setProducts] = useState<SnackProduct[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeSub, setActiveSub] = useState('Trending');
 
@@ -52,7 +44,7 @@ export default function SnackShopPage() {
             }
 
             const { data } = await query.order('created_at', { ascending: false });
-            setProducts(data || []);
+            setProducts((data as unknown as Product[]) || []);
             setLoading(false);
         }
         loadSnacks();
@@ -98,7 +90,7 @@ export default function SnackShopPage() {
             </div>
 
             {/* 3. Products Grid */}
-            <div className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
+            <div id="snack-grid" className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8 scroll-mt-32">
                 {loading ? (
                     <div className="py-32 flex flex-col items-center justify-center gap-4">
                         <Loader2 className="animate-spin text-primary" size={40} />
@@ -112,14 +104,7 @@ export default function SnackShopPage() {
                 ) : (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                         {products.map((p) => (
-                            <ProductCard key={p.id} product={{
-                                id: p.id,
-                                name: p.name,
-                                price: p.price,
-                                image: p.image_url,
-                                category: p.sub_category,
-                                stock: p.stock
-                            }} />
+                            <ProductCard key={p.id} product={p} />
                         ))}
                     </div>
                 )}
@@ -127,7 +112,7 @@ export default function SnackShopPage() {
 
             {/* 4. Quick Delivery CTA */}
             <section className="max-w-7xl mx-auto px-4 py-24 sm:px-6 lg:px-8">
-                <Card className="p-12 rounded-[4rem] bg-indigo-600 text-white border-none shadow-2xl relative overflow-hidden group">
+                <Card className="p-12 rounded-[4rem] bg-slate-900 text-white border-none shadow-2xl relative overflow-hidden group">
                     <div className="relative z-10 grid md:grid-cols-2 gap-12 items-center">
                         <div className="space-y-6">
                             <div className="flex items-center gap-3">
@@ -138,7 +123,10 @@ export default function SnackShopPage() {
                             <p className="text-lg font-medium opacity-70 italic max-w-sm">
                                 &quot;Tactical dispatch active. Your bites arrive while your drinks are still chilled to the core.&quot;
                             </p>
-                            <Button className="h-16 px-10 rounded-2xl bg-white text-indigo-600 font-black uppercase text-xs tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl active:scale-95">
+                            <Button
+                                onClick={() => document.getElementById('snack-grid')?.scrollIntoView({ behavior: 'smooth' })}
+                                className="h-16 px-10 rounded-2xl bg-white text-slate-900 font-black uppercase text-xs tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl active:scale-95 border-none"
+                            >
                                 Start Fast Order
                             </Button>
                         </div>

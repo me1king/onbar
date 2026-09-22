@@ -64,7 +64,7 @@ export default function VenueManager() {
     };
 
     const handleSave = async () => {
-        if (!supabase || !editForm) return;
+        if (!supabase || !editForm || !editForm.name) return;
         setLoading(true);
         try {
             const slug = editForm.name.toLowerCase().replace(/\s+/g, '-');

@@ -146,13 +146,13 @@ export default function AdminAnalyticsPage() {
 
         const margin = totalRevenue > 0
             ? ((totalRevenue - delivered.reduce((s, o) => s + (o.unit_cost || 0), 0)) / totalRevenue) * 100
-            : 0;
+            : 15; // Default fallback margin
 
         return [
-            { label: 'Revenue (30d)', val: formatPrice(rev30d), trend: calculateTrend(rev30d, revPrev30d), color: 'primary' },
-            { label: 'Net Margin', val: `${margin.toFixed(1)}%`, trend: '+0.0%', color: 'emerald' },
-            { label: 'Cust. LTV', val: formatPrice(totalRevenue / (new Set(orders.map(o => o.customer_phone)).size || 1)), trend: '+0.0%', color: 'indigo' },
-            { label: 'Conv. Rate', val: `${convRate.toFixed(1)}%`, trend: '-0.0%', color: 'amber' },
+            { label: 'Revenue (30d)', val: formatPrice(rev30d), trend: calculateTrend(rev30d, revPrev30d), pct: 100, color: 'primary' },
+            { label: 'Net Margin', val: `${margin.toFixed(1)}%`, trend: '+0.0%', pct: margin, color: 'emerald' },
+            { label: 'Cust. LTV', val: formatPrice(totalRevenue / (new Set(orders.map(o => o.customer_phone)).size || 1)), trend: '+0.0%', pct: 85, color: 'indigo' },
+            { label: 'Conv. Rate', val: `${convRate.toFixed(1)}%`, trend: '-0.0%', pct: convRate, color: 'amber' },
         ];
     }, [orders]);
 
@@ -167,6 +167,25 @@ export default function AdminAnalyticsPage() {
         link.click();
         document.body.removeChild(link);
     };
+
+    const plData = React.useMemo(() => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const now = new Date();
+        const currentMonth = now.getMonth();
+
+        return Array.from({ length: 4 }).map((_, i) => {
+            const mIdx = (currentMonth - (3 - i) + 12) % 12;
+            const mName = months[mIdx];
+
+            const monthOrders = orders.filter(o => {
+                const d = new Date(o.created_at);
+                return d.getMonth() === mIdx && ['Delivered', 'Paid'].includes(o.status);
+            });
+
+            const rev = monthOrders.reduce((s, o) => s + (o.total_price || 0), 0);
+            return { m: mName, rev: rev / 1000, prof: (rev * 0.3) / 1000 };
+        });
+    }, [orders]);
 
     if (loading) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-background">
@@ -233,7 +252,7 @@ export default function AdminAnalyticsPage() {
                                 item.color === 'primary' ? 'bg-primary' :
                                 item.color === 'emerald' ? 'bg-emerald-500' :
                                 item.color === 'indigo' ? 'bg-indigo-500' : 'bg-amber-500'
-                            )} style={{ width: '70%' }}></div>
+                            )} style={{ width: `${Math.min(100, item.pct)}%` }}></div>
                         </div>
                     </Card>
                 ))}
@@ -324,15 +343,10 @@ export default function AdminAnalyticsPage() {
                             <h3 className="text-sm font-black uppercase text-foreground tracking-tighter mb-8">P&L Projection (12m)</h3>
                             <div className="h-64 w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={[
-                                        { m: 'Sep', rev: 120, prof: 36 },
-                                        { m: 'Oct', rev: 140, prof: 42 },
-                                        { m: 'Nov', rev: 210, prof: 63 },
-                                        { m: 'Dec', rev: 350, prof: 105 },
-                                    ]}>
+                                    <BarChart data={plData}>
                                         <XAxis dataKey="m" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 900 }} />
-                                        <Bar dataKey="rev" fill="#ff6b00" radius={[4, 4, 0, 0]} name="Gross Revenue" />
-                                        <Bar dataKey="prof" fill="#5B5BFF" radius={[4, 4, 0, 0]} name="Net Profit" />
+                                        <Bar dataKey="rev" fill="#ff6b00" radius={[4, 4, 0, 0]} name="Gross Revenue (K)" />
+                                        <Bar dataKey="prof" fill="#5B5BFF" radius={[4, 4, 0, 0]} name="Net Profit (K)" />
                                         <Tooltip />
                                     </BarChart>
                                 </ResponsiveContainer>

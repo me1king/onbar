@@ -3,17 +3,12 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
-    Utensils,
-    Flame,
-    Clock,
     CheckCircle2,
     Loader2,
-    ChevronRight,
-    AlertCircle,
     Zap,
     Play,
-    Timer,
-    Truck
+    Users,
+    RefreshCcw
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,6 +27,22 @@ interface KitchenOrder {
     }
 }
 
+interface DBKitchenOrder {
+    id: string;
+    order_id: number;
+    status: string;
+    prep_start_at: string;
+    created_at: string;
+    estimated_ready_at: string;
+    order: {
+        customer_name: string;
+        order_items: Array<{
+            product: { name: string } | null;
+            quantity: number;
+        }>;
+    } | null;
+}
+
 export default function KitchenCommandHUD() {
     const [orders, setOrders] = React.useState<KitchenOrder[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -48,11 +59,11 @@ export default function KitchenCommandHUD() {
                 .order('created_at', { ascending: true });
 
             if (data) {
-                setOrders(data.map(o => ({
+                setOrders((data as unknown as DBKitchenOrder[]).map(o => ({
                     ...o,
                     order_details: {
-                        customer_name: (o.order as any)?.customer_name || 'Anonymous Patron',
-                        items: (o.order as any)?.order_items.map((i: any) => ({
+                        customer_name: o.order?.customer_name || 'Anonymous Patron',
+                        items: o.order?.order_items.map(i => ({
                             name: i.product?.name || 'Unknown Item',
                             quantity: i.quantity
                         })) || []
@@ -74,7 +85,7 @@ export default function KitchenCommandHUD() {
             const channel = supabase.channel('kitchen-updates')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'kitchen_orders' }, fetchKitchenOrders)
                 .subscribe();
-            return () => { supabase.removeChannel(channel); };
+            return () => { if (supabase) supabase.removeChannel(channel); };
         }
     }, [fetchKitchenOrders]);
 

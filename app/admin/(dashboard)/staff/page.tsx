@@ -22,7 +22,8 @@ import {
   HandCoins,
   MessageSquare,
   Megaphone,
-  Database
+  Database,
+  Utensils
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -73,7 +74,8 @@ export default function AdminStaffPage() {
     can_manage_staff: false,
     can_view_sensitive_data: false,
     can_manage_communications: false,
-    can_manage_marketing: false
+    can_manage_marketing: false,
+    can_manage_kitchen: false
   });
 
   const [isAdding, setIsAdding] = React.useState(false);
@@ -359,6 +361,7 @@ export default function AdminStaffPage() {
                                                   { k: 'can_view_sensitive_data', i: Lock },
                                                   { k: 'can_manage_communications', i: MessageSquare },
                                                   { k: 'can_manage_marketing', i: Megaphone },
+                                                  { k: 'can_manage_kitchen', i: Utensils },
                                               ].map(p => (
                                                   <button
                                                     key={p.k}

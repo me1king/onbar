@@ -54,7 +54,8 @@ export async function emitEvent(eventType: SystemEventType, payload: EventPayloa
         .single();
 
     if (logError) {
-        console.error(`❌ [EVENT_ENGINE] Failed to log event ${eventType}:`, logError);
+        console.error(`❌ [EVENT_ENGINE] Failed to log event ${eventType}. Code: ${logError.code}, Msg: ${logError.message}`);
+        console.error("Payload Attempted:", insertData);
         return;
     }
 

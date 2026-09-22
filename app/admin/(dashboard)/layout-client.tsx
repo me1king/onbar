@@ -40,7 +40,8 @@ import {
   Beer,
   Calendar,
   Smartphone,
-  Zap
+  Zap,
+  Utensils
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -147,6 +148,8 @@ export default function AdminLayoutClient({
     { group: 'INVENTORY', items: [
       { name: 'Cellar Hub', href: '/admin/upload', icon: Wine, permission: 'can_manage_inventory' },
       { name: 'Product Forge', href: '/admin/forge', icon: Zap, permission: 'can_manage_inventory' },
+      { name: 'Bite Command', href: '/admin/bites', icon: Utensils, permission: 'can_manage_inventory' },
+      { name: 'Kitchen Control', href: '/admin/kitchen', icon: Flame, permission: 'can_manage_kitchen' },
       { name: 'Munchie Hub', href: '/admin/munchies', icon: Cookie, permission: 'can_manage_inventory' },
       { name: 'Dispatch Queue', href: '/admin/orders', icon: ShoppingCart, permission: 'can_manage_orders' },
     ]},

@@ -35,15 +35,21 @@ export default function DocumentVault() {
     const [documents, setDocuments] = React.useState<Document[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [uploading, setUploading] = React.useState(false);
+    const [metrics, setMetrics] = React.useState({ total_files: 0, total_size_mb: 0 });
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const fetchDocs = React.useCallback(async () => {
         if (!supabase) return;
         setLoading(true);
         try {
-            const { data, error } = await supabase.from('admin_vault').select('*').order('created_at', { ascending: false });
-            if (error) throw error;
-            setDocuments(data || []);
+            const [docsRes, metricsRes] = await Promise.all([
+                supabase.from('admin_vault').select('*').order('created_at', { ascending: false }),
+                supabase.from('vault_metrics').select('*').single()
+            ]);
+
+            if (docsRes.error) throw docsRes.error;
+            setDocuments(docsRes.data || []);
+            if (metricsRes.data) setMetrics(metricsRes.data);
         } catch (err: unknown) {
             console.error("Vault Sync Failure:", (err as Error).message || err);
         } finally {
@@ -142,9 +148,9 @@ export default function DocumentVault() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[
-                    { label: 'Storage Used', val: '4.2 GB', icon: Folder, color: 'indigo' },
-                    { label: 'Total Files', val: '1,240', icon: FileText, color: 'primary' },
-                    { label: 'Security Level', val: 'Bank-Grade', icon: ShieldCheck, color: 'emerald' },
+                    { label: 'Storage Used', val: `${(metrics.total_size_mb / 1024).toFixed(2)} GB`, icon: Folder, color: 'indigo' },
+                    { label: 'Total Files', val: metrics.total_files.toLocaleString(), icon: FileText, color: 'primary' },
+                    { label: 'Security Level', val: 'Verified', icon: ShieldCheck, color: 'emerald' },
                 ].map((item) => (
                     <Card key={item.label} className="p-8 rounded-[3rem] border border-border bg-card shadow-sm flex flex-col justify-between group hover:shadow-xl transition-all relative overflow-hidden">
                         <div className="relative z-10">

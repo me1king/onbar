@@ -147,6 +147,7 @@ export default async function Page({ params }: Props) {
       <ProductDetailClient
           product={product}
           relatedProducts={related}
+          reviewStats={reviewStats}
       />
     </>
   );

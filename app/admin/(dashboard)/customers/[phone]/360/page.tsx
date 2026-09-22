@@ -4,17 +4,12 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import {
-    Users,
     MousePointer2,
-    ShoppingBag,
     Loader2,
     Zap,
     MapPin,
-    BarChart3,
     ArrowLeft,
-    ShieldCheck,
     History,
-    ChevronRight,
     Star,
     Target,
     TrendingUp,
@@ -26,11 +21,32 @@ import { Button } from '@/components/ui/button';
 import { cn, formatPrice } from '@/lib/utils';
 
 interface Customer360 {
-    profile: any;
-    intelligence: any;
-    metrics: any;
-    journey: any[];
-    interests: any[];
+    profile: {
+        id: string;
+        full_name: string | null;
+        created_at: string;
+        total_orders: number;
+        lifetime_value: number;
+        xp: number;
+    };
+    intelligence: {
+        intent_score: number;
+        last_interaction_at: string;
+    } | null;
+    metrics: {
+        total_sessions: number;
+        total_active_time_sec: number;
+        total_clicks: number;
+    } | null;
+    journey: Array<{
+        timestamp: string;
+        action_type: string;
+        page_url: string;
+    }>;
+    interests: Array<{
+        interest_key: string;
+        score: number;
+    }>;
 }
 
 export default function Customer360Page() {

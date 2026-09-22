@@ -41,7 +41,9 @@ export default function BehaviorOverview() {
         liveUsers: 0,
         eventsToday: 0,
         avgEngagedTime: '00:00',
-        cartRate: 0
+        cartRate: 0,
+        rage_clicks_24h: 0,
+        zero_results_24h: 0
     });
     const [topScreens, setTopScreens] = React.useState<TopScreen[]>([]);
     const [topComponents, setTopComponents] = React.useState<TopComponent[]>([]);
@@ -50,35 +52,27 @@ export default function BehaviorOverview() {
         if (!supabase) return;
         setLoading(true);
         try {
-            // 1. Live Users (Updated in last 5 mins)
-            const { count: liveCount } = await supabase
-                .from('customer_sessions')
-                .select('*', { count: 'exact', head: true })
-                .gt('updated_at', new Date(Date.now() - 300000).toISOString());
+            // 1. Fetch Behavioral Pulse (Real Aggregates)
+            const { data: pulse } = await supabase.from('behavioral_intelligence_pulse').select('*').single();
 
-            // 2. Events Today
-            const today = new Date();
-            today.setHours(0,0,0,0);
-            const { count: eventCount } = await supabase
-                .from('analytics_events')
-                .select('*', { count: 'exact', head: true })
-                .gt('timestamp', today.toISOString());
-
-            // 3. Conversion Stats
-            const { data: funnelData } = await supabase.from('behavioral_funnel_stats').select('*').single();
-
-            // 4. Top Screens (Simulated/Calculated)
+            // 2. Top Screens
             const { data: screens } = await supabase.rpc('get_top_pages', { limit_count: 5 });
 
-            // 5. Component Interaction
+            // 3. Component Interaction
             const { data: components } = await supabase.from('component_interaction_audit').select('*').limit(5);
 
-            setStats({
-                liveUsers: liveCount || 0,
-                eventsToday: eventCount || 0,
-                avgEngagedTime: '03:42', // Simulated
-                cartRate: funnelData ? Math.round((funnelData.desire / funnelData.total_visitors) * 100) : 0
-            });
+            if (pulse) {
+                const mins = Math.floor(pulse.avg_active_sec / 60);
+                const secs = Math.floor(pulse.avg_active_sec % 60);
+                setStats({
+                    liveUsers: pulse.live_users,
+                    eventsToday: pulse.events_today,
+                    avgEngagedTime: `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
+                    cartRate: pulse.cart_rate || 0,
+                    rage_clicks_24h: pulse.rage_clicks_24h,
+                    zero_results_24h: pulse.zero_results_24h
+                });
+            }
 
             if (screens) setTopScreens(screens);
             if (components) setTopComponents(components);
@@ -226,14 +220,18 @@ export default function BehaviorOverview() {
                                 <Flame size={20} className="shrink-0 mt-1" />
                                 <div>
                                     <p className="text-[10px] font-black uppercase mb-1">Rage Click Alert</p>
-                                    <p className="text-[9px] font-medium leading-relaxed uppercase tracking-tight">Detected 14 rage clicks on &quot;checkout.pay_now&quot; button in the last hour.</p>
+                                    <p className="text-[9px] font-medium leading-relaxed uppercase tracking-tight">
+                                        Detected {stats.rage_clicks_24h} rage clicks on critical components in the last 24 hours.
+                                    </p>
                                 </div>
                             </div>
                             <div className="flex items-start gap-4 p-5 rounded-2xl bg-amber-50 border border-amber-100 text-amber-700">
                                 <Search size={20} className="shrink-0 mt-1" />
                                 <div>
                                     <p className="text-[10px] font-black uppercase mb-1">Zero Results Surge</p>
-                                    <p className="text-[9px] font-medium leading-relaxed uppercase tracking-tight">38 searches for &quot;ice&quot; returned zero results. Catalogue expansion recommended.</p>
+                                    <p className="text-[9px] font-medium leading-relaxed uppercase tracking-tight">
+                                        {stats.zero_results_24h} searches returned zero results today. Catalogue expansion recommended.
+                                    </p>
                                 </div>
                             </div>
                         </div>

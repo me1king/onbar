@@ -87,13 +87,13 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
     return (
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 group bg-slate-50 hover:bg-white p-1 pr-3 rounded-full border border-slate-100 transition-all hover:shadow-lg">
-            <Link href="/profile" className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
+            <Link href="/profile" className="flex items-center gap-2 min-w-0">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm shrink-0">
                     <UserIcon className="h-4 w-4" />
                 </div>
-                <div className="flex flex-col items-start leading-none">
+                <div className="flex flex-col items-start leading-none min-w-0">
                     <span className={cn(
-                        "text-[9px] font-black uppercase tracking-widest text-slate-400 group-hover:text-foreground transition-colors",
+                        "text-[9px] font-black uppercase tracking-widest text-slate-400 group-hover:text-foreground transition-colors truncate w-full",
                         isMobileMenu ? "inline-block" : "hidden lg:inline-block"
                     )}>
                     {displayEmail?.split('@')?.[0] || 'Member'}
@@ -383,7 +383,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
     { href: "/shop/category/sale", label: "Deals" },
     { href: "/gifting", label: "Gifting" },
     { href: "/buzz", label: "Buzz" },
-    { href: "/buzz?planner=true", label: "Build My Bar" },
+    { href: "/buzz?planner=true", label: "Build My Night" },
     { href: "/blog", label: "Mixology" },
     { href: "/track", label: "Track" }
   ];
@@ -415,7 +415,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
             </Link>
 
             <nav
-              className="hidden xl:flex items-center space-x-0.5"
+              className="hidden xl:flex items-center space-x-0.5 min-w-0"
               role="navigation"
               aria-label="Main navigation"
             >

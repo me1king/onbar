@@ -1,201 +1,379 @@
 -- ==========================================
--- ONLINE BAR OS: ABSOLUTE GOLD MASTER (V19 - TOTAL GRID SYNC)
+-- ONLINE BAR OS: ABSOLUTE GOLD MASTER (V33 - THE UNIVERSAL SYNC)
 -- ==========================================
 -- ⚠️ Instructions: Run this entire script in your Supabase SQL Editor once.
--- This script REPAIRS all tables, standardizes types, and ESTABLISHES the complete high-fidelity grid.
--- It resolves the "column current_page does not exist" and "foreign key mismatch" errors permanently.
+-- This script establishes the entire Digital Backbone of Online Bar.
+-- It covers Identity, Inventory, Intelligence, and System Orchestration.
 
 -- 0. CORE EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
--- 1. NUCLEAR TYPE RESILIENCE NODE (Step 1: Dependency Purge)
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    -- A. FORCE DROP ALL VIEWS in public schema to clear type dependencies
-    FOR r IN (SELECT viewname FROM pg_views WHERE schemaname = 'public') LOOP
-        EXECUTE 'DROP VIEW IF EXISTS public.' || quote_ident(r.viewname) || ' CASCADE';
-    END LOOP;
+-- 1. CLEANUP NODE (Prevents conflicts)
+DROP VIEW IF EXISTS public.live_behavior_radar CASCADE;
+DROP VIEW IF EXISTS public.vw_purchase_frequency CASCADE;
+DROP FUNCTION IF EXISTS public.log_event_batch CASCADE;
+DROP FUNCTION IF EXISTS public.track_product_interaction CASCADE;
+DROP FUNCTION IF EXISTS public.handle_presence_heartbeat CASCADE;
 
-    -- B. Dynamically find and drop ALL foreign keys pointing to public.customer_sessions
-    FOR r IN (
-        SELECT tc.table_schema, tc.table_name, tc.constraint_name
-        FROM information_schema.table_constraints AS tc
-        JOIN information_schema.key_column_usage AS kcu
-          ON tc.constraint_name = kcu.constraint_name
-          AND tc.table_schema = kcu.table_schema
-        JOIN information_schema.constraint_column_usage AS ccu
-          ON ccu.constraint_name = tc.constraint_name
-          AND ccu.table_schema = tc.table_schema
-        WHERE tc.constraint_type = 'FOREIGN KEY'
-          AND ccu.table_name = 'customer_sessions'
-          AND ccu.table_schema = 'public'
-    ) LOOP
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.table_schema) || '.' || quote_ident(r.table_name) ||
-                ' DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
-    END LOOP;
-
-    -- C. Standardize Primary Key Type to TEXT
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'customer_sessions' AND table_schema = 'public') THEN
-        ALTER TABLE public.customer_sessions ALTER COLUMN id TYPE TEXT USING id::text;
-    END IF;
-END $$;
-
--- 2. HARDENED REPAIR ENGINE (Ensures all Intelligence columns exist on existing tables)
-
--- REPAIR PRODUCTS
-ALTER TABLE IF EXISTS public.products
-ADD COLUMN IF NOT EXISTS brand TEXT,
-ADD COLUMN IF NOT EXISTS sku TEXT UNIQUE,
-ADD COLUMN IF NOT EXISTS is_snack BOOLEAN DEFAULT false,
-ADD COLUMN IF NOT EXISTS sub_category TEXT,
-ADD COLUMN IF NOT EXISTS low_stock_alert INTEGER DEFAULT 5,
-ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Live',
-ADD COLUMN IF NOT EXISTS beverage_specs JSONB DEFAULT '{}'::JSONB;
-
--- REPAIR PROFILES
-ALTER TABLE IF EXISTS public.profiles
-ADD COLUMN IF NOT EXISTS taste_dna JSONB DEFAULT '{"whiskey": 0, "wine": 0, "gin": 0, "beer": 0, "vodka": 0, "tequila": 0}'::JSONB,
-ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE,
-ADD COLUMN IF NOT EXISTS loyalty_points INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1;
-
--- REPAIR CUSTOMER_SESSIONS (Critical Fix for "current_page" error)
-ALTER TABLE IF EXISTS public.customer_sessions
-ADD COLUMN IF NOT EXISTS current_page TEXT,
-ADD COLUMN IF NOT EXISTS current_product_id BIGINT,
-ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-ADD COLUMN IF NOT EXISTS session_status TEXT DEFAULT 'ACTIVE',
-ADD COLUMN IF NOT EXISTS is_tab_visible BOOLEAN DEFAULT true,
-ADD COLUMN IF NOT EXISTS is_converted BOOLEAN DEFAULT false,
-ADD COLUMN IF NOT EXISTS pages_viewed INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS products_viewed INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS cart_additions INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS checkouts_started INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS source_channel TEXT,
-ADD COLUMN IF NOT EXISTS campaign_id TEXT,
-ADD COLUMN IF NOT EXISTS device_info JSONB DEFAULT '{}'::JSONB;
-
--- REPAIR ACTIVE_VISITORS
-ALTER TABLE IF EXISTS public.active_visitors
-ADD COLUMN IF NOT EXISTS cart_value NUMERIC DEFAULT 0,
-ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Browsing';
-
--- 3. MASTER INFRASTRUCTURE (Total Table Establishment)
-
--- BEHAVIORAL NODES (Standardized to TEXT IDs)
-CREATE TABLE IF NOT EXISTS public.customer_sessions (
-    id TEXT PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id),
-    anonymous_id TEXT,
-    entry_page TEXT,
-    source_channel TEXT,
-    device_info JSONB DEFAULT '{}'::JSONB,
-    total_active_time_sec INTEGER DEFAULT 0,
-    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    current_page TEXT,
-    current_product_id BIGINT,
-    session_status TEXT DEFAULT 'ACTIVE',
-    is_tab_visible BOOLEAN DEFAULT true,
-    is_converted BOOLEAN DEFAULT false,
+-- 2. IDENTITY NODE: PROFILES & STAFF
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT,
+    full_name TEXT,
+    phone_number TEXT,
+    address TEXT,
+    loyalty_points INTEGER DEFAULT 0,
+    membership_tier TEXT DEFAULT 'Explorer',
+    preferred_vibe TEXT DEFAULT 'ELITE',
+    interests TEXT[] DEFAULT ARRAY[]::TEXT[],
+    taste_dna JSONB DEFAULT '{"whiskey": 0, "wine": 0, "gin": 0, "beer": 0, "vodka": 0, "tequila": 0}'::JSONB,
+    referral_code TEXT UNIQUE DEFAULT substr(md5(random()::text), 0, 8),
+    latitude NUMERIC,
+    longitude NUMERIC,
+    birth_date DATE,
+    xp INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1,
+    title TEXT DEFAULT 'Newcomer',
+    wallet_balance NUMERIC DEFAULT 0,
+    current_streak INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.session_forensics (
-    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    session_id TEXT REFERENCES public.customer_sessions(id) ON DELETE CASCADE,
-    action_type TEXT NOT NULL,
-    page_url TEXT,
-    metadata JSONB DEFAULT '{}'::JSONB,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT now()
+CREATE TABLE IF NOT EXISTS public.staff (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT DEFAULT 'STAFF',
+    pin TEXT,
+    status TEXT DEFAULT 'Offline',
+    can_view_revenue BOOLEAN DEFAULT false,
+    can_manage_inventory BOOLEAN DEFAULT true,
+    can_manage_orders BOOLEAN DEFAULT true,
+    can_execute_payouts BOOLEAN DEFAULT false,
+    can_view_audit_logs BOOLEAN DEFAULT false,
+    can_manage_settings BOOLEAN DEFAULT false,
+    can_manage_staff BOOLEAN DEFAULT false,
+    can_view_sensitive_data BOOLEAN DEFAULT false,
+    can_manage_communications BOOLEAN DEFAULT false,
+    can_manage_marketing BOOLEAN DEFAULT false,
+    can_manage_kitchen BOOLEAN DEFAULT false,
+    completed_tasks INTEGER DEFAULT 0,
+    sla_rating NUMERIC DEFAULT 100,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.page_views (
+-- 2.1 AUTOMATIC PROFILE TRIGGER
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, full_name, phone_number, address)
+  VALUES (
+    new.id,
+    new.email,
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'phone_number',
+    new.raw_user_meta_data->>'address'
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 3. INVENTORY NODE: PRODUCTS, BRANDS, CATEGORIES
+CREATE TABLE IF NOT EXISTS public.product_brands (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id TEXT REFERENCES public.customer_sessions(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES auth.users(id),
-    page_url TEXT NOT NULL,
-    entered_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    active_time_ms INTEGER DEFAULT 0,
-    max_scroll_percent INTEGER DEFAULT 0
+    name TEXT UNIQUE NOT NULL,
+    logo_url TEXT,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- COMMERCE & AUDIT
-CREATE TABLE IF NOT EXISTS public.abandoned_carts (
+CREATE TABLE IF NOT EXISTS public.product_categories_v2 (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT UNIQUE NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    parent_id UUID REFERENCES public.product_categories_v2(id),
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.products (
     id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    customer_phone TEXT UNIQUE NOT NULL,
-    customer_name TEXT,
-    cart_items JSONB,
-    total_price NUMERIC,
-    session_id TEXT REFERENCES public.customer_sessions(id) ON DELETE SET NULL,
-    recovery_status TEXT DEFAULT 'Waiting',
+    name TEXT NOT NULL,
+    brand TEXT,
+    brand_id UUID REFERENCES public.product_brands(id),
+    sku TEXT UNIQUE,
+    category TEXT DEFAULT 'wine',
+    category_v2_id UUID REFERENCES public.product_categories_v2(id),
+    sub_category TEXT,
+    price NUMERIC NOT NULL,
+    old_price NUMERIC,
+    cost_price NUMERIC DEFAULT 0,
+    description TEXT,
+    short_description TEXT,
+    image_url TEXT,
+    images TEXT[] DEFAULT ARRAY[]::TEXT[],
+    sizes TEXT[] DEFAULT ARRAY['Standard'],
+    stock INTEGER DEFAULT 0,
+    variant_stock JSONB DEFAULT '{}'::JSONB,
+    beverage_specs JSONB DEFAULT '{}'::JSONB,
+    sensory_metrics JSONB DEFAULT '{"body": 60, "sweet": 60, "smoke": 20, "spice": 40}'::JSONB,
+    pairing_suggestions TEXT[] DEFAULT ARRAY['Nyama choma', 'BBQ ribs', 'Smoked brisket', 'Burgers']::TEXT[],
+    bought_together_ids BIGINT[] DEFAULT ARRAY[]::BIGINT[],
+    faq_data JSONB DEFAULT '[]'::JSONB,
+    status TEXT DEFAULT 'Live',
+    is_featured BOOLEAN DEFAULT false,
+    is_bite BOOLEAN DEFAULT false,
+    is_snack BOOLEAN DEFAULT false,
+    order_count INTEGER DEFAULT 0,
+    low_stock_alert INTEGER DEFAULT 5,
+    min_loyalty_tier TEXT DEFAULT 'Explorer',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.active_visitors (
-    session_id TEXT PRIMARY KEY,
-    customer_name TEXT,
-    current_page TEXT,
-    cart_value NUMERIC DEFAULT 0,
-    last_active_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    status TEXT DEFAULT 'Browsing'
+CREATE TABLE IF NOT EXISTS public.product_dossiers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id BIGINT UNIQUE REFERENCES public.products(id) ON DELETE CASCADE,
+    brand_id UUID REFERENCES public.product_brands(id),
+    category_v2_id UUID REFERENCES public.product_categories_v2(id),
+    brand_identity TEXT,
+    producer_name TEXT,
+    country_of_origin TEXT,
+    region_of_origin TEXT,
+    abv_actual TEXT,
+    volume_ml INTEGER,
+    sensory_dna JSONB,
+    origin_story TEXT,
+    production_method TEXT,
+    constituents_statement TEXT,
+    kenyan_availability_status TEXT DEFAULT 'AVAILABLE',
+    source_verification JSONB DEFAULT '{}'::JSONB,
+    last_verified_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- 4. INTELLIGENCE FUNCTIONS (RPCs)
+-- 4. OPERATIONS & LOGISTICS
+CREATE TABLE IF NOT EXISTS public.orders (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    session_id TEXT,
+    customer_name TEXT NOT NULL,
+    customer_phone TEXT NOT NULL,
+    customer_email TEXT,
+    total_price NUMERIC NOT NULL,
+    delivery_cost NUMERIC DEFAULT 0,
+    status TEXT DEFAULT 'Pending',
+    payment_method TEXT DEFAULT 'M-Pesa',
+    checkout_request_id TEXT,
+    referred_by_code TEXT,
+    note TEXT,
+    latitude NUMERIC,
+    longitude NUMERIC,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
 
--- PRESENCE HEARTBEAT (Sub-second Accuracy)
-CREATE OR REPLACE FUNCTION public.handle_presence_heartbeat(
-    p_session_id TEXT,
-    p_page TEXT,
-    p_product_id BIGINT,
-    p_active_ms INTEGER,
-    p_visible BOOLEAN,
-    p_cart_value NUMERIC
-) RETURNS VOID AS $$
-BEGIN
-    UPDATE public.customer_sessions
-    SET
-        current_page = p_page,
-        current_product_id = p_product_id,
-        total_active_time_sec = total_active_time_sec + (p_active_ms / 1000),
-        last_seen_at = now(),
-        is_tab_visible = p_visible,
-        session_status = CASE
-            WHEN (now() - last_seen_at) < INTERVAL '45 seconds' THEN 'ACTIVE'
-            ELSE 'IDLE'
-        END
-    WHERE id = p_session_id;
+CREATE TABLE IF NOT EXISTS public.order_items (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    order_id BIGINT REFERENCES public.orders(id) ON DELETE CASCADE,
+    product_id BIGINT REFERENCES public.products(id) ON DELETE SET NULL,
+    quantity INTEGER DEFAULT 1,
+    unit_price NUMERIC NOT NULL,
+    unit_cost NUMERIC DEFAULT 0,
+    size TEXT DEFAULT 'Standard',
+    status TEXT DEFAULT 'Pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
 
-    INSERT INTO public.active_visitors (session_id, current_page, cart_value, last_active_at, status)
-    VALUES (p_session_id, p_page, p_cart_value, now(), CASE WHEN p_page = '/checkout' THEN 'Checkout' ELSE 'Browsing' END)
-    ON CONFLICT (session_id) DO UPDATE SET
-        current_page = EXCLUDED.current_page,
-        cart_value = EXCLUDED.cart_value,
-        last_active_at = EXCLUDED.last_active_at,
-        status = EXCLUDED.status;
-END;
-$$ LANGUAGE plpgsql;
+CREATE TABLE IF NOT EXISTS public.hubs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
 
--- EVENT BATCH LOGGER
-CREATE OR REPLACE FUNCTION public.log_event_batch(p_events JSONB)
-RETURNS VOID AS $$
-BEGIN
-    INSERT INTO public.session_forensics (session_id, action_type, page_url, metadata, timestamp)
-    SELECT
-        (e->>'session_id')::text,
-        (e->>'action_type')::text,
-        (e->>'page_url')::text,
-        (e->'metadata')::jsonb,
-        (e->>'timestamp')::timestamptz
-    FROM jsonb_array_elements(p_events) AS e;
-END;
-$$ LANGUAGE plpgsql;
+CREATE TABLE IF NOT EXISTS public.hub_inventory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hub_id UUID REFERENCES public.hubs(id) ON DELETE CASCADE,
+    product_id BIGINT REFERENCES public.products(id) ON DELETE CASCADE,
+    stock_level INTEGER DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
 
--- 5. ANALYTICS VIEWS (Re-establishment)
+CREATE TABLE IF NOT EXISTS public.shipments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    origin TEXT,
+    method TEXT, -- 'Sea', 'Air'
+    status TEXT DEFAULT 'Pending',
+    eta DATE,
+    value_usd NUMERIC,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 5. FINANCE & TREASURY
+CREATE TABLE IF NOT EXISTS public.financial_ledger (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    order_id BIGINT REFERENCES public.orders(id) ON DELETE SET NULL,
+    entry_type TEXT NOT NULL,
+    amount NUMERIC NOT NULL,
+    description TEXT,
+    is_reconciled BOOLEAN DEFAULT false,
+    reconciliation_ref TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.affiliate_payouts (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    profile_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    amount NUMERIC NOT NULL,
+    status TEXT DEFAULT 'Pending',
+    payment_method TEXT DEFAULT 'M-Pesa',
+    payment_details TEXT,
+    mpesa_receipt TEXT,
+    processed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 6. GROWTH & MARKETING
+CREATE TABLE IF NOT EXISTS public.newsletter_subscribers (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    email TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.audience_segments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    rules JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.message_campaigns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    status TEXT DEFAULT 'Draft',
+    sent_count INTEGER DEFAULT 0,
+    open_count INTEGER DEFAULT 0,
+    attributed_revenue NUMERIC DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.marketing_campaigns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    type TEXT,
+    status TEXT DEFAULT 'Draft',
+    product_id BIGINT REFERENCES public.products(id),
+    scheduled_at TIMESTAMP WITH TIME ZONE,
+    published_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.coupons (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    code TEXT UNIQUE NOT NULL,
+    discount_percent INTEGER NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 7. CITY PULSE (BUZZ)
+CREATE TABLE IF NOT EXISTS public.pulse_areas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    zone_name TEXT UNIQUE NOT NULL,
+    buzz_mode TEXT DEFAULT 'ACTIVE',
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.pulse_posts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    area_id UUID REFERENCES public.pulse_areas(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    headline TEXT,
+    description TEXT,
+    status TEXT DEFAULT 'DRAFT',
+    start_time TIMESTAMP WITH TIME ZONE,
+    end_time TIMESTAMP WITH TIME ZONE,
+    hero_image_url TEXT,
+    cta_label TEXT,
+    is_featured BOOLEAN DEFAULT false,
+    tags TEXT[],
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.buzz_posts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    status TEXT DEFAULT 'LIVE',
+    trend_score INTEGER DEFAULT 0,
+    area_zone TEXT,
+    start_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 8. INTELLIGENCE CORE: LOGS & SESSIONS
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    staff_email TEXT,
+    action TEXT NOT NULL,
+    details JSONB,
+    ip_address TEXT,
+    device_info TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.analytics_events (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    event_name TEXT NOT NULL,
+    user_id UUID,
+    anonymous_id TEXT,
+    session_id TEXT,
+    payload JSONB DEFAULT '{}'::JSONB,
+    campaign_id TEXT,
+    correlation_id TEXT,
+    request_id TEXT,
+    page_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.customer_sessions (
+    id TEXT PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    anonymous_id TEXT,
+    source_channel TEXT,
+    entry_page TEXT,
+    current_page TEXT,
+    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    total_active_time_sec INTEGER DEFAULT 0,
+    device_info JSONB DEFAULT '{}'::JSONB,
+    session_status TEXT DEFAULT 'ACTIVE',
+    cart_value NUMERIC DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS public.abandoned_carts (
+    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+    customer_name TEXT,
+    customer_phone TEXT UNIQUE,
+    cart_items JSONB,
+    total_price NUMERIC,
+    session_id TEXT,
+    recovery_status TEXT DEFAULT 'Waiting',
+    ai_score INTEGER DEFAULT 0,
+    journey_log JSONB DEFAULT '[]'::JSONB,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 9. VIEWS & RPC ENGINE
 
 CREATE OR REPLACE VIEW public.live_behavior_radar AS
 SELECT
@@ -205,20 +383,63 @@ SELECT
     s.current_page,
     s.total_active_time_sec,
     s.session_status as status,
-    s.last_seen_at
+    s.last_seen_at,
+    s.cart_value
 FROM public.customer_sessions s
 LEFT JOIN public.profiles p ON s.user_id = p.id
 WHERE s.last_seen_at > (NOW() - INTERVAL '5 minutes')
 ORDER BY s.last_seen_at DESC;
 
--- 6. SECURITY (RLS)
+CREATE OR REPLACE FUNCTION public.log_event_batch(p_events JSONB)
+RETURNS void AS $$
+BEGIN
+    INSERT INTO public.analytics_events (event_name, session_id, payload, page_url, created_at)
+    SELECT (e->>'action_type'), (e->>'session_id'), (e->'metadata'), (e->>'page_url'), (e->>'timestamp')::timestamp with time zone
+    FROM jsonb_array_elements(p_events) AS e;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.handle_presence_heartbeat(
+    p_session_id TEXT, p_page TEXT, p_product_id BIGINT, p_active_ms INTEGER, p_visible BOOLEAN, p_cart_value NUMERIC
+)
+RETURNS void AS $$
+BEGIN
+    UPDATE public.customer_sessions
+    SET current_page = p_page,
+        last_seen_at = now(),
+        total_active_time_sec = COALESCE(total_active_time_sec, 0) + (p_active_ms / 1000),
+        session_status = CASE WHEN p_visible THEN 'ACTIVE' ELSE 'IDLE' END,
+        cart_value = p_cart_value
+    WHERE id = p_session_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 10. SYSTEM ORCHESTRATION (Widgets)
+DROP TABLE IF EXISTS public.system_widgets CASCADE;
+CREATE TABLE public.system_widgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    widget_key TEXT NOT NULL,
+    label TEXT DEFAULT 'System Widget',
+    page_route TEXT NOT NULL DEFAULT '/',
+    status TEXT DEFAULT 'ACTIVE',
+    config JSONB DEFAULT '{}'::JSONB,
+    rank INTEGER DEFAULT 0,
+    visibility_rules JSONB DEFAULT '{"device": "ALL", "audience": "ALL"}'::JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+INSERT INTO public.system_widgets (widget_key, label, page_route, rank)
+VALUES
+('CONCIERGE_WIDGET', 'Digital Concierge Hero', '/', 0),
+('HERO_WIDGET', 'Neural Persona Hero', '/', 1),
+('TRENDING_WIDGET', 'Live Product Grid', '/', 2),
+('CITY_PULSE_WIDGET', 'Nairobi Pulse (Buzz)', '/', 3),
+('PERFECT_SERVE_WIDGET', 'Mixology Node', '/', 4),
+('SOMMELIER_WIDGET', 'AI Sommelier Guide', '/', 5);
+
+-- 11. SECURITY & FINAL HANDSHAKE
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Read" ON public.products;
 CREATE POLICY "Public Read" ON public.products FOR SELECT USING (true);
 
-ALTER TABLE public.customer_sessions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow All" ON public.customer_sessions;
-CREATE POLICY "Allow All" ON public.customer_sessions FOR ALL USING (true);
-
--- 🛰️ REFRESH SCHEMA
 NOTIFY pgrst, 'reload schema';

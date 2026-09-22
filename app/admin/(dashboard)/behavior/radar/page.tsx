@@ -3,16 +3,11 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
-    Flame,
     Users,
-    MousePointer2,
     ShoppingBag,
-    Loader2,
     Zap,
-    MapPin,
     BarChart3,
     ArrowUpRight,
-    Search,
     Monitor,
     Smartphone,
     History,
@@ -30,6 +25,23 @@ interface ActiveVisitor {
     last_active_at: string;
     cart_value: number;
     status: string;
+    total_active_time_sec: number;
+    recent_journey?: string[];
+    device_info?: {
+        ua: string;
+        res: string;
+    };
+}
+
+interface DBActiveVisitor {
+    session_id: string;
+    customer_name: string | null;
+    current_page: string;
+    cart_value: number;
+    last_active_at: string;
+    status: string;
+    total_active_time_sec: number;
+    recent_journey: string[];
     device_info?: {
         ua: string;
         res: string;
@@ -50,25 +62,28 @@ export default function ApexLiveRadar() {
         if (!supabase) return;
         setLoading(true);
         try {
-            // 1. Fetch Active Visitors with Session Context
+            // 1. Fetch Active Visitors with Session Context and Journey (Real Data)
             const { data } = await supabase
-                .from('active_visitors')
-                .select('*, customer_sessions(device_info)')
-                .order('last_active_at', { ascending: false });
+                .from('live_behavior_radar')
+                .select('*');
 
             if (data) {
-                const formatted = data.map(v => ({
+                const formatted = (data as unknown as DBActiveVisitor[]).map(v => ({
                     ...v,
-                    device_info: (v.customer_sessions as any)?.device_info
+                    recent_journey: Array.isArray(v.recent_journey) ? v.recent_journey : []
                 }));
                 setVisitors(formatted);
 
                 // Calculate real-time stats
+                const totalActiveSec = formatted.reduce((sum, v) => sum + (v.total_active_time_sec || 0), 0);
+                const avgMin = formatted.length > 0 ? Math.floor((totalActiveSec / formatted.length) / 60) : 0;
+                const avgSec = formatted.length > 0 ? Math.floor((totalActiveSec / formatted.length) % 60) : 0;
+
                 setStats({
                     total: formatted.length,
-                    carts: formatted.filter(v => v.cart_value > 0).length,
+                    carts: formatted.filter(v => (v.cart_value || 0) > 0).length,
                     checkouts: formatted.filter(v => v.status === 'Checkout').length,
-                    avgTime: '4m 12s' // Mock for now
+                    avgTime: `${avgMin}m ${avgSec}s`
                 });
             }
         } catch (err) {
@@ -179,7 +194,9 @@ export default function ApexLiveRadar() {
                                             )}>
                                                 {visitor.status}
                                             </span>
-                                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Active 3m 12s</span>
+                                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                                                Active {Math.floor(visitor.total_active_time_sec / 60)}m {visitor.total_active_time_sec % 60}s
+                                            </span>
                                         </div>
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Current Node</p>
                                         <h4 className="text-lg font-black text-foreground uppercase tracking-tighter leading-tight truncate italic">
@@ -195,14 +212,23 @@ export default function ApexLiveRadar() {
                                 </div>
 
                                 {/* JOURNEY PREVIEW */}
-                                <div className="flex items-center gap-4 p-5 bg-slate-50 rounded-[2rem] border border-slate-100/50">
+                                <div className="flex items-center gap-4 p-5 bg-slate-50 rounded-[2rem] border border-slate-100/50 overflow-hidden">
                                     <History size={16} className="text-slate-300 shrink-0" />
                                     <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500 uppercase overflow-hidden truncate italic">
-                                        <span>Home</span>
-                                        <ChevronRight size={10} className="text-slate-300" />
-                                        <span>Shop</span>
-                                        <ChevronRight size={10} className="text-slate-300" />
-                                        <span className="text-primary">Product</span>
+                                        {visitor.recent_journey && visitor.recent_journey.length > 0 ? (
+                                            visitor.recent_journey.reverse().map((action, idx) => (
+                                                <React.Fragment key={idx}>
+                                                    <span className={cn(idx === visitor.recent_journey!.length - 1 && "text-primary")}>
+                                                        {action.replace(/_/g, ' ')}
+                                                    </span>
+                                                    {idx < visitor.recent_journey!.length - 1 && (
+                                                        <ChevronRight size={10} className="text-slate-300 shrink-0" />
+                                                    )}
+                                                </React.Fragment>
+                                            ))
+                                        ) : (
+                                            <span>Establishing Journey...</span>
+                                        )}
                                     </div>
                                 </div>
                             </div>

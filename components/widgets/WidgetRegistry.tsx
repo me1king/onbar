@@ -4,6 +4,7 @@ import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, ShieldAlert } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import ErrorBoundary from '../layout/ErrorBoundary';
 
 /**
@@ -60,16 +61,16 @@ export default function WidgetRegistry({ pageRoute = '/' }: { pageRoute?: string
     );
 
     return (
-        <div className="space-y-24 sm:space-y-32">
-            {widgets.map((widget) => (
-                <WidgetIntersectionNode key={widget.id} widget={widget} />
+        <div className="space-y-0">
+            {widgets.map((widget, idx) => (
+                <WidgetIntersectionNode key={widget.id} widget={widget} isFirst={idx === 0} />
             ))}
         </div>
     );
 }
 
-function WidgetIntersectionNode({ widget }: { widget: WidgetNode }) {
-    const [isVisible, setIsVisible] = React.useState(false);
+function WidgetIntersectionNode({ widget, isFirst }: { widget: WidgetNode, isFirst?: boolean }) {
+    const [isVisible, setIsVisible] = React.useState(isFirst);
     const nodeRef = React.useRef<HTMLDivElement>(null);
 
     React.useEffect(() => {
@@ -88,7 +89,10 @@ function WidgetIntersectionNode({ widget }: { widget: WidgetNode }) {
     }, []);
 
     return (
-        <div ref={nodeRef} className="animate-in fade-in slide-in-from-bottom-8 duration-1000">
+        <div ref={nodeRef} className={cn(
+            "animate-in fade-in slide-in-from-bottom-8 duration-1000",
+            !isFirst && "mt-24 sm:mt-32"
+        )}>
             {isVisible ? (
                 <ErrorBoundary>
                     {renderWidget(widget.widget_key, widget.config)}

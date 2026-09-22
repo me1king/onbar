@@ -11,7 +11,10 @@ import {
     Smartphone,
     Globe,
     ShieldCheck,
-    MapPin
+    MapPin,
+    AlertCircle,
+    ArrowRight,
+    WifiOff
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -29,6 +32,7 @@ interface AuthError {
   details?: string;
   code?: string;
   hint?: string;
+  name?: string;
 }
 
 export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthFormProps) {
@@ -40,7 +44,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [address, setAddress] = useState(''); // NEW
+  const [address, setAddress] = useState('');
   const [otp, setOtp] = useState('');
   const [showOtpField, setShowOtpField] = useState(false);
 
@@ -48,6 +52,23 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
+
+  const checkNetworkNode = async () => {
+    setIsDiagnosticRunning(true);
+    try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (!url) throw new Error("Supabase URL undefined.");
+        const start = Date.now();
+        await fetch(url, { mode: 'no-cors' }); // Simple ping
+        const latency = Date.now() - start;
+        alert(`🛰️ Network Uplink: Healthy (${latency}ms)`);
+    } catch (err) {
+        alert(`🛑 Network Error: Connection to Supabase failed. Check your internet or ad-blocker.`);
+    } finally {
+        setIsDiagnosticRunning(false);
+    }
+  };
 
   useEffect(() => {
     if (cooldown > 0) {
@@ -57,38 +78,35 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
   }, [cooldown]);
 
   useEffect(() => {
-    if (message.text) {
-      const timer = setTimeout(() => {
-        setMessage({ type: 'idle', text: '' });
-        setDebugInfo(null);
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [message.text]);
-
-  useEffect(() => {
     setIsSignUp(initialMode === 'signup');
   }, [initialMode]);
 
   const handleIdentityStitching = async (userId: string) => {
-      const anonId = localStorage.getItem('ob_anonymous_id');
-      if (anonId) {
-          await OB_OS.stitchIdentity(anonId, userId);
+      try {
+          const anonId = localStorage.getItem('ob_anonymous_id');
+          if (anonId) {
+              await OB_OS.stitchIdentity(anonId, userId);
+          }
+          await OB_OS.refreshSession(userId);
+      } catch (err) {
+          console.warn("[OB_OS] Identity Stitching Failure (Non-critical):", err);
       }
-      await OB_OS.refreshSession(userId);
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setLoading(true);
     setMessage({ type: 'idle', text: '' });
+    setDebugInfo(null);
 
     try {
-      if (!supabase) throw new Error('Supabase not configured.');
+      if (!supabase) throw new Error('Supabase not configured. Check your environment variables.');
 
       if (isSignUp) {
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: email.trim().toLowerCase(),
           password,
           options: {
               data: {
@@ -98,10 +116,8 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
               }
           }
         });
-        if (error) {
-            console.error("[OB_OS] Signup Failure Node:", error);
-            throw error;
-        }
+
+        if (error) throw error;
 
         if (data.user) {
             await handleIdentityStitching(data.user.id);
@@ -115,11 +131,12 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             }
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) {
-            console.error("[OB_OS] Signup Failure Node:", error);
-            throw error;
-        }
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: email.trim().toLowerCase(),
+            password
+        });
+
+        if (error) throw error;
 
         if (data.user) {
             await handleIdentityStitching(data.user.id);
@@ -132,33 +149,38 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
       }
     } catch (error: unknown) {
       const err = error as AuthError;
-      console.error("[OB_OS] Auth Failure:", err);
+      console.error("[OB_OS] Auth Node Failure:", err);
 
-      let errorText = (err && typeof err === 'object' && 'message' in err) ? err.message : "Uplink Failure";
+      let errorText = err.message || "Uplink Failure";
+      const isFetchError = errorText.toLowerCase().includes('failed to fetch') || err.name === 'AuthRetryableFetchError';
 
-      if (errorText === 'Failed to fetch') {
-          const urlNode = process.env.NEXT_PUBLIC_SUPABASE_URL || 'UNDEFINED';
-          console.warn(`[OB_OS] Fetch Blocked. Supabase Node: ${urlNode.substring(0, 10)}...`);
-          errorText = "Network Error: Cannot reach Supabase. Ensure your local Supabase is running or update your .env.local IP. 🛰️";
+      if (isFetchError) {
+          const isStripeKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.startsWith('sb_publishable_');
+          errorText = isStripeKey
+            ? "🛑 CRITICAL ERROR: Your Supabase Key is actually a STRIPE key. Check your .env.local 🛰️"
+            : "Network Error: Cannot reach Supabase Grid. Check your connection or ad-blockers. 🛰️";
       }
 
-      if (err && typeof err === 'object' && 'code' in err && (err.code === 'over_email_send_rate_limit' || err.code === 'over_sms_send_rate_limit')) {
-          errorText = "Rate Limit Hit! Go to Supabase Dashboard > Authentication > Rate Limits to increase this limit. 🛡️";
+      if (err.code === 'over_email_send_rate_limit' || err.code === 'over_sms_send_rate_limit') {
+          errorText = "Rate Limit Node Active. Please wait or try Google Social Login below. 🛡️";
           setCooldown(60);
       }
 
-      if (err.message?.includes("already registered") || err.code === '23505') {
+      const userExists = err.message?.includes("already registered") || err.code === '23505' || err.message?.includes("user_already_exists");
+      if (userExists) {
           errorText = "Identity already exists on the grid. Switch to Login mode below. 🛰️";
       }
 
       if (err.message?.includes("Invalid login credentials")) {
-          errorText = "Incorrect key or identity not found. Ensure you have registered first. 🛡️";
+          errorText = "Credential Mismatch. Incorrect key or identity not found. 🛡️";
       }
 
       setMessage({ type: 'error', text: errorText });
-      if (err.details || err.code || err.hint) {
-          setDebugInfo(JSON.stringify({ code: err.code, details: err.details, hint: err.hint }));
-      }
+      setDebugInfo(JSON.stringify({
+          code: err.code || 'UNKNOWN',
+          message: err.message,
+          name: err.name
+      }));
     } finally {
       setLoading(false);
     }
@@ -166,35 +188,31 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
 
   const handlePhoneOTP = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setLoading(true);
     setMessage({ type: 'idle', text: '' });
 
     try {
         if (!supabase) throw new Error('Supabase not configured.');
 
+        const cleanPhone = phoneNumber.startsWith('+') ? phoneNumber : `+254${phoneNumber.replace(/^0/, '')}`;
+
         if (!showOtpField) {
-            // Step 1: Send OTP
             const { error } = await supabase.auth.signInWithOtp({
-                phone: phoneNumber.startsWith('+') ? phoneNumber : `+254${phoneNumber.replace(/^0/, '')}`,
+                phone: cleanPhone,
             });
-            if (error) {
-                console.error("[OB_OS] Signup Failure Node:", error);
-                throw error;
-            }
+            if (error) throw error;
 
             setShowOtpField(true);
             setMessage({ type: 'success', text: 'Verification code sent via SMS. 📱' });
         } else {
-            // Step 2: Verify OTP
             const { data, error } = await supabase.auth.verifyOtp({
-                phone: phoneNumber.startsWith('+') ? phoneNumber : `+254${phoneNumber.replace(/^0/, '')}`,
-                token: otp,
+                phone: cleanPhone,
+                token: otp.trim(),
                 type: 'sms'
             });
-            if (error) {
-                console.error("[OB_OS] Signup Failure Node:", error);
-                throw error;
-            }
+            if (error) throw error;
 
             if (data.user) {
                 await handleIdentityStitching(data.user.id);
@@ -207,174 +225,206 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         }
     } catch (error: unknown) {
         const err = error as AuthError;
-        let errorText = (err && typeof err === 'object' && 'message' in err) ? err.message : "Uplink Failure";
+        let errorText = err.message || "Uplink Failure";
 
-        if (errorText === 'Failed to fetch') {
-            const urlNode = process.env.NEXT_PUBLIC_SUPABASE_URL || 'UNDEFINED';
-            console.warn(`[OB_OS] Fetch Blocked. Supabase Node: ${urlNode.substring(0, 10)}...`);
-            errorText = "Network Error: Cannot reach Supabase. Ensure your local Supabase is running or update your .env.local IP. 🛰️";
+        if (errorText.toLowerCase().includes('failed to fetch')) {
+            errorText = "Network Error: Cannot reach Supabase. Check your connection. 🛰️";
         }
 
-        if (err && typeof err === 'object' && 'code' in err && (err.code === 'over_email_send_rate_limit' || err.code === 'over_sms_send_rate_limit')) {
-            errorText = "Rate Limit Hit! Go to Supabase Dashboard > Authentication > Rate Limits to increase this limit. 🛡️";
+        if (err.code === 'over_sms_send_rate_limit') {
+            errorText = "SMS Rate Limit Hit. Try again in 60 seconds. 🛡️";
             setCooldown(60);
         }
 
-        if (err.message?.includes("already registered") || err.code === '23505') {
-            errorText = "Identity already exists on the grid. Switch to Login mode below. 🛰️";
-        }
-
         setMessage({ type: 'error', text: errorText });
-        if (err.details || err.code || err.hint) {
-            setDebugInfo(JSON.stringify({ code: err.code, details: err.details, hint: err.hint }));
-        }
     } finally {
         setLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md mx-auto p-6 sm:p-10 bg-white rounded-[2rem] sm:rounded-[3rem] border border-slate-100 shadow-2xl space-y-8 sm:space-y-10 animate-in zoom-in-95 duration-500">
-      <div className="text-center space-y-3">
-          <div className="mx-auto h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-sm border border-primary/10">
-              <ShieldCheck size={32} />
+    <div className="w-full max-w-md mx-auto p-6 sm:p-10 bg-white rounded-[2rem] sm:rounded-[3.5rem] border border-slate-100 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)] space-y-8 sm:y-12 animate-in zoom-in-95 duration-700">
+
+      {/* HEADER NODE */}
+      <div className="text-center space-y-4">
+          <div className="mx-auto h-16 w-16 rounded-3xl bg-primary/10 flex items-center justify-center text-primary shadow-sm border border-primary/10 animate-in fade-in slide-in-from-top-4 duration-1000">
+              <ShieldCheck size={36} strokeWidth={2.5} />
           </div>
-          <h2 className="text-3xl font-black text-foreground uppercase tracking-tighter leading-none">
-            {isSignUp ? 'Join the Grid' : 'Vault Access'}
-          </h2>
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em]">Online Bar Nairobi</p>
+          <div className="space-y-1">
+              <h2 className="text-4xl font-black text-[#1A202C] uppercase tracking-tighter leading-none italic">
+                {isSignUp ? 'Join Grid' : 'Enter Vault'}
+              </h2>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.4em]">Establish Protocol Connection</p>
+          </div>
       </div>
 
-      <div className="flex p-1 bg-slate-50 rounded-2xl border border-slate-100">
+      {/* METHOD SELECTOR */}
+      <div className="flex p-1.5 bg-slate-50 rounded-[1.5rem] border border-slate-100 shadow-inner">
           <button
             onClick={() => { setAuthMethod('email'); setShowOtpField(false); }}
             className={cn(
                 "flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all",
-                method === 'email' ? "bg-white text-foreground shadow-sm" : "text-slate-400 hover:text-slate-600"
+                method === 'email' ? "bg-white text-[#1A202C] shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"
             )}
           >
-              Email Key
+              Secure Email
           </button>
           <button
             onClick={() => { setAuthMethod('phone'); setShowOtpField(false); }}
             className={cn(
                 "flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all",
-                method === 'phone' ? "bg-white text-foreground shadow-sm" : "text-slate-400 hover:text-slate-600"
+                method === 'phone' ? "bg-white text-[#1A202C] shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"
             )}
           >
               Mobile OTP
           </button>
       </div>
 
-      {method === 'email' ? (
-          <form onSubmit={handleEmailAuth} className="space-y-6 sm:space-y-8">
-            {isSignUp && (
-              <div className="space-y-6 animate-in slide-in-from-top-2 duration-500">
+      {/* FORM INTERFACE */}
+      <div className="min-h-[300px]">
+          {method === 'email' ? (
+              <form onSubmit={handleEmailAuth} className="space-y-6 sm:space-y-8">
+                {isSignUp && (
+                  <div className="space-y-6 animate-in slide-in-from-top-4 duration-500">
+                    <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Patron Name</label>
+                        <div className="relative">
+                            <Input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="FULL NAME" required className="h-16 rounded-2xl bg-slate-50 border-slate-100 pl-14 font-black uppercase text-sm focus:bg-white transition-all shadow-inner" />
+                            <Globe className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                        </div>
+                    </div>
+                    <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Delivery Node</label>
+                        <div className="relative">
+                            <Input required value={address} onChange={e => setAddress(e.target.value)} placeholder="E.G. KILIMANI, NAIROBI" className="h-16 rounded-2xl bg-slate-50 border-slate-100 pl-14 font-black uppercase text-sm focus:bg-white transition-all shadow-inner" />
+                            <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                        </div>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-[0.15em]">Full Identity</label>
-                    <div className="relative">
-                        <Input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Full Name" data-behavior-id="auth.signup.full_name" className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-bold input-premium" />
-                        <Globe className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
-                    </div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Protocol Email</label>
+                  <div className="relative">
+                      <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="PATRON@ONLINEBAR.CO.KE" className="h-16 rounded-2xl bg-slate-50 border-slate-100 pl-14 font-black uppercase text-sm focus:bg-white transition-all shadow-inner" />
+                      <Mail className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                  </div>
                 </div>
                 <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-[0.15em]">Mobile Uplink</label>
-                    <div className="relative">
-                        <Input value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="07XXXXXXXX" data-behavior-id="auth.signup.phone" className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-bold input-premium" />
-                        <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
-                    </div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Secret Key</label>
+                  <div className="relative">
+                      <Input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="h-16 rounded-2xl bg-slate-50 border-slate-100 pl-14 font-black text-sm focus:bg-white transition-all shadow-inner" />
+                      <Lock className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                  </div>
                 </div>
-                <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-[0.15em]">Delivery Address</label>
-                    <div className="relative">
-                        <Input required value={address} onChange={e => setAddress(e.target.value)} placeholder="e.g. Kilimani, Galana Rd" className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-bold input-premium" />
-                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
-                    </div>
-                </div>
-              </div>
-            )}
-            <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-[0.15em]">Secure Email</label>
-              <div className="relative">
-                  <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="patron@onlinebar.co.ke" className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-bold input-premium" />
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
-              </div>
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-[0.15em]">Secret Key</label>
-              <div className="relative">
-                  <Input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-bold input-premium" />
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
-              </div>
-            </div>
-            <Button
-                type="submit"
-                data-behavior-id={isSignUp ? "auth.initialize_profile" : "auth.enter_vault"}
-                disabled={loading || cooldown > 0}
-                className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 btn-premium mt-4"
-            >
-                {loading ? <Loader2 className="animate-spin" /> : cooldown > 0 ? `Ready in ${cooldown}s` : (isSignUp ? 'Initialize Profile' : 'Enter Vault')}
-            </Button>
-          </form>
-      ) : (
-          <form onSubmit={handlePhoneOTP} className="space-y-6 sm:space-y-8">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-[0.15em]">Mobile Uplink</label>
-                <div className="relative">
-                    <Input required value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="07XXXXXXXX" className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-black text-lg input-premium" disabled={showOtpField} />
-                    <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
-                </div>
-              </div>
-              {showOtpField && (
-                <div className="space-y-3 animate-in slide-in-from-top-2 duration-500">
-                    <label className="text-[10px] font-black uppercase text-primary ml-1 animate-pulse tracking-[0.15em]">Enter 6-Digit Code</label>
-                    <div className="relative">
-                        <Input required value={otp} onChange={e => setOtp(e.target.value)} placeholder="XXXXXX" maxLength={6} className="h-16 rounded-2xl bg-primary/5 border-primary/20 text-center font-black text-2xl tracking-[0.5em] text-primary input-premium" />
-                        <Key className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary/30" />
-                    </div>
-                </div>
-              )}
-              <Button
-                type="submit"
-                data-behavior-id={isSignUp ? "auth.initialize_profile" : "auth.enter_vault"}
-                disabled={loading || cooldown > 0}
-                className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 btn-premium mt-4"
-            >
-                  {loading ? <Loader2 className="animate-spin" /> : cooldown > 0 ? `Ready in ${cooldown}s` : (showOtpField ? 'Verify & Enter' : 'Send Access Code')}
-              </Button>
-              {showOtpField && <button type="button" onClick={() => setShowOtpField(false)} className="w-full text-[9px] font-black uppercase text-slate-400 hover:text-primary transition-colors tracking-widest">Change Phone Number</button>}
-          </form>
-      )}
 
+                {!isSignUp && (
+                    <div className="flex justify-end px-1">
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (!email) return alert("Enter your protocol email first.");
+                                const { error } = await supabase!.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/reset` });
+                                if (error) alert(error.message);
+                                else alert("Reset link transmitted to your inbox. 🛰️");
+                            }}
+                            className="text-[9px] font-black uppercase text-slate-300 hover:text-primary transition-colors tracking-widest"
+                        >
+                            Lost your key?
+                        </button>
+                    </div>
+                )}
+
+                <Button
+                    type="submit"
+                    disabled={loading || cooldown > 0}
+                    className="w-full h-20 rounded-[1.8rem] bg-slate-900 text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-primary transition-all active:scale-95 flex items-center justify-center gap-3 mt-6 border-none"
+                >
+                    {loading ? <Loader2 className="animate-spin h-5 w-5" /> : cooldown > 0 ? `LOCKED (${cooldown}s)` : (isSignUp ? 'Initialize Profile' : 'Authorize Entrance')}
+                </Button>
+              </form>
+          ) : (
+              <form onSubmit={handlePhoneOTP} className="space-y-8">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Mobile Uplink</label>
+                    <div className="relative">
+                        <Input required value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="07XXXXXXXX" className="h-16 rounded-2xl bg-slate-50 border-slate-100 pl-14 font-black text-xl tracking-widest focus:bg-white transition-all shadow-inner" disabled={showOtpField} />
+                        <Smartphone className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                    </div>
+                  </div>
+                  {showOtpField && (
+                    <div className="space-y-4 animate-in slide-in-from-top-4 duration-500">
+                        <label className="text-[10px] font-black uppercase text-primary ml-1 animate-pulse tracking-[0.2em]">Synchronizing: Enter Code</label>
+                        <div className="relative">
+                            <Input required value={otp} onChange={e => setOtp(e.target.value)} placeholder="XXXXXX" maxLength={6} className="h-20 rounded-3xl bg-primary/5 border-primary/20 text-center font-black text-3xl tracking-[0.6em] text-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-inner" />
+                            <Key className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-primary/30" />
+                        </div>
+                    </div>
+                  )}
+                  <Button
+                    type="submit"
+                    disabled={loading || cooldown > 0}
+                    className="w-full h-20 rounded-[1.8rem] bg-slate-900 text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-primary transition-all active:scale-95 border-none"
+                >
+                      {loading ? <Loader2 className="animate-spin h-5 w-5" /> : (showOtpField ? 'Verify Identity' : 'Transmit Access Code')}
+                  </Button>
+                  {showOtpField && <button type="button" onClick={() => setShowOtpField(false)} className="w-full text-[9px] font-black uppercase text-slate-300 hover:text-primary transition-colors tracking-widest">Change Phone Node</button>}
+              </form>
+          )}
+      </div>
+
+      {/* FEEDBACK NODE */}
       {message.text && (
-          <div className="space-y-4 animate-in fade-in zoom-in-95">
+          <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
               <div className={cn(
-                  "p-4 rounded-2xl border text-center",
+                  "p-8 rounded-[2rem] border-2 text-center relative overflow-hidden",
                   message.type === 'success' ? "bg-emerald-50 border-emerald-100 text-emerald-600" : "bg-rose-50 border-rose-100 text-rose-600"
               )}>
-                  <p className="text-[10px] font-black uppercase tracking-widest">{message.text}</p>
+                  <div className="relative z-10 space-y-4">
+                      <div className="flex justify-center">
+                          {message.type === 'error' ? <AlertCircle size={32} /> : <ShieldCheck size={32} />}
+                      </div>
+                      <p className="text-[11px] font-black uppercase tracking-widest leading-relaxed italic">{message.text}</p>
+
+                      {message.text.includes("already exists") && (
+                          <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-700">
+                              <div className="h-px bg-rose-200/50 w-full" />
+                              <p className="text-[9px] font-bold text-rose-400 uppercase tracking-widest">Protocol Signal: Identity detected in vault.</p>
+                              <Button
+                                onClick={() => { setIsSignUp(false); setMessage({ type: 'idle', text: '' }); }}
+                                className="w-full h-14 rounded-xl bg-rose-600 text-white font-black uppercase text-[10px] shadow-xl shadow-rose-200 hover:bg-rose-700 transition-all active:scale-95 border-none flex items-center justify-center gap-2"
+                              >
+                                Switch to Vault Login <ArrowRight size={14} className="ml-2" />
+                              </Button>
+                          </div>
+                      )}
+
+                      {(message.text.toLowerCase().includes("network error") || message.text.toLowerCase().includes("critical error")) && (
+                          <Button
+                            variant="outline"
+                            onClick={checkNetworkNode}
+                            disabled={isDiagnosticRunning}
+                            className="h-12 rounded-xl border-rose-200 text-rose-600 font-black uppercase text-[10px] px-6 hover:bg-rose-100 transition-all flex items-center gap-2 mx-auto mt-4"
+                          >
+                            {isDiagnosticRunning ? <Loader2 className="animate-spin h-3 w-3" /> : <WifiOff size={14} />}
+                            {isDiagnosticRunning ? 'Pinging Node...' : 'Run Network Diagnostic'}
+                          </Button>
+                      )}
+                  </div>
               </div>
 
               {debugInfo && (
-                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left overflow-hidden">
-                      <p className="text-[8px] font-black uppercase text-rose-400 mb-2 tracking-widest">Technical Intel</p>
-                      <code className="text-[9px] text-slate-400 font-mono break-all">{debugInfo}</code>
+                  <div className="p-6 bg-slate-50 border border-slate-100 rounded-3xl text-left overflow-hidden shadow-inner group">
+                      <p className="text-[9px] font-black uppercase text-slate-300 mb-2 tracking-[0.3em]">Telemetry Debug Data</p>
+                      <code className="text-[10px] text-slate-400 font-mono break-all opacity-60 group-hover:opacity-100 transition-opacity">{debugInfo}</code>
                   </div>
               )}
           </div>
       )}
 
-      {cooldown > 0 && (
-          <div className="p-4 bg-primary/10 border border-primary/20 rounded-2xl animate-in zoom-in-95">
-              <p className="text-[10px] font-black uppercase text-primary text-center">
-                  Uplink Throttled. Try Google Social Login below while you wait. ⚡
-              </p>
-          </div>
-      )}
-
-      <div className="pt-6 border-t border-slate-100 space-y-4">
-          <div className="relative flex justify-center text-[8px] uppercase font-black tracking-[0.3em] text-slate-300">
-              <span className="bg-white px-4">Social Uplink</span>
+      {/* FOOTER ACTIONS */}
+      <div className="pt-8 border-t border-slate-100 space-y-6">
+          <div className="relative flex justify-center text-[9px] uppercase font-black tracking-[0.5em] text-slate-300">
+              <span className="bg-white px-6">Social Uplink</span>
           </div>
 
           <button
@@ -382,31 +432,40 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             onClick={async () => {
                 if (!supabase) return;
                 setLoading(true);
-                const { error } = await supabase.auth.signInWithOAuth({
-                  provider: 'google',
-                  options: { redirectTo: window.location.origin }
-                });
-                if (error) setMessage({ type: 'error', text: error.message });
-                setLoading(false);
+                try {
+                    const { error } = await supabase.auth.signInWithOAuth({
+                      provider: 'google',
+                      options: { redirectTo: window.location.origin }
+                    });
+                    if (error) throw error;
+                } catch (err: any) {
+                    setMessage({ type: 'error', text: err.message });
+                } finally {
+                    setLoading(false);
+                }
             }}
-            className="w-full h-14 bg-white border border-slate-100 rounded-2xl flex items-center justify-center gap-3 hover:bg-slate-50 transition-all group"
+            className="w-full h-18 bg-white border-2 border-slate-100 rounded-2xl flex items-center justify-center gap-4 hover:bg-slate-50 hover:border-slate-200 transition-all group active:scale-[0.98] shadow-sm"
           >
-            <svg className="h-4 w-4 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+            <svg className="h-5 w-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
             </svg>
-            <span className="text-[10px] font-black uppercase tracking-widest text-foreground">Authenticate with Google</span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-[#1A202C]">Authenticate with Google</span>
           </button>
 
           <button
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="w-full text-center text-[10px] font-black uppercase text-slate-400 hover:text-primary transition-colors tracking-widest"
+            onClick={() => { setIsSignUp(!isSignUp); setMessage({ type: 'idle', text: '' }); }}
+            className="w-full text-center text-[10px] font-black uppercase text-slate-400 hover:text-primary transition-colors tracking-[0.2em] italic"
           >
-            {isSignUp ? 'Member already? Log In' : 'New Patron? Initialize Identity'}
+            {isSignUp ? 'Member already? Enter Vault' : 'New Patron? Initialize Identity'}
           </button>
       </div>
+
+      {/* Decorative Accents */}
+      <div className="absolute -top-10 -right-10 h-40 w-40 bg-primary/5 rounded-full blur-3xl -z-10 animate-pulse" />
+      <div className="absolute -bottom-10 -left-10 h-40 w-40 bg-indigo-50/20 rounded-full blur-3xl -z-10" />
     </div>
   );
 }
