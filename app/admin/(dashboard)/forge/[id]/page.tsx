@@ -33,6 +33,7 @@ import Image from 'next/image';
 type StudioSection = 'basic' | 'media' | 'pricing' | 'inventory' | 'display' | 'intelligence' | 'search';
 
 interface ForgeProductData {
+    [key: string]: string | number | boolean | string[] | Record<string, number> | Array<{ q: string, a: string }> | Array<{ key: string, value: string }> | undefined;
     id: number;
     name: string;
     brand: string;
