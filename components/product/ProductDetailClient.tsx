@@ -452,7 +452,7 @@ export default function ProductDetailClient({
                                     id: product.id,
                                     name: product.name,
                                     price: product.price,
-                                    image: normalizeImage(product.image || product.image_url),
+                                    image: normalizeImage(product.image || product.image_url) as string,
                                     category: product.category
                                 });
                             }}
