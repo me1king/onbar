@@ -63,7 +63,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         await fetch(url, { mode: 'no-cors' }); // Simple ping
         const latency = Date.now() - start;
         alert(`🛰️ Network Uplink: Healthy (${latency}ms)`);
-    } catch (err) {
+    } catch {
         alert(`🛑 Network Error: Connection to Supabase failed. Check your internet or ad-blocker.`);
     } finally {
         setIsDiagnosticRunning(false);
@@ -88,8 +88,8 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
               await OB_OS.stitchIdentity(anonId, userId);
           }
           await OB_OS.refreshSession(userId);
-      } catch (err) {
-          console.warn("[OB_OS] Identity Stitching Failure (Non-critical):", err);
+      } catch (_err) {
+          console.warn("[OB_OS] Identity Stitching Failure (Non-critical):", _err);
       }
   };
 
@@ -438,8 +438,8 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
                       options: { redirectTo: window.location.origin }
                     });
                     if (error) throw error;
-                } catch (err: any) {
-                    setMessage({ type: 'error', text: err.message });
+                } catch (err: unknown) {
+                    setMessage({ type: 'error', text: (err as Error).message });
                 } finally {
                     setLoading(false);
                 }

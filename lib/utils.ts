@@ -8,7 +8,7 @@ export function cn(...inputs: ClassValue[]) {
  * Normalizes image URLs and provides robust fallbacks for missing or legacy assets.
  * Standardizes empty strings and objects to a valid fallback path.
  */
-export const normalizeImage = (url: any) => {
+export const normalizeImage = (url: string | null | undefined) => {
     if (!url || typeof url !== 'string' || url.trim() === "") {
         return '/images/NoImage.jpg';
     }
