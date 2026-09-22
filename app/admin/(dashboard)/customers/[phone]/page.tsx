@@ -87,15 +87,20 @@ export default function CustomerProfilePage() {
     const router = useRouter();
     const [data, setData] = React.useState<Customer360 | null>(null);
     const [loading, setLoading] = React.useState(true);
+    const [notFound, setNotFound] = React.useState(false);
     const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null);
 
     const fetchCustomerData = React.useCallback(async () => {
         if (!supabase || !phone) return;
         setLoading(true);
+        setNotFound(false);
         try {
             // 1. Fetch Core Profile
-            const { data: profile } = await supabase.from('profiles').select('*').eq('phone_number', phone).single();
-            if (!profile) throw new Error("Patron not found");
+            const { data: profile } = await supabase.from('profiles').select('*').eq('phone_number', phone).maybeSingle();
+            if (!profile) {
+                setNotFound(true);
+                return;
+            }
 
             // 2. Fetch Intelligence & Commercial Data
             const [intRes, sessRes, ordersRes, prefRes, aggRes] = await Promise.all([
@@ -133,6 +138,23 @@ export default function CustomerProfilePage() {
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
             <Loader2 className="h-10 w-10 text-primary animate-spin" />
             <p className="font-black text-slate-400 uppercase tracking-widest text-[10px]">Reconstructing Patron Profile...</p>
+        </div>
+    );
+
+    if (notFound) return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-white p-8 text-center">
+            <div className="max-w-md space-y-8 animate-in zoom-in-95 duration-700">
+                <div className="h-24 w-24 rounded-3xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 mx-auto shadow-sm">
+                    <ShieldAlert size={48} />
+                </div>
+                <div className="space-y-2">
+                    <h2 className="text-3xl font-black uppercase tracking-tighter text-foreground italic">Identity <span className="text-rose-500">Missing.</span></h2>
+                    <p className="text-slate-400 text-sm font-medium italic">&quot;We were unable to locate a patron record associated with the phone node {phone}. The identity may have been expunged or never established.&quot;</p>
+                </div>
+                <Button onClick={() => router.push('/admin/customers')} className="h-14 px-8 rounded-2xl bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">
+                    Return to Registry
+                </Button>
+            </div>
         </div>
     );
 
@@ -205,14 +227,14 @@ export default function CustomerProfilePage() {
                         <h3 className="text-sm font-black uppercase tracking-[0.4em] text-slate-400">Engagement Profile</h3>
                         <div className="space-y-6">
                             {[
-                                { label: 'Top Page', val: aggregate.most_visited_category || 'Whiskey' },
-                                { label: 'Top Search', val: aggregate.most_searched_term || 'Johnnie Walker' },
-                                { label: 'Preferred Device', val: aggregate.preferred_device || 'Android' },
-                                { label: 'Traffic Source', val: aggregate.top_traffic_source || 'Instagram' },
+                                { label: 'Top Page', val: aggregate.most_visited_category || 'None Logged' },
+                                { label: 'Top Search', val: aggregate.most_searched_term || 'No Searches' },
+                                { label: 'Preferred Device', val: aggregate.preferred_device || 'Unknown' },
+                                { label: 'Traffic Source', val: aggregate.top_traffic_source || 'Direct' },
                             ].map(item => (
                                 <div key={item.label} className="flex justify-between items-center border-b border-slate-50 pb-4 last:border-0">
                                     <span className="text-[10px] font-black uppercase text-slate-400">{item.label}</span>
-                                    <span className="text-sm font-black text-foreground uppercase">{item.val}</span>
+                                    <span className="text-sm font-black text-foreground uppercase truncate ml-4">{item.val}</span>
                                 </div>
                             ))}
                         </div>

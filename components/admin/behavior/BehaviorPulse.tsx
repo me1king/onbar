@@ -4,7 +4,6 @@ import * as React from 'react';
 import {
     Activity,
     Clock,
-    ArrowUpRight,
     Zap,
     Layout,
     MousePointer2
@@ -48,13 +47,12 @@ export default function BehaviorPulse({ stats }: BehaviorPulseProps) {
                         <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500 shadow-inner group-hover:scale-110 transition-transform">
                             <Zap size={20} />
                         </div>
-                        <div className="flex items-center gap-1 text-emerald-500 text-[10px] font-black uppercase">
-                            <ArrowUpRight size={12} /> 12%
-                        </div>
                     </div>
                     <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Events Today</p>
-                        <h3 className="text-4xl font-black text-foreground uppercase tracking-tighter">{(stats.eventsToday / 1000).toFixed(1)}k</h3>
+                        <h3 className="text-4xl font-black text-foreground uppercase tracking-tighter">
+                            {stats.eventsToday > 999 ? `${(stats.eventsToday / 1000).toFixed(1)}k` : stats.eventsToday}
+                        </h3>
                     </div>
                 </div>
                 <Zap className="absolute -bottom-4 -right-4 h-24 w-24 text-indigo-500/5 rotate-12 -z-0" />

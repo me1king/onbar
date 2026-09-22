@@ -8,7 +8,6 @@ import {
     MousePointer2,
     ShieldCheck,
     Zap,
-    Layout,
     Globe,
     Search,
     Flame,
@@ -155,8 +154,8 @@ export default function BehaviorOverview() {
                         <div className="space-y-4">
                             {topScreens.length === 0 ? (
                                 <div className="py-20 text-center opacity-30 flex flex-col items-center gap-4">
-                                    <Layout size={48} />
-                                    <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Navigational Signals...</p>
+                                    <Globe size={48} className="text-slate-200" />
+                                    <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest italic leading-none">Establishing Signal &bull; No views logged</p>
                                 </div>
                             ) : topScreens.map((screen, idx) => (
                                 <div key={idx} className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 flex items-center justify-between group hover:bg-white hover:shadow-xl transition-all">
@@ -200,13 +199,20 @@ export default function BehaviorOverview() {
                                 {topComponents.map((comp, idx) => (
                                     <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-white transition-all">
                                         <div className="flex justify-between items-start mb-2">
-                                            <p className="text-[9px] font-black uppercase text-primary tracking-widest">{comp.component_id}</p>
-                                            <span className="text-[10px] font-black text-foreground">{comp.interaction_count} Clicks</span>
+                                            <p className="text-[9px] font-black uppercase text-primary tracking-widest truncate max-w-[70%]">{comp.component_id}</p>
+                                            <span className="text-[10px] font-black text-foreground shrink-0">{comp.interaction_count} Clicks</span>
                                         </div>
-                                        <p className="text-xs font-bold text-slate-500 truncate">&quot;{comp.component_label}&quot;</p>
+                                        <p className="text-xs font-bold text-slate-500 truncate italic">&quot;{comp.component_label}&quot;</p>
                                     </div>
                                 ))}
-                                {topComponents.length === 0 && <p className="py-10 text-center text-[10px] font-black uppercase text-slate-500 tracking-widest">Awaiting Component Engagement...</p>}
+                                {topComponents.length === 0 && (
+                                    <div className="py-10 text-center space-y-4 opacity-40">
+                                        <MousePointer2 className="mx-auto h-8 w-8 text-slate-300" />
+                                        <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest leading-relaxed">
+                                            No Component Interactions <br /> Logged Today
+                                        </p>
+                                    </div>
+                                )}
                              </div>
                         </div>
                         <Users className="absolute -bottom-10 -left-10 h-64 w-64 text-slate-50 rotate-12 -z-0" />

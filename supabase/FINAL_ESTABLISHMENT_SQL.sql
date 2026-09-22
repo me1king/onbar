@@ -391,7 +391,43 @@ CREATE TABLE IF NOT EXISTS public.customer_sessions (
     total_active_time_sec INTEGER DEFAULT 0,
     device_info JSONB DEFAULT '{}'::JSONB,
     session_status TEXT DEFAULT 'ACTIVE',
-    cart_value NUMERIC DEFAULT 0
+    cart_value NUMERIC DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.customer_intelligence (
+    user_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+    intent_score INTEGER DEFAULT 0,
+    churn_risk_score INTEGER DEFAULT 0,
+    predicted_next_action TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.customer_aggregate_metrics (
+    user_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+    total_sessions INTEGER DEFAULT 0,
+    total_active_time_sec INTEGER DEFAULT 0,
+    total_pages_viewed INTEGER DEFAULT 0,
+    total_products_viewed INTEGER DEFAULT 0,
+    total_clicks INTEGER DEFAULT 0,
+    total_cart_additions INTEGER DEFAULT 0,
+    total_cart_removals INTEGER DEFAULT 0,
+    total_checkouts_started INTEGER DEFAULT 0,
+    total_rage_clicks INTEGER DEFAULT 0,
+    total_dead_clicks INTEGER DEFAULT 0,
+    top_traffic_source TEXT,
+    preferred_device TEXT,
+    most_visited_category TEXT,
+    most_searched_term TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.customer_product_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    category_id TEXT,
+    affinity_score INTEGER DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public.abandoned_carts (
@@ -408,6 +444,39 @@ CREATE TABLE IF NOT EXISTS public.abandoned_carts (
 );
 
 -- 9. VIEWS & RPC ENGINE
+
+CREATE OR REPLACE VIEW public.behavioral_intelligence_pulse AS
+SELECT
+    (SELECT count(*) FROM public.customer_sessions WHERE last_seen_at > now() - interval '5 minutes') as live_users,
+    (SELECT count(*) FROM public.analytics_events WHERE created_at > CURRENT_DATE) as events_today,
+    (SELECT COALESCE(avg(total_active_time_sec), 0) FROM public.customer_sessions WHERE last_seen_at > CURRENT_DATE) as avg_active_sec,
+    (SELECT count(*) FROM public.analytics_events WHERE event_name = 'ADD_TO_CART' AND created_at > CURRENT_DATE) as cart_rate, -- Simplified as count for now
+    (SELECT count(*) FROM public.analytics_events WHERE event_name = 'RAGE_CLICK' AND created_at > now() - interval '24 hours') as rage_clicks_24h,
+    (SELECT count(*) FROM public.analytics_events WHERE event_name = 'ZERO_RESULTS' AND created_at > now() - interval '24 hours') as zero_results_24h;
+
+CREATE OR REPLACE FUNCTION public.get_top_pages(limit_count integer)
+RETURNS TABLE (page_url text, view_count bigint, avg_time numeric) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        ae.page_url,
+        count(*) as v_count,
+        avg(EXTRACT(EPOCH FROM (ae.created_at - s.last_seen_at)))::numeric as a_time -- Rough estimate
+    FROM public.analytics_events ae
+    JOIN public.customer_sessions s ON ae.session_id = s.id
+    GROUP BY ae.page_url
+    ORDER BY v_count DESC
+    LIMIT limit_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TABLE IF NOT EXISTS public.component_interaction_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    component_id TEXT NOT NULL,
+    component_label TEXT,
+    interaction_count INTEGER DEFAULT 0,
+    last_interaction_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
 
 CREATE OR REPLACE VIEW public.live_behavior_radar AS
 SELECT
