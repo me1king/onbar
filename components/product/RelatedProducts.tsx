@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatPrice, cn } from "@/lib/utils";
+import { formatPrice, cn, normalizeImage } from "@/lib/utils";
 import { Product } from "@/types/product";
 import Link from "next/link";
 import { Plus, Check, Sparkles } from 'lucide-react';
@@ -78,7 +78,7 @@ export default function RelatedProducts({ product }: RelatedProductsProps) {
               <Link href={`/shop/${p.id}`}>
                 <div className="aspect-square overflow-hidden bg-slate-50 p-8 flex items-center justify-center relative">
                   <Image
-                    src={p.image || p.image_url || '/images/NoImage.jpg'}
+                    src={normalizeImage(p.image || p.image_url)}
                     alt={p.name}
                     fill
                     className="object-contain p-8 transition-transform duration-700 group-hover:scale-110"

@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import Image from 'next/image';
 
 interface ProductNode {
@@ -192,7 +192,7 @@ export default function ContentCommandStudio() {
                                             )}
                                         >
                                             <div className="h-10 w-10 rounded-xl bg-white border border-slate-100 relative overflow-hidden shrink-0">
-                                                <Image src={p.image_url || '/images/NoImage.jpg'} alt="" fill className="object-contain" />
+                                                <Image src={normalizeImage(p.image_url)} alt="" fill className="object-contain" />
                                             </div>
                                             <span className="text-[9px] font-black uppercase leading-tight truncate">{p.name}</span>
                                         </button>
@@ -239,7 +239,7 @@ export default function ContentCommandStudio() {
                                         <div className="w-full md:w-48 space-y-4">
                                             <p className="text-[8px] font-black uppercase text-slate-300">Format Preview</p>
                                             <div className="aspect-[4/5] bg-slate-200 rounded-2xl relative overflow-hidden border border-slate-300">
-                                                <Image src={selectedProducts[0]?.image_url || '/images/NoImage.jpg'} alt="" fill className="object-contain p-4" />
+                                                <Image src={normalizeImage(selectedProducts[0]?.image_url)} alt="" fill className="object-contain p-4" />
                                             </div>
                                         </div>
                                     </Card>

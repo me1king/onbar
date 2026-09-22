@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
+import { normalizeImage } from '@/lib/utils';
 import Image from 'next/image';
 
 interface BuzzStudioProps {
@@ -196,7 +197,7 @@ export default function BuzzStudio({ postId, onClose, onSave }: BuzzStudioProps)
                                     {m.type === 'VIDEO' ? (
                                         <div className="h-full w-full flex items-center justify-center bg-slate-100"><Video className="text-primary opacity-20" /></div>
                                     ) : (
-                                        <Image src={m.url} alt="" fill className="object-cover" />
+                                        <Image src={normalizeImage(m.url)} alt="" fill className="object-cover" />
                                     )}
                                     <button onClick={() => setMedia(media.filter((_, idx) => idx !== i))} className="absolute top-2 right-2 h-8 w-8 rounded-full bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover/media:opacity-100 transition-opacity shadow-lg"><Trash2 size={14} /></button>
                                     <div className="absolute bottom-2 left-2 bg-white/40 backdrop-blur-md px-3 py-1 rounded-lg text-[8px] font-black text-foreground uppercase border border-white/20">{m.type}</div>

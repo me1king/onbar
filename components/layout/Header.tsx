@@ -10,7 +10,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { formatPrice, cn } from "@/lib/utils";
+import { formatPrice, cn, normalizeImage } from "@/lib/utils";
 import { useSettings, type StoreSettings } from "@/lib/useSettings";
 
 interface SearchResult {
@@ -521,7 +521,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                         {searchResults.map((product) => (
                             <Link key={product.id} href={`/shop/${product.id}`} className="flex items-center gap-6 p-4 hover:bg-slate-50 transition-all rounded-[2rem] group border border-transparent hover:border-slate-100 hover:shadow-xl" onClick={() => setSearchResults([])}>
                                 <div className="h-16 w-16 rounded-2xl bg-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-100 shadow-inner group-hover:scale-105 transition-transform">
-                                    <Image src={product.image_url} alt="" width={60} height={60} className="max-h-full w-auto object-contain" />
+                                    <Image src={normalizeImage(product.image_url)} alt="" width={60} height={60} className="max-h-full w-auto object-contain" />
                                 </div>
                                 <div className="flex-1 min-w-0 text-left">
                                     <p className="text-sm font-black uppercase text-foreground truncate tracking-tight">{product.name}</p>
@@ -671,7 +671,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                             className="flex items-center gap-4 p-3 hover:bg-slate-50 transition-colors rounded-2xl"
                         >
                             <div className="h-10 w-10 rounded-xl bg-slate-50 flex items-center justify-center overflow-hidden shrink-0 border border-slate-100">
-                                <Image src={product.image_url} alt="" width={40} height={40} className="max-h-full w-auto object-contain" />
+                                <Image src={normalizeImage(product.image_url)} alt="" width={40} height={40} className="max-h-full w-auto object-contain" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <p className="text-[10px] font-black uppercase text-foreground truncate">{product.name}</p>

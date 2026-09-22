@@ -19,7 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 
 interface ForgeProduct {
@@ -191,11 +191,10 @@ export default function ProductForgeDashboard() {
                                     <div className="h-20 w-20 rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden flex items-center justify-center p-2 group-hover:scale-105 transition-transform relative">
                                         {item.image_url ? (
                                             <Image
-                                                src={item.image_url}
+                                                src={normalizeImage(item.image_url)}
                                                 alt={item.name}
                                                 fill
                                                 className="object-contain p-2"
-                                                unoptimized={item.image_url.includes('unsplash.com')}
                                             />
                                         ) : (
                                             <Sparkles className="text-slate-200" />

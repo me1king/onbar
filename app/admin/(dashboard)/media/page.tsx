@@ -20,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, normalizeImage } from '@/lib/utils';
 import { generateProductCatalog } from '@/lib/catalogService';
 
 import { useSearchParams } from 'next/navigation';
@@ -236,7 +236,7 @@ export default function AdminMediaHub() {
                             {filteredAssets.map((asset, i) => (
                                 <Card key={i} className="group rounded-[2rem] border border-slate-100 bg-white overflow-hidden hover:shadow-2xl hover:border-primary/20 transition-all flex flex-col">
                                     <div className="aspect-square bg-slate-50 flex items-center justify-center p-6 relative overflow-hidden">
-                                        <Image src={asset.url} width={200} height={200} className="max-h-full w-auto object-contain transform group-hover:scale-110 transition-transform duration-500" alt="" />
+                                        <Image src={normalizeImage(asset.url)} width={200} height={200} className="max-h-full w-auto object-contain transform group-hover:scale-110 transition-transform duration-500" alt="" />
 
                                         <div className="absolute inset-0 bg-white/80 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 p-4">
                                             <Button

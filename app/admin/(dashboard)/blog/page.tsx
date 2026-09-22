@@ -27,7 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, normalizeImage } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 
@@ -419,7 +419,7 @@ export default function AdminBlogPage() {
                               <div className="flex items-center gap-8 flex-1 text-left">
                                   <div className="h-24 w-40 rounded-3xl bg-slate-100 border border-slate-100 overflow-hidden shrink-0 flex items-center justify-center shadow-lg transition-all">
                                       {post.image_url ? (
-                                          <Image src={post.image_url} width={160} height={96} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                          <Image src={normalizeImage(post.image_url)} width={160} height={96} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                                       ) : (
                                           <ImageIcon className="h-8 w-8 text-slate-300" />
                                       )}

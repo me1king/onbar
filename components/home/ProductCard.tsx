@@ -276,7 +276,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
             <div className="flex items-center justify-between p-8 border-b border-slate-50">
               <div className="flex items-center gap-3 text-slate-400">
                 <Globe size={16} />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Product Intelligence Preview</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Nodal Intelligence Preview</span>
               </div>
               <Button
                 variant="ghost"
@@ -306,7 +306,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                   {/* Manufacturer Badge */}
                   {product.manufacturer && (
                     <div className="absolute bottom-6 left-6 bg-white/80 backdrop-blur-md px-4 py-2 rounded-xl border border-white/20 shadow-sm">
-                        <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Manufacturer</p>
+                        <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Source Node</p>
                         <p className="text-[10px] font-black text-foreground uppercase">{product.manufacturer}</p>
                     </div>
                   )}
@@ -333,11 +333,11 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                   {/* High Fidelity Specs */}
                   <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">ABV Content</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Alcohol (ABV)</p>
                           <p className="text-sm font-black text-foreground uppercase">{product.abv_label || 'Standard'}</p>
                       </div>
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Volume</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Unit Volume</p>
                           <p className="text-sm font-black text-foreground uppercase">{product.size_label || '750ml'}</p>
                       </div>
                   </div>
@@ -368,7 +368,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                   <div className="mt-auto pt-8 border-t border-slate-50 flex gap-4">
                     <Button
                       className={cn(
-                        'flex-1 h-16 rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-2xl active:scale-95 transition-all',
+                        'flex-1 h-16 rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-2xl active:scale-95 transition-all border-none',
                         justAdded
                           ? 'bg-emerald-500 text-white'
                           : 'bg-primary text-white shadow-primary/20 hover:bg-primary/90'
@@ -376,7 +376,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                       onClick={handleAddToCart}
                       disabled={isAdding || (product.stock !== undefined && product.stock === 0)}
                     >
-                      {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? 'Added to Grid!' : 'Add to Selection'}
+                      {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? 'SECURED IN BAG!' : 'ESTABLISH ORDER'}
                     </Button>
 
                     <button

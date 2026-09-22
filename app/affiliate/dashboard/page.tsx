@@ -28,7 +28,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -340,7 +340,7 @@ export default function AffiliateCommandCenter() {
                             {products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).map(product => (
                                 <Card key={product.id} className="group rounded-[3rem] bg-white border border-slate-100 shadow-sm hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 overflow-hidden flex flex-col">
                                     <div className="aspect-square bg-slate-50 p-8 flex items-center justify-center relative overflow-hidden">
-                                        <Image src={product.image_url} width={200} height={200} alt={product.name} className="max-h-full w-auto object-contain transition-transform duration-700 group-hover:scale-110" />
+                                        <Image src={normalizeImage(product.image_url)} width={200} height={200} alt={product.name} className="max-h-full w-auto object-contain transition-transform duration-700 group-hover:scale-110" />
                                         <div className="absolute bottom-4 left-4 right-4 translate-y-20 group-hover:translate-y-0 transition-transform duration-500">
                                             <Button
                                                 onClick={() => {

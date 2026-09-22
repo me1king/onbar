@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import Image from 'next/image';
 
 interface BiteProduct {
@@ -145,7 +145,7 @@ export default function BiteCommandCenter() {
                     ) : bites.map(bite => (
                         <Card key={bite.id} className="p-8 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm flex flex-col group hover:border-primary/20 transition-all">
                             <div className="relative aspect-square rounded-[2.5rem] bg-slate-50 border border-slate-50 overflow-hidden mb-6 shadow-inner">
-                                <Image src={bite.image_url} alt={bite.name} fill className="object-contain p-4 group-hover:scale-110 transition-transform duration-700" />
+                                <Image src={normalizeImage(bite.image_url)} alt={bite.name} fill className="object-contain p-4 group-hover:scale-110 transition-transform duration-700" />
                                 <div className={cn(
                                     "absolute top-4 right-4 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg",
                                     bite.is_available_now ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"

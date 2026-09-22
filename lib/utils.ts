@@ -8,12 +8,17 @@ export function cn(...inputs: ClassValue[]) {
  * Normalizes image URLs and provides robust fallbacks for missing or legacy assets.
  * Standardizes empty strings and objects to a valid fallback path.
  */
-export const normalizeImage = (url: string | null | undefined) => {
-    if (!url || typeof url !== 'string' || url.trim() === "") {
+export const normalizeImage = (url: string | null | undefined | object) => {
+    if (!url || (typeof url === 'string' && url.trim() === "")) {
         return '/images/NoImage.jpg';
     }
 
-    const trimmedUrl = url.trim();
+    // If it's an object (like an empty {} from a DB error or bad parse), return fallback
+    if (typeof url === 'object') {
+        return '/images/NoImage.jpg';
+    }
+
+    const trimmedUrl = (url as string).trim();
 
     // Check if it's exactly the placeholder or contains it
     const isPlaceholder =

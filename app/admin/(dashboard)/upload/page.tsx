@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { useSettings } from '@/lib/useSettings';
 import { logAuditAction } from '@/lib/auditService';
@@ -711,7 +711,7 @@ function UploadContent() {
                                   const audit = imageAudits[fileName];
                                   return (
                                       <div key={i} className="aspect-square rounded-[2.5rem] bg-slate-50 border border-slate-100 relative group overflow-hidden shadow-sm hover:shadow-xl transition-all">
-                                          <Image src={url} width={400} height={400} className="w-full h-full object-contain p-4" alt="" />
+                                          <Image src={normalizeImage(url)} width={400} height={400} className="w-full h-full object-contain p-4" alt="" />
                                           <button type="button" onClick={() => removeExistingImage(i)} className="absolute top-4 right-4 bg-rose-500 text-white rounded-xl p-2 opacity-0 group-hover:opacity-100 transition-opacity z-40 shadow-lg"><X size={14}/></button>
 
                                           {/* Visible Quality Badge */}
@@ -897,7 +897,7 @@ function UploadContent() {
                           <div key={p.id} onClick={() => startEditing(p)} className={cn("p-6 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-all group", editingId === p.id && "bg-primary/5 border-l-4 border-primary shadow-inner")}>
                               <div className="flex items-center gap-4 min-w-0">
                                   <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 p-1 flex items-center justify-center shrink-0">
-                                      <Image src={p.image_url} width={100} height={100} className="max-h-full w-auto object-contain" alt="" />
+                                      <Image src={normalizeImage(p.image_url)} width={100} height={100} className="max-h-full w-auto object-contain" alt="" />
                                   </div>
                                   <div className="min-w-0">
                                       <p className="text-xs font-black uppercase truncate text-foreground group-hover:text-primary transition-colors">{p.name}</p>

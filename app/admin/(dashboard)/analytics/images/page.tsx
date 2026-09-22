@@ -15,7 +15,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
+import { cn, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -126,7 +126,7 @@ export default function ImageIntelligencePage() {
                         <Card key={p.id} className="p-6 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm hover:shadow-2xl transition-all group overflow-hidden flex flex-col justify-between h-full">
                             <div className="space-y-6">
                                 <div className="aspect-square rounded-3xl bg-slate-50 border border-slate-100 p-4 flex items-center justify-center relative overflow-hidden">
-                                    <Image src={p.image_url} alt="" fill className="object-contain p-4 group-hover:scale-110 transition-transform duration-700" />
+                                    <Image src={normalizeImage(p.image_url)} alt="" fill className="object-contain p-4 group-hover:scale-110 transition-transform duration-700" />
 
                                     <div className={cn(
                                         "absolute top-4 left-4 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg z-10",

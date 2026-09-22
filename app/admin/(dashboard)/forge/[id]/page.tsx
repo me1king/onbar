@@ -33,7 +33,7 @@ import Image from 'next/image';
 type StudioSection = 'basic' | 'media' | 'pricing' | 'inventory' | 'display' | 'intelligence' | 'search';
 
 interface ForgeProductData {
-    [key: string]: string | number | boolean | string[] | Record<string, number> | Array<{ q: string, a: string }> | Array<{ key: string, value: string }> | undefined;
+    [key: string]: string | number | boolean | string[] | number[] | Record<string, number> | Array<{ q: string, a: string }> | Array<{ key: string, value: string }> | undefined;
     id: number;
     name: string;
     brand: string;
@@ -303,7 +303,7 @@ export default function ProductStudioTerminal() {
                             </div>
                         </div>
 
-                        <Card className="p-10 rounded-[4rem] bg-indigo-600 text-white border-none shadow-2xl relative overflow-hidden group">
+                        <Card className="p-10 rounded-[4rem] bg-slate-900 text-white border-none shadow-2xl relative overflow-hidden group">
                             <div className="relative z-10 space-y-6">
                                 <div className="flex items-center gap-4">
                                     <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20"><ShieldCheck size={20} /></div>
@@ -313,7 +313,7 @@ export default function ProductStudioTerminal() {
                                     &quot;Real-time rendering node active. Every micro-adjustment is visualized instantly. Use this stage to ensure perfect patron presentation.&quot;
                                 </p>
                             </div>
-                            <div className="absolute -bottom-10 -right-10 h-48 w-48 bg-white/5 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-[2s]"></div>
+                            <Zap className="absolute -bottom-10 -right-10 h-64 w-64 text-white/5 rotate-12 -z-0" />
                         </Card>
                     </div>
                 </div>
@@ -388,40 +388,40 @@ export default function ProductStudioTerminal() {
                                 <div className="grid sm:grid-cols-2 gap-8">
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Product Name</label>
-                                        <Input name="name" value={form.name} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" />
+                                        <Input name="name" value={String(form.name || '')} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" />
                                     </div>
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Brand Identifier</label>
-                                        <Input name="brand" value={form.brand} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" />
+                                        <Input name="brand" value={String(form.brand || '')} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" />
                                     </div>
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Origin Node</label>
-                                        <Input name="origin" value={form.origin} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100" placeholder="e.g. South Africa" />
+                                        <Input name="origin" value={String(form.origin || '')} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100" placeholder="e.g. South Africa" />
                                     </div>
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Volume/Size</label>
-                                        <Input name="size_label" value={form.size_label} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100" placeholder="e.g. 750ml" />
+                                        <Input name="size_label" value={String(form.size_label || '')} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100" placeholder="e.g. 750ml" />
                                     </div>
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Manufacturer</label>
-                                        <Input name="manufacturer" value={form.manufacturer} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
+                                        <Input name="manufacturer" value={String(form.manufacturer || '')} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
                                     </div>
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">ABV (%)</label>
-                                        <Input name="abv_label" value={form.abv_label} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
+                                        <Input name="abv_label" value={String(form.abv_label || '')} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
                                     </div>
                                 </div>
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Component Profile (Ingredients CSV)</label>
                                     <Input
-                                        value={form.ingredients?.join(', ')}
+                                        value={(form.ingredients as string[])?.join(', ')}
                                         onChange={e => setForm({...form, ingredients: e.target.value.split(',').map(s => s.trim())})}
                                         className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold"
                                     />
                                 </div>
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Neural Narrative (Description)</label>
-                                    <Textarea name="description" value={form.description} onChange={handleInputChange} className="min-h-[150px] rounded-3xl bg-slate-50 border-slate-100 p-6 font-medium italic resize-none" />
+                                    <Textarea name="description" value={String(form.description || '')} onChange={handleInputChange} className="min-h-[150px] rounded-3xl bg-slate-50 border-slate-100 p-6 font-medium italic resize-none" />
                                 </div>
                                 <div className="space-y-6 text-left">
                                     <div className="flex justify-between items-center text-left">
@@ -429,7 +429,7 @@ export default function ProductStudioTerminal() {
                                         <Button type="button" onClick={() => setForm({...form, faq_data: [...form.faq_data, { q: '', a: '' }]})} variant="outline" className="h-8 w-8 rounded-lg border-slate-100 p-0"><Plus size={14} /></Button>
                                     </div>
                                     <div className="grid gap-3">
-                                        {form.faq_data.map((f, i) => (
+                                        {form.faq_data.map((f: { q: string, a: string }, i: number) => (
                                             <div key={i} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-3 relative group">
                                                 <Input
                                                     value={f.q}
@@ -451,7 +451,7 @@ export default function ProductStudioTerminal() {
                                                     className="min-h-[80px] rounded-xl bg-white border-slate-100 text-[10px] font-medium"
                                                     placeholder="Answer"
                                                 />
-                                                <button type="button" onClick={() => setForm({...form, faq_data: form.faq_data.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 h-8 w-8 text-slate-300 hover:text-rose-500"><X size={16}/></button>
+                                                <button type="button" onClick={() => setForm({...form, faq_data: form.faq_data.filter((_: any, idx: number) => idx !== i)})} className="absolute top-2 right-2 h-8 w-8 text-slate-300 hover:text-rose-500"><X size={16}/></button>
                                             </div>
                                         ))}
                                     </div>
@@ -674,7 +674,13 @@ export default function ProductStudioTerminal() {
                                 </div>
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Badge Override Node</label>
-                                    <Input name="badge_override" value={form.badge_override || ''} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" placeholder="e.g. VVIP ONLY" />
+                                    <Input
+                                        name="badge_override"
+                                        value={String(form.badge_override || '')}
+                                        onChange={handleInputChange}
+                                        className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold"
+                                        placeholder="e.g. VVIP ONLY"
+                                    />
                                 </div>
                                 <div className="space-y-6 text-left">
                                     <div className="flex justify-between items-center text-left">

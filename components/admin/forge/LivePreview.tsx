@@ -4,7 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import { ShoppingBag, Star, ShieldCheck, Truck, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, normalizeImage } from '@/lib/utils';
 
 interface LivePreviewProps {
     product: {
@@ -33,7 +33,7 @@ export default function LivePreview({ product }: LivePreviewProps) {
                 {/* HERO VISUAL */}
                 <div className="relative aspect-[4/3] bg-slate-50 flex items-center justify-center p-12">
                     {product.image_url ? (
-                        <Image src={product.image_url} alt="" fill className="object-contain p-12" />
+                        <Image src={normalizeImage(product.image_url)} alt="" fill className="object-contain p-12" />
                     ) : (
                         <Zap size={64} className="text-slate-100" />
                     )}
