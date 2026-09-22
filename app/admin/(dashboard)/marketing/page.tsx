@@ -22,10 +22,10 @@ import Link from 'next/link';
 
 export default function MarketingOverview() {
     const [stats, setStats] = React.useState({
-        totalReach: 12480,
+        totalReach: 0,
         activeCampaigns: 0,
         generatedOrders: 0,
-        marketingROI: 4.7
+        marketingROI: 0
     });
     const [recentCampaigns, setRecentCampaigns] = React.useState<{ id: string, name: string, type: string, status: string, reach?: number, conversions?: number, products?: { name: string } }[]>([]);
     const [loading, setLoading] = React.useState(true);

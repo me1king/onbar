@@ -142,16 +142,16 @@ export default function CustomerProfilePage() {
     );
 
     if (notFound) return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-white p-8 text-center">
-            <div className="max-w-md space-y-8 animate-in zoom-in-95 duration-700">
-                <div className="h-24 w-24 rounded-3xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 mx-auto shadow-sm">
-                    <ShieldAlert size={48} />
+        <div className="min-h-screen flex flex-col items-center justify-center bg-white p-6 text-center">
+            <div className="max-w-sm space-y-6 animate-in zoom-in-95 duration-700">
+                <div className="h-20 w-20 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 mx-auto shadow-sm">
+                    <ShieldAlert size={40} />
                 </div>
-                <div className="space-y-2">
-                    <h2 className="text-3xl font-black uppercase tracking-tighter text-foreground italic">Identity <span className="text-rose-500">Missing.</span></h2>
-                    <p className="text-slate-400 text-sm font-medium italic">&quot;We were unable to locate a patron record associated with the phone node {phone}. The identity may have been expunged or never established.&quot;</p>
+                <div className="space-y-1">
+                    <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Identity Missing</h2>
+                    <p className="text-slate-400 text-xs font-medium italic">&quot;Record associated with phone node {phone} not found on the grid.&quot;</p>
                 </div>
-                <Button onClick={() => router.push('/admin/customers')} className="h-14 px-8 rounded-2xl bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">
+                <Button onClick={() => router.push('/admin/customers')} className="h-12 px-10 rounded-xl bg-slate-900 text-white font-black uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
                     Return to Registry
                 </Button>
             </div>
@@ -197,25 +197,25 @@ export default function CustomerProfilePage() {
                 {/* LEFT: 360 SUMMARY */}
                 <div className="lg:col-span-4 space-y-8">
                     {/* TOTAL EXPERIENCE SUMMARY */}
-                    <Card className="p-10 rounded-[3.5rem] bg-slate-900 text-white shadow-2xl space-y-10 relative overflow-hidden">
+                    <Card className="p-8 sm:p-10 rounded-[3.5rem] bg-slate-900 text-white shadow-2xl space-y-10 relative overflow-hidden">
                         <div className="relative z-10 space-y-8">
                             <h3 className="text-sm font-black uppercase tracking-[0.4em] text-slate-500">Total Experience</h3>
-                            <div className="grid grid-cols-2 gap-y-6 gap-x-10">
+                            <div className="grid grid-cols-2 gap-y-6 gap-x-6 sm:gap-x-10">
                                 <div className="space-y-1">
                                     <p className="text-[10px] font-black uppercase text-slate-500">Sessions</p>
-                                    <p className="text-2xl font-black">{aggregate.total_sessions}</p>
+                                    <p className="text-xl sm:text-2xl font-black">{aggregate.total_sessions}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[10px] font-black uppercase text-slate-500">Active Time</p>
-                                    <p className="text-2xl font-black">{formatDuration(aggregate.total_active_time_sec)}</p>
+                                    <p className="text-xl sm:text-2xl font-black">{formatDuration(aggregate.total_active_time_sec)}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[10px] font-black uppercase text-slate-500">Pages viewed</p>
-                                    <p className="text-2xl font-black">{aggregate.total_pages_viewed}</p>
+                                    <p className="text-xl sm:text-2xl font-black">{aggregate.total_pages_viewed}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[10px] font-black uppercase text-slate-500">Total Clicks</p>
-                                    <p className="text-2xl font-black">{aggregate.total_clicks.toLocaleString()}</p>
+                                    <p className="text-xl sm:text-2xl font-black">{aggregate.total_clicks.toLocaleString()}</p>
                                 </div>
                             </div>
                         </div>

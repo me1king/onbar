@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import { Bell, X, ShieldAlert, Package, Truck, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -17,12 +18,37 @@ interface Notification {
 }
 
 export default function NotificationCenter({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (open: boolean) => void }) {
-    const [notifications, setNotifications] = React.useState<Notification[]>([
-        { id: '1', type: 'critical', label: 'Payment Discrepancy', meta: 'KES 800 mismatch in Paystack sync', time: '2m ago', url: '/admin/finance', isRead: false },
-        { id: '2', type: 'warning', label: 'Critical Stock Alert', meta: 'Chilled Gin — 3 bottles remaining', time: '11m ago', url: '/admin/upload', isRead: false },
-        { id: '3', type: 'info', label: 'Runner Delayed', meta: 'Runner John K. hasn\'t moved for 15m', time: '23m ago', url: '/admin/dispatch', isRead: true },
-        { id: '4', type: 'success', label: 'Campaign Completed', meta: 'Happy Hour broadcast reached 1,240 patrons', time: '1h ago', url: '/admin/broadcast', isRead: true },
-    ]);
+    const [notifications, setNotifications] = React.useState<Notification[]>([]);
+
+    const fetchNotifications = React.useCallback(async () => {
+        if (!supabase) return;
+        try {
+            // Fetch real system alerts from event_log (V33 Architecture)
+            const { data } = await supabase
+                .from('audit_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(10);
+
+            if (data) {
+                setNotifications(data.map(log => ({
+                    id: String(log.id),
+                    type: log.action.includes('CRITICAL') ? 'critical' : log.action.includes('UPDATE') ? 'info' : 'info',
+                    label: log.action.replace(/_/g, ' '),
+                    meta: log.staff_email || 'System Action',
+                    time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    url: '/admin/audit',
+                    isRead: true
+                })));
+            }
+        } catch (err) {
+            console.error("Alert Node Failure:", err);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        if (isOpen) fetchNotifications();
+    }, [isOpen, fetchNotifications]);
 
     const markAllRead = () => {
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));

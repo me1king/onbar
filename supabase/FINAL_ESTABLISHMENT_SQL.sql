@@ -445,6 +445,23 @@ CREATE TABLE IF NOT EXISTS public.abandoned_carts (
 
 -- 9. VIEWS & RPC ENGINE
 
+CREATE OR REPLACE VIEW public.affiliate_performance_summary AS
+SELECT
+    p.id as affiliate_id,
+    p.full_name,
+    p.email,
+    p.referral_code,
+    p.membership_tier as affiliate_tier,
+    'Verified' as status, -- Simplified for now
+    (SELECT count(*) FROM public.analytics_events WHERE event_name = 'REFERRAL_CLICK' AND payload->>'ref' = p.referral_code) as clicks,
+    (SELECT count(*) FROM public.orders WHERE referred_by_code = p.referral_code) as conversions,
+    (SELECT COALESCE(sum(total_price), 0) FROM public.orders WHERE referred_by_code = p.referral_code) as total_revenue,
+    p.wallet_balance as available_earnings,
+    (SELECT COALESCE(sum(amount), 0) FROM public.financial_ledger fl JOIN public.orders o ON fl.order_id = o.id WHERE o.referred_by_code = p.referral_code AND fl.entry_type = 'AFFILIATE_COMMISSION' AND fl.is_reconciled = false) as pending_earnings,
+    (SELECT max(created_at) FROM public.orders WHERE referred_by_code = p.referral_code) as last_conversion_at
+FROM public.profiles p
+WHERE p.referral_code IS NOT NULL;
+
 CREATE OR REPLACE VIEW public.behavioral_intelligence_pulse AS
 SELECT
     (SELECT count(*) FROM public.customer_sessions WHERE last_seen_at > now() - interval '5 minutes') as live_users,

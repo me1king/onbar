@@ -63,25 +63,25 @@ export default function AutonomousSwitch() {
                         key={s.engine_name}
                         onClick={() => toggleState(s.engine_name, s.is_autonomous)}
                         className={cn(
-                            "p-6 rounded-[2rem] border-2 transition-all group flex flex-col gap-4 text-left relative overflow-hidden",
+                            "p-5 rounded-[1.8rem] border-2 transition-all group flex flex-col gap-3 text-left relative overflow-hidden",
                             s.is_autonomous
                                 ? "bg-emerald-50 border-emerald-500/10 hover:border-emerald-500/20"
                                 : "bg-rose-50 border-rose-500/10 hover:border-rose-500/20"
                         )}
                     >
                         <div className="flex justify-between items-center relative z-10">
-                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{s.engine_name} Engine</span>
-                            {s.is_autonomous ? <Unlock size={14} className="text-emerald-500" /> : <Lock size={14} className="text-rose-500" />}
+                            <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 truncate pr-2">{s.engine_name} Engine</span>
+                            {s.is_autonomous ? <Unlock size={12} className="text-emerald-500" /> : <Lock size={12} className="text-rose-500" />}
                         </div>
 
-                        <div className="space-y-1 relative z-10">
+                        <div className="space-y-0.5 relative z-10">
                             <p className={cn(
-                                "text-lg font-black uppercase tracking-tight",
+                                "text-base font-black uppercase tracking-tight",
                                 s.is_autonomous ? "text-emerald-600" : "text-rose-600"
                             )}>
                                 {s.is_autonomous ? 'Full Auto' : 'Manual Lock'}
                             </p>
-                            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                            <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest leading-none">
                                 {s.is_autonomous ? 'System handles routine actions' : 'Admin approval required'}
                             </p>
                         </div>
