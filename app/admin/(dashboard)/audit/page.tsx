@@ -12,11 +12,13 @@ import {
   Shield,
   Trash,
   PlusCircle,
-  Truck
+  Truck,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, cn } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 
 interface AuditLog {
@@ -31,10 +33,12 @@ interface AuditLog {
 
 interface LogDetails {
   name?: string;
+  title?: string;
+  platform?: string;
   stock?: number;
   price?: number;
   initial_stock?: number;
-  id?: number;
+  id?: number | string;
   newStatus?: string;
   count?: number;
   rider?: string;
@@ -65,6 +69,55 @@ function DetailRenderer({ log }: { log: AuditLog }) {
                 <div className="flex flex-col gap-1">
                     <p className="text-xs font-black text-primary uppercase">New Inventory: {d.name}</p>
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Initial: {d.initial_stock} Bottles @ {formatPrice(d.price)}</span>
+                </div>
+            );
+        case 'DELETE_PRODUCT':
+            return (
+                <div className="flex items-center gap-2 text-rose-500">
+                    <Trash className="h-3 w-3" />
+                    <p className="text-xs font-black uppercase">Product Node Expelled: ID #{d.id}</p>
+                </div>
+            );
+        case 'CREATE_BLOG':
+            return (
+                <div className="flex flex-col gap-1">
+                    <p className="text-xs font-black text-foreground uppercase">Manuscript Authorized: {d.title}</p>
+                    <span className="text-[10px] font-bold text-primary uppercase">Library ID: #{d.id}</span>
+                </div>
+            );
+        case 'UPDATE_BLOG':
+            return (
+                <div className="flex flex-col gap-1">
+                    <p className="text-xs font-black text-foreground uppercase">Manuscript Refined: {d.title}</p>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Version Synced</span>
+                </div>
+            );
+        case 'DELETE_BLOG':
+            return (
+                <div className="flex items-center gap-2 text-rose-500">
+                    <Trash className="h-3 w-3" />
+                    <p className="text-xs font-black uppercase">Manuscript Expunged: ID #{d.id}</p>
+                </div>
+            );
+        case 'UPDATE_PROFILE':
+            return (
+                <div className="flex flex-col gap-1">
+                    <p className="text-xs font-black text-foreground uppercase">Identity Updated: {d.name}</p>
+                    <span className="text-[10px] font-bold text-primary uppercase">Security Sync Complete</span>
+                </div>
+            );
+        case 'SOCIAL_ACCOUNT_CONNECTED':
+            return (
+                <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                    <p className="text-xs font-bold text-foreground uppercase">Channel Linked: <span className="text-primary font-black">{d.platform}</span></p>
+                </div>
+            );
+        case 'SOCIAL_ACCOUNT_DISCONNECTED':
+            return (
+                <div className="flex items-center gap-2 text-rose-500">
+                    <XCircle className="h-3 w-3" />
+                    <p className="text-xs font-black uppercase">Channel Severed: {d.platform}</p>
                 </div>
             );
         case 'UPDATE_ORDER_STATUS':
@@ -209,23 +262,27 @@ export default function AdminAuditPage() {
   }
 
   return (
-    <div className="p-8 space-y-8 bg-slate-50 min-h-screen text-left">
+    <div className="p-8 space-y-8 bg-slate-50 min-h-screen text-left selection:bg-primary/20">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
         <div>
-          <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">Security Audit</h1>
-          <p className="text-slate-500 text-sm font-medium mt-1">Review staff actions and maintain bar security.</p>
+          <div className="flex items-center gap-3 mb-2">
+              <Shield className="h-4 w-4 text-primary" />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary italic">Protocol Integrity Monitor</span>
+          </div>
+          <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">Security <span className="text-primary">Audit.</span></h1>
+          <p className="text-slate-500 text-sm font-medium mt-1 italic">&quot;Review administrative maneuvers and maintain the bar&apos;s digital sovereignty.&quot;</p>
         </div>
         <div className="flex gap-2">
-            <Button onClick={runNuclearPing} variant="outline" className="rounded-xl h-12 px-6 border-primary/20 bg-primary/5 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all">
+            <Button onClick={runNuclearPing} variant="outline" className="rounded-xl h-12 px-6 border-primary/20 bg-primary/5 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all shadow-sm">
                 Test Uplink
             </Button>
             {role === 'owner' && (
                 <Button onClick={clearLogs} variant="outline" className="rounded-xl h-12 px-6 border-rose-100 text-rose-500 hover:bg-rose-50 font-black uppercase text-[10px]">
-                    Clear History
+                    Purge History
                 </Button>
             )}
             <Button onClick={fetchLogs} variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest">
-                <RefreshCcw className="h-4 w-4 mr-2" /> Sync
+                <RefreshCcw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} /> Sync Node
             </Button>
         </div>
       </header>

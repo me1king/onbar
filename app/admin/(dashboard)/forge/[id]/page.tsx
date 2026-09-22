@@ -451,7 +451,7 @@ export default function ProductStudioTerminal() {
                                                     className="min-h-[80px] rounded-xl bg-white border-slate-100 text-[10px] font-medium"
                                                     placeholder="Answer"
                                                 />
-                                                <button type="button" onClick={() => setForm({...form, faq_data: form.faq_data.filter((_: any, idx: number) => idx !== i)})} className="absolute top-2 right-2 h-8 w-8 text-slate-300 hover:text-rose-500"><X size={16}/></button>
+                                                <button type="button" onClick={() => setForm({...form, faq_data: form.faq_data.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 h-8 w-8 text-slate-300 hover:text-rose-500"><X size={16}/></button>
                                             </div>
                                         ))}
                                     </div>
