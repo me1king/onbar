@@ -272,8 +272,8 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
       {/* Quick View Modal (High-Fidelity Restoration) */}
       {showQuickView && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/10 backdrop-blur-md p-4" onClick={() => setShowQuickView(false)}>
-          <Card className="max-w-4xl w-full bg-white max-h-[90dvh] overflow-y-auto rounded-[3rem] border-none shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-8 border-b border-slate-50">
+          <Card className="max-w-4xl w-full bg-white max-h-[90dvh] rounded-[3rem] border-none shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-8 border-b border-slate-50 shrink-0">
               <div className="flex items-center gap-3 text-slate-400">
                 <Globe size={16} />
                 <span className="text-[10px] font-black uppercase tracking-[0.2em]">Nodal Intelligence Preview</span>
@@ -288,95 +288,119 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
               </Button>
             </div>
 
-            <CardContent className="p-10 space-y-12">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-left">
-                {/* Product Image Stage */}
-                <div className="aspect-square overflow-hidden rounded-[2.5rem] bg-slate-50 flex items-center justify-center p-10 border border-slate-100 relative group/stage shadow-inner">
-                  {!imageError ? (
-                    <Image
-                      src={imageUrl}
-                      alt={product.name}
-                      fill
-                      className="object-contain hover:scale-110 transition-transform duration-700 p-10"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-200"><ImageIcon size={64} /></div>
-                  )}
+            <div className="flex-1 overflow-y-auto no-scrollbar">
+              <CardContent className="p-8 sm:p-10 space-y-12">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-left">
+                  {/* Product Image Stage */}
+                  <div className="aspect-square overflow-hidden rounded-[2.5rem] bg-slate-50 flex items-center justify-center p-10 border border-slate-100 relative group/stage shadow-inner">
+                    {!imageError ? (
+                      <Image
+                        src={imageUrl}
+                        alt={product.name}
+                        fill
+                        className="object-contain hover:scale-110 transition-transform duration-700 p-10"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-200"><ImageIcon size={64} /></div>
+                    )}
 
-                  {/* Manufacturer Badge */}
-                  {product.manufacturer && (
-                    <div className="absolute bottom-6 left-6 bg-white/80 backdrop-blur-md px-4 py-2 rounded-xl border border-white/20 shadow-sm">
-                        <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Source Node</p>
-                        <p className="text-[10px] font-black text-foreground uppercase">{product.manufacturer}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Content Node */}
-                <div className="space-y-8 flex flex-col">
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap gap-2">
-                        {product.category && <span className="bg-primary/10 text-primary text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{product.category}</span>}
-                        {product.is_bite && <span className="bg-rose-50 text-rose-500 text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest">🥘 NIGHT BITE</span>}
-                    </div>
-                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tight leading-none italic">
-                      {product.name}
-                    </h1>
-                    <div className="flex items-baseline gap-4">
-                      <p className="text-4xl font-black text-primary tracking-tighter">
-                          {formatPrice(product.price)}
-                      </p>
-                      {isSale && <p className="text-xl font-bold text-slate-300 line-through tracking-tight">{formatPrice(Number(product.old_price))}</p>}
-                    </div>
+                    {/* Source Node Badge */}
+                    {product.manufacturer && (
+                      <div className="absolute bottom-6 left-6 bg-white/80 backdrop-blur-md px-4 py-2 rounded-xl border border-white/20 shadow-sm">
+                          <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Source Node</p>
+                          <p className="text-[10px] font-black text-foreground uppercase">{product.manufacturer}</p>
+                      </div>
+                    )}
                   </div>
 
-                  {/* High Fidelity Specs */}
-                  <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Alcohol (ABV)</p>
-                          <p className="text-sm font-black text-foreground uppercase">{product.abv_label || 'Standard'}</p>
-                      </div>
-                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Unit Volume</p>
-                          <p className="text-sm font-black text-foreground uppercase">{product.size_label || '750ml'}</p>
-                      </div>
-                  </div>
-
-                  {/* Description Node */}
-                  {product.description && (
-                    <div className="flex gap-4 p-6 bg-slate-50/50 rounded-3xl border border-slate-100 italic">
-                        <Info size={20} className="text-primary shrink-0" />
-                        <p className="text-slate-500 text-sm font-medium leading-relaxed">
-                            {product.description}
-                        </p>
-                    </div>
-                  )}
-
-                  {/* Ingredients Node (High-Fidelity) */}
-                  {product.ingredients && Array.isArray(product.ingredients) && product.ingredients.length > 0 && (
+                  {/* Content Node */}
+                  <div className="space-y-8 flex flex-col h-full">
                     <div className="space-y-4">
-                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Component Profile (Ingredients)</p>
-                        <div className="flex flex-wrap gap-2">
-                            {product.ingredients.map((ing: string, i: number) => (
-                                <span key={i} className="px-4 py-2 bg-white border border-slate-100 rounded-xl text-[10px] font-bold text-slate-600 uppercase shadow-sm">{ing}</span>
+                      <div className="flex flex-wrap gap-2">
+                          {product.category && <span className="bg-primary/10 text-primary text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{product.category}</span>}
+                          {product.is_bite && <span className="bg-rose-50 text-rose-500 text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest">🥘 NIGHT BITE</span>}
+                      </div>
+                      <h1 className="text-4xl font-black text-foreground uppercase tracking-tight leading-none italic">
+                        {product.name}
+                      </h1>
+                      <div className="flex items-baseline gap-4">
+                        <p className="text-4xl font-black text-primary tracking-tighter">
+                            {formatPrice(product.price)}
+                        </p>
+                        {isSale && <p className="text-xl font-bold text-slate-300 line-through tracking-tight">{formatPrice(Number(product.old_price))}</p>}
+                      </div>
+                    </div>
+
+                    {/* High Fidelity Specs Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Alcohol (ABV)</p>
+                            <p className="text-xs font-black text-foreground uppercase truncate">{product.abv_label || 'Standard'}</p>
+                        </div>
+                        <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Unit Volume</p>
+                            <p className="text-xs font-black text-foreground uppercase truncate">{product.size_label || '750ml'}</p>
+                        </div>
+                    </div>
+
+                    {/* Description Node */}
+                    {product.description && (
+                      <div className="flex gap-4 p-6 bg-slate-50/50 rounded-3xl border border-slate-100 italic">
+                          <Info size={20} className="text-primary shrink-0" />
+                          <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                              {product.description}
+                          </p>
+                      </div>
+                    )}
+
+                    {/* Technical Protocol (The Missing Detail) */}
+                    <div className="space-y-4">
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Technical Protocol</p>
+                        <div className="grid grid-cols-2 bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden">
+                            {[
+                                { k: 'Type', v: product.category || 'Premium' },
+                                { k: 'Origin', v: product.origin || 'Imported' },
+                                { k: 'Brand', v: product.brand || 'Elite' },
+                                { k: 'Status', v: 'Verified' }
+                            ].map((row, i) => (
+                                <div key={i} className={cn("p-4 border-slate-100", i % 2 === 0 ? "border-r" : "", i < 2 ? "border-b" : "")}>
+                                    <span className="text-[7px] font-black uppercase text-slate-400 block mb-0.5">{row.k}</span>
+                                    <span className="text-[10px] font-black text-foreground uppercase truncate block">{row.v}</span>
+                                </div>
                             ))}
                         </div>
                     </div>
-                  )}
 
-                  {/* Action Terminal */}
-                  <div className="mt-auto pt-8 border-t border-slate-50 flex gap-4">
+                    {/* Ingredients Node */}
+                    {product.ingredients && Array.isArray(product.ingredients) && product.ingredients.length > 0 && (
+                      <div className="space-y-4">
+                          <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Component Profile</p>
+                          <div className="flex flex-wrap gap-2">
+                              {product.ingredients.map((ing: string, i: number) => (
+                                  <span key={i} className="px-3 py-1.5 bg-white border border-slate-100 rounded-lg text-[9px] font-bold text-slate-600 uppercase shadow-sm">{ing}</span>
+                              ))}
+                          </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </div>
+
+            {/* Action Terminal Sticky Bottom */}
+            <div className="p-8 border-t border-slate-50 bg-white shrink-0">
+                <div className="flex gap-4 max-w-4xl mx-auto">
                     <Button
-                      className={cn(
+                        className={cn(
                         'flex-1 h-16 rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-2xl active:scale-95 transition-all border-none',
                         justAdded
-                          ? 'bg-emerald-500 text-white'
-                          : 'bg-primary text-white shadow-primary/20 hover:bg-primary/90'
-                      )}
-                      onClick={handleAddToCart}
-                      disabled={isAdding || (product.stock !== undefined && product.stock === 0)}
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-primary text-white shadow-primary/20 hover:bg-primary/90'
+                        )}
+                        onClick={handleAddToCart}
+                        disabled={isAdding || (product.stock !== undefined && product.stock === 0)}
                     >
-                      {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? 'SECURED IN BAG!' : 'ESTABLISH ORDER'}
+                        {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? 'SECURED IN BAG!' : 'ESTABLISH ORDER'}
                     </Button>
 
                     <button
@@ -388,10 +412,8 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                     >
                         <Heart size={24} fill={isInWishlist(product.id) ? "currentColor" : "none"} />
                     </button>
-                  </div>
                 </div>
-              </div>
-            </CardContent>
+            </div>
           </Card>
         </div>
       )}
