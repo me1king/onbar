@@ -113,8 +113,8 @@ export default function CustomerProfilePage() {
 
             setData({
                 profile,
-                aggregate: aggRes.data || { total_sessions: 0, total_active_time_sec: 0, total_pages_viewed: 0, total_clicks: 0 },
-                intelligence: intRes.data || { intent_score: 0, churn_risk_score: 0 },
+                aggregate: aggRes.data || { total_sessions: 0, total_active_time_sec: 0, total_pages_viewed: 0, total_clicks: 0, total_rage_clicks: 0, total_dead_clicks: 0, top_traffic_source: 'N/A', preferred_device: 'N/A', most_visited_category: 'N/A', most_searched_term: 'N/A' },
+                intelligence: intRes.data || { intent_score: 0, churn_risk_score: 0, predicted_next_action: 'Intelligence node initializing...' },
                 sessions: sessRes.data || [],
                 orders: ordersRes.data || [],
                 preferences: prefRes.data || [],
@@ -227,10 +227,10 @@ export default function CustomerProfilePage() {
                         <h3 className="text-sm font-black uppercase tracking-[0.4em] text-slate-400">Engagement Profile</h3>
                         <div className="space-y-6">
                             {[
-                                { label: 'Top Page', val: aggregate.most_visited_category || 'None Logged' },
-                                { label: 'Top Search', val: aggregate.most_searched_term || 'No Searches' },
-                                { label: 'Preferred Device', val: aggregate.preferred_device || 'Unknown' },
-                                { label: 'Traffic Source', val: aggregate.top_traffic_source || 'Direct' },
+                                { label: 'Top Page', val: aggregate.most_visited_category || 'N/A' },
+                                { label: 'Top Search', val: aggregate.most_searched_term || 'N/A' },
+                                { label: 'Preferred Device', val: aggregate.preferred_device || 'N/A' },
+                                { label: 'Traffic Source', val: aggregate.top_traffic_source || 'N/A' },
                             ].map(item => (
                                 <div key={item.label} className="flex justify-between items-center border-b border-slate-50 pb-4 last:border-0">
                                     <span className="text-[10px] font-black uppercase text-slate-400">{item.label}</span>

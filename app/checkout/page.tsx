@@ -1022,20 +1022,26 @@ function CheckoutContent() {
               )}
 
               {checkoutStatus.type === 'error' && (
-                <div className="space-y-4 mt-4">
-                    <div className="bg-rose-50 text-rose-600 p-6 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest text-center border border-rose-100 shadow-sm animate-in fade-in slide-in-from-top-2">
-                      <p className="mb-4">⚠️ {checkoutStatus.message}</p>
-                      <div className="flex flex-col gap-2">
+                <div className="space-y-4 mt-6">
+                    <div className="bg-rose-50/50 text-rose-600 p-8 rounded-[2.5rem] border border-rose-100 shadow-xl shadow-rose-500/5 animate-in fade-in slide-in-from-top-4 duration-700 text-center">
+                      <div className="flex justify-center mb-6">
+                          <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center text-rose-500 shadow-sm">
+                            <Shield className="h-6 w-6" />
+                          </div>
+                      </div>
+                      <p className="mb-8 text-xs font-black uppercase tracking-[0.1em] leading-relaxed max-w-xs mx-auto">⚠️ {checkoutStatus.message}</p>
+
+                      <div className="flex flex-col gap-3">
                           <Button
                             onClick={handlePlaceOrder}
-                            className="h-12 rounded-xl bg-primary text-white font-black uppercase text-[9px] tracking-widest"
+                            className="h-16 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-[0.2em] shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all border-none"
                           >
                               Retry M-Pesa Protocol
                           </Button>
                           <Button
                             variant="outline"
                             onClick={() => { setPaymentMethod("COD"); setCheckoutStatus({ type: "idle", message: "" }); }}
-                            className="h-12 rounded-xl border-rose-200 text-rose-600 font-black uppercase text-[9px] tracking-widest"
+                            className="h-14 rounded-2xl border-2 border-rose-100 bg-white text-rose-600 font-black uppercase text-[9px] tracking-widest hover:bg-rose-50 transition-all active:scale-95"
                           >
                               Switch to Cash on Delivery
                           </Button>

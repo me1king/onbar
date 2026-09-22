@@ -27,7 +27,9 @@ export default function RootStabilityGuard({ children }: { children: React.React
 
         // 3. Global Error Recovery Listener
         const handleGlobalError = (event: ErrorEvent) => {
-            console.error("[APEX_OS] Panic Signal Captured:", event.error);
+            if (event.error) {
+                console.error("[APEX_OS] Panic Signal Captured:", event.error);
+            }
             // We let the ErrorBoundary handle it if possible, but log it here.
         };
 

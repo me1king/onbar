@@ -63,7 +63,6 @@ export default function BuzzCommandTower() {
                     trend_score: d.trend_score,
                     area_zone: d.area_zone,
                     start_at: d.start_at,
-                    confidence: 88, // Neural simulation
                     category_label: d.buzz_categories?.label || 'General'
                 })));
             }
