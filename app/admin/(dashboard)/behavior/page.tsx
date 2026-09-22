@@ -154,7 +154,7 @@ export default function BehaviorOverview() {
                         <div className="space-y-4">
                             {topScreens.length === 0 ? (
                                 <div className="py-20 text-center opacity-30 flex flex-col items-center gap-4">
-                                    <Globe size={48} className="text-slate-200" />
+                                    <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center border border-slate-100"><Zap size={24} className="text-slate-200" /></div>
                                     <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest italic leading-none">Establishing Signal &bull; No views logged</p>
                                 </div>
                             ) : topScreens.map((screen, idx) => (

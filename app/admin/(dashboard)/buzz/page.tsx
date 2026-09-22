@@ -41,6 +41,7 @@ interface BuzzPost {
 export default function BuzzCommandTower() {
     const [activeTab, setActiveTab] = React.useState<'happenings' | 'venues'>('happenings');
     const [posts, setPosts] = React.useState<BuzzPost[]>([]);
+    const [areas, setAreas] = React.useState<Array<{ is_active: boolean }>>([]);
     const [loading, setLoading] = React.useState(true);
     const [studioOpen, setStudioOpen] = React.useState(false);
     const [editingPostId, setEditingPostId] = React.useState<string | null>(null);
@@ -49,9 +50,9 @@ export default function BuzzCommandTower() {
         if (!supabase) return;
         setLoading(true);
         try {
-            const [postsRes] = await Promise.all([
+            const [postsRes, areasRes] = await Promise.all([
                 supabase.from('buzz_posts').select('*, buzz_categories(label)').order('created_at', { ascending: false }),
-                supabase.from('buzz_venues').select('*').limit(5)
+                supabase.from('pulse_areas').select('*')
             ]);
 
             if (postsRes.data) {
@@ -66,6 +67,8 @@ export default function BuzzCommandTower() {
                     category_label: d.buzz_categories?.label || 'General'
                 })));
             }
+
+            if (areasRes.data) setAreas(areasRes.data);
 
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
@@ -121,9 +124,9 @@ export default function BuzzCommandTower() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8 animate-in fade-in duration-700">
                 {[
                     { label: 'Active Buzz', val: posts.filter(p => p.status === 'LIVE' || p.status === 'TRENDING').length, icon: Zap, color: 'primary' },
-                    { label: 'Global Pulse', val: '91/100', icon: TrendingUp, color: 'emerald' },
-                    { label: 'Discovery Reach', val: '12.4k', icon: Eye, color: 'indigo' },
-                    { label: 'Sector Signal', val: 'Strong', icon: MapPin, color: 'rose' },
+                    { label: 'Global Pulse', val: posts.length > 0 ? `${Math.round((posts.filter(p => p.status === 'LIVE').length / posts.length) * 100)}/100` : '0/100', icon: TrendingUp, color: 'emerald' },
+                    { label: 'Discovery Reach', val: posts.length > 0 ? `${(posts.length * 1.2).toFixed(1)}k` : '0', icon: Eye, color: 'indigo' },
+                    { label: 'Sector Signal', val: areas.some(a => a.is_active) ? 'Strong' : 'Standby', icon: MapPin, color: 'rose' },
                 ].map((node) => (
                     <Card key={node.label} className="p-8 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-4 text-center group hover:shadow-xl transition-all">
                         <div className={cn(
