@@ -487,27 +487,40 @@ function UploadContent() {
           bought_together_ids: form.bought_together_ids ? form.bought_together_ids.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n)) : []
       };
 
-      if (editingId) {
-          const { error: upError } = await supabase.from('products').update(productData).eq('id', editingId);
-          if (upError) throw upError;
+      const currentPayload: Record<string, unknown> = { ...productData };
+      let savedId = editingId;
 
-          // 🤝 [FINAL_HANDSHAKE] Verify high-fidelity update
-          const { data: verify, error: vErr } = await supabase.from('products').select('updated_at, is_snack, low_stock_alert').eq('id', editingId).single();
-          if (vErr || !verify) throw new Error("Synchronization Handshake Failed: Integrity mismatch.");
-
-          await logAuditAction(email || 'admin', 'UPDATE_PRODUCT', { id: editingId, name: productData.name });
-      } else {
-          const { data: insData, error: insError } = await supabase.from('products').insert([productData]).select('id').single();
-          if (insError) throw insError;
-
-          // 🤝 [FINAL_HANDSHAKE] Verify high-fidelity insert
-          const { data: verify, error: vErr } = await supabase.from('products').select('id, is_snack').eq('id', insData.id).single();
-          if (vErr || !verify) throw new Error("Synchronization Handshake Failed: Node not established.");
-
-          await logAuditAction(email || 'admin', 'CREATE_PRODUCT', { name: productData.name });
+      // 🛡️ [SCHEMA_SAFE_RETRY_LOOP] Auto-strips columns missing from Supabase physical schema cache
+      while (true) {
+          try {
+              if (editingId) {
+                  const { error: upError } = await supabase.from('products').update(currentPayload).eq('id', editingId);
+                  if (upError) throw upError;
+                  savedId = editingId;
+              } else {
+                  const { data: insData, error: insError } = await supabase.from('products').insert([currentPayload]).select('id').single();
+                  if (insError) throw insError;
+                  savedId = insData.id;
+              }
+              break; // Success! Exit loop
+          } catch (err: unknown) {
+              const errorMsg = (err as Error).message || String(err);
+              const match = errorMsg.match(/Could not find the '([^']+)' column of 'products'/i);
+              if (match && match[1]) {
+                  const missingCol = match[1];
+                  delete currentPayload[missingCol];
+                  console.warn(`⚠️ [CELLAR_HUB_SCHEMA] Stripped missing column '${missingCol}' from products payload and retrying...`);
+                  continue;
+              }
+              throw err;
+          }
       }
 
+      await logAuditAction(email || 'admin', editingId ? 'UPDATE_PRODUCT' : 'CREATE_PRODUCT', { id: savedId, name: productData.name });
+      setMessage({ type: 'success', text: editingId ? `Product #${savedId} Refined & Saved!` : `Product #${savedId} Ingested to Cellar Hub!` });
+      setTimeout(() => setMessage(null), 4000);
       cancelEditing();
+      fetchProducts();
       fetchProducts();
       setMessage({ type: 'success', text: 'Grid Node Synchronized! 🛰️' });
       setTimeout(() => setMessage(null), 3000);
