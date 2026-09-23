@@ -742,6 +742,18 @@ function UploadContent() {
                               </div>
                           </div>
 
+                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                              <div>
+                                  <p className="text-[8px] font-black uppercase text-slate-400">Estimated Profit Margin</p>
+                                  <p className={cn("text-sm font-black uppercase", profitIntel.profit >= 0 ? "text-emerald-600" : "text-rose-500")}>
+                                      {formatPrice(profitIntel.profit)} per unit ({profitIntel.margin.toFixed(1)}% margin)
+                                  </p>
+                              </div>
+                              <span className="text-[8px] font-black uppercase tracking-widest text-primary px-3 py-1 bg-primary/10 rounded-full">
+                                  {profitIntel.margin > 40 ? 'High Velocity Margin' : 'Standard Tier'}
+                              </span>
+                          </div>
+
                           {/* STRATEGIC OFFER & SALE LINKAGE */}
                           <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                               <div className="space-y-1">

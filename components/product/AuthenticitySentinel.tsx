@@ -9,12 +9,10 @@ import {
     CheckCircle2,
     QrCode,
     X,
-    FileText,
     ExternalLink,
     Download,
     Award,
-    Check,
-    Lock
+    Check
 } from 'lucide-react';
 import Link from 'next/link';
 import jsPDF from 'jspdf';

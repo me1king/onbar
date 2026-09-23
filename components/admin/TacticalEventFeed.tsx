@@ -90,7 +90,6 @@ export default function TacticalEventFeed({
     const [events, setEvents] = React.useState<TacticalEvent[]>(INITIAL_EVENTS);
     const [selectedChannel, setSelectedChannel] = React.useState<string>('ALL');
     const [isLive, setIsLive] = React.useState(true);
-    const [soundEnabled, setSoundEnabled] = React.useState(false);
     const [lastBeatTime, setLastBeatTime] = React.useState<string>('NOW');
 
     // Real-time Supabase Listeners + Simulated Pulse
