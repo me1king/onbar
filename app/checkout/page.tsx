@@ -1022,31 +1022,35 @@ function CheckoutContent() {
               )}
 
               {checkoutStatus.type === 'error' && (
-                <div className="space-y-4 mt-6">
-                    <div className="bg-rose-50/50 text-rose-600 p-8 rounded-[2.5rem] border border-rose-100 shadow-xl shadow-rose-500/5 animate-in fade-in slide-in-from-top-4 duration-700 text-center">
-                      <div className="flex justify-center mb-6">
-                          <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center text-rose-500 shadow-sm">
-                            <Shield className="h-6 w-6" />
+                <div className="space-y-4 mt-8">
+                    <Card className="bg-slate-900 text-white rounded-[3.5rem] border-none shadow-2xl animate-in zoom-in-95 duration-700 relative overflow-hidden">
+                      <div className="p-10 sm:p-12 relative z-10 text-center">
+                          <div className="flex justify-center mb-8">
+                              <div className="h-16 w-16 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-lg shadow-rose-500/20">
+                                <Shield className="h-8 w-8" />
+                              </div>
+                          </div>
+                          <h3 className="text-2xl font-black uppercase tracking-tighter mb-4">Protocol Conflict</h3>
+                          <p className="mb-12 text-sm font-medium text-slate-400 italic leading-relaxed max-w-xs mx-auto">&quot;{checkoutStatus.message}&quot;</p>
+
+                          <div className="flex flex-col gap-4">
+                              <Button
+                                onClick={handlePlaceOrder}
+                                className="h-18 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all border-none"
+                              >
+                                  Retry M-Pesa Protocol
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => { setPaymentMethod("COD"); setCheckoutStatus({ type: "idle", message: "" }); }}
+                                className="h-16 rounded-2xl border-2 border-slate-800 bg-transparent text-slate-400 font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 hover:text-white transition-all active:scale-95"
+                              >
+                                  Switch to Cash on Delivery
+                              </Button>
                           </div>
                       </div>
-                      <p className="mb-8 text-xs font-black uppercase tracking-[0.1em] leading-relaxed max-w-xs mx-auto">⚠️ {checkoutStatus.message}</p>
-
-                      <div className="flex flex-col gap-3">
-                          <Button
-                            onClick={handlePlaceOrder}
-                            className="h-16 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-[0.2em] shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all border-none"
-                          >
-                              Retry M-Pesa Protocol
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => { setPaymentMethod("COD"); setCheckoutStatus({ type: "idle", message: "" }); }}
-                            className="h-14 rounded-2xl border-2 border-rose-100 bg-white text-rose-600 font-black uppercase text-[9px] tracking-widest hover:bg-rose-50 transition-all active:scale-95"
-                          >
-                              Switch to Cash on Delivery
-                          </Button>
-                      </div>
-                    </div>
+                      <Zap className="absolute -bottom-10 -left-10 h-64 w-64 text-white/5 rotate-12 -z-0" />
+                    </Card>
                 </div>
               )}
 

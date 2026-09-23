@@ -160,7 +160,7 @@ export default function MarketingOverview() {
                         <div className="relative z-10 space-y-8 text-left h-full flex flex-col justify-between">
                             <div>
                                 <div className="flex justify-between items-center mb-10">
-                                    <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">Channel Mastery</h3>
+                                    <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">Channel Reach</h3>
                                     <div className="flex -space-x-2">
                                         <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center border-2 border-slate-50 shadow-sm"><Instagram size={14} className="text-primary" /></div>
                                         <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center border-2 border-slate-50 shadow-sm"><MessageCircle size={14} className="text-emerald-500" /></div>
@@ -171,20 +171,20 @@ export default function MarketingOverview() {
                                 <div className="space-y-8">
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                                            <span>WhatsApp Conversion</span>
-                                            <span className="text-emerald-500">12.4%</span>
+                                            <span>Organic Conversion</span>
+                                            <span className="text-primary">0%</span>
                                         </div>
                                         <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                                            <div className="h-full bg-emerald-500 w-[72%]"></div>
+                                            <div className="h-full bg-primary w-0"></div>
                                         </div>
                                     </div>
                                     <div className="space-y-3 text-left">
                                         <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                                            <span>Organic Reach</span>
+                                            <span>Current Audience</span>
                                             <span className="text-primary">{stats.totalReach.toLocaleString()}</span>
                                         </div>
                                         <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                                            <div className="h-full bg-primary" style={{ width: `${Math.min(100, (stats.totalReach / 5000) * 100)}%` }}></div>
+                                            <div className="h-full bg-primary" style={{ width: `${Math.min(100, (stats.totalReach / 1000) * 100)}%` }}></div>
                                         </div>
                                     </div>
                                 </div>
@@ -192,38 +192,18 @@ export default function MarketingOverview() {
 
                             <Link href="/admin/analytics" className="mt-auto">
                                 <Button className="w-full h-16 rounded-[1.5rem] bg-primary text-white font-black uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-primary/20 active:scale-95 transition-all">
-                                    Analyze Funnel Details
+                                    Deep Analytics &rarr;
                                 </Button>
                             </Link>
                         </div>
                     </Card>
 
-                    <div className="p-8 rounded-[3rem] bg-white border border-border shadow-sm space-y-6 text-left">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm"><Users className="h-5 w-5" /></div>
-                            <h3 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none">Personalization</h3>
-                        </div>
+                    <div className="p-8 rounded-[3rem] bg-slate-50 border border-slate-100 shadow-inner space-y-6 text-left group">
+                        <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center text-primary shadow-sm"><Zap className="h-5 w-5" /></div>
+                        <h4 className="text-lg font-black uppercase text-foreground leading-none tracking-tighter">Campaign Intelligence</h4>
                         <p className="text-[10px] text-muted-foreground font-medium leading-relaxed italic">
-                            &quot;Current category affinity maps show premium preference for Vintages. Personalized &apos;Happy Hour&apos; triggers active for Gold VIPs.&quot;
+                            &quot;The marketing node is in standby. Launch a campaign to begin gathering audience conversion data and ROI metrics.&quot;
                         </p>
-                        <div className="pt-4 border-t border-border flex justify-between items-center">
-                            <span className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">Logic Active</span>
-                            <span className="text-xs font-black text-foreground">84% Yield</span>
-                        </div>
-                    </div>
-
-                    <div className="p-8 rounded-[3rem] bg-white border border-border shadow-sm space-y-6 text-left">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><BarChart3 className="h-5 w-5" /></div>
-                            <h3 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none">Yield Insight</h3>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground font-medium leading-relaxed italic">
-                            &quot;Patron broadcasts on Friday evenings see a 40% higher open rate. I recommend scheduling the Weekend Bar Drop for 06:30 PM today.&quot;
-                        </p>
-                        <div className="pt-4 border-t border-border flex justify-between items-center">
-                            <span className="text-[8px] font-black text-primary uppercase tracking-widest">Confidence Score</span>
-                            <span className="text-xs font-black text-foreground">92%</span>
-                        </div>
                     </div>
                 </div>
             </div>
