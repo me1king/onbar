@@ -108,17 +108,9 @@ export default function AllProductsPage() {
             <p className="text-slate-400 font-black uppercase tracking-[0.2em]">The cellar is currently empty.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 sm:gap-x-8 gap-y-8 sm:gap-y-12">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-x-4 sm:gap-x-8 gap-y-8 sm:gap-y-12">
             {products.map((item) => (
-              <ProductCard key={item.id} product={{
-                  id: item.id,
-                  name: item.name,
-                  price: item.price,
-                  description: item.description,
-                  image: item.image_url,
-                  stock: item.stock,
-                  sizes: item.sizes
-              }} />
+              <ProductCard key={item.id} product={item} />
             ))}
           </div>
         )}

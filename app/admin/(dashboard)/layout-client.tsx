@@ -41,7 +41,8 @@ import {
   Calendar,
   Smartphone,
   Zap,
-  Utensils
+  Utensils,
+  Camera as CameraIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -174,6 +175,7 @@ export default function AdminLayoutClient({
       { name: 'VIP Rewards', href: '/admin/gamification', icon: Trophy, permission: 'can_manage_settings' },
     ]},
     { group: 'GROWTH', items: [
+      { name: 'Tactical Camera', href: '/admin/growth/camera', icon: CameraIcon, permission: 'can_manage_marketing' },
       { name: 'Content Studio', href: '/admin/growth/content', icon: LayoutIcon, permission: 'can_manage_marketing' },
       { name: 'Tactical Calendar', href: '/admin/growth/calendar', icon: Calendar, permission: 'can_manage_marketing' },
       { name: 'Smart Autopilot', href: '/admin/growth/autopilot', icon: Bot, permission: 'can_manage_marketing' },

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
   Plus,
   RefreshCcw,
@@ -945,6 +946,13 @@ export default function AdminOrdersPage() {
               </div>
           </div>
       )}
+
+      <div className="pt-8">
+          <TacticalEventFeed
+              title="Dispatch Queue Operations Stream"
+              subtitle="Live Real-time Dispatch Orders & Runner Status Ticker"
+          />
+      </div>
     </div>
   );
 }

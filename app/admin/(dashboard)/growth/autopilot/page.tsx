@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
     Bot,
     Plus,
@@ -174,6 +175,13 @@ export default function AutopilotManagement() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div className="pt-6">
+                <TacticalEventFeed
+                    title="Autopilot Neural Stream"
+                    subtitle="Live Automated Slot Execution & Pipeline Monitoring"
+                />
             </div>
         </div>
     );

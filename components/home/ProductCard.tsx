@@ -222,14 +222,16 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                 <h2 className="text-sm sm:text-base font-black text-foreground uppercase tracking-tight leading-tight line-clamp-2 transition-colors group-hover/link:text-primary break-words">
                     {product.name}
                 </h2>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                    <span className="truncate max-w-[70px]">{product.origin || 'Imported'}</span>
-                    <div className="h-1 w-1 rounded-full bg-slate-200 shrink-0" />
-                    <span className="shrink-0">{product.size_label || 'Standard'}</span>
-                    {product.abv_label && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                    <span className="truncate max-w-[90px] text-slate-700 font-extrabold">{product.origin || product.beverage_specs?.origin || 'Imported'}</span>
+                    <div className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />
+                    <span className="shrink-0 font-extrabold text-slate-700">{product.size_label || (product.sizes && product.sizes[0]) || '750ml'}</span>
+                    {(product.abv_label || product.beverage_specs?.abv) && (
                         <>
-                            <div className="h-1 w-1 rounded-full bg-slate-200 shrink-0" />
-                            <span className="shrink-0">{product.abv_label} ABV</span>
+                            <div className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />
+                            <span className="shrink-0 font-extrabold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80">
+                                {product.abv_label || product.beverage_specs?.abv}
+                            </span>
                         </>
                     )}
                 </div>

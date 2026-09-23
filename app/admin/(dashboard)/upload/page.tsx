@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, Suspense } from 'react';
 import Image from 'next/image';
+import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -74,6 +75,14 @@ const initialForm = {
   length_cm: '',
   width_cm: '',
   height_cm: '',
+  abv_label: '40% ABV',
+  origin: 'Imported',
+  region: 'Highlands',
+  body: 'Medium',
+  sweetness: 'Off-dry',
+  size_label: '750ml',
+  manufacturer: '',
+  glassware: 'Highball Glass',
   sensory_metrics_body: '60',
   sensory_metrics_sweet: '60',
   sensory_metrics_smoke: '20',
@@ -86,6 +95,13 @@ interface Product {
   id: number;
   name: string;
   brand?: string;
+  origin?: string;
+  region?: string;
+  body?: string;
+  sweetness?: string;
+  abv_label?: string;
+  size_label?: string;
+  manufacturer?: string;
   sku?: string;
   model_number?: string;
   price: number;
@@ -167,6 +183,7 @@ function UploadContent() {
   // Section States
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
       basic: true,
+      beverageSpecs: true,
       pricing: true,
       inventory: true,
       description: true,
@@ -336,16 +353,25 @@ function UploadContent() {
       ...initialForm,
       name: product.name || '',
       brand: product.brand || '',
+      origin: product.origin || product.beverage_specs?.origin || 'Imported',
+      region: product.region || product.beverage_specs?.region || 'Highlands',
+      body: product.body || product.beverage_specs?.body || 'Medium',
+      sweetness: product.sweetness || product.beverage_specs?.sweetness || 'Off-dry',
+      abv_label: product.abv_label || product.beverage_specs?.abv || '40% ABV',
+      size_label: product.size_label || (Array.isArray(product.sizes) ? product.sizes[0] : '750ml'),
+      manufacturer: product.manufacturer || '',
+      glassware: product.beverage_specs?.glassware || 'Highball Glass',
       category: product.category || 'wine',
       sku: product.sku || '',
       price: String(product.price ?? ''),
       cost_price: String(product.cost_price ?? ''),
       old_price: String(product.old_price ?? ''),
       description: product.description || '',
-      sizes: Array.isArray(product.sizes) ? product.sizes.join(',') : 'Standard',
+      sizes: Array.isArray(product.sizes) ? product.sizes.join(',') : '750ml',
       stock: String(product.stock ?? '0'),
       is_featured: product.is_featured || false,
       is_snack: product.is_snack || false,
+      is_on_offer: product.is_on_offer || (product.old_price ? Number(product.old_price) > Number(product.price) : false),
       sensory_metrics_body: String(product.sensory_metrics?.body ?? '60'),
       sensory_metrics_sweet: String(product.sensory_metrics?.sweet ?? '60'),
       sensory_metrics_smoke: String(product.sensory_metrics?.smoke ?? '20'),
@@ -413,14 +439,30 @@ function UploadContent() {
       const vStock: Record<string, number> = {};
       currentVariants.forEach(v => vStock[v] = Number(variantStock[v] || 0));
 
-      const specs: Record<string, string> = {};
+      const specs: Record<string, string> = {
+          abv: form.abv_label,
+          origin: form.origin,
+          region: form.region,
+          body: form.body,
+          sweetness: form.sweetness,
+          glassware: form.glassware
+      };
       beverageSpecs.forEach(s => { if (s.key) specs[s.key] = s.value; });
 
       const productData = {
           name: form.name.trim(),
           brand: form.brand.trim(),
+          origin: form.origin.trim(),
+          region: form.region.trim(),
+          body: form.body.trim(),
+          sweetness: form.sweetness.trim(),
+          abv_label: form.abv_label.trim(),
+          size_label: form.size_label.trim(),
+          manufacturer: form.manufacturer.trim(),
           price: Number(form.price),
+          old_price: form.old_price ? Number(form.old_price) : null,
           cost_price: Number(form.cost_price),
+          is_on_offer: form.is_on_offer || (form.old_price ? Number(form.old_price) > Number(form.price) : false),
           description: form.description,
           image_url: imageUrls[0] || '',
           images: imageUrls,
@@ -587,6 +629,74 @@ function UploadContent() {
                   )}
               </Card>
 
+              {/* BEVERAGE SPECS & ORIGIN NODE */}
+              <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
+                  <button type="button" onClick={() => toggleSection('beverageSpecs')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
+                      <div className="flex items-center gap-4">
+                          <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shadow-sm"><Wine className="h-5 w-5" /></div>
+                          <div className="text-left">
+                              <h2 className="text-lg font-black text-foreground uppercase tracking-tighter">Beverage Specs & Origin</h2>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Alcohol %, Country of Origin, Volume & Serve</p>
+                          </div>
+                      </div>
+                      {openSections.beverageSpecs ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
+                  </button>
+                  {openSections.beverageSpecs && (
+                      <CardContent className="p-10 pt-0 space-y-6 text-left">
+                          <div className="grid sm:grid-cols-3 gap-6">
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Alcohol Content (% ABV)</label>
+                                  <Input name="abv_label" value={form.abv_label} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-black text-amber-600" placeholder="e.g. 40% ABV" />
+                              </div>
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Place / Country of Origin</label>
+                                  <Input name="origin" value={form.origin} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. Ireland, Scotland, France, SA" />
+                              </div>
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Region / Terroir</label>
+                                  <Input name="region" value={form.region} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. Highlands, Bordeaux, Stellenbosch" />
+                              </div>
+                          </div>
+
+                          <div className="grid sm:grid-cols-3 gap-6">
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Volume / Bottle Size</label>
+                                  <Input name="size_label" value={form.size_label} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. 750ml, 1L, 350ml" />
+                              </div>
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Beverage Body Profile</label>
+                                  <select name="body" value={form.body} onChange={handleInputChange} className="w-full h-14 rounded-2xl border border-slate-100 bg-slate-50 px-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-primary">
+                                      <option value="Light">Light</option>
+                                      <option value="Medium">Medium</option>
+                                      <option value="Full-bodied">Full-bodied</option>
+                                      <option value="Crisp">Crisp</option>
+                                  </select>
+                              </div>
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Sweetness Profile</label>
+                                  <select name="sweetness" value={form.sweetness} onChange={handleInputChange} className="w-full h-14 rounded-2xl border border-slate-100 bg-slate-50 px-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-primary">
+                                      <option value="Dry">Dry</option>
+                                      <option value="Off-dry">Off-dry</option>
+                                      <option value="Medium Sweet">Medium Sweet</option>
+                                      <option value="Sweet">Sweet</option>
+                                  </select>
+                              </div>
+                          </div>
+
+                          <div className="grid sm:grid-cols-2 gap-6">
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Distillery / Manufacturer</label>
+                                  <Input name="manufacturer" value={form.manufacturer} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-medium" placeholder="e.g. Midleton Distillery" />
+                              </div>
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Perfect Serve Glassware</label>
+                                  <Input name="glassware" value={form.glassware} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-medium" placeholder="e.g. Highball Glass, Tumbler, Flute" />
+                              </div>
+                          </div>
+                      </CardContent>
+                  )}
+              </Card>
+
               {/* PRICING & ECONOMICS */}
               <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
                   <button type="button" onClick={() => toggleSection('pricing')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
@@ -607,14 +717,56 @@ function UploadContent() {
                                   <Input type="number" name="price" value={form.price} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-black text-xl text-primary" required />
                               </div>
                               <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Original Price (Before Discount)</label>
+                                  <Input type="number" name="old_price" value={form.old_price} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold text-slate-400 line-through" placeholder="e.g. 2800" />
+                              </div>
+                              <div className="space-y-2 text-left">
                                   <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Unit Cost</label>
                                   <Input type="number" name="cost_price" value={form.cost_price} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold text-slate-500" />
                               </div>
-                              <div className="bg-slate-50 rounded-2xl p-4 flex flex-col justify-center border border-slate-100">
-                                  <p className="text-[8px] font-black uppercase text-slate-400">Profit Margin</p>
-                                  <h3 className={cn("text-xl font-black", profitIntel.profit > 0 ? "text-emerald-500" : "text-rose-500")}>
-                                      {formatPrice(profitIntel.profit)} <span className="text-[10px] opacity-60">({profitIntel.margin.toFixed(1)}%)</span>
-                                  </h3>
+                          </div>
+
+                          {/* STRATEGIC OFFER & SALE LINKAGE */}
+                          <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                              <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                      <Zap className="h-4 w-4 text-amber-600 fill-current" />
+                                      <span className="text-xs font-black uppercase text-amber-900 tracking-tight">Strategic Offer & Sale Link</span>
+                                  </div>
+                                  <p className="text-[10px] font-medium text-amber-800">
+                                      Enabling offer mode publishes this drink directly to <span className="font-extrabold underline">/shop/category/sale</span> with discount badges.
+                                  </p>
+                              </div>
+
+                              <div className="flex items-center gap-3 self-end sm:self-center">
+                                  <Button
+                                      type="button"
+                                      onClick={() => {
+                                          const currentPrice = Number(form.price) || 2000;
+                                          const beforeDiscount = Math.round(currentPrice * 1.25);
+                                          setForm(prev => ({
+                                              ...prev,
+                                              old_price: String(beforeDiscount),
+                                              is_on_offer: true,
+                                              category: 'sale'
+                                          }));
+                                      }}
+                                      variant="outline"
+                                      className="h-10 px-3 rounded-xl border-amber-300 text-amber-900 bg-white hover:bg-amber-100 font-black uppercase text-[9px] tracking-widest shadow-sm"
+                                  >
+                                      Apply 20% Offer
+                                  </Button>
+
+                                  <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-xl border border-amber-200">
+                                      <input
+                                          type="checkbox"
+                                          name="is_on_offer"
+                                          checked={!!form.is_on_offer}
+                                          onChange={handleInputChange}
+                                          className="h-4 w-4 accent-amber-600 rounded"
+                                      />
+                                      <span className="text-[10px] font-black uppercase text-amber-900">Active Offer</span>
+                                  </label>
                               </div>
                           </div>
                       </CardContent>
@@ -817,14 +969,116 @@ function UploadContent() {
                                 </div>
                             </div>
 
-                            <div className="grid sm:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Pairing Suggestions (CSV)</label>
-                                    <Input name="pairing_suggestions" value={form.pairing_suggestions} onChange={handleInputChange} placeholder="e.g. Meat, Cheese" className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
+                            <div className="space-y-6 pt-4 border-t border-slate-100">
+                                {/* PAIRING CHIPS */}
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Food Pairing Suggestions</label>
+                                        <span className="text-[8px] font-bold text-slate-400 uppercase">Tap chip to toggle</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {['Nyama Choma', 'BBQ Ribs', 'Smoked Brisket', 'Burgers', 'Dark Chocolate', 'Oysters', 'Aged Cheese', 'Sea Salt Crackers'].map(preset => {
+                                            const active = (form.pairing_suggestions || '').split(',').map(s => s.trim()).includes(preset);
+                                            return (
+                                                <button
+                                                    key={preset}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const current = form.pairing_suggestions ? form.pairing_suggestions.split(',').map(s => s.trim()).filter(Boolean) : [];
+                                                        const exists = current.includes(preset);
+                                                        const updated = exists ? current.filter(p => p !== preset) : [...current, preset];
+                                                        setForm(prev => ({ ...prev, pairing_suggestions: updated.join(', ') }));
+                                                    }}
+                                                    className={cn(
+                                                        "px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all border",
+                                                        active
+                                                            ? "bg-primary text-white border-primary shadow-sm"
+                                                            : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+                                                    )}
+                                                >
+                                                    {active ? '✓ ' : '+ '}{preset}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <Input name="pairing_suggestions" value={form.pairing_suggestions} onChange={handleInputChange} placeholder="Custom CSV e.g. Meat, Cheese" className="h-12 rounded-2xl bg-slate-50 border-slate-100 font-medium text-xs mt-2" />
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Bought Together IDs (CSV)</label>
-                                    <Input name="bought_together_ids" value={form.bought_together_ids} onChange={handleInputChange} placeholder="e.g. 12, 45" className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-mono" />
+
+                                {/* VISUAL BUNDLE UPSELL SELECTOR */}
+                                <div className="space-y-3 pt-4 border-t border-slate-100">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Bundle Upsell Products ("Frequently Bought Together")</label>
+                                        <span className="text-[8px] font-bold text-primary uppercase">Select products to offer in bundle</span>
+                                    </div>
+
+                                    {/* Currently selected bundle products */}
+                                    <div className="flex flex-wrap gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100 min-h-[50px] items-center">
+                                        {(() => {
+                                            const selectedIds = (form.bought_together_ids || '').split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0);
+                                            if (selectedIds.length === 0) {
+                                                return <p className="text-[10px] font-bold text-slate-400 uppercase italic">No bundle products linked yet. Select below to add.</p>;
+                                            }
+                                            return selectedIds.map(id => {
+                                                const pMatch = products.find(p => p.id === id);
+                                                return (
+                                                    <div key={id} className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-200 shadow-sm">
+                                                        {pMatch?.image_url && (
+                                                            <div className="h-6 w-6 relative rounded bg-slate-50 overflow-hidden">
+                                                                <Image src={normalizeImage(pMatch.image_url)} alt="" fill className="object-contain" />
+                                                            </div>
+                                                        )}
+                                                        <span className="text-[9px] font-black uppercase text-slate-800">{pMatch?.name || `ID #${id}`}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = selectedIds.filter(i => i !== id);
+                                                                setForm(prev => ({ ...prev, bought_together_ids: updated.join(', ') }));
+                                                            }}
+                                                            className="h-4 w-4 rounded-full bg-slate-100 text-slate-400 hover:bg-rose-500 hover:text-white flex items-center justify-center transition-all"
+                                                        >
+                                                            <X size={10} />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            });
+                                        })()}
+                                    </div>
+
+                                    {/* Catalog Dropdown Picker */}
+                                    <div className="space-y-2">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase">Click to add from store catalog:</p>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto no-scrollbar p-1">
+                                            {products.filter(p => p.id !== editingId).map(p => {
+                                                const selectedIds = (form.bought_together_ids || '').split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0);
+                                                const isSelected = selectedIds.includes(p.id);
+
+                                                return (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const updated = isSelected ? selectedIds.filter(i => i !== p.id) : [...selectedIds, p.id];
+                                                            setForm(prev => ({ ...prev, bought_together_ids: updated.join(', ') }));
+                                                        }}
+                                                        className={cn(
+                                                            "p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all",
+                                                            isSelected ? "bg-primary/10 border-primary text-primary" : "bg-white border-slate-100 hover:border-slate-300 text-slate-700"
+                                                        )}
+                                                    >
+                                                        <div className="h-7 w-7 relative rounded bg-slate-50 shrink-0">
+                                                            <Image src={normalizeImage(p.image_url)} alt="" fill className="object-contain" />
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-[8px] font-black uppercase truncate">{p.name}</p>
+                                                            <p className="text-[7px] font-bold text-slate-400">{formatPrice(p.price)}</p>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <Input name="bought_together_ids" value={form.bought_together_ids} onChange={handleInputChange} placeholder="Raw IDs CSV e.g. 12, 45" className="h-10 rounded-xl bg-slate-50 border-slate-100 font-mono text-xs hidden" />
                                 </div>
                             </div>
                       </CardContent>
@@ -913,6 +1167,13 @@ function UploadContent() {
                   </div>
               </div>
           </div>
+        </div>
+
+        <div className="pt-8">
+            <TacticalEventFeed
+                title="Cellar Hub Real-time Stock Stream"
+                subtitle="Live Inventory Ingestion & Stock Rebalance Telemetry"
+            />
         </div>
       </div>
     </div>

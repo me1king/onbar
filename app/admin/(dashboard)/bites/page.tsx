@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
     Utensils,
     Flame,
@@ -188,6 +189,13 @@ export default function BiteCommandCenter() {
                     ))}
                 </div>
             </section>
+
+            <div className="pt-6">
+                <TacticalEventFeed
+                    title="Bite Command Kitchen Telemetry"
+                    subtitle="Live Food & Munchie Station Order Stream"
+                />
+            </div>
 
         </div>
     );

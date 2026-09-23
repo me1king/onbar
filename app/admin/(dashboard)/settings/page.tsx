@@ -55,7 +55,15 @@ const DEFAULTS = {
     seo_config: { title: "Online Bar | Premium Drinks", description: "Premium wine, spirits and snacks delivery in Nairobi.", keywords: "Wine delivery, Whiskey Nairobi, Late night snacks, Kenya Bar", og_image: "" },
     social_links: { instagram: "", tiktok: "", facebook: "", x: "", youtube: "" },
     store_info: { name: "ONLINE BAR", hours: "24/7 Dispatch", google_maps: "", footer_copy: "© 2026 Online Bar™" },
-    ai_config: { build_setup_limit: 5000, assistant_name: "Bar AI", response_style: "Premium" },
+    ai_config: {
+        build_setup_limit: 5000,
+        assistant_name: "Bar AI",
+        response_style: "Premium",
+        google_gemini_api_key: "",
+        openai_api_key: "",
+        anthropic_claude_api_key: "",
+        primary_gateway: "AUTO"
+    },
     onboarding_config: {
         rider_steps: [
             { id: 'welcome', label: 'Welcome Screen', enabled: true },
@@ -101,6 +109,15 @@ export default function AdminSettingsPage() {
     const [social, setSocial] = useState(DEFAULTS.social_links);
     const [store, setStore] = useState(DEFAULTS.store_info);
     const [aiConfig, setAiConfig] = useState(DEFAULTS.ai_config);
+    const [gatewaysConfig, setGatewaysConfig] = useState({
+        paystack_secret_key: '',
+        paystack_public_key: '',
+        mpesa_consumer_key: '',
+        mpesa_consumer_secret: '',
+        mpesa_shortcode: '174379',
+        mpesa_passkey: '',
+        google_maps_api_key: ''
+    });
     const [onboarding, setOnboarding] = useState(DEFAULTS.onboarding_config);
     const [features, setFeatures] = useState({
         ai_concierge_enabled: true,
@@ -620,6 +637,38 @@ export default function AdminSettingsPage() {
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* BATCH SYNC SALE & OFFERS BUTTON */}
+                                    <div className="pt-2">
+                                        <Button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (!supabase) return;
+                                                try {
+                                                    // Fetch top items to mark as active sale items
+                                                    const { data: drinks } = await supabase.from('products').select('id, price, old_price').limit(10);
+                                                    if (drinks) {
+                                                        const discount = promotions.discount_percent || 20;
+                                                        const updates = drinks.map(d => ({
+                                                            id: d.id,
+                                                            is_on_offer: true,
+                                                            old_price: d.old_price ? d.old_price : Math.round(d.price * (1 + discount / 100))
+                                                        }));
+
+                                                        for (const u of updates) {
+                                                            await supabase.from('products').update({ is_on_offer: u.is_on_offer, old_price: u.old_price }).eq('id', u.id);
+                                                        }
+                                                        alert(`Happy Hour Discount (${discount}%) synced across ${drinks.length} drinks! All items now live in /shop/category/sale 🚀`);
+                                                    }
+                                                } catch (err: unknown) {
+                                                    alert(`Sync Error: ${(err as Error).message}`);
+                                                }
+                                            }}
+                                            className="w-full h-14 rounded-2xl bg-emerald-600 text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-emerald-500 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <Zap size={18} className="fill-current" /> Sync Happy Hour Discounts to Sale Category (/shop/category/sale)
+                                        </Button>
+                                    </div>
                                 </div>
                             </Card>
 
@@ -831,21 +880,142 @@ export default function AdminSettingsPage() {
                     {activeTab === 'ai' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
                             <Card className="rounded-[3rem] border border-slate-100 p-10 bg-white shadow-sm space-y-10 text-left">
-                                <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><Bot className="h-5 w-5 text-primary" /> Mixology Intelligence</h2>
-                                <div className="space-y-6">
-                                    <div className="grid sm:grid-cols-2 gap-6">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black uppercase text-muted-foreground">Party Package Limit (KES)</label>
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-6">
+                                    <div>
+                                        <h2 className="text-2xl font-black text-foreground uppercase flex items-center gap-3"><Bot className="h-6 w-6 text-primary" /> AI Gateway Linkage Hub</h2>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Configure & Link Generative AI Providers for Bar Copy, Voice & Vision</p>
+                                    </div>
+                                    <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                        GATEWAYS ACTIVE
+                                    </span>
+                                </div>
+
+                                <div className="space-y-8">
+                                    {/* AI GATEWAY KEYS SECTION */}
+                                    <div className="space-y-6">
+                                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Generative API Gateways</h3>
+
+                                        {/* Google Gemini */}
+                                        <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-black uppercase text-foreground">Google Gemini 1.5 Flash API Key</label>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={async () => {
+                                                        try {
+                                                            const res = await fetch('/api/admin/ai/verify', {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ provider: 'GEMINI', apiKey: aiConfig.google_gemini_api_key })
+                                                            });
+                                                            const data = await res.json();
+                                                            alert(data.message || `${data.status}`);
+                                                        } catch (err) {
+                                                            alert(`Gemini Link Test Error: ${err}`);
+                                                        }
+                                                    }}
+                                                    className="h-8 px-3 rounded-xl border-slate-200 text-slate-600 hover:text-primary text-[8px] font-black uppercase"
+                                                >
+                                                    <Zap size={12} className="mr-1 text-amber-500 fill-current" /> Test Gemini Gateway
+                                                </Button>
+                                            </div>
                                             <Input
-                                                type="number"
-                                                value={aiConfig.build_setup_limit}
-                                                onChange={e => setAiConfig({...aiConfig, build_setup_limit: Number(e.target.value)})}
-                                                className="h-14 rounded-2xl bg-secondary border-border font-black text-lg text-foreground"
+                                                type="password"
+                                                placeholder="AIzaSy..."
+                                                value={aiConfig.google_gemini_api_key || ''}
+                                                onChange={e => setAiConfig({...aiConfig, google_gemini_api_key: e.target.value})}
+                                                className="h-14 rounded-2xl bg-white border-slate-200 font-mono text-xs text-foreground"
                                             />
-                                            <p className="text-[8px] font-bold text-primary uppercase italic">&quot;Build me a bar for X people&quot; cap.</p>
                                         </div>
+
+                                        {/* OpenAI GPT-4o */}
+                                        <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-black uppercase text-foreground">OpenAI GPT-4o API Key</label>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={async () => {
+                                                        try {
+                                                            const res = await fetch('/api/admin/ai/verify', {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ provider: 'OPENAI', apiKey: aiConfig.openai_api_key })
+                                                            });
+                                                            const data = await res.json();
+                                                            alert(data.message || `${data.status}`);
+                                                        } catch (err) {
+                                                            alert(`OpenAI Link Test Error: ${err}`);
+                                                        }
+                                                    }}
+                                                    className="h-8 px-3 rounded-xl border-slate-200 text-slate-600 hover:text-primary text-[8px] font-black uppercase"
+                                                >
+                                                    <Zap size={12} className="mr-1 text-emerald-500 fill-current" /> Test OpenAI Gateway
+                                                </Button>
+                                            </div>
+                                            <Input
+                                                type="password"
+                                                placeholder="sk-proj-..."
+                                                value={aiConfig.openai_api_key || ''}
+                                                onChange={e => setAiConfig({...aiConfig, openai_api_key: e.target.value})}
+                                                className="h-14 rounded-2xl bg-white border-slate-200 font-mono text-xs text-foreground"
+                                            />
+                                        </div>
+
+                                        {/* Anthropic Claude */}
+                                        <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-black uppercase text-foreground">Anthropic Claude 3.5 API Key</label>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={async () => {
+                                                        try {
+                                                            const res = await fetch('/api/admin/ai/verify', {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ provider: 'CLAUDE', apiKey: aiConfig.anthropic_claude_api_key })
+                                                            });
+                                                            const data = await res.json();
+                                                            alert(data.message || `${data.status}`);
+                                                        } catch (err) {
+                                                            alert(`Claude Link Test Error: ${err}`);
+                                                        }
+                                                    }}
+                                                    className="h-8 px-3 rounded-xl border-slate-200 text-slate-600 hover:text-primary text-[8px] font-black uppercase"
+                                                >
+                                                    <Zap size={12} className="mr-1 text-indigo-500 fill-current" /> Test Claude Gateway
+                                                </Button>
+                                            </div>
+                                            <Input
+                                                type="password"
+                                                placeholder="sk-ant-..."
+                                                value={aiConfig.anthropic_claude_api_key || ''}
+                                                onChange={e => setAiConfig({...aiConfig, anthropic_claude_api_key: e.target.value})}
+                                                className="h-14 rounded-2xl bg-white border-slate-200 font-mono text-xs text-foreground"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* GENERAL AI SETTINGS */}
+                                    <div className="grid sm:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black uppercase text-muted-foreground">AI Identity</label>
+                                            <label className="text-[10px] font-black uppercase text-muted-foreground">Primary Model Strategy</label>
+                                            <select
+                                                value={aiConfig.primary_gateway || 'AUTO'}
+                                                onChange={e => setAiConfig({...aiConfig, primary_gateway: e.target.value})}
+                                                className="w-full h-14 rounded-2xl border border-slate-200 bg-secondary px-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-primary"
+                                            >
+                                                <option value="AUTO">Smart Auto-Failover (Gemini &rarr; OpenAI &rarr; Local)</option>
+                                                <option value="GEMINI">Google Gemini 1.5 Flash (Fastest Copy)</option>
+                                                <option value="OPENAI">OpenAI GPT-4o (High Precision)</option>
+                                                <option value="CLAUDE">Anthropic Claude 3.5 Sonnet (Nuanced)</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase text-muted-foreground">AI Identity / Persona</label>
                                             <Input
                                                 value={aiConfig.assistant_name}
                                                 onChange={e => setAiConfig({...aiConfig, assistant_name: e.target.value})}
@@ -854,11 +1024,12 @@ export default function AdminSettingsPage() {
                                         </div>
                                     </div>
                                 </div>
+
                                 <Button
                                     onClick={() => handleSave('ai_config', aiConfig, true)}
-                                    className="w-full h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20"
+                                    className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 hover:scale-105 transition-all"
                                 >
-                                    Authorize Bar AI
+                                    Authorize AI Gateways & Save Configuration
                                 </Button>
                             </Card>
                         </div>
@@ -950,52 +1121,228 @@ export default function AdminSettingsPage() {
                         </div>
                     )}
 
-                    {/* INTEGRATIONS TAB */}
+                    {/* INTEGRATIONS & PAYMENT GATEWAYS TAB */}
                     {activeTab === 'integrations' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
+
+                            {/* 1. PAYMENT GATEWAYS HUB (PAYSTACK & M-PESA DARAJA) */}
+                            <Card className="p-8 sm:p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-8 text-left">
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-6">
+                                    <div>
+                                        <h2 className="text-2xl font-black text-foreground uppercase flex items-center gap-3">
+                                            <Zap className="h-6 w-6 text-emerald-500 fill-current" /> Payment Gateways & Callbacks
+                                        </h2>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Configure Paystack (Card/M-Pesa) & M-Pesa Express Daraja Credentials</p>
+                                    </div>
+                                    <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                        CHECKOUT READY
+                                    </span>
+                                </div>
+
+                                <div className="grid lg:grid-cols-2 gap-8">
+                                    {/* Paystack Node */}
+                                    <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-4 text-left">
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="text-sm font-black uppercase text-foreground">Paystack Gateway</h3>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await fetch('/api/admin/integrations/verify', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ nodeId: 'PAYSTACK', secretKey: gatewaysConfig.paystack_secret_key })
+                                                        });
+                                                        const data = await res.json();
+                                                        alert(data.message || 'Paystack Verified!');
+                                                    } catch (err) { alert(`Paystack Error: ${err}`); }
+                                                }}
+                                                className="h-8 px-3 rounded-xl border-slate-200 text-slate-600 text-[8px] font-black uppercase hover:bg-emerald-50 hover:text-emerald-600"
+                                            >
+                                                Test Paystack Link
+                                            </Button>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase text-slate-400">Paystack Secret Key</label>
+                                                <Input
+                                                    type="password"
+                                                    placeholder="sk_live_..."
+                                                    value={gatewaysConfig.paystack_secret_key}
+                                                    onChange={e => setGatewaysConfig({...gatewaysConfig, paystack_secret_key: e.target.value})}
+                                                    className="h-12 rounded-xl bg-white border-slate-200 font-mono text-xs"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase text-slate-400">Paystack Public Key</label>
+                                                <Input
+                                                    placeholder="pk_live_..."
+                                                    value={gatewaysConfig.paystack_public_key}
+                                                    onChange={e => setGatewaysConfig({...gatewaysConfig, paystack_public_key: e.target.value})}
+                                                    className="h-12 rounded-xl bg-white border-slate-200 font-mono text-xs"
+                                                />
+                                            </div>
+                                            <div className="p-3 bg-white rounded-xl border border-slate-100 text-[8px] font-bold text-slate-400 uppercase tracking-wider">
+                                                Webhook: <span className="text-emerald-600 font-mono">https://onlinebar.co.ke/api/paystack/webhook</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* M-Pesa Daraja Node */}
+                                    <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-4 text-left">
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="text-sm font-black uppercase text-foreground">M-Pesa Daraja STK Push</h3>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={async () => {
+                                                    try {
+                                                        const res = await fetch('/api/admin/integrations/verify', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ nodeId: 'MPESA' })
+                                                        });
+                                                        const data = await res.json();
+                                                        alert(data.message || 'M-Pesa Verified!');
+                                                    } catch (err) { alert(`M-Pesa Error: ${err}`); }
+                                                }}
+                                                className="h-8 px-3 rounded-xl border-slate-200 text-slate-600 text-[8px] font-black uppercase hover:bg-emerald-50 hover:text-emerald-600"
+                                            >
+                                                Test M-Pesa Link
+                                            </Button>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase text-slate-400">Shortcode / Till</label>
+                                                <Input
+                                                    placeholder="174379"
+                                                    value={gatewaysConfig.mpesa_shortcode}
+                                                    onChange={e => setGatewaysConfig({...gatewaysConfig, mpesa_shortcode: e.target.value})}
+                                                    className="h-12 rounded-xl bg-white border-slate-200 font-mono text-xs"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase text-slate-400">Consumer Key</label>
+                                                <Input
+                                                    type="password"
+                                                    placeholder="Daraja Key"
+                                                    value={gatewaysConfig.mpesa_consumer_key}
+                                                    onChange={e => setGatewaysConfig({...gatewaysConfig, mpesa_consumer_key: e.target.value})}
+                                                    className="h-12 rounded-xl bg-white border-slate-200 font-mono text-xs"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black uppercase text-slate-400">M-Pesa Passkey</label>
+                                            <Input
+                                                type="password"
+                                                placeholder="bfb279f..."
+                                                value={gatewaysConfig.mpesa_passkey}
+                                                onChange={e => setGatewaysConfig({...gatewaysConfig, mpesa_passkey: e.target.value})}
+                                                className="h-12 rounded-xl bg-white border-slate-200 font-mono text-xs"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            {/* 2. GOOGLE MAPS PLATFORM NODE */}
+                            <Card className="p-8 sm:p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left">
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-xl bg-rose-50 text-rose-500 border border-rose-100 flex items-center justify-center font-black">🗺️</div>
+                                        <div>
+                                            <h3 className="text-lg font-black uppercase text-foreground">Google Maps Platform API</h3>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Powering Live Dispatch Map, Geocoding & Address Autocomplete</p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={async () => {
+                                            try {
+                                                const res = await fetch('/api/admin/integrations/verify', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ nodeId: 'GOOGLE_MAPS', apiKey: gatewaysConfig.google_maps_api_key })
+                                                });
+                                                const data = await res.json();
+                                                alert(data.message || 'Google Maps Verified!');
+                                            } catch (err) { alert(`Maps Error: ${err}`); }
+                                        }}
+                                        className="h-9 px-4 rounded-xl border-slate-200 text-slate-600 text-[9px] font-black uppercase hover:bg-rose-50 hover:text-rose-600"
+                                    >
+                                        Test Google Maps Key
+                                    </Button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black uppercase text-slate-400">Google Maps API Key (Geocoding & JS API)</label>
+                                    <Input
+                                        type="password"
+                                        placeholder="AIzaSy..."
+                                        value={gatewaysConfig.google_maps_api_key}
+                                        onChange={e => setGatewaysConfig({...gatewaysConfig, google_maps_api_key: e.target.value})}
+                                        className="h-14 rounded-2xl bg-slate-50 border-slate-200 font-mono text-xs text-foreground"
+                                    />
+                                </div>
+                            </Card>
+
+                            {/* 3. SOCIAL & MESSAGING NODES GRID */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {[
                                     { id: 'WHATSAPP', label: 'WhatsApp Business', icon: MessageSquare, color: 'emerald', type: 'Credentials' },
                                     { id: 'META', label: 'Meta (IG & FB)', icon: Share2, color: 'primary', type: 'OAuth' },
                                     { id: 'TIKTOK', label: 'TikTok Creator', icon: Music, color: 'slate', type: 'OAuth' },
-                                    { id: 'GOOGLE', label: 'Google (Gmail)', icon: Mail, color: 'rose', type: 'OAuth' },
+                                    { id: 'GOOGLE', label: 'YouTube / Google Ads', icon: Mail, color: 'rose', type: 'OAuth' },
                                 ].map((node) => {
                                     const isActive = integrations.find(i => i.id === node.id)?.status === 'Connected';
                                     return (
-                                        <Card key={node.id} className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-6 group hover:shadow-xl transition-all">
-                                            <div className="flex justify-between items-start">
+                                        <Card key={node.id} className={cn(
+                                            "p-8 rounded-[2.5rem] border space-y-6 group shadow-lg transition-all text-left relative overflow-hidden",
+                                            isActive
+                                                ? "bg-white border-primary/20 shadow-primary/5 hover:border-primary/40"
+                                                : "bg-slate-900 border-slate-800 text-slate-100 shadow-2xl hover:border-amber-500/40"
+                                        )}>
+                                            <div className="flex justify-between items-start relative z-10">
                                                 <div className="flex items-center gap-4">
                                                     <div className={cn(
-                                                        "h-12 w-12 rounded-2xl flex items-center justify-center shadow-inner transition-transform group-hover:scale-110",
-                                                        node.color === 'emerald' ? "bg-emerald-50 text-emerald-500" :
-                                                        node.color === 'primary' ? "bg-primary/5 text-primary" :
-                                                        node.color === 'rose' ? "bg-rose-50 text-rose-500" : "bg-slate-50 text-slate-500"
+                                                        "h-12 w-12 rounded-2xl flex items-center justify-center shadow-inner transition-transform group-hover:scale-110 shrink-0",
+                                                        isActive
+                                                            ? (node.color === 'emerald' ? "bg-emerald-50 text-emerald-500" :
+                                                               node.color === 'primary' ? "bg-primary/10 text-primary" :
+                                                               node.color === 'rose' ? "bg-rose-50 text-rose-500" : "bg-slate-100 text-slate-700")
+                                                            : "bg-slate-800 border border-slate-700 text-amber-400"
                                                     )}>
                                                         <node.icon size={24} />
                                                     </div>
-                                                    <div>
-                                                        <h3 className="text-lg font-black uppercase tracking-tighter text-foreground">{node.label}</h3>
+                                                    <div className="min-w-0 flex-1">
+                                                        <h3 className={cn("text-base sm:text-lg font-black uppercase tracking-tighter truncate", isActive ? "text-foreground" : "text-slate-100")}>{node.label}</h3>
                                                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{node.type} Protocol</p>
                                                     </div>
                                                 </div>
                                                 <span className={cn(
-                                                    "px-3 py-1 rounded-full text-[8px] font-black uppercase border tracking-widest",
-                                                    isActive ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-50 text-slate-400 border-slate-100"
+                                                    "px-3 py-1 rounded-full text-[8px] font-black uppercase border tracking-widest flex items-center gap-1.5 shrink-0",
+                                                    isActive
+                                                        ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                                                        : "bg-amber-500/20 text-amber-400 border-amber-500/30 font-extrabold"
                                                 )}>
-                                                    {isActive ? 'Connected' : 'Not Linked'}
+                                                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", isActive ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-ping")} />
+                                                    {isActive ? 'GRID LINKED' : 'STANDBY NODE'}
                                                 </span>
                                             </div>
 
-                                            <div className="pt-4 border-t border-slate-50 flex gap-2">
-                                                {node.type === 'OAuth' ? (
-                                                    <Button className="flex-1 h-12 rounded-xl bg-primary text-white font-black uppercase text-[9px] tracking-widest shadow-lg shadow-primary/20 active:scale-95 transition-all">
-                                                        Connect Account
-                                                    </Button>
-                                                ) : (
-                                                    <Button onClick={() => setActiveTab('advanced')} className="flex-1 h-12 rounded-xl bg-primary text-white font-black uppercase text-[9px] tracking-widest shadow-lg shadow-primary/20 active:scale-95 transition-all">
-                                                        Configure Keys
-                                                    </Button>
-                                                )}
+                                            <div className="pt-4 border-t border-slate-800/40 flex gap-2 relative z-10">
+                                                <Button className={cn(
+                                                    "flex-1 h-12 rounded-xl font-black uppercase text-[9px] tracking-widest shadow-lg active:scale-95 transition-all",
+                                                    isActive ? "bg-primary text-white shadow-primary/20" : "bg-amber-500 text-slate-950 hover:bg-amber-400 font-black shadow-amber-500/20"
+                                                )}>
+                                                    {isActive ? 'Manage Protocol' : 'Authorize Protocol'}
+                                                </Button>
                                                 <Button
                                                     variant="outline"
                                                     disabled={isTestingConnection === node.id}
@@ -1012,7 +1359,7 @@ export default function AdminSettingsPage() {
                                                                 alert(`${node.label} healthy! 🛰️`);
                                                                 fetchSettings();
                                                             } else {
-                                                                throw new Error(data.error);
+                                                                throw new Error(data.error || 'Verification failed');
                                                             }
                                                         } catch (err: unknown) {
                                                             alert(`Link Failure: ${(err as Error).message}`);
@@ -1020,7 +1367,19 @@ export default function AdminSettingsPage() {
                                                             setIsTestingConnection(null);
                                                         }
                                                     }}
-                                                    className="h-12 w-12 rounded-xl border-slate-100 text-slate-400 hover:text-primary transition-all"
+                                                    className={cn(
+                                                        "h-12 w-12 rounded-xl border transition-all shrink-0",
+                                                        isActive ? "border-slate-200 text-slate-400 hover:text-primary" : "border-slate-700 text-slate-300 hover:text-amber-400 bg-slate-800"
+                                                    )}
+                                                >
+                                                    {isTestingConnection === node.id ? <Loader2 className="animate-spin h-4 w-4" /> : <Activity className="h-4 w-4" />}
+                                                </Button>
+                                            </div>
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+                                                    )}
                                                 >
                                                     {isTestingConnection === node.id ? <Loader2 className="animate-spin h-4 w-4" /> : <Activity className="h-4 w-4" />}
                                                 </Button>

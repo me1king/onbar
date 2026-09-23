@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Image from 'next/image';
+import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
   History as HistoryIcon,
   Send,
@@ -536,6 +537,14 @@ export default function AdminDashboard() {
           </div>
 
       </div>
+
+      {/* BAR OS Live Tactical Telemetry Feed */}
+      <section className="pt-6">
+          <TacticalEventFeed
+              title="BAR OS Shift Console Telemetry Engine"
+              subtitle="Live Real-time Operations Stream Across Cellar, Growth & Dispatch"
+          />
+      </section>
 
     </div>
   );

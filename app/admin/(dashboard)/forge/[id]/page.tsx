@@ -226,6 +226,10 @@ export default function ProductStudioTerminal() {
                 manufacturer: form.manufacturer,
                 ingredients: form.ingredients,
                 abv_label: form.abv_label,
+                beverage_specs: {
+                    abv: form.abv_label,
+                    origin: form.origin
+                },
                 sensory_metrics: form.sensory_metrics,
                 pairing_suggestions: form.pairing_suggestions,
                 faq_data: form.faq_data,

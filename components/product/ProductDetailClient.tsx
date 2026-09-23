@@ -301,12 +301,12 @@ export default function ProductDetailClient({
                         {[
                             { k: 'Type', v: product.category || 'Premium Selection' },
                             { k: 'Brand', v: product.brand || 'Reserve' },
-                            { k: 'Region', v: dossier?.region_of_origin || 'Imported' },
-                            { k: 'Country', v: product.origin || dossier?.country_of_origin || 'Global' },
-                            { k: 'Body', v: 'Medium' },
-                            { k: 'Sweetness', v: 'Off-dry' },
-                            { k: 'Volume', v: product.size_label || selectedVariant || 'Standard' },
-                            { k: 'ABV', v: product.abv_label || dossier?.abv_actual || '40%' },
+                            { k: 'Region', v: product.beverage_specs?.region || product.region || dossier?.region_of_origin || 'Imported' },
+                            { k: 'Country', v: product.origin || product.beverage_specs?.origin || dossier?.country_of_origin || 'Global' },
+                            { k: 'Body', v: product.beverage_specs?.body || product.body || 'Medium' },
+                            { k: 'Sweetness', v: product.beverage_specs?.sweetness || product.sweetness || 'Off-Dry' },
+                            { k: 'Volume', v: product.size_label || selectedVariant || (product.sizes && product.sizes[0]) || '750ml' },
+                            { k: 'ABV', v: product.abv_label || product.beverage_specs?.abv || dossier?.abv_actual || '40%' },
                         ].map((row, i) => (
                             <div key={i} className={cn(
                                 "p-6 sm:p-8 flex flex-col gap-1.5 border-slate-100 min-w-0",
@@ -325,7 +325,12 @@ export default function ProductDetailClient({
                         <Utensils size={14} className="text-brand-red" /> Pairs Well With
                     </p>
                     <div className="flex flex-wrap gap-3">
-                        {(product.pairing_suggestions || ['Nyama choma', 'BBQ ribs', 'Smoked brisket', 'Burgers', 'Dark chocolate']).map(chip => (
+                        {(Array.isArray(product.pairing_suggestions) && product.pairing_suggestions.length > 0
+                            ? product.pairing_suggestions
+                            : (typeof product.pairing_suggestions === 'string' && (product.pairing_suggestions as string).trim().length > 0)
+                                ? (product.pairing_suggestions as string).split(',').map(s => s.trim())
+                                : ['Nyama choma', 'BBQ ribs', 'Smoked brisket', 'Burgers', 'Dark chocolate']
+                        ).map(chip => (
                             <span key={chip} className="px-5 py-2.5 bg-white border border-slate-100 rounded-full text-[11px] font-black text-slate-600 uppercase shadow-sm hover:border-brand-red transition-colors cursor-default">{chip}</span>
                         ))}
                     </div>
@@ -558,8 +563,11 @@ export default function ProductDetailClient({
                     verification={dossier?.source_verification || { sensory_dna: 'TECHNICAL' }}
                 />
                 <AuthenticitySentinel
+                    productId={product.id}
+                    productName={product.name}
                     batchNo={product.id.toString().padStart(6, '0')}
-                    origin={dossier?.country_of_origin || 'Imported'}
+                    origin={product.origin || product.beverage_specs?.origin || dossier?.country_of_origin || 'Imported'}
+                    abv={product.abv_label || product.beverage_specs?.abv || dossier?.abv_actual || '40%'}
                 />
             </div>
             <div className="lg:col-span-8 flex flex-col gap-10">

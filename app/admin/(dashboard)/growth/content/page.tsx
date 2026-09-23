@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
     Layout,
     Plus,
@@ -295,6 +296,13 @@ export default function ContentCommandStudio() {
                     </div>
                 </div>
 
+            </div>
+
+            <div className="pt-6">
+                <TacticalEventFeed
+                    title="Growth & Content Telemetry Feed"
+                    subtitle="Live Real-time Content Pipeline & Campaign Ingestion"
+                />
             </div>
         </div>
     );
