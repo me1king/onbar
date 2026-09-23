@@ -443,6 +443,7 @@ function UploadContent() {
 
       const specs: Record<string, string> = {
           abv: form.abv_label,
+          abv_label: form.abv_label,
           origin: form.origin,
           region: form.region,
           body: form.body,
@@ -1022,7 +1023,7 @@ function UploadContent() {
                                 {/* VISUAL BUNDLE UPSELL SELECTOR */}
                                 <div className="space-y-3 pt-4 border-t border-slate-100">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Bundle Upsell Products ("Frequently Bought Together")</label>
+                                        <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Bundle Upsell Products (&quot;Frequently Bought Together&quot;)</label>
                                         <span className="text-[8px] font-bold text-primary uppercase">Select products to offer in bundle</span>
                                     </div>
 

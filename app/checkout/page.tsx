@@ -105,6 +105,20 @@ function CheckoutContent() {
         }
     }
     checkLockdown();
+
+    // 🎁 Restores pre-filled gift note from Gifting Hub / Cart session
+    try {
+      const savedGiftNote = typeof window !== 'undefined'
+        ? (sessionStorage.getItem('ob_gift_note') || localStorage.getItem('ob_gift_note'))
+        : null;
+
+      if (savedGiftNote && savedGiftNote.trim().length > 0) {
+        setIsGift(true);
+        setGiftMessage(savedGiftNote.trim());
+      }
+    } catch (err) {
+      console.warn("Gift note restore error:", err);
+    }
   }, []);
 
   const searchParams = useSearchParams();
@@ -794,13 +808,37 @@ function CheckoutContent() {
 
                 {isGift && (
                     <div className="mt-8 space-y-4 animate-in slide-in-from-top-4 duration-500" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center text-[9px] font-black uppercase text-primary tracking-widest px-2">
+                            <span>🎁 Personal Message Preserved</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setGiftMessage('');
+                                    setIsGift(false);
+                                    try {
+                                        sessionStorage.removeItem('ob_gift_note');
+                                        localStorage.removeItem('ob_gift_note');
+                                    } catch {}
+                                }}
+                                className="text-slate-400 hover:text-rose-500 underline"
+                            >
+                                Clear Message
+                            </button>
+                        </div>
                         <textarea
                             value={giftMessage}
-                            onChange={e => setGiftMessage(e.target.value)}
+                            onChange={e => {
+                                const val = e.target.value;
+                                setGiftMessage(val);
+                                try {
+                                    sessionStorage.setItem('ob_gift_note', val);
+                                    localStorage.setItem('ob_gift_note', val);
+                                } catch {}
+                            }}
                             placeholder="Enter your gift message here... (e.g. Happy Birthday Kelvin!)"
-                            className="w-full h-32 rounded-[1.8rem] border border-primary/10 bg-white p-6 text-sm font-medium italic outline-none focus:ring-4 focus:ring-primary/5 transition-all resize-none"
+                            className="w-full h-32 rounded-[1.8rem] border border-primary/20 bg-white p-6 text-sm font-medium italic outline-none focus:ring-4 focus:ring-primary/10 transition-all resize-none shadow-inner"
                         />
-                        <p className="text-[9px] font-black uppercase text-primary/60 tracking-widest text-left ml-2 animate-pulse">✓ Premium wrapping included</p>
+                        <p className="text-[9px] font-black uppercase text-primary/80 tracking-widest text-left ml-2 animate-pulse">✓ Premium wrapping & personalized card included</p>
                     </div>
                 )}
                 <PartyPopper className="absolute -bottom-6 -right-6 h-24 w-24 text-primary/5 rotate-12 -z-0" />

@@ -7,7 +7,6 @@ import {
     Rocket,
     Users,
     Target,
-    BarChart3,
     TrendingUp,
     ChevronRight,
     Send,

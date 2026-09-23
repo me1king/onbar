@@ -73,9 +73,12 @@ export default function GiftingHub() {
         ];
 
         addBundleToCart(items);
-        // Persist note to session storage for checkout to pick up
+        // Persist note to session/local storage for checkout to pick up automatically
         if (personalNote) {
-            sessionStorage.setItem('ob_gift_note', personalNote);
+            try {
+                sessionStorage.setItem('ob_gift_note', personalNote);
+                localStorage.setItem('ob_gift_note', personalNote);
+            } catch {}
         }
 
         alert("Gift Box established in your bag! 🎁");

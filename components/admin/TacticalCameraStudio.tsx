@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { cn, formatPrice, normalizeImage } from '@/lib/utils';
+import { cn, formatPrice } from '@/lib/utils';
 
 interface ProductNode {
     id: number;
@@ -35,7 +35,6 @@ interface ProductNode {
 
 export default function TacticalCameraStudio() {
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
-    const [isCapturing, setIsCapturing] = React.useState(false);
     const [analyzingLabel, setAnalyzingLabel] = React.useState(false);
     const [detectedProduct, setDetectedProduct] = React.useState<ProductNode | null>(null);
     const [products, setProducts] = React.useState<ProductNode[]>([]);
@@ -53,7 +52,6 @@ export default function TacticalCameraStudio() {
 
     // Timing
     const [timing, setTiming] = React.useState<'NOW' | 'SCHEDULED'>('NOW');
-    const [scheduleTime, setScheduleTime] = React.useState('21:00');
 
     // Launch sequence state
     const [publishing, setPublishing] = React.useState(false);
@@ -165,7 +163,7 @@ export default function TacticalCameraStudio() {
                     productId: detectedProduct?.id,
                     platforms: activePlatforms,
                     timing,
-                    scheduleTime
+                    scheduleTime: '21:00'
                 })
             });
 
@@ -412,7 +410,7 @@ export default function TacticalCameraStudio() {
                             <div>
                                 <label className="text-[9px] font-black uppercase text-slate-400">Deployment Timing</label>
                                 <p className="text-[10px] font-bold text-slate-600 uppercase">
-                                    {timing === 'NOW' ? 'Immediate Execution' : `Scheduled for ${scheduleTime}`}
+                                    {timing === 'NOW' ? 'Immediate Execution' : 'Scheduled for 21:00'}
                                 </p>
                             </div>
 

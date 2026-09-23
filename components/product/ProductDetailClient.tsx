@@ -298,16 +298,19 @@ export default function ProductDetailClient({
                 <div className="space-y-8 min-w-0">
                     <h3 className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-400 ml-4">The Technical Protocol</h3>
                     <div className="grid grid-cols-2 bg-slate-50 rounded-[3rem] border border-slate-100 overflow-hidden shadow-inner">
-                        {[
-                            { k: 'Type', v: product.category || 'Premium Selection' },
-                            { k: 'Brand', v: product.brand || 'Reserve' },
-                            { k: 'Region', v: product.beverage_specs?.region || product.region || dossier?.region_of_origin || 'Imported' },
-                            { k: 'Country', v: product.origin || product.beverage_specs?.origin || dossier?.country_of_origin || 'Global' },
-                            { k: 'Body', v: product.beverage_specs?.body || product.body || 'Medium' },
-                            { k: 'Sweetness', v: product.beverage_specs?.sweetness || product.sweetness || 'Off-Dry' },
-                            { k: 'Volume', v: product.size_label || selectedVariant || (product.sizes && product.sizes[0]) || '750ml' },
-                            { k: 'ABV', v: product.abv_label || product.beverage_specs?.abv || dossier?.abv_actual || '40%' },
-                        ].map((row, i) => (
+                        {(() => {
+                            const bevSpecs = product.beverage_specs as Record<string, string> | undefined;
+                            return [
+                                { k: 'Type', v: product.category || 'Premium Selection' },
+                                { k: 'Brand', v: product.brand || 'Reserve' },
+                                { k: 'Region', v: bevSpecs?.region || product.region || dossier?.region_of_origin || 'Imported' },
+                                { k: 'Country', v: product.origin || bevSpecs?.origin || dossier?.country_of_origin || 'Global' },
+                                { k: 'Body', v: bevSpecs?.body || product.body || 'Medium' },
+                                { k: 'Sweetness', v: bevSpecs?.sweetness || product.sweetness || 'Off-Dry' },
+                                { k: 'Volume', v: product.size_label || selectedVariant || (product.sizes && product.sizes[0]) || '750ml' },
+                                { k: 'ABV', v: product.abv_label || bevSpecs?.abv || bevSpecs?.abv_label || dossier?.abv_actual || '40%' },
+                            ];
+                        })().map((row, i) => (
                             <div key={i} className={cn(
                                 "p-6 sm:p-8 flex flex-col gap-1.5 border-slate-100 min-w-0",
                                 i % 2 === 0 ? "border-r" : "",
