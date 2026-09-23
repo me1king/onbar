@@ -61,10 +61,21 @@ export default function BuildMyNightWidget() {
                 .from('products')
                 .select('id, name, price, image_url, category')
                 .lte('price', budget)
-                .order('price', { ascending: false })
-                .limit(4);
+                .order('price', { ascending: true })
+                .limit(25);
 
-            if (data) setResults(data as BuildResult[]);
+            if (data) {
+                let currentSum = 0;
+                const selected: BuildResult[] = [];
+                for (const p of data) {
+                    if (currentSum + Number(p.price) <= budget) {
+                        selected.push(p as BuildResult);
+                        currentSum += Number(p.price);
+                    }
+                    if (selected.length >= 3) break;
+                }
+                setResults(selected.length > 0 ? selected : [data[0] as BuildResult]);
+            }
             setStep(3);
         } catch (err) {
             console.error(err);
@@ -227,20 +238,20 @@ export default function BuildMyNightWidget() {
                                     ))}
                                 </div>
 
-                                <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
-                                    <div>
+                                <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-20 bg-white">
+                                    <div className="text-left">
                                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Experience Total</p>
                                         <p className="text-2xl font-black text-foreground">{formatPrice(results.reduce((s, r) => s + Number(r.price), 0))}</p>
                                     </div>
-                                    <Button onClick={handleAddAll} className="h-16 px-10 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-2xl active:scale-95 transition-all flex items-center gap-3">
+                                    <Button onClick={handleAddAll} className="h-14 sm:h-16 px-8 sm:px-10 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-2xl hover:bg-primary/90 active:scale-95 transition-all flex items-center justify-center gap-3 w-full sm:w-auto">
                                         Add Entire Selection <ArrowRight size={16} />
                                     </Button>
                                 </div>
                             </div>
                         )}
 
-                        {/* Decoration */}
-                        <Zap className="absolute -bottom-10 -right-10 h-64 w-64 text-slate-50 rotate-12 -z-0" />
+                        {/* Background Decoration */}
+                        <Zap className="absolute -bottom-10 -right-10 h-64 w-64 text-slate-100/40 rotate-12 pointer-events-none select-none -z-0" />
                     </Card>
                 </div>
 
