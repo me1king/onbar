@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
     Home,
     Search,
-    Package,
+    Cookie,
     User,
     Flame
 } from 'lucide-react';
@@ -17,7 +17,7 @@ const NAV_ITEMS = [
     { label: 'Home', icon: Home, href: '/' },
     { label: 'Shop', icon: Search, href: '/shop' },
     { label: 'Buzz', icon: Flame, href: '/buzz' },
-    { label: 'Orders', icon: Package, href: '/profile#orders' },
+    { label: 'Munchies', icon: Cookie, href: '/shop/snacks' },
     { label: 'My Bar', icon: User, href: '/profile' }
 ];
 

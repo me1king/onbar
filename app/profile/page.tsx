@@ -60,6 +60,7 @@ import { Card } from '@/components/ui/card';
 import { formatPrice, cn, getReferralLink } from '@/lib/utils';
 import { useSettings } from '@/lib/useSettings';
 import { logAuditAction } from '@/lib/auditService';
+import { generateReceiptPDF } from '@/lib/receiptService';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -537,7 +538,6 @@ export default function ProfilePage() {
       }
   };
 
-  /*
   const handleDownloadReceipt = async (order: Order) => {
       const doc = await generateReceiptPDF({
           id: order.id,
@@ -549,7 +549,6 @@ export default function ProfilePage() {
       } as Parameters<typeof generateReceiptPDF>[0]);
       doc.save(`Receipt_OnlineBar_${order.id}.pdf`);
   };
-  */
 
   if (loading) {
     return (
@@ -730,6 +729,63 @@ export default function ProfilePage() {
             {/* Background Pattern */}
             <Zap className="absolute -bottom-10 -right-10 h-64 w-64 text-slate-100/50 rotate-12 -z-0" />
         </header>
+
+        {/* 📦 MY ORDERS & DISPATCH HISTORY */}
+        <section id="orders" className="space-y-6 scroll-mt-24">
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground flex items-center gap-3">
+                    <Package className="h-6 w-6 text-primary" /> My Orders & Active Dispatches
+                </h2>
+                <span className="text-[10px] font-black uppercase text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-100">{orders.length} Total Orders</span>
+            </div>
+            <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden text-left">
+                {orders.length === 0 ? (
+                    <div className="p-16 text-center text-slate-300 space-y-4">
+                        <Package className="h-12 w-12 mx-auto opacity-20 animate-bounce" />
+                        <p className="text-[10px] font-black uppercase tracking-widest italic">&quot;No orders registered yet. Explore the shop to place your first dispatch.&quot;</p>
+                        <Link href="/shop">
+                            <Button className="h-12 px-8 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-lg">Open Cellar Menu &rarr;</Button>
+                        </Link>
+                    </div>
+                ) : (
+                    <div className="divide-y divide-slate-50">
+                        {orders.map(o => (
+                            <div key={o.id} className="p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group hover:bg-slate-50 transition-all">
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                        <Truck size={22} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-3">
+                                            <p className="text-sm font-black text-foreground uppercase tracking-tight">Order #{o.id}</p>
+                                            <span className={cn(
+                                                "px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border",
+                                                o.status === 'Delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                                                o.status === 'Dispatched' ? "bg-amber-50 text-amber-600 border-amber-200" :
+                                                "bg-primary/10 text-primary border-primary/20"
+                                            )}>{o.status}</span>
+                                        </div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                            {new Date(o.created_at).toLocaleDateString()} &bull; {o.payment_method || 'Paystack'} &bull; <span className="text-primary font-black">{formatPrice(o.total_price)}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 self-end sm:self-center">
+                                    <Link href={`/track?id=${o.id}`}>
+                                        <Button variant="outline" className="h-11 px-4 rounded-xl border-slate-200 text-foreground font-black uppercase text-[9px] tracking-widest hover:bg-slate-100">
+                                            Track Dispatch
+                                        </Button>
+                                    </Link>
+                                    <Button onClick={() => handleDownloadReceipt(o)} className="h-11 px-4 rounded-xl bg-primary text-white font-black uppercase text-[9px] tracking-widest shadow-md shadow-primary/20">
+                                        Receipt <Download className="h-3 w-3 ml-1.5" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </section>
 
         <div className="grid lg:grid-cols-2 gap-10">
             <div id="taste-dna-section" className="scroll-mt-24">
