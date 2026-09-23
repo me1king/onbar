@@ -7,27 +7,16 @@ import {
     Camera,
     Upload,
     Sparkles,
-    Send,
     MessageCircle,
     Camera as Instagram,
     Share2 as Facebook,
     Video as Youtube,
     CheckCircle2,
     Loader2,
-    Wine,
     Zap,
     Clock,
     Tag,
-    RefreshCcw,
-    Radio,
-    ShieldCheck,
-    Layers,
-    Bot,
-    ChevronRight,
-    X,
-    Maximize2,
-    FileText,
-    Flame
+    X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';

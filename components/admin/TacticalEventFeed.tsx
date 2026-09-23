@@ -4,22 +4,16 @@ import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
     Activity,
-    ShoppingCart,
     Wine,
     Flame,
     Truck,
     Bot,
     Radio,
-    Filter,
     ChevronRight,
-    Volume2,
-    VolumeX,
     Pause,
     Play,
     Zap,
-    Share2,
-    MessageSquare,
-    CheckCircle2
+    Share2
 } from 'lucide-react';
 import { cn, formatPrice } from '@/lib/utils';
 import Link from 'next/link';

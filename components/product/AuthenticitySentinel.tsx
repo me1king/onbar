@@ -67,7 +67,7 @@ export default function AuthenticitySentinel({
                 ['Dispatch Authorization', 'VVIP Cellar Vault', 'Quality Control Protocol', 'DISPATCH READY']
             ],
             theme: 'grid',
-            headStyles: { fillStyle: 'F', fillColor: [16, 185, 129], textColor: [255, 255, 255] }
+            headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255] }
         });
 
         doc.setFontSize(9);

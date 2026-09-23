@@ -1379,15 +1379,6 @@ export default function AdminSettingsPage() {
                                     );
                                 })}
                             </div>
-                                                    )}
-                                                >
-                                                    {isTestingConnection === node.id ? <Loader2 className="animate-spin h-4 w-4" /> : <Activity className="h-4 w-4" />}
-                                                </Button>
-                                            </div>
-                                        </Card>
-                                    );
-                                })}
-                            </div>
 
                             <div className="p-8 rounded-[3rem] bg-amber-50 border border-amber-100 flex items-start gap-4 text-left">
                                 <ShieldAlert className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />

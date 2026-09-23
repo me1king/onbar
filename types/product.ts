@@ -36,12 +36,19 @@ export interface Product {
     };
     abv?: string;
     origin?: string;
+    region?: string;
+    body?: string;
+    sweetness?: string;
+    glassware?: string;
     model_3d_url?: string;
   };
 
   // High-Fidelity Micro-Details
   brand?: string;
   origin?: string;
+  region?: string;
+  body?: string;
+  sweetness?: string;
   size_label?: string;
   abv_label?: string;
   manufacturer?: string;
