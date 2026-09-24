@@ -57,7 +57,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { formatPrice, cn, getReferralLink } from '@/lib/utils';
+import { formatPrice, cn, getReferralLink, normalizeImage } from '@/lib/utils';
 import { useSettings } from '@/lib/useSettings';
 import { logAuditAction } from '@/lib/auditService';
 import { generateReceiptPDF } from '@/lib/receiptService';
@@ -203,10 +203,10 @@ export default function ProfilePage() {
   const assistantInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // 🛡️ [FAILSAFE_TIMEOUT] Guarantees loading spinner never sticks for more than 3 seconds
+    // 🛡️ [FAILSAFE_TIMEOUT] Guarantees loading spinner never sticks for more than 2 seconds
     const failsafeTimer = setTimeout(() => {
         setLoading(false);
-    }, 3000);
+    }, 2000);
 
     async function loadData() {
       if (!supabase) {
@@ -226,16 +226,65 @@ export default function ProfilePage() {
 
         setUser(session.user);
 
-        // Fetch Profile
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .maybeSingle();
+        let profileData = null;
+        try {
+            const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+            profileData = data;
+        } catch {}
+
+        let abandonedData = null;
+        try {
+            const { data } = await supabase.from('abandoned_carts').select('*').eq('customer_phone', session.user.email || '').maybeSingle();
+            abandonedData = data;
+        } catch {}
+
+        let orderData = [];
+        try {
+            const { data } = await supabase.from('orders').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+            orderData = data || [];
+        } catch {}
+
+        let devicesData = [];
+        try {
+            const { data } = await supabase.from('user_devices').select('*').eq('user_id', session.user.id);
+            devicesData = data || [];
+        } catch {}
+
+        let achievementsData = [];
+        try {
+            const { data } = await supabase.from('user_achievements').select('*').eq('user_id', session.user.id);
+            achievementsData = data || [];
+        } catch {}
+
+        let warrantiesData = [];
+        try {
+            const { data } = await supabase.from('warranties').select('*').eq('user_id', session.user.id);
+            warrantiesData = data || [];
+        } catch {}
+
+        let ticketsData = [];
+        try {
+            const { data } = await supabase.from('support_tickets').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+            ticketsData = data || [];
+        } catch {}
+
+        let notifData = [];
+        try {
+            const { data } = await supabase.from('user_notifications').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+            notifData = data || [];
+        } catch {}
+
+        let gameConfig = null;
+        try {
+            const { data } = await supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle();
+            gameConfig = data?.value;
+        } catch {}
 
         if (profileData && !profileData.referral_code) {
             const newCode = `OB-${session.user.id.substring(0, 7).toUpperCase()}`;
-            await supabase.from('profiles').update({ referral_code: newCode }).eq('id', session.user.id);
+            try {
+                await supabase.from('profiles').update({ referral_code: newCode }).eq('id', session.user.id);
+            } catch {}
             profileData.referral_code = newCode;
         }
 
@@ -253,95 +302,58 @@ export default function ProfilePage() {
           }
         }
 
-        // Check for abandoned items
-        const searchId = profileData?.phone_number || session.user.email;
-        const { data: abandonedData } = await supabase
-          .from('abandoned_carts')
-          .select('*')
-          .eq('customer_phone', searchId)
-          .maybeSingle();
-
         if (abandonedData) {
             setAbandonedBag(abandonedData);
         }
 
-        // Fetch Orders
-        const { data: orderData } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .order('created_at', { ascending: false });
-
-        setOrders(orderData || []);
-
-        // Fetch Devices & Achievements (New Infrastructure)
-        const [devicesRes, achievementsRes, warrantiesRes, serviceRes] = await Promise.all([
-            supabase.from('user_devices').select('*').eq('user_id', session.user.id),
-            supabase.from('user_achievements').select('*').eq('user_id', session.user.id),
-            supabase.from('warranties').select('*').eq('user_id', session.user.id),
-            supabase.from('support_tickets').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false })
-        ]);
-        setDevices(devicesRes.data || []);
-        setAchievements(achievementsRes.data || []);
-        setWarranties(warrantiesRes.data || []);
-        setServiceRequests(serviceRes.data || []);
-
-        // Fetch Notifications
-        const { data: notifData } = await supabase
-          .from('user_notifications')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .order('created_at', { ascending: false });
+        setOrders(orderData);
+        setDevices(devicesData);
+        setAchievements(achievementsData);
+        setWarranties(warrantiesData);
+        setServiceRequests(ticketsData);
 
         if (notifData) {
             setNotifications(notifData as NotificationNode[]);
-            setUnreadCount(notifData.filter(n => !n.is_read).length);
+            setUnreadCount((notifData as NotificationNode[]).filter(n => !n.is_read).length);
         }
 
         setCoupons([]);
 
-        // Recently Purchased Logic
-        const { data: pItems } = await supabase
-          .from('orders')
-          .select('product_id, products(name, image_url, price)')
-          .eq('customer_phone', profileData?.phone_number || session.user.email)
-          .eq('status', 'Delivered')
-          .limit(5);
-
-        if (pItems) setPurchasedItems((pItems as unknown as { product_id: number, products: { name: string, image_url: string, price: number, category: string } | null }[]).map((pi) => ({
-            id: pi.product_id,
-            name: pi.products?.name || 'Product',
-            image: pi.products?.image_url || '',
-            price: pi.products?.price || 0,
-            category: pi.products?.category || ''
-        })));
-
-        // Update Streak Logic
-        try {
-            await fetch('/api/member/gamification', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`
-                },
-                body: JSON.stringify({ userId: session.user.id, action: 'update-streak' }),
-            });
-        } catch (err) {
-            console.warn("Streak update failed", err);
+        if (gameConfig) {
+            setGamification(gameConfig);
         }
 
-        // Fetch Gamification Config
-        const { data: gameData } = await supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle();
-        if (gameData) setGamification(gameData.value);
+        let pItemsData: PurchasedItem[] = [];
+        try {
+            const { data: pItems } = await supabase
+              .from('orders')
+              .select('product_id, products(name, image_url, price, category)')
+              .eq('customer_phone', profileData?.phone_number || session.user.email || '')
+              .eq('status', 'Delivered')
+              .limit(5);
+
+            if (pItems) {
+                pItemsData = (pItems as unknown as { product_id: number, products: { name: string, image_url: string, price: number, category: string } | null }[]).map((pi) => ({
+                    id: pi.product_id,
+                    name: pi.products?.name || 'Product',
+                    image: normalizeImage(pi.products?.image_url),
+                    price: pi.products?.price || 0,
+                    category: pi.products?.category || ''
+                }));
+            }
+        } catch {}
+        setPurchasedItems(pItemsData);
 
       } catch (err) {
           console.error("Profile load error:", err);
       } finally {
+          clearTimeout(failsafeTimer);
           setLoading(false);
       }
     }
 
     loadData();
+    return () => clearTimeout(failsafeTimer);
   }, [router]);
 
   // 0.5 Inline Countdown Timer Component
