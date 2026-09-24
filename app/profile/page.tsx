@@ -203,9 +203,15 @@ export default function ProfilePage() {
   const assistantInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // 🛡️ [FAILSAFE_TIMEOUT] Guarantees loading spinner never sticks for more than 3 seconds
+    const failsafeTimer = setTimeout(() => {
+        setLoading(false);
+    }, 3000);
+
     async function loadData() {
       if (!supabase) {
         setLoading(false);
+        clearTimeout(failsafeTimer);
         return;
       }
 
@@ -213,8 +219,8 @@ export default function ProfilePage() {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
-          router.push('/auth?mode=signin');
           setLoading(false);
+          clearTimeout(failsafeTimer);
           return;
         }
 
@@ -540,6 +546,27 @@ export default function ProfilePage() {
       } as Parameters<typeof generateReceiptPDF>[0]);
       doc.save(`Receipt_OnlineBar_${order.id}.pdf`);
   };
+
+  if (!loading && !user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-left">
+        <Card className="max-w-md w-full bg-white rounded-[3rem] p-12 shadow-2xl border border-slate-100 text-center space-y-6">
+          <div className="h-20 w-20 rounded-3xl bg-primary/10 flex items-center justify-center text-primary mx-auto shadow-sm">
+            <UserIcon size={36} />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-3xl font-black text-foreground uppercase tracking-tighter">Vault Access Required</h2>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Sign in to access your My Bar vault, loyalty points, and active dispatches.</p>
+          </div>
+          <Link href="/auth?mode=signin">
+            <Button className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20">
+              Authorize Entrance &rarr;
+            </Button>
+          </Link>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
