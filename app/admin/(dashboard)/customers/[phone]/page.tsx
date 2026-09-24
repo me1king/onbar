@@ -241,6 +241,67 @@ export default function CustomerProfilePage() {
                         </div>
                     </Card>
 
+                    {/* CLICK RATE & TELEMETRY */}
+                    <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-6">
+                        <div className="flex items-center gap-3">
+                            <BarChart3 className="h-5 w-5 text-primary" />
+                            <h3 className="text-sm font-black uppercase tracking-[0.4em] text-slate-400">Click Rate Telemetry</h3>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Clicks / Minute</p>
+                                <p className="text-xl font-black text-primary">
+                                    {aggregate.total_active_time_sec > 0 ? ((aggregate.total_clicks / aggregate.total_active_time_sec) * 60).toFixed(1) : '0'}
+                                </p>
+                            </div>
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Clicks / Page</p>
+                                <p className="text-xl font-black text-primary">
+                                    {aggregate.total_pages_viewed > 0 ? (aggregate.total_clicks / aggregate.total_pages_viewed).toFixed(1) : '0'}
+                                </p>
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* ONBOARDING DEMOGRAPHICS & PREFERENCES */}
+                    <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-8">
+                        <div className="flex items-center gap-3">
+                            <MapPin className="h-5 w-5 text-primary" />
+                            <h3 className="text-sm font-black uppercase tracking-[0.4em] text-slate-400">Demographics & Location</h3>
+                        </div>
+                        <div className="space-y-4 text-xs font-bold text-slate-600">
+                            <div className="flex justify-between border-b border-slate-50 pb-3">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">Phone Node</span>
+                                <span className="font-mono text-foreground">{profile.phone_number || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-slate-50 pb-3">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">Email</span>
+                                <span className="text-foreground truncate max-w-[180px]">{profile.email || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-slate-50 pb-3">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">Delivery Address</span>
+                                <span className="text-foreground uppercase truncate max-w-[180px]">{profile.address || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-slate-50 pb-3">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">GPS Location</span>
+                                <span className="font-mono text-primary">{(profile as { latitude?: number, longitude?: number }).latitude && (profile as { latitude?: number, longitude?: number }).longitude ? `${(profile as { latitude?: number }).latitude?.toFixed(4)}, ${(profile as { longitude?: number }).longitude?.toFixed(4)}` : 'Not Set'}</span>
+                            </div>
+                        </div>
+
+                        {preferences.length > 0 && (
+                            <div className="space-y-3 pt-4 border-t border-slate-100">
+                                <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Chosen Onboarding Preferences</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {preferences.map((p, idx) => (
+                                        <span key={idx} className="px-3 py-1 bg-primary/10 text-primary rounded-lg text-[9px] font-black uppercase tracking-wider">
+                                            {p.category_id} ({p.affinity_score}%)
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </Card>
+
                     {/* FRICTION RADAR */}
                     <Card className="p-10 rounded-[3.5rem] bg-rose-50 border border-rose-100 shadow-sm space-y-8">
                         <div className="flex items-center gap-4">
