@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/context/CartContext";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, normalizeImage } from "@/lib/utils";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 
@@ -26,7 +26,7 @@ export default function CartItem({ item, isLast }: CartItemProps) {
       <div className="flex items-start gap-4">
         <div className="relative w-[100px] h-[100px]">
           <Image
-            src={item.image}
+            src={normalizeImage(item.image)}
             alt={item.name}
             fill
             sizes="100px"

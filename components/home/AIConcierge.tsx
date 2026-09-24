@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
 import { useSettings } from '@/lib/useSettings';
 import Image from 'next/image';
@@ -196,7 +196,7 @@ export default function AIConcierge() {
                                             {m.suggestions.map(s => (
                                                 <div key={s.id} className="p-4 rounded-3xl bg-white border border-slate-100 flex items-center gap-4 shadow-sm group hover:border-primary/20 transition-all">
                                                     <div className="h-14 w-14 rounded-2xl bg-slate-50 p-2 border border-slate-100 shrink-0">
-                                                        <Image src={s.image_url} alt="" width={56} height={56} className="h-full w-full object-contain" />
+                                                        <Image src={normalizeImage(s.image_url)} alt="" width={56} height={56} className="h-full w-full object-contain" />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <p className="text-[10px] font-black uppercase truncate text-foreground">{s.name}</p>

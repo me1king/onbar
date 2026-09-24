@@ -9,18 +9,20 @@ export function cn(...inputs: ClassValue[]) {
  * Standardizes empty strings and objects to a valid fallback path.
  */
 export const normalizeImage = (url: string | null | undefined | object) => {
-    if (!url || (typeof url === 'string' && url.trim() === "")) {
+    if (!url || (typeof url === 'string' && (url.trim() === "" || url.trim() === "null" || url.trim() === "undefined" || url.trim() === "[object Object]"))) {
         return '/images/NoImage.jpg';
     }
 
-    // If it's an object (like an empty {} from a DB error or bad parse), return fallback
     if (typeof url === 'object') {
         return '/images/NoImage.jpg';
     }
 
     const trimmedUrl = (url as string).trim();
 
-    // Check if it's exactly the placeholder or contains it
+    if (trimmedUrl === '' || trimmedUrl === '{}' || trimmedUrl === 'null' || trimmedUrl === 'undefined') {
+        return '/images/NoImage.jpg';
+    }
+
     const isPlaceholder =
         trimmedUrl === '/placeholder.jpg' ||
         trimmedUrl === 'placeholder.jpg' ||
