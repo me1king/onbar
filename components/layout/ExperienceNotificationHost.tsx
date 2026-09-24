@@ -13,17 +13,19 @@ export default function ExperienceNotificationHost() {
 
     React.useEffect(() => {
         let isMounted = true;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let channel: any = null;
 
         async function setupRealtime() {
             if (!supabase) return;
 
             const { data: { session } } = await supabase.auth.getSession();
-            if (!session) return;
+            if (!session || !isMounted) return;
 
             const userId = session.user.id;
 
             // Subscribe to the notifications log for this user
-            const channel = supabase
+            channel = supabase
                 .channel(`experience-alerts-${userId}`)
                 .on(
                     'postgres_changes',
@@ -68,16 +70,15 @@ export default function ExperienceNotificationHost() {
                     }
                 )
                 .subscribe();
-
-            return () => {
-                if (supabase) supabase.removeChannel(channel);
-            };
         }
 
         setupRealtime();
 
         return () => {
             isMounted = false;
+            if (channel && supabase) {
+                supabase.removeChannel(channel);
+            }
         };
     }, []);
 
