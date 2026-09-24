@@ -204,144 +204,135 @@ export default function ProfilePage() {
 
   useEffect(() => {
     async function loadData() {
-      if (!supabase) return;
-
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.push('/auth?mode=signin');
+      if (!supabase) {
+        setLoading(false);
         return;
       }
 
-      setUser(session.user);
-
-      // Fetch Profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profileData && !profileData.referral_code) {
-          const newCode = `OB-${session.user.id.substring(0, 7).toUpperCase()}`;
-          await supabase.from('profiles').update({ referral_code: newCode }).eq('id', session.user.id);
-          profileData.referral_code = newCode;
-      }
-
-      if (profileData) {
-        setProfile(profileData);
-        setEditForm({
-            full_name: profileData.full_name || '',
-            phone_number: profileData.phone_number || '',
-            address: profileData.address || '',
-            birth_date: profileData.birth_date || ''
-        });
-
-        if (profileData.referral_code) {
-            setReferralUrl(getReferralLink(profileData.referral_code));
-        }
-      }
-
-      // Check for abandoned items
-      const searchId = profileData?.phone_number || session.user.email;
-      const { data: abandonedData } = await supabase
-        .from('abandoned_carts')
-        .select('*')
-        .eq('customer_phone', searchId)
-        .single();
-
-      if (abandonedData) {
-          setAbandonedBag(abandonedData);
-      }
-
-      // Fetch Orders
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', session.user.id) // NEW: Strict UID link
-        .order('created_at', { ascending: false });
-
-      setOrders(orderData || []);
-
-      // Fetch Devices & Achievements (New Infrastructure)
-      const [devicesRes, achievementsRes, warrantiesRes, serviceRes] = await Promise.all([
-          supabase.from('user_devices').select('*').eq('user_id', session.user.id),
-          supabase.from('user_achievements').select('*').eq('user_id', session.user.id),
-          supabase.from('warranties').select('*').eq('user_id', session.user.id),
-          supabase.from('support_tickets').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false })
-      ]);
-      setDevices(devicesRes.data || []);
-      setAchievements(achievementsRes.data || []);
-      setWarranties(warrantiesRes.data || []);
-      setServiceRequests(serviceRes.data || []);
-
-      // Fetch Notifications
-      const { data: notifData } = await supabase
-        .from('user_notifications')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      if (notifData) {
-          setNotifications(notifData as NotificationNode[]);
-          setUnreadCount(notifData.filter(n => !n.is_read).length);
-      }
-
-      // Real data only
-      setCoupons([]);
-
-      // Recently Purchased Logic
-      const { data: pItems } = await supabase
-        .from('orders')
-        .select('product_id, products(name, image_url, price)')
-        .eq('customer_phone', profileData?.phone_number || session.user.email)
-        .eq('status', 'Delivered')
-        .limit(5);
-
-      if (pItems) setPurchasedItems((pItems as unknown as { product_id: number, products: { name: string, image_url: string, price: number, category: string } | null }[]).map((pi) => ({
-          id: pi.product_id,
-          name: pi.products?.name || 'Product',
-          image: pi.products?.image_url || '',
-          price: pi.products?.price || 0,
-          category: pi.products?.category || ''
-      })));
-
-      // Update Streak Logic
       try {
-          await fetch('/api/member/gamification', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${session.access_token}`
-              },
-              body: JSON.stringify({ userId: session.user.id, action: 'update-streak' }),
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) {
+          router.push('/auth?mode=signin');
+          setLoading(false);
+          return;
+        }
+
+        setUser(session.user);
+
+        // Fetch Profile
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profileData && !profileData.referral_code) {
+            const newCode = `OB-${session.user.id.substring(0, 7).toUpperCase()}`;
+            await supabase.from('profiles').update({ referral_code: newCode }).eq('id', session.user.id);
+            profileData.referral_code = newCode;
+        }
+
+        if (profileData) {
+          setProfile(profileData);
+          setEditForm({
+              full_name: profileData.full_name || '',
+              phone_number: profileData.phone_number || '',
+              address: profileData.address || '',
+              birth_date: profileData.birth_date || ''
           });
+
+          if (profileData.referral_code) {
+              setReferralUrl(getReferralLink(profileData.referral_code));
+          }
+        }
+
+        // Check for abandoned items
+        const searchId = profileData?.phone_number || session.user.email;
+        const { data: abandonedData } = await supabase
+          .from('abandoned_carts')
+          .select('*')
+          .eq('customer_phone', searchId)
+          .maybeSingle();
+
+        if (abandonedData) {
+            setAbandonedBag(abandonedData);
+        }
+
+        // Fetch Orders
+        const { data: orderData } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        setOrders(orderData || []);
+
+        // Fetch Devices & Achievements (New Infrastructure)
+        const [devicesRes, achievementsRes, warrantiesRes, serviceRes] = await Promise.all([
+            supabase.from('user_devices').select('*').eq('user_id', session.user.id),
+            supabase.from('user_achievements').select('*').eq('user_id', session.user.id),
+            supabase.from('warranties').select('*').eq('user_id', session.user.id),
+            supabase.from('support_tickets').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false })
+        ]);
+        setDevices(devicesRes.data || []);
+        setAchievements(achievementsRes.data || []);
+        setWarranties(warrantiesRes.data || []);
+        setServiceRequests(serviceRes.data || []);
+
+        // Fetch Notifications
+        const { data: notifData } = await supabase
+          .from('user_notifications')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        if (notifData) {
+            setNotifications(notifData as NotificationNode[]);
+            setUnreadCount(notifData.filter(n => !n.is_read).length);
+        }
+
+        setCoupons([]);
+
+        // Recently Purchased Logic
+        const { data: pItems } = await supabase
+          .from('orders')
+          .select('product_id, products(name, image_url, price)')
+          .eq('customer_phone', profileData?.phone_number || session.user.email)
+          .eq('status', 'Delivered')
+          .limit(5);
+
+        if (pItems) setPurchasedItems((pItems as unknown as { product_id: number, products: { name: string, image_url: string, price: number, category: string } | null }[]).map((pi) => ({
+            id: pi.product_id,
+            name: pi.products?.name || 'Product',
+            image: pi.products?.image_url || '',
+            price: pi.products?.price || 0,
+            category: pi.products?.category || ''
+        })));
+
+        // Update Streak Logic
+        try {
+            await fetch('/api/member/gamification', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ userId: session.user.id, action: 'update-streak' }),
+            });
+        } catch (err) {
+            console.warn("Streak update failed", err);
+        }
+
+        // Fetch Gamification Config
+        const { data: gameData } = await supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle();
+        if (gameData) setGamification(gameData.value);
+
       } catch (err) {
-          console.warn("Streak update failed", err);
+          console.error("Profile load error:", err);
+      } finally {
+          setLoading(false);
       }
-
-      // 2. Real-time Notifications Update
-      const notifChannel = supabase.channel(`profile-notifs-${session.user.id}`)
-          .on('postgres_changes', {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'user_notifications',
-              filter: `user_id=eq.${session.user.id}`
-          }, (payload) => {
-              setNotifications(prev => [payload.new as NotificationNode, ...prev]);
-              setUnreadCount(c => c + 1);
-          })
-          .subscribe();
-
-      // Fetch Gamification Config
-      const { data: gameData } = await supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle();
-      if (gameData) setGamification(gameData.value);
-
-      return () => {
-          if (supabase) supabase.removeChannel(notifChannel);
-      };
-
-      setLoading(false);
     }
 
     loadData();
