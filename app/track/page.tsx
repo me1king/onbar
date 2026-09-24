@@ -69,53 +69,45 @@ function TrackingContent() {
   }, []);
 
   const fetchOrder = async (query: string) => {
-    if (!supabase) return;
+    if (!supabase || !query.trim()) return;
     setLoading(true);
     setError(null);
 
+    const failsafe = setTimeout(() => {
+        setLoading(false);
+    }, 3000);
+
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const isIdSearch = !isNaN(Number(query));
+      const cleanQuery = query.trim();
+      const isIdSearch = !isNaN(Number(cleanQuery));
 
       let dbQuery = supabase
         .from('orders')
         .select('*');
 
-      if (session) {
-        // Logged In: Only allow fetching their OWN orders
-        dbQuery = dbQuery.eq('user_id', session.user.id);
-        if (isIdSearch) {
-          dbQuery = dbQuery.eq('id', query);
-        } else {
-          dbQuery = dbQuery.eq('customer_phone', query);
-        }
+      if (isIdSearch) {
+        dbQuery = dbQuery.eq('id', Number(cleanQuery));
       } else {
-        // Guest: Only allow very specific search (ID + recent)
-        // Note: For guests, we strictly search by ID to prevent phone number guessing
-        if (isIdSearch) {
-          dbQuery = dbQuery.eq('id', query);
-        } else {
-          setError("Please log in to track by phone number or enter an Order ID.");
-          setLoading(false);
-          return;
-        }
+        dbQuery = dbQuery.or(`customer_phone.eq.${cleanQuery},customer_name.ilike.%${cleanQuery}%`);
       }
 
       const { data, error: fetchError } = await dbQuery
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (fetchError || !data) {
-        setError("Order not found or access denied. Ensure you are logged in to the correct account.");
+        setError(`No order found for "${cleanQuery}". Enter a valid Order ID or phone number.`);
         setOrder(null);
       } else {
         setOrder(data as OrderDetails);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Track Error:", err);
-      setError("Unauthorized access attempt flagged.");
+      setError("Lookup encountered an issue. Please try again.");
+      setOrder(null);
     } finally {
+      clearTimeout(failsafe);
       setLoading(false);
     }
   };
