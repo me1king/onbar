@@ -242,6 +242,30 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
     }
   };
 
+  const [isRecovering, setIsRecovering] = useState(false);
+
+  const handleRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+        setMessage({ type: 'error', text: 'Enter your registered protocol email address.' });
+        return;
+    }
+    setLoading(true);
+    setMessage({ type: 'idle', text: '' });
+    try {
+        if (!supabase) throw new Error('Supabase not configured.');
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+            redirectTo: `${window.location.origin}/auth/callback?type=recovery`
+        });
+        if (error) throw error;
+        setMessage({ type: 'success', text: 'Account Recovery Key transmitted! Check your email inbox. 🛰️' });
+    } catch (err: unknown) {
+        setMessage({ type: 'error', text: (err as Error).message || 'Recovery transmission failed.' });
+    } finally {
+        setLoading(false);
+    }
+  };
+
   return (
     <div className="w-full max-w-md mx-auto p-6 sm:p-10 bg-white rounded-[2rem] sm:rounded-[3.5rem] border border-slate-100 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)] space-y-8 sm:y-12 animate-in zoom-in-95 duration-700">
 
@@ -282,7 +306,38 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
 
       {/* FORM INTERFACE */}
       <div className="min-h-[300px]">
-          {method === 'email' ? (
+          {isRecovering ? (
+              <form onSubmit={handleRecovery} className="space-y-6 sm:space-y-8 animate-in zoom-in-95 duration-500 text-left">
+                  <div className="space-y-2 text-center">
+                      <h3 className="text-2xl font-black text-[#1A202C] uppercase tracking-tighter">Retrieve Account</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enter your registered email to receive a secure recovery key</p>
+                  </div>
+
+                  <div className="space-y-3">
+                      <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Protocol Email</label>
+                      <div className="relative">
+                          <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="PATRON@ONLINEBAR.CO.KE" className="h-16 rounded-2xl bg-slate-50 border-slate-100 pl-14 font-black uppercase text-sm focus:bg-white transition-all shadow-inner" />
+                          <Mail className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                      </div>
+                  </div>
+
+                  <Button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full h-20 rounded-[1.8rem] bg-slate-900 text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-primary transition-all active:scale-95 flex items-center justify-center gap-3 border-none"
+                  >
+                      {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Transmit Recovery Key'}
+                  </Button>
+
+                  <button
+                      type="button"
+                      onClick={() => { setIsRecovering(false); setMessage({ type: 'idle', text: '' }); }}
+                      className="w-full text-center text-[10px] font-black uppercase text-slate-400 hover:text-primary transition-colors tracking-widest"
+                  >
+                      &larr; Return to Vault Login
+                  </button>
+              </form>
+          ) : method === 'email' ? (
               <form onSubmit={handleEmailAuth} className="space-y-6 sm:space-y-8">
                 {isSignUp && (
                   <div className="space-y-6 animate-in slide-in-from-top-4 duration-500">
@@ -318,15 +373,17 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
                 </div>
 
                 {!isSignUp && (
-                    <div className="flex justify-end px-1">
+                    <div className="flex justify-between items-center px-1">
                         <button
                             type="button"
-                            onClick={async () => {
-                                if (!email) return alert("Enter your protocol email first.");
-                                const { error } = await supabase!.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/reset` });
-                                if (error) alert(error.message);
-                                else alert("Reset link transmitted to your inbox. 🛰️");
-                            }}
+                            onClick={() => { setIsRecovering(true); setMessage({ type: 'idle', text: '' }); }}
+                            className="text-[9px] font-black uppercase text-primary hover:underline tracking-widest"
+                        >
+                            Retrieve Account?
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setIsRecovering(true); setMessage({ type: 'idle', text: '' }); }}
                             className="text-[9px] font-black uppercase text-slate-300 hover:text-primary transition-colors tracking-widest"
                         >
                             Lost your key?
