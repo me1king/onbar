@@ -50,7 +50,8 @@ interface Customer360 {
 }
 
 export default function Customer360Page() {
-    const { phone } = useParams();
+    const params = useParams();
+    const phone = params?.phone as string;
     const router = useRouter();
     const [data, setData] = React.useState<Customer360 | null>(null);
     const [loading, setLoading] = React.useState(true);

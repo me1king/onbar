@@ -52,7 +52,8 @@ interface Mission {
 }
 
 export default function RiderProfilePage() {
-    const { id } = useParams();
+    const params = useParams();
+    const id = params?.id as string;
     const router = useRouter();
     const [rider, setRider] = React.useState<RiderProfile | null>(null);
     const [loading, setLoading] = React.useState(true);

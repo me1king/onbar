@@ -99,13 +99,13 @@ export default function AnalyticsTracker() {
 
                 // 🚀 [WIDGET_INTEL] Capture Mobile Widget Attribution
                 const docReferrer = typeof document !== 'undefined' ? document.referrer : '';
-                const source = searchParams.get('utm_source') ||
+                const source = searchParams?.get('utm_source') ||
                                (docReferrer.includes('instagram.com') ? 'Instagram' :
                                 docReferrer.includes('google.com') ? 'Google' : 'Direct');
 
-                const campaign = searchParams.get('utm_campaign') || 'Direct';
-                const utmId = searchParams.get('utm_id') || undefined;
-                const utmContent = searchParams.get('utm_content') || undefined;
+                const campaign = searchParams?.get('utm_campaign') || 'Direct';
+                const utmId = searchParams?.get('utm_id') || undefined;
+                const utmContent = searchParams?.get('utm_content') || undefined;
 
                 if (typeof sessionStorage !== 'undefined') {
                     try {
@@ -154,23 +154,23 @@ export default function AnalyticsTracker() {
                     ...commonProps,
                     details: {
                         url: pathname,
-                        search: searchParams.toString(),
+                        search: searchParams?.toString() || '',
                         title: typeof document !== 'undefined' ? document.title : ''
                     }
                 });
 
                 // Standardized Discovery Events
-                if (pathname.startsWith('/shop/category/')) {
+                if (pathname?.startsWith('/shop/category/')) {
                     const category = pathname.split('/').pop();
                     await OB_OS.track('CATEGORY_VIEW', { ...commonProps, details: { category } });
-                } else if (pathname.startsWith('/shop/') && pathname.split('/').length === 3) {
+                } else if (pathname?.startsWith('/shop/') && pathname.split('/').length === 3) {
                     const productId = pathname.split('/').pop();
                     if (productId && !isNaN(Number(productId))) {
                         await OB_OS.track('PRODUCT_VIEW', { ...commonProps, productId: Number(productId) });
                     }
                 }
 
-                const query = searchParams.get('q');
+                const query = searchParams?.get('q');
                 if (query) {
                     await OB_OS.track('SEARCH', { ...commonProps, details: { query } });
                 }

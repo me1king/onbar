@@ -93,7 +93,8 @@ interface CatalogSuggestion {
 }
 
 export default function ProductStudioTerminal() {
-    const { id } = useParams();
+    const params = useParams();
+    const id = params?.id as string;
     const router = useRouter();
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);

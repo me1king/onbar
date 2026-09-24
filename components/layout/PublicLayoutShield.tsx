@@ -28,7 +28,7 @@ function ReferralTracker() {
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        const ref = searchParams.get('ref');
+        const ref = searchParams?.get('ref');
         if (ref && supabase) {
             sessionStorage.setItem('ob_referral_code', ref);
             const expiry = new Date();

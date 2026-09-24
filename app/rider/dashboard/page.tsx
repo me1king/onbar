@@ -46,7 +46,7 @@ interface Mission {
 
 function RiderDashboardContent() {
     const searchParams = useSearchParams();
-    const phoneParam = searchParams.get('phone');
+    const phoneParam = searchParams?.get('phone');
 
     const [phone, setPhone] = useState('');
     const [pin, setPin] = useState('');

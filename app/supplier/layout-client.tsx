@@ -54,7 +54,7 @@ export default function SupplierLayoutClient({
 
   const isActive = (href: string) => {
     if (href === '/supplier') return pathname === '/supplier';
-    return pathname.startsWith(href);
+    return pathname?.startsWith(href) || false;
   };
 
   return (

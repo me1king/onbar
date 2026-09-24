@@ -130,7 +130,7 @@ function CheckoutContent() {
   }, [paymentMethod]);
 
   useEffect(() => {
-    const urlRef = searchParams.get('ref');
+    const urlRef = searchParams?.get('ref');
     const sessionRef = sessionStorage.getItem('ob_referral_code');
 
     let cookieRef = null;

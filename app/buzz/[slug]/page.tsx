@@ -73,7 +73,8 @@ interface DBBuzzPostDetail {
 }
 
 export default function BuzzDetailPage() {
-    const { slug } = useParams();
+    const params = useParams();
+    const slug = params?.slug as string;
     const router = useRouter();
     const [buzz, setBuzz] = React.useState<BuzzDetail | null>(null);
     const [loading, setLoading] = React.useState(true);

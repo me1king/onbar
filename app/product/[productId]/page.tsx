@@ -45,7 +45,8 @@ interface Tutorial {
 export default function Product() {
   const { addToCart } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
-  const { productId } = useParams();
+  const params = useParams();
+  const productId = params?.productId as string;
   const { settings } = useSettings();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);

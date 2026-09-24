@@ -19,7 +19,8 @@ interface BlogPost {
 }
 
 export default function BlogDetailPage() {
-  const { slug } = useParams();
+  const params = useParams();
+  const slug = params?.slug as string;
   const [post, setPost] = useState<BlogPost | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();

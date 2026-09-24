@@ -29,7 +29,8 @@ interface OrderDispatch {
 }
 
 export default function DispatchPortal() {
-    const { id } = useParams();
+    const params = useParams();
+    const id = params?.id as string;
     const [order, setOrder] = useState<OrderDispatch | null>(null);
     const [productName, setProductName] = useState<string>('');
     const [loading, setLoading] = useState(true);

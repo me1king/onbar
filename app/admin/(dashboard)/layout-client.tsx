@@ -218,7 +218,7 @@ export default function AdminLayoutClient({
 
   const isActive = (href: string) => {
     if (href === '/admin') return pathname === '/admin';
-    return pathname.startsWith(href);
+    return pathname?.startsWith(href) || false;
   };
 
   return (

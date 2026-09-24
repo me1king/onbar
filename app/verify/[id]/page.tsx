@@ -36,7 +36,8 @@ interface VerificationResult {
 }
 
 export default function BottleVerificationPage() {
-    const { id } = useParams();
+    const params = useParams();
+    const id = params?.id as string;
     const [loading, setLoading] = useState(true);
     const [result, setResult] = useState<VerificationResult | null>(null);
 

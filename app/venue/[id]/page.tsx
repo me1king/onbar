@@ -56,7 +56,8 @@ interface DBExperience {
 }
 
 export default function VenueProfilePage() {
-    const { id } = useParams();
+    const params = useParams();
+    const id = params?.id as string;
     const router = useRouter();
     const [venue, setVenue] = React.useState<VenueDetail | null>(null);
     const [experiences, setExperiences] = React.useState<BuzzStory[]>([]);

@@ -35,7 +35,7 @@ interface CloudAsset {
 
 export default function AdminMediaHub() {
     const searchParams = useSearchParams();
-    const tabParam = searchParams.get('tab');
+    const tabParam = searchParams?.get('tab');
 
     const [assets, setAssets] = React.useState<CloudAsset[]>([]);
     const [loading, setLoading] = React.useState(true);

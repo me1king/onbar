@@ -122,7 +122,7 @@ function TrackingContent() {
 
   // 1. Auto-load logic (Member memory & Deep Link)
   useEffect(() => {
-    const urlId = searchParams.get('id');
+    const urlId = searchParams?.get('id');
 
     async function initialLoad() {
         if (urlId) {

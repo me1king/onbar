@@ -17,7 +17,7 @@ function AdminLoginContent() {
   const [email, setEmail] = useState('');
 
   useEffect(() => {
-      const modeParam = searchParams.get('mode');
+      const modeParam = searchParams?.get('mode');
       if (modeParam === 'email') {
           setMode('email');
       } else if (typeof window !== 'undefined') {

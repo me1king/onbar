@@ -89,7 +89,7 @@ export default function InstallAppWidget() {
                     </header>
 
                     <p className="text-sm font-medium italic text-slate-500 leading-relaxed">
-                        &quot;Install the Online Bar App to your home screen for instant access to the cellar and unlock the real-time **Command Node Widget** for full tactical control.&quot;
+                        &quot;Download and install the Online Bar App to your device! The interactive Command & Widget Hub comes built right in for full real-time control, live orders, and instant rewards.&quot;
                     </p>
 
                     <div className="flex flex-col gap-3">

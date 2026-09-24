@@ -21,7 +21,7 @@ interface Order {
 
 function SuccessContent() {
     const searchParams = useSearchParams();
-    const orderId = searchParams.get("orderId");
+    const orderId = searchParams?.get("orderId");
     const [order, setOrder] = useState<Order | null>(null);
     const [referralCode, setReferralCode] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);

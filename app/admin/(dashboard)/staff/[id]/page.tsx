@@ -52,7 +52,8 @@ interface StaffOrder {
 }
 
 export default function StaffProfilePage() {
-    const { id } = useParams();
+    const params = useParams();
+    const id = params?.id as string;
     const router = useRouter();
     const [staff, setStaff] = React.useState<StaffProfile | null>(null);
     const [logs, setLogs] = React.useState<AuditLog[]>([]);
