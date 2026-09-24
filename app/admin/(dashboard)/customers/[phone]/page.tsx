@@ -95,11 +95,18 @@ export default function CustomerProfilePage() {
         if (!supabase || !phone) return;
         setLoading(true);
         setNotFound(false);
+
+        const failsafeTimer = setTimeout(() => {
+            setLoading(false);
+        }, 3000);
+
         try {
             // 1. Fetch Core Profile
             const { data: profile } = await supabase.from('profiles').select('*').eq('phone_number', phone).maybeSingle();
             if (!profile) {
                 setNotFound(true);
+                clearTimeout(failsafeTimer);
+                setLoading(false);
                 return;
             }
 
@@ -127,6 +134,7 @@ export default function CustomerProfilePage() {
         } catch (err) {
             console.error(err);
         } finally {
+            clearTimeout(failsafeTimer);
             setLoading(false);
         }
     }, [phone]);

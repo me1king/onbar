@@ -85,19 +85,32 @@ export default function PremiumOnboarding() {
     };
 
     const savePreferences = async () => {
-        if (!supabase || !userId) return;
+        if (!supabase) return;
         setLoading(true);
         try {
-            await supabase.from('profiles').update({
-                interests,
-                preferred_vibe: preferredVibe,
-                onboarding_step: 'COMPLETE'
-            }).eq('id', userId);
+            let currentUserId = userId;
+            if (!currentUserId) {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.user) {
+                    currentUserId = session.user.id;
+                    setUserId(currentUserId);
+                }
+            }
 
-            await OB_OS.track('PREFERENCES_UPDATED', { userId, details: { interests, preferredVibe } });
+            if (currentUserId) {
+                await supabase.from('profiles').update({
+                    interests,
+                    preferred_vibe: preferredVibe,
+                    onboarding_step: 'COMPLETE'
+                }).eq('id', currentUserId);
+
+                await OB_OS.track('PREFERENCES_UPDATED', { userId: currentUserId, details: { interests, preferredVibe } });
+            }
+
             setStep('COMPLETE');
         } catch (err) {
-            console.error(err);
+            console.error("Preferences save error:", err);
+            setStep('COMPLETE');
         } finally {
             setLoading(false);
         }
