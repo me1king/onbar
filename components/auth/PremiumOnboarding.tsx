@@ -85,34 +85,41 @@ export default function PremiumOnboarding() {
     };
 
     const savePreferences = async () => {
-        if (!supabase) return;
         setLoading(true);
+
+        // 🛡️ [FAILSAFE] Guarantee spinner never exceeds 2 seconds
+        const failsafe = setTimeout(() => {
+            setLoading(false);
+            setStep('COMPLETE');
+        }, 2000);
+
         try {
-            let currentUserId = userId;
-            if (!currentUserId) {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session?.user) {
-                    currentUserId = session.user.id;
-                    setUserId(currentUserId);
+            if (supabase) {
+                let currentUserId = userId;
+                if (!currentUserId) {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (session?.user) {
+                        currentUserId = session.user.id;
+                        setUserId(currentUserId);
+                    }
+                }
+
+                if (currentUserId) {
+                    await supabase.from('profiles').update({
+                        interests,
+                        preferred_vibe: preferredVibe,
+                        onboarding_step: 'COMPLETE'
+                    }).eq('id', currentUserId);
+
+                    await OB_OS.track('PREFERENCES_UPDATED', { userId: currentUserId, details: { interests, preferredVibe } });
                 }
             }
-
-            if (currentUserId) {
-                await supabase.from('profiles').update({
-                    interests,
-                    preferred_vibe: preferredVibe,
-                    onboarding_step: 'COMPLETE'
-                }).eq('id', currentUserId);
-
-                await OB_OS.track('PREFERENCES_UPDATED', { userId: currentUserId, details: { interests, preferredVibe } });
-            }
-
-            setStep('COMPLETE');
         } catch (err) {
             console.error("Preferences save error:", err);
-            setStep('COMPLETE');
         } finally {
+            clearTimeout(failsafe);
             setLoading(false);
+            setStep('COMPLETE');
         }
     };
 
