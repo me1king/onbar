@@ -117,7 +117,15 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
           }
         });
 
-        if (error) throw error;
+        if (error) {
+            let errorText = error.message || "Uplink Failure";
+            const userExists = error.message?.includes("already registered") || error.code === '23505' || error.message?.includes("user_already_exists");
+            if (userExists) errorText = "Identity already exists on the grid. Switch to Login mode below. 🛰️";
+            setMessage({ type: 'error', text: errorText });
+            setDebugInfo(JSON.stringify({ code: error.code || 'UNKNOWN', message: error.message, name: error.name }));
+            setLoading(false);
+            return;
+        }
 
         if (data.user) {
             await handleIdentityStitching(data.user.id);
@@ -136,7 +144,14 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             password
         });
 
-        if (error) throw error;
+        if (error) {
+            let errorText = error.message || "Uplink Failure";
+            if (error.message?.includes("Invalid login credentials")) errorText = "Credential Mismatch. Incorrect key or identity not found. 🛡️";
+            setMessage({ type: 'error', text: errorText });
+            setDebugInfo(JSON.stringify({ code: error.code || 'UNKNOWN', message: error.message, name: error.name }));
+            setLoading(false);
+            return;
+        }
 
         if (data.user) {
             await handleIdentityStitching(data.user.id);
