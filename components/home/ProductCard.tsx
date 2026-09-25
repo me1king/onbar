@@ -38,7 +38,6 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
   const [imageError, setImageError] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
-  const [showQuickView, setShowQuickView] = useState(false);
 
   const { addToCart } = useCart();
   const { isInWishlist, addToWishlist, removeFromWishlist } = useWishlist();
@@ -260,12 +259,12 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
             {/* Quick Actions Hidden by Default */}
             <div className="mt-auto pt-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                <button
-                    onClick={() => setShowQuickView(true)}
-                    className="flex-1 h-10 rounded-xl bg-slate-50 text-[8px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all border border-slate-100"
+                <Link
+                    href={`/shop/${product.id}`}
+                    className="flex-1 h-10 rounded-xl bg-slate-50 text-[8px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all border border-slate-100 flex items-center justify-center text-foreground"
                 >
-                    Quick Look
-                </button>
+                    Take a Look
+                </Link>
                 <button
                     onClick={(e) => {
                         e.preventDefault();
@@ -280,155 +279,6 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
             </div>
         </CardContent>
       </Card>
-
-      {/* Quick View Modal (High-Fidelity Restoration) */}
-      {showQuickView && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/10 backdrop-blur-md p-4" onClick={() => setShowQuickView(false)}>
-          <Card className="max-w-4xl w-full bg-white max-h-[90dvh] rounded-[3rem] border-none shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-8 border-b border-slate-50 shrink-0">
-              <div className="flex items-center gap-3 text-slate-400">
-                <Globe size={16} />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Nodal Intelligence Preview</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 rounded-full hover:bg-slate-100"
-                onClick={() => setShowQuickView(false)}
-              >
-                <X className="h-6 w-6" />
-              </Button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto no-scrollbar">
-              <CardContent className="p-8 sm:p-10 space-y-12">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 text-left">
-                  {/* Product Image Stage */}
-                  <div className="aspect-square overflow-hidden rounded-[2.5rem] bg-slate-50 flex items-center justify-center p-10 border border-slate-100 relative group/stage shadow-inner">
-                    {!imageError ? (
-                      <Image
-                        src={imageUrl}
-                        alt={product.name}
-                        fill
-                        className="object-contain hover:scale-110 transition-transform duration-700 p-10"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-200"><ImageIcon size={64} /></div>
-                    )}
-
-                    {/* Source Node Badge */}
-                    {product.manufacturer && (
-                      <div className="absolute bottom-6 left-6 bg-white/80 backdrop-blur-md px-4 py-2 rounded-xl border border-white/20 shadow-sm">
-                          <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Source Node</p>
-                          <p className="text-[10px] font-black text-foreground uppercase">{product.manufacturer}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Content Node */}
-                  <div className="space-y-8 flex flex-col h-full">
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap gap-2">
-                          {product.category && <span className="bg-primary/10 text-primary text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{product.category}</span>}
-                          {product.is_bite && <span className="bg-rose-50 text-rose-500 text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest">🥘 NIGHT BITE</span>}
-                      </div>
-                      <h1 className="text-4xl font-black text-foreground uppercase tracking-tight leading-none italic">
-                        {product.name}
-                      </h1>
-                      <div className="flex items-baseline gap-4">
-                        <p className="text-4xl font-black text-primary tracking-tighter">
-                            {formatPrice(product.price)}
-                        </p>
-                        {isSale && <p className="text-xl font-bold text-slate-300 line-through tracking-tight">{formatPrice(Number(product.old_price))}</p>}
-                      </div>
-                    </div>
-
-                    {/* High Fidelity Specs Grid */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Alcohol (ABV)</p>
-                            <p className="text-xs font-black text-foreground uppercase truncate">{product.abv_label || 'Standard'}</p>
-                        </div>
-                        <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Unit Volume</p>
-                            <p className="text-xs font-black text-foreground uppercase truncate">{product.size_label || '750ml'}</p>
-                        </div>
-                    </div>
-
-                    {/* Description Node */}
-                    {product.description && (
-                      <div className="flex gap-4 p-6 bg-slate-50/50 rounded-3xl border border-slate-100 italic">
-                          <Info size={20} className="text-primary shrink-0" />
-                          <p className="text-slate-500 text-sm font-medium leading-relaxed">
-                              {product.description}
-                          </p>
-                      </div>
-                    )}
-
-                    {/* Technical Protocol (The Missing Detail) */}
-                    <div className="space-y-4">
-                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Technical Protocol</p>
-                        <div className="grid grid-cols-2 bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden">
-                            {[
-                                { k: 'Type', v: product.category || 'Premium' },
-                                { k: 'Origin', v: product.origin || 'Imported' },
-                                { k: 'Brand', v: product.brand || 'Elite' },
-                                { k: 'Status', v: 'Verified' }
-                            ].map((row, i) => (
-                                <div key={i} className={cn("p-4 border-slate-100", i % 2 === 0 ? "border-r" : "", i < 2 ? "border-b" : "")}>
-                                    <span className="text-[7px] font-black uppercase text-slate-400 block mb-0.5">{row.k}</span>
-                                    <span className="text-[10px] font-black text-foreground uppercase truncate block">{row.v}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Ingredients Node */}
-                    {product.ingredients && Array.isArray(product.ingredients) && product.ingredients.length > 0 && (
-                      <div className="space-y-4">
-                          <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-1">Component Profile</p>
-                          <div className="flex flex-wrap gap-2">
-                              {product.ingredients.map((ing: string, i: number) => (
-                                  <span key={i} className="px-3 py-1.5 bg-white border border-slate-100 rounded-lg text-[9px] font-bold text-slate-600 uppercase shadow-sm">{ing}</span>
-                              ))}
-                          </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </div>
-
-            {/* Action Terminal Sticky Bottom */}
-            <div className="p-8 border-t border-slate-50 bg-white shrink-0">
-                <div className="flex gap-4 max-w-4xl mx-auto">
-                    <Button
-                        className={cn(
-                        'flex-1 h-16 rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-2xl active:scale-95 transition-all border-none',
-                        justAdded
-                            ? 'bg-emerald-500 text-white'
-                            : 'bg-primary text-white shadow-primary/20 hover:bg-primary/90'
-                        )}
-                        onClick={handleAddToCart}
-                        disabled={isAdding || (product.stock !== undefined && product.stock === 0)}
-                    >
-                        {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? 'SECURED IN BAG!' : 'ESTABLISH ORDER'}
-                    </Button>
-
-                    <button
-                        onClick={handleToggleLike}
-                        className={cn(
-                            "h-16 w-16 rounded-2xl border flex items-center justify-center transition-all",
-                            isInWishlist(product.id) ? "bg-rose-50 border-rose-100 text-rose-500" : "bg-white border-slate-100 text-slate-300 hover:text-rose-500"
-                        )}
-                    >
-                        <Heart size={24} fill={isInWishlist(product.id) ? "currentColor" : "none"} />
-                    </button>
-                </div>
-            </div>
-          </Card>
-        </div>
-      )}
     </>
   );
 }
