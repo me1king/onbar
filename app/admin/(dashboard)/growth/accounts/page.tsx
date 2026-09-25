@@ -21,7 +21,12 @@ import {
     Lock,
     Key,
     Server,
-    Shield
+    Shield,
+    Bookmark,
+    Globe,
+    Send,
+    Share2,
+    Cloud
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -190,6 +195,69 @@ export default function SocialAccountManagement() {
             description: 'Corporate Relations Node',
             stats: { connection: 'VIP B2B', status: 'Online' }
         },
+        {
+            id: 'THREADS',
+            label: 'Threads (Meta)',
+            icon: MessageCircle,
+            activeColor: 'from-purple-600 to-indigo-700 text-white',
+            accent: 'purple',
+            description: 'Threads API Node',
+            stats: { followers: '4.2K', reach: '88%' }
+        },
+        {
+            id: 'PINTEREST',
+            label: 'Pinterest Recipes',
+            icon: Bookmark,
+            activeColor: 'from-red-600 to-rose-700 text-white',
+            accent: 'red',
+            description: 'Pinterest API Node',
+            stats: { pins: '140+', saves: '1.2K' }
+        },
+        {
+            id: 'REDDIT',
+            label: 'Reddit Communities',
+            icon: Globe,
+            activeColor: 'from-orange-600 to-amber-700 text-white',
+            accent: 'orange',
+            description: 'Reddit OAuth Node',
+            stats: { karma: '3.4K', reach: 'High' }
+        },
+        {
+            id: 'TELEGRAM',
+            label: 'Telegram Bot',
+            icon: Send,
+            activeColor: 'from-sky-400 to-blue-500 text-white',
+            accent: 'sky',
+            description: 'Telegram Bot Token Node',
+            stats: { subscribers: '5.1K', status: 'Active' }
+        },
+        {
+            id: 'DISCORD',
+            label: 'Discord Guild',
+            icon: Radio,
+            activeColor: 'from-indigo-500 to-purple-600 text-white',
+            accent: 'indigo',
+            description: 'Discord Bot Staff Node',
+            stats: { members: '920', status: 'Online' }
+        },
+        {
+            id: 'BLUESKY',
+            label: 'Bluesky Social',
+            icon: Cloud,
+            activeColor: 'from-blue-400 to-indigo-500 text-white',
+            accent: 'blue',
+            description: 'AT Protocol App Password',
+            stats: { followers: '1.8K', status: 'Syncing' }
+        },
+        {
+            id: 'TUMBLR',
+            label: 'Tumblr Blog',
+            icon: Share2,
+            activeColor: 'from-blue-900 to-slate-950 text-white',
+            accent: 'blue',
+            description: 'Tumblr Consumer API Node',
+            stats: { posts: '210', note: 'Active' }
+        }
     ];
 
     const currentCheck = securityChecks[securityCheckIndex];
