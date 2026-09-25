@@ -33,6 +33,11 @@ export const normalizeImage = (url: string | null | undefined | object) => {
         return '/images/NoImage.jpg';
     }
 
+    // 🚀 [CLOUDINARY_AUTO_OPTIMIZE] Automatically inject WebP/AVIF auto-compression parameters for Cloudinary URLs
+    if (trimmedUrl.includes('res.cloudinary.com') && !trimmedUrl.includes('f_auto')) {
+        return trimmedUrl.replace('/upload/', '/upload/f_auto,q_auto,w_600/');
+    }
+
     return trimmedUrl;
 };
 
