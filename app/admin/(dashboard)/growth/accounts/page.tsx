@@ -112,22 +112,28 @@ export default function SocialAccountManagement() {
         setTimeout(async () => {
             if (!supabase) return;
             try {
-                const { error } = await supabase.from('social_accounts').upsert({
+                // Remove existing connection record for this platform if any
+                await supabase.from('social_accounts').delete().eq('platform', platform);
+
+                // Insert new connected account node
+                const { error } = await supabase.from('social_accounts').insert([{
                     platform,
-                    account_name: `Online Bar ${platform.charAt(0) + platform.slice(1).toLowerCase()} Node`,
+                    account_name: `Online Bar ${platform.charAt(0) + platform.slice(1).toLowerCase()} Official Node`,
                     status: 'CONNECTED',
                     token_expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
-                }, { onConflict: 'platform, account_name' });
+                }]);
 
                 if (error) throw error;
                 await logAuditAction(email, 'SOCIAL_ACCOUNT_CONNECTED', { platform });
                 fetchAccounts();
-            } catch (err) {
-                console.error(err);
+                alert(`${platform} Node successfully authorized and connected! 🚀`);
+            } catch (err: unknown) {
+                console.error("Connection error:", err);
+                alert(`Connection failed: ${(err as Error).message}`);
             } finally {
                 setConnecting(null);
             }
-        }, 1800);
+        }, 1200);
     };
 
     const handleDisconnect = async (id: string, platform: string) => {
