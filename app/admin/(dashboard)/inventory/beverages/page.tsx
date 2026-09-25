@@ -8,8 +8,6 @@ import {
     RefreshCcw,
     Sparkles,
     Snowflake,
-    AlertCircle,
-    CheckCircle2,
     Loader2,
     Layers,
     Trash2
@@ -166,7 +164,7 @@ export default function BeverageCommandAdmin() {
                 ) : beverages.length === 0 ? (
                     <div className="py-24 text-center text-slate-300">
                         <Layers size={48} className="mx-auto mb-4 opacity-20" />
-                        <p className="text-[10px] font-black uppercase tracking-widest italic">&quot;No beverage nodes initialized yet. Click 'Add Beverage Node' to start.&quot;</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest italic">&quot;No beverage nodes initialized yet. Click &apos;Add Beverage Node&apos; to start.&quot;</p>
                     </div>
                 ) : (
                     <div className="divide-y divide-slate-50">

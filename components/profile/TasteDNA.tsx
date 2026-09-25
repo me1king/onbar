@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Wine, Info, Sparkles, Edit3, Check, Loader2 } from 'lucide-react';
+import { Wine, Sparkles, Edit3, Check, Loader2 } from 'lucide-react';
 import {
     PolarGrid,
     PolarAngleAxis,
