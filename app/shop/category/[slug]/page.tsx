@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import ProductCard from '@/components/home/ProductCard';
 import { Product } from '@/types/product';
+import BeverageCommandPage from '@/app/beverages/page';
 
 interface CategoryPageProps {
   params: Promise<{ slug: string }>;
@@ -12,6 +13,10 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   const resolvedParams = await params;
   const slug = resolvedParams?.slug || '';
   const categorySlug = slug.toLowerCase();
+
+  if (categorySlug === 'beverages') {
+      return <BeverageCommandPage />;
+  }
 
   let products: Product[] = [];
   let fetchError: { message: string } | null = null;

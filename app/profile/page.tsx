@@ -819,7 +819,11 @@ export default function ProfilePage() {
 
         <div className="grid lg:grid-cols-2 gap-10">
             <div id="taste-dna-section" className="scroll-mt-24">
-                <TasteDNA dna={profile?.taste_dna || {}} />
+                <TasteDNA
+                    dna={profile?.taste_dna || {}}
+                    userId={user?.id}
+                    onUpdate={(newDna) => setProfile(prev => prev ? { ...prev, taste_dna: newDna } : null)}
+                />
             </div>
             <div className="space-y-10">
                 <RewardMilestoneTracker />
