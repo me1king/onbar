@@ -449,7 +449,7 @@ export default function ProductDetailClient({
                         <Button
                             onClick={handleAddToCart}
                             disabled={isAdding || (product.stock !== undefined && product.stock === 0)}
-                            className="flex-1 h-24 rounded-[2.5rem] bg-brand-red text-white font-black uppercase tracking-[0.4em] text-sm shadow-2xl shadow-brand-red/30 hover:scale-[1.02] active:scale-95 transition-all group border-none"
+                            className="flex-1 h-24 rounded-[2.5rem] bg-primary text-white font-black uppercase tracking-[0.3em] text-sm shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all group border-none"
                         >
                             {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? <><Check size={20} className="mr-2" /> In Bag</> : <>Add {quantity} &bull; {formatPrice(product.price * quantity)}</>}
                         </Button>
