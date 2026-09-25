@@ -1,19 +1,15 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCart } from "@/context/CartContext";
 import { cn, formatPrice, normalizeImage } from "@/lib/utils";
 import {
     Check,
     Heart,
-    X,
     Loader2,
     Plus,
     ImageIcon,
     MessageSquare,
-    Globe,
-    Info,
     TrendingUp,
     Lock,
     Utensils
