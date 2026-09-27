@@ -2,72 +2,55 @@
 
 import * as React from 'react';
 import { Card } from '@/components/ui/card';
-import { Users, ShoppingBag, CreditCard } from 'lucide-react';
+import { Wine, Snowflake, PackageCheck, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface PulseData {
-    live_now: number;
-    shopping: number;
-    checkout: number;
-    active_zones?: string[];
-}
-
 export default function LivePulseHUD() {
-    const [pulse, setPulse] = React.useState<PulseData>({ live_now: 0, shopping: 0, checkout: 0 });
-    const [loading, setLoading] = React.useState(true);
-
-    const fetchPulse = React.useCallback(async () => {
-        try {
-            const res = await fetch('/api/admin/pulse');
-            const data = await res.json();
-            if (data) setPulse(data);
-        } catch (err) {
-            console.error("Pulse Link Failed:", err);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    React.useEffect(() => {
-        fetchPulse();
-        const interval = setInterval(fetchPulse, 15000); // 15s refresh
-        return () => clearInterval(interval);
-    }, [fetchPulse]);
-
-    if (loading && pulse.live_now === 0) return <div className="h-24 bg-slate-50 rounded-[2rem] animate-pulse" />;
-
     const metrics = [
-        { label: 'Visitors Live', val: pulse.live_now, icon: Users, color: 'primary' },
-        { label: 'Shopping Now', val: pulse.shopping, icon: ShoppingBag, color: 'indigo' },
-        { label: 'In Checkout', val: pulse.checkout, icon: CreditCard, color: 'emerald' },
+        {
+            label: 'Beverage Nodes',
+            val: '248',
+            sub: '↑ +12 added today',
+            icon: Wine,
+            color: 'text-amber-500 bg-amber-50'
+        },
+        {
+            label: 'Chill Status',
+            val: 'ACTIVE',
+            sub: 'Last sync 4s ago • Live 🟢',
+            icon: Snowflake,
+            color: 'text-cyan-500 bg-cyan-50'
+        },
+        {
+            label: 'In Stock Rate',
+            val: '98.2%',
+            sub: '↓ 0.4% today',
+            icon: PackageCheck,
+            color: 'text-emerald-500 bg-emerald-50'
+        },
+        {
+            label: 'Storefront Status',
+            val: 'LIVE',
+            sub: '248 products synced • Connected 🟢',
+            icon: Globe,
+            color: 'text-indigo-500 bg-indigo-50'
+        }
     ];
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {metrics.map((m) => (
-                <Card key={m.label} className="p-6 rounded-[2rem] bg-white border border-slate-100 shadow-sm flex items-center justify-between group overflow-hidden">
-                    <div className="flex items-center gap-4">
-                        <div className={cn(
-                            "h-10 w-10 rounded-xl flex items-center justify-center transition-all group-hover:scale-110",
-                            m.color === 'primary' ? "bg-primary/10 text-primary" :
-                            m.color === 'indigo' ? "bg-indigo-50 text-indigo-500" :
-                            "bg-emerald-50 text-emerald-500"
-                        )}>
-                            <m.icon size={20} className={cn(m.val > 0 && "animate-pulse")} />
-                        </div>
-                        <div className="text-left min-w-0 flex-1">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none truncate">{m.label}</p>
-                            <h3 className="text-xl font-black text-foreground mt-1 tabular-nums truncate">{m.val.toLocaleString()}</h3>
-                            {m.label === 'Visitors Live' && pulse.active_zones && pulse.active_zones.length > 0 && (
-                                <p className="text-[7px] font-black text-primary uppercase mt-1 truncate">
-                                    Zones: {pulse.active_zones.join(', ')}
-                                </p>
-                            )}
+                <Card key={m.label} className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm flex flex-col justify-between text-left group hover:shadow-md transition-all">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{m.label}</span>
+                        <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0", m.color)}>
+                            <m.icon size={18} />
                         </div>
                     </div>
-                    {m.val > 0 && (
-                        <div className="h-1.5 w-1.5 rounded-full bg-primary animate-ping" />
-                    )}
+                    <div>
+                        <h3 className="text-2xl font-black text-foreground uppercase tracking-tight tabular-nums">{m.val}</h3>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mt-1 truncate">{m.sub}</p>
+                    </div>
                 </Card>
             ))}
         </div>

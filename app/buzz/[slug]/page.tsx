@@ -107,7 +107,7 @@ export default function BuzzDetailPage() {
                     category: dbBuzz.category || { label: 'General' },
                     media: dbBuzz.media || [],
                     updates: dbBuzz.updates || [],
-                    interest_count: 156 // Mock
+                    interest_count: dbBuzz.trend_score ? Math.round(dbBuzz.trend_score * 3.5) : 120
                 });
 
                 // Track the Discovery

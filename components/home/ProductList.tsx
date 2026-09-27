@@ -59,6 +59,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
   const [selectedBrand, setSelectedBrand] = useState('all');
 
   const [error, setError] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(24);
 
   useEffect(() => {
     async function fetchInitialData() {
@@ -359,10 +360,23 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
       </div>
 
       {filteredProducts.length > 0 ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-6 lg:gap-8">
-          {filteredProducts.map((product) => (
-            <ProductCard key={product.id} product={product} userTier={userTier} />
-          ))}
+        <div className="space-y-12">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-6 lg:gap-8">
+            {filteredProducts.slice(0, visibleCount).map((product) => (
+              <ProductCard key={product.id} product={product} userTier={userTier} />
+            ))}
+          </div>
+
+          {filteredProducts.length > visibleCount && (
+            <div className="flex justify-center pt-8">
+              <button
+                onClick={() => setVisibleCount(v => v + 24)}
+                className="px-10 py-4 rounded-2xl bg-white border border-slate-200/80 text-foreground font-black uppercase tracking-widest text-[10px] hover:bg-primary hover:text-white transition-all shadow-md active:scale-95 flex items-center gap-2"
+              >
+                Load More Beverages ({filteredProducts.length - visibleCount} remaining)
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-40 text-center bg-white rounded-[4rem] border-4 border-dashed border-slate-100 shadow-inner relative overflow-hidden group">

@@ -11,27 +11,27 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.example.theapp.ui.theme.TheAppTheme
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 import java.util.concurrent.Executors
-
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.remember
 
 class ScannerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,8 +40,11 @@ class ScannerActivity : ComponentActivity() {
         val mode = intent.getStringExtra("SCAN_MODE") ?: "BARCODE"
 
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
+            TheAppTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     if (mode == "TRIAGE") {
                         EdgeAiTriage(onTriageDetected = { result ->
                             val intent = Intent().apply {
@@ -126,12 +129,21 @@ fun EdgeAiTriage(onTriageDetected: (String) -> Unit) {
                 previewView
             }
         )
-        Text(
-            text = "AI Triage Active: Point at Bottle",
-            color = Color.White,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 20.dp),
-            style = MaterialTheme.typography.titleMedium
-        )
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 32.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            shadowElevation = 6.dp
+        ) {
+            Text(
+                text = "AI Triage Active: Point at Bottle",
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.titleSmall
+            )
+        }
     }
 }
 
@@ -204,11 +216,20 @@ fun BarcodeScanner(onBarcodeDetected: (String) -> Unit) {
                 previewView
             }
         )
-        Text(
-            text = "Scan Bottle SKU",
-            color = Color.White,
-            modifier = Modifier.align(Alignment.TopCenter),
-            style = MaterialTheme.typography.headlineSmall
-        )
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 32.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            shadowElevation = 6.dp
+        ) {
+            Text(
+                text = "Scan Bottle SKU",
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
     }
 }

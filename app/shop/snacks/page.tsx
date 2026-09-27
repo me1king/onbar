@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import ProductCard from '@/components/home/ProductCard';
 import { Product } from '@/types/product';
 
@@ -28,6 +29,7 @@ const SUBCATS = [
 ];
 
 export default function SnackShopPage() {
+    const router = useRouter();
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeSub, setActiveSub] = useState('Trending');
@@ -112,20 +114,20 @@ export default function SnackShopPage() {
 
             {/* 4. Quick Delivery CTA */}
             <section className="max-w-7xl mx-auto px-4 py-24 sm:px-6 lg:px-8">
-                <Card className="p-12 rounded-[4rem] bg-slate-900 text-white border-none shadow-2xl relative overflow-hidden group">
+                <Card className="p-12 rounded-[4rem] bg-white border border-slate-200/80 text-foreground shadow-2xl relative overflow-hidden group">
                     <div className="relative z-10 grid md:grid-cols-2 gap-12 items-center">
                         <div className="space-y-6">
                             <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20"><Clock className="h-6 w-6" /></div>
-                                <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Speed Protocol</span>
+                                <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-600"><Clock className="h-6 w-6" /></div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Speed Protocol</span>
                             </div>
                             <h2 className="text-5xl font-black uppercase tracking-tighter leading-none">Ready in <br/> <span className="text-primary italic">20 Minutes</span></h2>
-                            <p className="text-lg font-medium opacity-70 italic max-w-sm">
+                            <p className="text-lg font-medium text-slate-500 italic max-w-sm">
                                 &quot;Tactical dispatch active. Your bites arrive while your drinks are still chilled to the core.&quot;
                             </p>
                             <Button
-                                onClick={() => document.getElementById('snack-grid')?.scrollIntoView({ behavior: 'smooth' })}
-                                className="h-16 px-10 rounded-2xl bg-white text-slate-900 font-black uppercase text-xs tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl active:scale-95 border-none"
+                                onClick={() => router.push('/bites')}
+                                className="h-16 px-10 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest hover:bg-primary/90 transition-all shadow-xl active:scale-95 border-none"
                             >
                                 Start Fast Order
                             </Button>

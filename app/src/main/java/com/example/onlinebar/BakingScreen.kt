@@ -40,11 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 val images = arrayOf(
-    // Image generated using Gemini from the prompt "cupcake image"
     R.drawable.baked_goods_1,
-    // Image generated using Gemini from the prompt "cookies images"
     R.drawable.baked_goods_2,
-    // Image generated using Gemini from the prompt "cake images"
     R.drawable.baked_goods_3,
 )
 val imageDescriptions = arrayOf(
@@ -58,10 +55,8 @@ fun BakingScreen(
     bakingViewModel: BakingViewModel = viewModel()
 ) {
     val selectedImage = remember { mutableIntStateOf(0) }
-    val placeholderPrompt = stringResource(R.string.prompt_placeholder)
-    val placeholderResult = stringResource(R.string.results_placeholder)
-    var prompt by rememberSaveable { mutableStateOf(placeholderPrompt) }
-    var result by rememberSaveable { mutableStateOf(placeholderResult) }
+    var prompt by rememberSaveable { mutableStateOf("") }
+    var result by rememberSaveable { mutableStateOf("") }
     val uiState by bakingViewModel.uiState.collectAsState()
     val resources = LocalResources.current
 
@@ -70,7 +65,7 @@ fun BakingScreen(
             modifier = Modifier.padding(innerPadding).fillMaxSize()
         ) {
             Text(
-                text = stringResource(R.string.baking_title),
+                text = "Online Bar AI Assistant",
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(16.dp)
             )
@@ -107,7 +102,7 @@ fun BakingScreen(
             ) {
                 TextField(
                     value = prompt,
-                    label = { Text(stringResource(R.string.label_prompt)) },
+                    label = { Text("Ask AI Assistant...") },
                     onValueChange = { prompt = it },
                     modifier = Modifier
                         .weight(0.8f)
@@ -123,7 +118,7 @@ fun BakingScreen(
                         )
                         bakingViewModel.sendPrompt(bitmap, prompt)
                     },
-                    enabled = prompt.isNotEmpty(),
+                    enabled = prompt.isNotBlank(),
                     modifier = Modifier
                         .align(Alignment.CenterVertically)
                 ) {

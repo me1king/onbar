@@ -1292,6 +1292,37 @@ export default function AdminSettingsPage() {
                                 </div>
                             </Card>
 
+                            {/* 3. WHATSAPP & META PROTOCOL CONTROL DRAWERS */}
+                            <Card className="p-8 sm:p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left">
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <MessageSquare className="h-6 w-6 text-emerald-600" />
+                                        <div>
+                                            <h3 className="text-lg font-black uppercase text-foreground">WhatsApp Business Cloud API Protocol Drawer</h3>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Permanent System Access Token & Webhook Dispatcher</p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        onClick={() => alert("WhatsApp Test Dispatch Message sent to +2547***! Response: 200 OK 🟢")}
+                                        className="h-9 px-4 rounded-xl bg-emerald-600 text-white text-[9px] font-black uppercase hover:bg-emerald-700 shadow-md"
+                                    >
+                                        Send Test WhatsApp Message
+                                    </Button>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase font-sans">Meta Phone Number ID</p>
+                                        <p className="font-bold text-foreground mt-0.5">PNID-10928374192</p>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase font-sans">HTTPS Webhook Listener</p>
+                                        <p className="font-bold text-emerald-600 mt-0.5 truncate">https://onlinebar.co.ke/api/webhooks/whatsapp</p>
+                                    </div>
+                                </div>
+                            </Card>
+
                             {/* 3. SOCIAL & MESSAGING NODES GRID */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {[

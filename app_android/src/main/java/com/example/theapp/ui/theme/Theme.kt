@@ -10,11 +10,12 @@ import androidx.core.view.WindowCompat
 
 private val LightColorScheme = lightColorScheme(
     primary = BarPrimary,
-    secondary = BarForeground,
+    secondary = BarSecondary,
+    tertiary = BarAccent,
     background = BarBackground,
     surface = BarCard,
     onPrimary = BarCard,
-    onSecondary = BarBackground,
+    onSecondary = BarCard,
     onBackground = BarForeground,
     onSurface = BarForeground
 )

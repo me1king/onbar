@@ -402,19 +402,46 @@ export default function Product() {
               </button>
 
               <button
-                onClick={() => {
+                onClick={async () => {
                     const url = typeof window !== 'undefined' ? window.location.href : '';
                     const shareText = `Check out ${product.name} from Online Bar Nairobi! ${url}`;
 
-                    if (navigator.share) {
-                        navigator.share({
-                            title: product.name,
-                            text: shareText,
-                            url: url,
-                        }).catch(e => console.warn("Share failed", e));
-                    } else {
-                        navigator.clipboard.writeText(shareText);
+                    if (typeof navigator !== 'undefined' && navigator.share) {
+                        try {
+                            await navigator.share({
+                                title: product.name,
+                                text: shareText,
+                                url: url,
+                            });
+                            return;
+                        } catch (e) {
+                            console.warn("Share failed", e);
+                        }
+                    }
+
+                    try {
+                        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                            await navigator.clipboard.writeText(shareText);
+                            alert('Product link copied to clipboard!');
+                            return;
+                        }
+                    } catch {
+                        // Fallback below
+                    }
+
+                    try {
+                        const textArea = document.createElement('textarea');
+                        textArea.value = shareText;
+                        textArea.style.position = 'fixed';
+                        textArea.style.left = '-999999px';
+                        document.body.appendChild(textArea);
+                        textArea.focus();
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
                         alert('Product link copied to clipboard!');
+                    } catch {
+                        alert(`Product link: ${url}`);
                     }
                 }}
                 className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-foreground flex items-center gap-2 transition-colors"

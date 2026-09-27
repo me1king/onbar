@@ -105,7 +105,7 @@ export default function TheBuzzMap() {
                         longitude: Number(p.longitude),
                         status: p.status,
                         buzz_level: p.trend_score || 0,
-                        interest_count: 124, // Mock for now
+                        interest_count: p.trend_score ? Math.round(p.trend_score * 3.5) : 124,
                         category: p.buzz_categories?.label || 'Vibe'
                     })));
                 }

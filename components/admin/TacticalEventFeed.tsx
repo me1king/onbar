@@ -29,55 +29,6 @@ export interface TacticalEvent {
     url?: string;
 }
 
-const INITIAL_EVENTS: TacticalEvent[] = [
-    {
-        id: 'evt-101',
-        timestamp: new Date(Date.now() - 1000 * 30).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        channel: 'DISPATCH',
-        title: 'Jameson 1L Order Delivered',
-        detail: 'Stock synced to Cellar Hub & Rider Runner-4 released',
-        badge: 'CONFIRMED',
-        amount: 4500,
-        url: '/admin/orders'
-    },
-    {
-        id: 'evt-102',
-        timestamp: new Date(Date.now() - 1000 * 90).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        channel: 'GROWTH',
-        title: 'Instagram Story & Reel Scheduled',
-        detail: 'AI Protocol approved • Auto-publishing at 21:00',
-        badge: 'AI APPROVED',
-        url: '/admin/growth/content'
-    },
-    {
-        id: 'evt-103',
-        timestamp: new Date(Date.now() - 1000 * 180).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        channel: 'CELLAR',
-        title: 'Glenfiddich 15yo Inventory Restocked',
-        detail: '+24 bottles ingested into VVIP Vault Node',
-        badge: 'CELLAR SYNC',
-        url: '/admin/upload'
-    },
-    {
-        id: 'evt-104',
-        timestamp: new Date(Date.now() - 1000 * 300).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        channel: 'AI',
-        title: 'WhatsApp Conversational Sales Lead',
-        detail: 'AI Assistant quoted 2x Hennessy VS & created order draft',
-        badge: 'LEAD CAPTURED',
-        url: '/admin/communications/command'
-    },
-    {
-        id: 'evt-105',
-        timestamp: new Date(Date.now() - 1000 * 420).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        channel: 'KITCHEN',
-        title: 'Gourmet Burger Platter Fired',
-        detail: 'Kitchen Station 2 accepted order #892',
-        badge: 'KITCHEN HOT',
-        url: '/admin/kitchen'
-    }
-];
-
 export default function TacticalEventFeed({
     title = 'Tactical Event Feed',
     subtitle = 'Real-time Cross-Module Operating Stream',
@@ -87,94 +38,109 @@ export default function TacticalEventFeed({
     subtitle?: string;
     compact?: boolean;
 }) {
-    const [events, setEvents] = React.useState<TacticalEvent[]>(INITIAL_EVENTS);
+    const [events, setEvents] = React.useState<TacticalEvent[]>([]);
     const [selectedChannel, setSelectedChannel] = React.useState<string>('ALL');
     const [isLive, setIsLive] = React.useState(true);
     const [lastBeatTime, setLastBeatTime] = React.useState<string>('NOW');
 
-    // Real-time Supabase Listeners + Simulated Pulse
+    // Fetch REAL database telemetry events from Supabase audit_logs & orders
+    const fetchRealEvents = React.useCallback(async () => {
+        if (!supabase) return;
+
+        try {
+            const [auditRes, ordersRes] = await Promise.all([
+                supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(10),
+                supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(5)
+            ]);
+
+            const realEvts: TacticalEvent[] = [];
+
+            if (ordersRes.data) {
+                ordersRes.data.forEach(ord => {
+                    realEvts.push({
+                        id: `ord-${ord.id}`,
+                        timestamp: new Date(ord.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                        channel: 'DISPATCH',
+                        title: `Order #${ord.id} - ${ord.status || 'Received'}`,
+                        detail: `Patron: ${ord.customer_name || 'Anonymous'} • ${ord.delivery_address || 'Express Delivery'}`,
+                        badge: 'LIVE ORDER',
+                        amount: ord.total_price,
+                        url: '/admin/orders'
+                    });
+                });
+            }
+
+            if (auditRes.data) {
+                auditRes.data.forEach(log => {
+                    const action = log.action || 'SYSTEM_EVENT';
+                    let channel: 'CELLAR' | 'GROWTH' | 'DISPATCH' | 'KITCHEN' | 'AI' | 'SYSTEM' = 'SYSTEM';
+                    let url = '/admin';
+
+                    if (action.includes('PRODUCT') || action.includes('BEVERAGE')) {
+                        channel = 'CELLAR';
+                        url = '/admin/upload';
+                    } else if (action.includes('SNACK') || action.includes('BITE') || action.includes('KITCHEN')) {
+                        channel = 'KITCHEN';
+                        url = '/admin/bites';
+                    } else if (action.includes('SOCIAL') || action.includes('CAMPAIGN') || action.includes('MARKETING')) {
+                        channel = 'GROWTH';
+                        url = '/admin/growth/accounts';
+                    } else if (action.includes('ORDER') || action.includes('RIDER')) {
+                        channel = 'DISPATCH';
+                        url = '/admin/orders';
+                    } else if (action.includes('AI') || action.includes('CHAT') || action.includes('MESSAGE')) {
+                        channel = 'AI';
+                        url = '/admin/messages';
+                    }
+
+                    const detailStr = typeof log.details === 'object' && log.details !== null
+                        ? Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(' • ')
+                        : 'System Audit Event';
+
+                    realEvts.push({
+                        id: `log-${log.id}`,
+                        timestamp: new Date(log.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                        channel,
+                        title: action.replace(/_/g, ' '),
+                        detail: `Operator: ${log.staff_email || 'System'} • ${detailStr}`,
+                        badge: 'AUDIT LOG',
+                        url
+                    });
+                });
+            }
+
+            if (realEvts.length > 0) {
+                setEvents(realEvts.slice(0, 15));
+            } else {
+                setEvents([]);
+            }
+        } catch (err) {
+            console.error("Failed to fetch real telemetry:", err);
+        }
+    }, []);
+
     React.useEffect(() => {
+        fetchRealEvents();
+
         let intervalId: NodeJS.Timeout;
 
         if (isLive) {
-            // Simulated heartbeat generator every 14 seconds to ensure the feed constantly feels alive
+            // Heartbeat update without mock generation
             intervalId = setInterval(() => {
                 const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 setLastBeatTime(nowStr);
-
-                const sampleTypes = [
-                    {
-                        channel: 'DISPATCH' as const,
-                        title: 'Live Runner Dispatched',
-                        detail: 'Route optimized for Westlands Sector • ETA 18 mins',
-                        badge: 'TACTICAL DISPATCH',
-                        url: '/admin/dispatch'
-                    },
-                    {
-                        channel: 'GROWTH' as const,
-                        title: 'WhatsApp Lead Replied',
-                        detail: 'Automated Bot sent Drink Menu link to Patron +2547***',
-                        badge: 'BOT ENGAGED',
-                        url: '/admin/growth/accounts'
-                    },
-                    {
-                        channel: 'CELLAR' as const,
-                        title: 'Inventory Health Check',
-                        detail: 'Cellar Hub verified stock levels across 42 active SKUs',
-                        badge: 'NODE HEALTHY',
-                        url: '/admin/upload'
-                    },
-                    {
-                        channel: 'AI' as const,
-                        title: 'AI Caption Engine Executed',
-                        detail: 'Generated 3 promotional variants for Weekend Drop',
-                        badge: 'AI GEN',
-                        url: '/admin/growth/content'
-                    }
-                ];
-
-                const picked = sampleTypes[Math.floor(Math.random() * sampleTypes.length)];
-                const newEvt: TacticalEvent = {
-                    id: `pulse-${Date.now()}`,
-                    timestamp: nowStr,
-                    ...picked
-                };
-
-                setEvents(prev => [newEvt, ...prev].slice(0, 15));
-            }, 12000);
+            }, 5000);
         }
 
         if (!supabase) return () => clearInterval(intervalId);
 
-        const channel = supabase.channel('tactical-event-stream');
-
-        channel
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload: { new: { id: number; customer_name: string; total_price: number } }) => {
-                const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const newEvt: TacticalEvent = {
-                    id: `order-${payload.new.id}`,
-                    timestamp: nowStr,
-                    channel: 'DISPATCH',
-                    title: `New Order #${payload.new.id} Ingested`,
-                    detail: `Patron: ${payload.new.customer_name || 'Anonymous'} • Syncing Dispatch Queue`,
-                    badge: 'LIVE ORDER',
-                    amount: payload.new.total_price,
-                    url: '/admin/orders'
-                };
-                setEvents(prev => [newEvt, ...prev].slice(0, 15));
+        // Real-time Database Event Listeners on audit_logs and orders
+        const channel = supabase.channel('realtime-tactical-telemetry')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, () => {
+                fetchRealEvents();
             })
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'social_posts' }, (payload: { new: { id: string; platform: string; caption: string } }) => {
-                const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const newEvt: TacticalEvent = {
-                    id: `post-${payload.new.id}`,
-                    timestamp: nowStr,
-                    channel: 'GROWTH',
-                    title: `Social Post Scheduled on ${payload.new.platform}`,
-                    detail: payload.new.caption ? `"${payload.new.caption.substring(0, 45)}..."` : 'Growth Node scheduled',
-                    badge: 'POST QUEUED',
-                    url: '/admin/growth/calendar'
-                };
-                setEvents(prev => [newEvt, ...prev].slice(0, 15));
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, () => {
+                fetchRealEvents();
             })
             .subscribe();
 
@@ -182,7 +148,7 @@ export default function TacticalEventFeed({
             clearInterval(intervalId);
             if (supabase) supabase.removeChannel(channel);
         };
-    }, [isLive]);
+    }, [isLive, fetchRealEvents]);
 
     const channelColors: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
         CELLAR: { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400', iconBg: 'bg-amber-500/20 text-amber-400' },
@@ -227,7 +193,7 @@ export default function TacticalEventFeed({
                                 <h3 className="text-sm lg:text-base font-black uppercase tracking-widest text-slate-100">{title}</h3>
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                                     <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-                                    LIVE PROTOCOL
+                                    LIVE TELEMETRY
                                 </span>
                             </div>
                             <p className="text-[10px] font-medium text-slate-400 mt-0.5">{subtitle}</p>
@@ -273,7 +239,7 @@ export default function TacticalEventFeed({
                     {filteredEvents.length === 0 ? (
                         <div className="py-12 text-center text-slate-500 space-y-2">
                             <Activity className="h-8 w-8 mx-auto opacity-30 animate-pulse" />
-                            <p className="text-[10px] font-black uppercase tracking-widest">Awaiting tactical telemetry for channel [{selectedChannel}]...</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest">Awaiting live telemetry events for channel [{selectedChannel}]...</p>
                         </div>
                     ) : (
                         filteredEvents.map((evt) => {
@@ -328,9 +294,9 @@ export default function TacticalEventFeed({
                 <div className="pt-3 border-t border-slate-800/60 flex justify-between items-center text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                     <span className="flex items-center gap-2">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        Heartbeat Active ({lastBeatTime})
+                        Live Supabase Telemetry ({lastBeatTime})
                     </span>
-                    <span>BAR OS Telemetry Stream v2.4</span>
+                    <span>BAR OS Realtime v3.0</span>
                 </div>
             </div>
         </div>

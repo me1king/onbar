@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   Users,
   MessageSquare,
+  MessageCircle,
   LogOut,
   Menu,
   X,
@@ -42,6 +43,8 @@ import {
   Smartphone,
   Zap,
   Utensils,
+  Gift,
+  Coffee,
   Camera as CameraIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -148,10 +151,12 @@ export default function AdminLayoutClient({
     ]},
     { group: 'INVENTORY', items: [
       { name: 'Cellar Hub', href: '/admin/upload', icon: Wine, permission: 'can_manage_inventory' },
+      { name: 'Beverage Vault', href: '/admin/inventory/beverages', icon: Coffee, permission: 'can_manage_inventory' },
       { name: 'Product Forge', href: '/admin/forge', icon: Zap, permission: 'can_manage_inventory' },
       { name: 'Bite Command', href: '/admin/bites', icon: Utensils, permission: 'can_manage_inventory' },
       { name: 'Kitchen Control', href: '/admin/kitchen', icon: Flame, permission: 'can_manage_kitchen' },
       { name: 'Munchie Hub', href: '/admin/munchies', icon: Cookie, permission: 'can_manage_inventory' },
+      { name: 'Souvenir Forge', href: '/admin/souvenirs', icon: Gift, permission: 'can_manage_inventory' },
       { name: 'Dispatch Queue', href: '/admin/orders', icon: ShoppingCart, permission: 'can_manage_orders' },
     ]},
     { group: 'EXPERIENCE', items: [
@@ -168,6 +173,7 @@ export default function AdminLayoutClient({
     ]},
     { group: 'PATRONS', items: [
       { name: 'Directory', href: '/admin/customers', icon: Users, permission: 'can_manage_communications' },
+      { name: 'WhatsApp Command', href: '/admin/communications/whatsapp', icon: MessageCircle, permission: 'can_manage_communications' },
       { name: 'Message Command', href: '/admin/communications/command', icon: MessageSquare, permission: 'can_manage_communications' },
       { name: 'Popup Manager', href: '/admin/communications/popups', icon: Bell, permission: 'can_manage_communications' },
       { name: 'Support Inbox', href: '/admin/messages', icon: MessageSquare, permission: 'can_manage_communications' },

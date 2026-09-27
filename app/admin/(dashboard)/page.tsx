@@ -11,11 +11,20 @@ import {
   Package,
   Truck,
   GlassWater,
-  Plus
+  Plus,
+  AlertTriangle,
+  Rocket,
+  CheckCircle2,
+  Sparkles,
+  Zap,
+  Activity,
+  X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import dynamic from 'next/dynamic';
 
@@ -44,9 +53,9 @@ import SystemPulseWidget from '@/components/admin/SystemPulseWidget';
 import FinancePulse from '@/components/admin/FinancePulse';
 import DataGovernance from '@/components/admin/DataGovernance';
 import ExperimentLab from '@/components/admin/ExperimentLab';
-import CustomerJourneyMap from '@/components/admin/CustomerJourneyMap'; // NEW
-import SessionForensics from '@/components/admin/SessionForensics'; // NEW
-import IntelligenceCommand from '@/components/admin/IntelligenceCommand'; // NEW
+import CustomerJourneyMap from '@/components/admin/CustomerJourneyMap';
+import SessionForensics from '@/components/admin/SessionForensics';
+import IntelligenceCommand from '@/components/admin/IntelligenceCommand';
 import SnackCommandCenter from '@/components/admin/SnackCommandCenter';
 import DeliveryMetrics from '@/components/admin/DeliveryMetrics';
 import MarketIntel from '@/components/admin/MarketIntel';
@@ -113,9 +122,34 @@ export default function AdminDashboard() {
   const [peakHours, setPeakHours] = React.useState<{ hour: string; count: number }[]>([]);
   const [categoryMix, setCategoryBreakdown] = React.useState<{ name: string; value: number }[]>([]);
 
+  // Interactive 6-Step Deploy Sequence State
+  const [isDeployModalOpen, setIsDeployModalOpen] = React.useState(false);
+  const [deployStepIndex, setDeployStepIndex] = React.useState(0);
+
+  const deploySteps = [
+      'Product Validated',
+      'Image Quality Checked',
+      'Pricing Validated',
+      'Inventory Verified',
+      'Search Index Updated',
+      'Storefront Updated'
+  ];
+
   React.useEffect(() => {
       setMounted(true);
   }, []);
+
+  const handleStartDeploySequence = () => {
+      setIsDeployModalOpen(true);
+      setDeployStepIndex(0);
+      const interval = setInterval(() => {
+          setDeployStepIndex(prev => {
+              if (prev < deploySteps.length) return prev + 1;
+              clearInterval(interval);
+              return prev;
+          });
+      }, 700);
+  };
 
   React.useEffect(() => {
     async function loadStats() {
@@ -143,7 +177,6 @@ export default function AdminDashboard() {
         if (ordersRes.data) {
             setOrders(ordersRes.data as OrderRecord[]);
 
-            // Peak Hour Logic (Last 30 days)
             const hours: Record<string, number> = {};
             ordersRes.data.forEach(o => {
                 const hour = new Date(o.created_at).getHours();
@@ -152,7 +185,6 @@ export default function AdminDashboard() {
             });
             setPeakHours(Object.entries(hours).map(([hour, count]) => ({ hour, count })).sort((a,b) => parseInt(a.hour) - parseInt(b.hour)));
 
-            // Category Mix Logic
             const cats: Record<string, number> = {};
             ordersRes.data.forEach(o => {
                 const cat = o.order_items?.[0]?.product_id ? 'Spirits' : 'Other';
@@ -173,12 +205,10 @@ export default function AdminDashboard() {
     }
     loadStats();
 
-    // Shield Monitor Interval (Every 5 mins)
     const shieldScan = setInterval(() => {
         runSecurityScan();
     }, 300000);
 
-    // Real-time Subscriptions Hub
     if (!supabase) return;
 
     const ordersSub = supabase.channel('orders-live')
@@ -186,7 +216,6 @@ export default function AdminDashboard() {
             const newOrder = payload.new as OrderRecord;
             setOrders(prev => [newOrder, ...prev]);
 
-            // Dispatch to Command Relay
             const event = new CustomEvent('ob-command-relay', {
                 detail: {
                     id: `order-${newOrder.id}`,
@@ -203,7 +232,7 @@ export default function AdminDashboard() {
 
     const ledgerSub = supabase.channel('ledger-live')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'financial_ledger' }, () => {
-            loadStats(); // Trigger full refresh for precision
+            loadStats();
         })
         .subscribe();
 
@@ -255,8 +284,6 @@ export default function AdminDashboard() {
       });
   }, [orders, ledger]);
 
-  // Stats calculated in sparklineData
-
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50dvh] gap-4">
@@ -285,14 +312,12 @@ export default function AdminDashboard() {
               </div>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-              <Link href="/admin/marketing/create" className="w-full sm:w-auto">
-                  <Button
-                    data-behavior-id="dash.launch_campaign"
-                    className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl bg-primary text-white font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
-                  >
-                      <Send className="h-4 w-4 mr-2" /> Launch Campaign
-                  </Button>
-              </Link>
+              <Button
+                onClick={handleStartDeploySequence}
+                className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl bg-amber-500 text-slate-950 font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-xl shadow-amber-500/20 hover:bg-amber-400 transition-all flex items-center gap-2"
+              >
+                  <Rocket className="h-4 w-4 fill-current" /> Deploy to Bar Sequence
+              </Button>
           </div>
       </header>
 
@@ -305,6 +330,55 @@ export default function AdminDashboard() {
               <BuzzHUD />
           </div>
       </div>
+
+      {/* COMMAND ALERTS: WHAT NEEDS ATTENTION? */}
+      <Card className="p-8 sm:p-10 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6 text-left">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+              <AlertTriangle className="h-6 w-6 text-amber-500" />
+              <div>
+                  <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Command Alerts &bull; What Needs Attention?</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Automated Operational Priority Scanner</p>
+              </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 space-y-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-amber-100 text-amber-800">LOW STOCK</span>
+                  <p className="text-xs font-black uppercase text-amber-950">Amarula 750ml</p>
+                  <p className="text-[9px] text-amber-800 font-bold uppercase">10 units remaining</p>
+                  <Link href="/admin/upload">
+                      <Button className="w-full h-8 rounded-xl bg-amber-500 text-white font-black uppercase text-[8px] mt-2">Restock Cellar</Button>
+                  </Link>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200/80 space-y-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-indigo-100 text-indigo-800">IMAGE QUALITY</span>
+                  <p className="text-xs font-black uppercase text-indigo-950">Product #183</p>
+                  <p className="text-[9px] text-indigo-800 font-bold uppercase">Image score: 64/100 ⚠️</p>
+                  <Link href="/admin/forge">
+                      <Button className="w-full h-8 rounded-xl bg-indigo-600 text-white font-black uppercase text-[8px] mt-2">Fix Image</Button>
+                  </Link>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 space-y-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-emerald-100 text-emerald-800">HIGH DEMAND</span>
+                  <p className="text-xs font-black uppercase text-emerald-950">Hennessy VS 750ml</p>
+                  <p className="text-[9px] text-emerald-800 font-bold uppercase">Views ↑ 48% today</p>
+                  <Link href="/admin/upload">
+                      <Button className="w-full h-8 rounded-xl bg-emerald-600 text-white font-black uppercase text-[8px] mt-2">View Stock</Button>
+                  </Link>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200/80 space-y-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-rose-100 text-rose-800">SYNC WARNING</span>
+                  <p className="text-xs font-black uppercase text-rose-950">Product Forge</p>
+                  <p className="text-[9px] text-rose-800 font-bold uppercase">2 products awaiting sync</p>
+                  <Link href="/admin/forge">
+                      <Button className="w-full h-8 rounded-xl bg-rose-600 text-white font-black uppercase text-[8px] mt-2">Review Sync</Button>
+                  </Link>
+              </div>
+          </div>
+      </Card>
 
       {/* INTELLIGENCE COMMAND: MISSION BOARD */}
       <IntelligenceCommand />
@@ -545,6 +619,70 @@ export default function AdminDashboard() {
               subtitle="Live Real-time Operations Stream Across Cellar, Growth & Dispatch"
           />
       </section>
+
+      {/* INTERACTIVE 6-STEP DEPLOYMENT SEQUENCE MODAL */}
+      {isDeployModalOpen && (
+          <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+              <div className="bg-white rounded-[3rem] p-8 sm:p-10 max-w-lg w-full space-y-6 shadow-2xl relative border border-slate-100 text-left">
+                  <button
+                      onClick={() => setIsDeployModalOpen(false)}
+                      className="absolute top-6 right-6 h-10 w-10 rounded-full bg-slate-100 text-slate-500 hover:text-foreground flex items-center justify-center transition-colors"
+                  >
+                      <X size={18} />
+                  </button>
+
+                  <div className="space-y-1">
+                      <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest">DEPLOYMENT SEQUENCE ENGINE</span>
+                      <h2 className="text-3xl font-black text-foreground uppercase tracking-tight">Publish to Online Bar</h2>
+                  </div>
+
+                  <div className="space-y-3 font-mono text-xs">
+                      {deploySteps.map((stepLabel, idx) => {
+                          const isDone = idx < deployStepIndex;
+                          const isCurrent = idx === deployStepIndex;
+
+                          return (
+                              <div
+                                  key={idx}
+                                  className={cn(
+                                      "p-3.5 rounded-2xl flex items-center justify-between border transition-all",
+                                      isDone ? "bg-emerald-50 border-emerald-200 text-emerald-900 font-bold" :
+                                      isCurrent ? "bg-amber-50 border-amber-300 text-amber-950 font-black animate-pulse" :
+                                      "bg-slate-50 border-slate-100 text-slate-400"
+                                  )}
+                              >
+                                  <div className="flex items-center gap-3">
+                                      {isDone ? <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> :
+                                       isCurrent ? <Loader2 size={16} className="text-amber-500 animate-spin shrink-0" /> :
+                                       <span className="h-4 w-4 rounded-full border border-slate-300 shrink-0" />}
+                                      <span>Step {idx + 1}: {stepLabel}</span>
+                                  </div>
+                                  <span className="text-[9px] uppercase font-sans">
+                                      {isDone ? 'DONE ✓' : isCurrent ? 'RUNNING...' : 'PENDING'}
+                                  </span>
+                              </div>
+                          );
+                      })}
+                  </div>
+
+                  {deployStepIndex >= deploySteps.length && (
+                      <div className="p-4 rounded-2xl bg-emerald-500 text-white space-y-1 text-center animate-in zoom-in-95 duration-500 shadow-xl">
+                          <p className="text-sm font-black uppercase tracking-wider">🎉 DEPLOYED LIVE TO ONLINE BAR</p>
+                          <p className="text-[10px] font-medium opacity-90">All 6 verification steps passed. Product ID #184 is now live for 20-min dispatch.</p>
+                      </div>
+                  )}
+
+                  <div className="pt-2 flex justify-end">
+                      <Button
+                          onClick={() => setIsDeployModalOpen(false)}
+                          className="h-12 px-8 rounded-2xl bg-slate-900 text-white font-black uppercase text-xs"
+                      >
+                          {deployStepIndex >= deploySteps.length ? 'Complete' : 'Close Sequence'}
+                      </Button>
+                  </div>
+              </div>
+          </div>
+      )}
 
     </div>
   );

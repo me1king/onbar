@@ -62,7 +62,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
   // ▮▮ Stock Logic
   const getStockStatus = () => {
-      if (product.stock === undefined || product.stock === null) return { label: 'Status Unknown', color: 'text-slate-300', bar: 'bg-slate-100' };
+      if (product.stock === undefined || product.stock === null) return { label: 'Status Unknown', color: 'text-slate-400', bar: 'bg-slate-200' };
       if (product.stock === 0) return { label: 'Out of stock', color: 'text-rose-500', bar: 'bg-rose-100' };
       if (product.stock <= (product.stock_threshold_critical || 2)) return { label: `Only ${product.stock} left`, color: 'text-rose-600', bar: 'bg-rose-500' };
       if (product.stock <= (product.stock_threshold_low || 5)) return { label: `Only ${product.stock} left`, color: 'text-amber-600', bar: 'bg-amber-500' };
@@ -120,25 +120,25 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
   return (
     <>
-      <Card className="group flex flex-col bg-slate-950 border border-slate-800 text-slate-100 shadow-2xl transition-all duration-500 rounded-[3.5rem] overflow-hidden text-left relative min-h-[420px]">
+      <Card className="group flex flex-col bg-white border border-slate-200/80 text-foreground shadow-md hover:shadow-xl transition-all duration-500 rounded-[3.5rem] overflow-hidden text-left relative min-h-[420px]">
         {/* Visual Container */}
-        <div className="relative aspect-square bg-slate-900/50 rounded-[2.5rem] m-4 flex items-center justify-center p-6 overflow-hidden border border-slate-800/80">
+        <div className="relative aspect-square bg-slate-50/80 rounded-[2.5rem] m-4 flex items-center justify-center p-6 overflow-hidden border border-slate-100">
 
             {/* Premium Locked Overlay */}
             {isLocked && (
-                <div className="absolute inset-0 z-30 bg-white/60 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
+                <div className="absolute inset-0 z-30 bg-white/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
                     <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-4 shadow-sm animate-bounce">
                         <Lock size={24} />
                     </div>
                     <p className="text-[10px] font-black uppercase text-foreground tracking-widest leading-none">Bar VIP Exclusive</p>
-                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-2">Required: {minTier} Rank</p>
+                    <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-2">Required: {minTier} Rank</p>
                 </div>
             )}
 
             {/* Badges */}
             <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
                 {product.badge_override ? (
-                    <span className="bg-slate-900 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{product.badge_override}</span>
+                    <span className="bg-slate-100 text-slate-800 text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest border border-slate-200/60">{product.badge_override}</span>
                 ) : (
                     <>
                         {product.is_new && <span className="bg-primary text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg shadow-primary/30">✨ NEW</span>}
@@ -167,7 +167,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                     disabled={isAdding}
                     className={cn(
                         "absolute top-4 right-4 z-30 h-10 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2 transition-all duration-300 shadow-xl",
-                        justAdded ? "bg-emerald-500 text-white" : "bg-white text-foreground hover:bg-primary hover:text-white opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+                        justAdded ? "bg-emerald-500 text-white" : "bg-slate-900 text-white hover:bg-primary opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
                     )}
                 >
                     {isAdding ? <Loader2 size={12} className="animate-spin" /> : justAdded ? <Check size={12} /> : <Plus size={12} />}
@@ -175,18 +175,20 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                 </button>
             )}
 
-            <Link href={`/shop/${product.id}`} className="block w-full h-full relative">
+            <Link href={`/shop/${product.id}`} prefetch={true} className="block w-full h-full relative">
                 {!imageError ? (
                   <Image
                     src={imageUrl}
                     alt={product.name}
                     fill
-                    sizes="(max-width: 768px) 100vw, 33vw"
+                    loading="lazy"
+                    quality={75}
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
                     className="object-contain transition-transform duration-700 group-hover:scale-110 p-4"
                     onError={() => setImageError(true)}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-200"><ImageIcon size={48} /></div>
+                  <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={48} /></div>
                 )}
             </Link>
         </div>
@@ -200,7 +202,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                         {formatPrice(product.price)}
                     </div>
                     {isSale && (
-                        <span className="text-xs font-bold text-slate-300 line-through shrink-0">
+                        <span className="text-xs font-bold text-slate-400 line-through shrink-0">
                             {formatPrice(Number(product.old_price))}
                         </span>
                     )}

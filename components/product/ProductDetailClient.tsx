@@ -168,11 +168,47 @@ export default function ProductDetailClient({
     window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     trackClick('share-btn', 'Share Product', { productId: product.id });
     const url = referralCode ? getReferralLink(referralCode, `/shop/${product.id}`) : (typeof window !== 'undefined' ? window.location.href : '');
-    navigator.clipboard.writeText(url);
-    alert('Product link copied!');
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: product.name,
+          url: url
+        });
+        return;
+      } catch {
+        // Fallback to copy if native share dismissed
+      }
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        alert('Product link copied!');
+        return;
+      }
+    } catch {
+      // Fallback below
+    }
+
+    // Fallback for non-HTTPS / Android WebView
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = url;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      alert('Product link copied!');
+    } catch {
+      alert(`Product link: ${url}`);
+    }
   };
 
   const toggleLightbox = (open: boolean) => {
@@ -256,18 +292,25 @@ export default function ProductDetailClient({
             )}
 
             <div className="mt-24 space-y-16">
-                <div className="bg-brand-cream p-12 rounded-[2.5rem] space-y-8 relative overflow-hidden border border-brand-red/5">
-                    <p className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-red flex items-center gap-3">
-                        <span className="h-px w-8 bg-brand-red/20" /> TASTING NOTE &bull; BY ONLINE BAR CELLAR
+                <div className="bg-white p-10 sm:p-12 rounded-[3rem] space-y-8 relative overflow-hidden border border-slate-200/80 shadow-xl">
+                    <p className="text-[10px] font-black uppercase tracking-[0.4em] text-primary flex items-center gap-3">
+                        <span className="h-px w-8 bg-primary/30" /> TASTING NOTE &bull; BY ONLINE BAR CELLAR
                     </p>
-                    <div className="space-y-4">
-                        <h3 className="text-3xl font-black text-brand-red uppercase tracking-tighter leading-none italic">Exceptional ★★★★★</h3>
-                        <p className="text-slate-700 font-medium leading-relaxed italic text-lg pr-4">
+                    <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <h3 className="text-3xl font-black text-foreground uppercase tracking-tighter leading-none italic">Exceptional</h3>
+                            <div className="flex text-amber-400 gap-1 shrink-0">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                    <Star key={i} size={18} className="fill-amber-400 text-amber-400" />
+                                ))}
+                            </div>
+                        </div>
+                        <p className="text-slate-600 font-medium leading-relaxed italic text-lg pr-4">
                             &quot;{dossier?.origin_story || "A masterfully balanced profile that defines excellence in its category."}&quot;
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-10 pt-10 border-t border-brand-red/10">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-8 border-t border-slate-100">
                         {[
                             { label: 'Body', key: 'body' },
                             { label: 'Sweet', key: 'sweet' },
@@ -275,16 +318,19 @@ export default function ProductDetailClient({
                             { label: 'Spice', key: 'spice' },
                         ].map(trait => {
                             const val = product.sensory_metrics?.[trait.key] || dossier?.sensory_dna?.[trait.key as keyof SensoryDNA] || 60;
+                            const activeCount = Math.min(5, Math.max(1, Math.round(val / 20)));
                             return (
-                                <div key={trait.label} className="flex items-center justify-between">
+                                <div key={trait.label} className="flex items-center justify-between gap-4">
                                     <span className="text-[11px] font-black uppercase text-slate-500 tracking-[0.2em]">{trait.label}</span>
                                     <div className="flex gap-2">
                                         {Array.from({ length: 5 }).map((_, i) => (
                                             <div
                                                 key={i}
                                                 className={cn(
-                                                    "h-3 w-3 rounded-full transition-all duration-700",
-                                                    i < (val / 20) ? "bg-brand-red shadow-[0_0_8px_rgba(217,28,28,0.4)]" : "bg-slate-200"
+                                                    "h-3.5 w-3.5 rounded-full transition-all duration-700",
+                                                    i < activeCount
+                                                        ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)] scale-110"
+                                                        : "bg-slate-200/80"
                                                 )}
                                             />
                                         ))}
@@ -348,9 +394,9 @@ export default function ProductDetailClient({
                     <p className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-red truncate">{product.category}</p>
                     <h1 className="text-4xl sm:text-5xl font-black text-foreground tracking-tighter leading-[1] uppercase italic break-words">{product.name}</h1>
                     <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex text-brand-red text-sm tracking-tighter shrink-0">
+                        <div className="flex text-amber-400 text-sm tracking-tighter shrink-0 gap-0.5">
                             {Array.from({ length: 5 }).map((_, i) => (
-                                <Star key={i} size={14} className={cn(i < Math.round(reviewStats.rating) ? "fill-current" : "opacity-20")} />
+                                <Star key={i} size={14} className={cn(i < Math.round(reviewStats.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-100")} />
                             ))}
                         </div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">

@@ -19,6 +19,9 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricPrompt
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,11 +38,11 @@ import com.example.theapp.ui.theme.TheAppTheme
 import java.util.concurrent.Executor
 
 import android.graphics.Bitmap
+import android.view.View
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -48,7 +51,6 @@ import java.util.concurrent.TimeUnit
 
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.activity.result.ActivityResultLauncher
 import androidx.core.app.ActivityCompat
 
 class MainActivity : FragmentActivity() {
@@ -167,15 +169,36 @@ class MainActivity : FragmentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    if (isAuthorized) {
-                        TitanHubWebBridge(ADMIN_URL, onWebViewCreated = { titanWebView = it })
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Parallel Background Pre-Loading for 0ms render latency
+                        TitanHubWebBridge(
+                            url = ADMIN_URL,
+                            onWebViewCreated = { titanWebView = it }
+                        )
 
-                        // Handle Intent after WebView is ready or via URL change
-                        LaunchedEffect(intent) {
-                            handleIntent(intent)
+                        // Smooth Instant Fade-In once Biometric Auth succeeds
+                        AnimatedVisibility(
+                            visible = isAuthenticating && !isAuthorized,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            }
                         }
 
-                        // Phase 10: Titan Member Pass Overlay
+                        LaunchedEffect(isAuthorized, intent) {
+                            if (isAuthorized) {
+                                handleIntent(intent)
+                            }
+                        }
+
+                        // Titan Member Pass Overlay
                         memberPassBitmap?.let { bitmap ->
                             Dialog(onDismissRequest = { memberPassBitmap = null }) {
                                 Box(
@@ -207,12 +230,6 @@ class MainActivity : FragmentActivity() {
                                 }
                             }
                         }
-                    } else if (isAuthenticating) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        }
-                    } else {
-                        // Fallback or retry UI
                     }
                 }
             }
@@ -373,17 +390,30 @@ fun TitanHubWebBridge(url: String, onWebViewCreated: (WebView) -> Unit) {
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
             WebView(context).apply {
-                webViewClient = WebViewClient()
+                // Maximum Hardware Acceleration
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        // Trigger fast pre-render optimizations
+                    }
+                }
+                
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
+                    databaseEnabled = true
                     loadWithOverviewMode = true
                     useWideViewPort = true
-                    cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK // High-speed local caching
+                    cacheMode = WebSettings.LOAD_DEFAULT // Ultra-fast caching with freshness checks
                     setSupportMultipleWindows(true)
+                    allowFileAccess = true
+                    allowContentAccess = true
+                    loadsImagesAutomatically = true
                     
-                    // Node Optimization: Database & Acceleration
-                    databaseEnabled = true
+                    // Hardware Pre-rasterization for silky smooth scrolling speed
+                    offscreenPreRaster = true
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         setSafeBrowsingEnabled(true)
                     }

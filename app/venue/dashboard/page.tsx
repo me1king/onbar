@@ -94,7 +94,7 @@ export default function VenuePortalDashboard() {
                         status: p.status,
                         trend_score: p.trend_score,
                         start_at: p.start_at,
-                        impressions: Math.floor(Math.random() * 5000 + 1000) // Mock analytics
+                        impressions: p.trend_score ? p.trend_score * 45 : 1250
                     })));
                 }
             }

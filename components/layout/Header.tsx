@@ -378,11 +378,10 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
   const navItems = [
     { href: "/shop", label: "Menu" },
+    { href: "/beverages", label: "Beverages" },
+    { href: "/souvenirs", label: "Souvenirs" },
     { href: "/shop/snacks", label: "Munchies" },
-    { href: "/shop/category/new-arrivals", label: "New" },
     { href: "/shop/category/sale", label: "Deals" },
-    { href: "/gifting", label: "Gifting" },
-    { href: "/buzz", label: "Buzz" },
     { href: "/buzz?planner=true", label: "Build My Night" },
     { href: "/blog", label: "Mixology" },
     { href: "/track", label: "Track" }
@@ -423,6 +422,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                 <Link
                   key={href}
                   href={href}
+                  prefetch={true}
                   data-behavior-id={`nav.${label.toLowerCase().replace(' ', '_')}`}
                   className={`px-2.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-200 whitespace-nowrap ${
                     pathname === href
