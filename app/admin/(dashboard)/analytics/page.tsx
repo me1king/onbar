@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, formatPrice } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 
 type AnalyticsTabId = 'overview' | 'roi' | 'performance' | 'ab_testing' | 'dispatch' | 'kitchen' | 'stock' | 'support' | 'ux_heatmaps' | 'ai_insights';
@@ -27,15 +27,47 @@ export default function AdminAnalyticsPage() {
     const [activeTab, setActiveTab] = React.useState<AnalyticsTabId>('overview');
     const [timeframe, setTimeframe] = React.useState<'7d' | '30d' | '90d' | 'YTD'>('30d');
     const [loading, setLoading] = React.useState(true);
+    const [liveStats, setLiveStats] = React.useState({
+        totalRevenue: 0,
+        activeUsers: 0,
+        conversionRate: "0.0%",
+        avgOrderValue: 0,
+        inventoryValue: 0,
+        supportTickets: 0
+    });
+
     React.useEffect(() => {
         async function fetchData() {
             setLoading(true);
             try {
                 if (supabase) {
-                    await supabase.from('orders').select('id, total_price');
+                    const [ordersRes, profilesRes, productsRes, messagesRes] = await Promise.all([
+                        supabase.from('orders').select('id, total_price, status'),
+                        supabase.from('profiles').select('id', { count: 'exact', head: true }),
+                        supabase.from('products').select('price, stock'),
+                        supabase.from('messages').select('id', { count: 'exact', head: true })
+                    ]);
+
+                    const orders = ordersRes.data || [];
+                    const rev = orders.reduce((acc, o) => acc + (Number(o.total_price) || 0), 0);
+                    const orderCount = orders.length;
+                    const users = profilesRes.count || 0;
+                    const aov = orderCount > 0 ? Math.round(rev / orderCount) : 0;
+
+                    const products = productsRes.data || [];
+                    const invVal = products.reduce((acc, p) => acc + ((Number(p.price) || 0) * (Number(p.stock) || 1)), 0);
+
+                    setLiveStats({
+                        totalRevenue: rev,
+                        activeUsers: users,
+                        conversionRate: users > 0 ? ((orderCount / users) * 100).toFixed(2) + "%" : "0.0%",
+                        avgOrderValue: aov,
+                        inventoryValue: invVal,
+                        supportTickets: messagesRes.count || 0
+                    });
                 }
             } catch (err) {
-                console.error(err);
+                console.error("Analytics fetch error:", err);
             } finally {
                 setLoading(false);
             }
@@ -150,30 +182,30 @@ export default function AdminAnalyticsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                         <Card className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
                             <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Total Revenue</p>
-                            <p className="text-3xl font-black text-foreground">$2,409,300</p>
+                            <p className="text-3xl font-black text-foreground">{formatPrice(liveStats.totalRevenue)}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                ↗ +18.6% vs Apr 1
+                                ↗ Live Order Volume
                             </span>
                         </Card>
                         <Card className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
-                            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Active Users</p>
-                            <p className="text-3xl font-black text-foreground">1,238,303</p>
+                            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Active Members</p>
+                            <p className="text-3xl font-black text-foreground">{liveStats.activeUsers.toLocaleString()}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                ↗ +12.4% vs Apr 1
+                                ↗ Verified Customer Accounts
                             </span>
                         </Card>
                         <Card className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
                             <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Conversion Rate</p>
-                            <p className="text-3xl font-black text-foreground">3.42%</p>
+                            <p className="text-3xl font-black text-foreground">{liveStats.conversionRate}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                ↗ +8.7% vs Apr 1
+                                ↗ Live Storefront Yield
                             </span>
                         </Card>
                         <Card className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
                             <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Avg Order Value</p>
-                            <p className="text-3xl font-black text-foreground">$98.45</p>
+                            <p className="text-3xl font-black text-foreground">{formatPrice(liveStats.avgOrderValue)}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                ↗ +6.1% vs Apr 1
+                                ↗ Live Cart Average
                             </span>
                         </Card>
                     </div>
