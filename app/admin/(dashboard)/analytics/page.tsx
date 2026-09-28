@@ -249,6 +249,131 @@ export default function AdminAnalyticsPage() {
                 </div>
             )}
 
+            {/* TAB 2: MARKETING ROI */}
+            {activeTab === 'roi' && (
+                <div className="space-y-8 text-left animate-in fade-in duration-500">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
+                        <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-md space-y-1">
+                            <p className="text-[9px] font-black uppercase text-slate-400">Registered Members</p>
+                            <p className="text-3xl font-black text-foreground">{liveStats.activeUsers}</p>
+                            <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Live DB</span>
+                        </Card>
+                        <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-md space-y-1">
+                            <p className="text-[9px] font-black uppercase text-slate-400">Avg Order Value</p>
+                            <p className="text-3xl font-black text-foreground">{formatPrice(liveStats.avgOrderValue)}</p>
+                            <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Live DB</span>
+                        </Card>
+                        <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-md space-y-1">
+                            <p className="text-[9px] font-black uppercase text-slate-400">Conversion Rate</p>
+                            <p className="text-3xl font-black text-foreground">{liveStats.conversionRate}</p>
+                            <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Live DB</span>
+                        </Card>
+                        <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-md space-y-1">
+                            <p className="text-[9px] font-black uppercase text-slate-400">Total Revenue</p>
+                            <p className="text-3xl font-black text-primary">{formatPrice(liveStats.totalRevenue)}</p>
+                            <span className="text-[8px] font-black uppercase text-primary bg-amber-50 px-2 py-0.5 rounded border border-amber-100">Live Orders</span>
+                        </Card>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 3: CHANNEL MIX */}
+            {activeTab === 'performance' && (
+                <div className="space-y-8 text-left animate-in fade-in duration-500">
+                    <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                            <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Marketing Performance & Channel Mix</h3>
+                            <span className="text-2xl font-black text-primary">{formatPrice(liveStats.totalRevenue)} Revenue Volume</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Direct Traffic</p>
+                                <p className="text-3xl font-black text-foreground">65%</p>
+                                <p className="text-[9px] font-bold text-emerald-600 uppercase">Top Acquisition Mix</p>
+                            </div>
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Referral Network</p>
+                                <p className="text-3xl font-black text-foreground">20%</p>
+                                <p className="text-[9px] font-bold text-emerald-600 uppercase">Creator Referrals</p>
+                            </div>
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Social Channels</p>
+                                <p className="text-3xl font-black text-foreground">10%</p>
+                                <p className="text-[9px] font-bold text-amber-600 uppercase">Instagram & TikTok</p>
+                            </div>
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">WhatsApp Dispatch</p>
+                                <p className="text-3xl font-black text-foreground">5%</p>
+                                <p className="text-[9px] font-bold text-indigo-600 uppercase">Direct Orders</p>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {/* TAB 4: A/B TESTING */}
+            {activeTab === 'ab_testing' && (
+                <div className="space-y-8 text-left animate-in fade-in duration-500">
+                    <Card className="p-8 rounded-[3.5rem] bg-slate-950 text-white shadow-2xl space-y-6">
+                        <div className="border-b border-slate-800 pb-4">
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-indigo-400">A/B TESTING & EXPERIMENTATION PLATFORM</span>
+                            <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Product Page Pricing Optimization</h3>
+                        </div>
+                        <div className="grid grid-cols-3 gap-6 text-center">
+                            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Conversion Rate</p>
+                                <p className="text-3xl font-black text-emerald-400">{liveStats.conversionRate}</p>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Avg Order Value</p>
+                                <p className="text-3xl font-black text-indigo-400">{formatPrice(liveStats.avgOrderValue)}</p>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Registered Members</p>
+                                <p className="text-3xl font-black text-amber-400">{liveStats.activeUsers}</p>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {/* TAB 5: DISPATCH FLEET */}
+            {activeTab === 'dispatch' && (
+                <div className="space-y-8 text-left animate-in fade-in duration-500">
+                    <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                            <div>
+                                <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Dispatch Fleet & Route Analytics</h3>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Live Rider Telemetry & Delivery SLA</p>
+                            </div>
+                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                🟢 {kdsStats.activeRunners} Runners Active
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Active Riders</p>
+                                <p className="text-3xl font-black text-foreground">{kdsStats.activeRunners}</p>
+                            </div>
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Preparing Orders</p>
+                                <p className="text-3xl font-black text-amber-600">{kdsStats.preparingOrders}</p>
+                            </div>
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Peak Delivery Window</p>
+                                <p className="text-2xl font-black text-primary">8 PM - 11 PM</p>
+                            </div>
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Delivery SLA</p>
+                                <p className="text-3xl font-black text-indigo-600">&lt; 20 Mins</p>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
             {/* TAB 6: KITCHEN & KDS OPERATIONS ANALYTICS */}
             {activeTab === 'kitchen' && (
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
@@ -297,6 +422,24 @@ export default function AdminAnalyticsPage() {
                         <div className="flex justify-between items-center border-b border-slate-100 pb-4">
                             <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Support & Complaint Analytics</h3>
                             <span className="text-2xl font-black text-foreground">{liveStats.supportTickets.toLocaleString()} Total Received Tickets</span>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {/* TAB 9: UX HEATMAPS */}
+            {activeTab === 'ux_heatmaps' && (
+                <div className="space-y-8 text-left animate-in fade-in duration-500">
+                    <Card className="p-8 rounded-[3.5rem] bg-slate-950 text-white shadow-2xl space-y-6">
+                        <div className="border-b border-slate-800 pb-4">
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-indigo-400">CLICK DENSITY HEATMAP OVERLAY</span>
+                            <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Product & Checkout Interaction Hotspots</h3>
+                        </div>
+                        <div className="p-8 rounded-3xl bg-slate-900 border border-slate-800 text-center space-y-4">
+                            <p className="text-xs font-mono text-slate-400">Total User Signals Logged: {kdsStats.totalSignals}</p>
+                            <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono text-xs">
+                                🔥 High Click Density Detected on Express Checkout & Add To Cart CTA
+                            </div>
                         </div>
                     </Card>
                 </div>

@@ -13,17 +13,15 @@ import {
     Loader2,
     Calendar,
     Clock,
-    History,
     ShoppingCart,
     ShoppingBag,
     Users,
-    Zap,
     Flame
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 
