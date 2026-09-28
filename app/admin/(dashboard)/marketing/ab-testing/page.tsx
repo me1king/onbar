@@ -1,6 +1,5 @@
-'use client';
-
 import * as React from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import {
     Zap,
     ArrowUpRight,
@@ -30,14 +29,14 @@ export default function AbTestingPage() {
             try {
                 const { data } = await supabase.from('marketing_campaigns').select('*').limit(5);
                 if (data && data.length > 0) {
-                    const abItems: AbTest[] = data.map((c, idx) => ({
-                        id: c.id || `ab-${idx}`,
-                        name: c.name || 'Storefront Variant Experiment',
-                        type: c.type || 'Conversion',
+                    const abItems: AbTest[] = data.map((c: Record<string, any>, idx: number) => ({
+                        id: String(c.id || `ab-${idx}`),
+                        name: String(c.name || 'Storefront Variant Experiment'),
+                        type: String(c.type || 'Conversion'),
                         status: c.status === 'Published' ? 'Running' : 'Paused',
                         performance: `${12 + idx * 2.5}%`,
                         confidence: '94% confidence',
-                        created_date: new Date(c.created_at || Date.now()).toISOString().split('T')[0]
+                        created_date: new Date((c.created_at as string) || Date.now()).toISOString().split('T')[0]
                     }));
                     setTests(abItems);
                 }

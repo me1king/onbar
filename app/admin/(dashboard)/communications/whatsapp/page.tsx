@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import {
     MessageCircle,
     Send,
@@ -23,6 +24,28 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
+
+const WHATSAPP_SQL_SCRIPT = `
+-- WhatsApp Cloud API Tables
+CREATE TABLE IF NOT EXISTS public.whatsapp_auto_rules (
+    id TEXT PRIMARY KEY,
+    keyword TEXT NOT NULL,
+    reply TEXT NOT NULL,
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.whatsapp_messages (
+    id TEXT PRIMARY KEY,
+    sender TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    text TEXT NOT NULL,
+    time TEXT NOT NULL,
+    is_user BOOLEAN DEFAULT true,
+    status TEXT DEFAULT 'SENT',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+`;
 
 interface AutoResponderRule {
     id: string;

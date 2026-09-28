@@ -183,7 +183,7 @@ export default function SouvenirForgePage() {
                 .subscribe();
 
             return () => {
-                supabase.removeChannel(channel);
+                if (supabase) supabase.removeChannel(channel);
             };
         }
     }, [fetchSouvenirs]);

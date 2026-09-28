@@ -185,7 +185,7 @@ export default function BiteCommandPage() {
                 .subscribe();
 
             return () => {
-                supabase.removeChannel(channel);
+                if (supabase) supabase.removeChannel(channel);
             };
         }
     }, []);

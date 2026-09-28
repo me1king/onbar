@@ -43,6 +43,16 @@ interface ScheduledMission {
     image_url?: string;
 }
 
+const MISSION_COLORS: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+    instagram: { bg: "bg-rose-50 border-rose-200", text: "text-rose-700", dot: "bg-rose-500", label: "Instagram" },
+    facebook: { bg: "bg-indigo-50 border-indigo-200", text: "text-indigo-700", dot: "bg-indigo-500", label: "Facebook" },
+    whatsapp: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", dot: "bg-emerald-500", label: "WhatsApp" },
+    tiktok: { bg: "bg-slate-100 border-slate-300", text: "text-slate-900", dot: "bg-slate-900", label: "TikTok" },
+    beverage: { bg: "bg-amber-50 border-amber-200", text: "text-amber-700", dot: "bg-amber-500", label: "Beverage" },
+    food: { bg: "bg-orange-50 border-orange-200", text: "text-orange-700", dot: "bg-orange-500", label: "Food" },
+    souvenir: { bg: "bg-purple-50 border-purple-200", text: "text-purple-700", dot: "bg-purple-500", label: "Souvenir" }
+};
+
 interface MediaAsset {
     id: string;
     name: string;
