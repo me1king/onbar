@@ -15,9 +15,6 @@ import {
   AlertTriangle,
   Rocket,
   CheckCircle2,
-  Sparkles,
-  Zap,
-  Activity,
   X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';

@@ -29,7 +29,7 @@ export default function AbTestingPage() {
             try {
                 const { data } = await supabase.from('marketing_campaigns').select('*').limit(5);
                 if (data && data.length > 0) {
-                    const abItems: AbTest[] = data.map((c: Record<string, any>, idx: number) => ({
+                    const abItems: AbTest[] = data.map((c: Record<string, unknown>, idx: number) => ({
                         id: String(c.id || `ab-${idx}`),
                         name: String(c.name || 'Storefront Variant Experiment'),
                         type: String(c.type || 'Conversion'),
