@@ -61,22 +61,30 @@ export default function KitchenCommandHUD() {
                 .order('created_at', { ascending: true });
 
             if (data && data.length > 0) {
-                const dbTickets: KdsTicket[] = data.map((ord, idx) => ({
-                    id: `kds-${ord.id}`,
-                    order_id: `B-${ord.id}`,
-                    customer_name: ord.customer_name || 'Patron',
-                    table_or_address: ord.delivery_address || 'Express Dispatch Node',
-                    stage: ord.status === 'PREPARING' ? 'PREPARING' : ord.status === 'PACKED' ? 'PACKED' : 'QUEUED',
-                    station: idx % 2 === 0 ? 'Grill' : 'Fryer',
-                    items: [
-                        { name: 'Smocha Supreme', quantity: 1, spec: 'Sausage + Chapati' },
-                        { name: 'Amarula 750ml', quantity: 1, spec: 'Chilled 4°C Cellar' }
-                    ],
-                    customer_notes: 'Extra house sauce',
-                    payment_method: 'Paid via M-Pesa',
-                    prep_timer_sec: 600 - (idx * 90),
-                    created_time: new Date(ord.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                }));
+                const dbTickets: KdsTicket[] = data.map((ord, idx) => {
+                    const rawItems = ord.order_items || [];
+                    const parsedItems: KdsItem[] = rawItems.length > 0
+                        ? rawItems.map((item: { product_name?: string; quantity?: number; size?: string }) => ({
+                            name: item.product_name || 'Bite Item',
+                            quantity: item.quantity || 1,
+                            spec: item.size || 'Prepared Fresh'
+                        }))
+                        : [{ name: 'Bite & Beverage Order', quantity: 1, spec: 'Express Kitchen' }];
+
+                    return {
+                        id: `kds-${ord.id}`,
+                        order_id: `B-${ord.id}`,
+                        customer_name: ord.customer_name || 'Patron',
+                        table_or_address: ord.delivery_address || 'Express Dispatch Node',
+                        stage: ord.status === 'PREPARING' ? 'PREPARING' : ord.status === 'PACKED' ? 'PACKED' : 'QUEUED',
+                        station: idx % 2 === 0 ? 'Grill' : 'Fryer',
+                        items: parsedItems,
+                        customer_notes: ord.note || undefined,
+                        payment_method: ord.payment_method ? `Paid via ${ord.payment_method}` : 'Paid via M-Pesa',
+                        prep_timer_sec: Math.max(120, 600 - (idx * 90)),
+                        created_time: new Date(ord.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    };
+                });
                 setTickets(dbTickets);
             }
         } catch (err) {
