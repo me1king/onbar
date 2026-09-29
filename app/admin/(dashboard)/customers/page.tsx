@@ -334,6 +334,9 @@ export default function AdminCustomersPage() {
                               {role === 'owner' || permissions?.can_view_sensitive_rider_data ? customer.location : 'PROTECTED'}
                           </span>
                         </div>
+                        <div className="mt-1 font-mono text-[8px] font-bold text-emerald-600 uppercase tracking-widest">
+                          Onboarding &bull; Agreement v4.0 Accepted
+                        </div>
                       </div>
                     </td>
                     <td className="px-8 py-6">
