@@ -1,37 +1,67 @@
 'use client';
 
 import * as React from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import { Card } from '@/components/ui/card';
 import { Wine, Snowflake, PackageCheck, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function LivePulseHUD() {
+    const [hud, setHud] = React.useState({
+        beverageNodes: 0,
+        inStockRate: '100.0%',
+        storefrontStatus: 'LIVE & SYNCED'
+    });
+
+    React.useEffect(() => {
+        async function fetchHudStats() {
+            if (!supabase) return;
+            try {
+                const { data: products } = await supabase.from('products').select('id, stock');
+                if (products && products.length > 0) {
+                    const totalProds = products.length;
+                    const inStockCount = products.filter(p => (Number(p.stock) || 0) > 0).length;
+                    const rate = ((inStockCount / totalProds) * 100).toFixed(1) + '%';
+
+                    setHud({
+                        beverageNodes: totalProds,
+                        inStockRate: rate,
+                        storefrontStatus: 'LIVE & SYNCED'
+                    });
+                }
+            } catch (err) {
+                console.error("LivePulseHUD fetch error:", err);
+            }
+        }
+        fetchHudStats();
+    }, []);
+
     const metrics = [
         {
             label: 'Beverage Nodes',
-            val: '248',
-            sub: '↑ +12 added today',
+            val: hud.beverageNodes.toString(),
+            sub: 'Live Catalog Items',
             icon: Wine,
             color: 'text-amber-500 bg-amber-50'
         },
         {
             label: 'Chill Status',
             val: 'ACTIVE',
-            sub: 'Last sync 4s ago • Live 🟢',
+            sub: '4°C Cellar Grid 🟢',
             icon: Snowflake,
             color: 'text-cyan-500 bg-cyan-50'
         },
         {
             label: 'In Stock Rate',
-            val: '98.2%',
-            sub: '↓ 0.4% today',
+            val: hud.inStockRate,
+            sub: 'Live Inventory Level',
             icon: PackageCheck,
             color: 'text-emerald-500 bg-emerald-50'
         },
         {
             label: 'Storefront Status',
             val: 'LIVE',
-            sub: '248 products synced • Connected 🟢',
+            sub: `${hud.beverageNodes} Products Synced 🟢`,
             icon: Globe,
             color: 'text-indigo-500 bg-indigo-50'
         }
