@@ -60,6 +60,8 @@ interface OrderRecord {
   captured_by?: string;
   order_items?: OrderItem[];
   warehouse_location?: string;
+  is_gift?: boolean;
+  gift_message?: string | null;
 }
 
 interface ManualOrderForm {
@@ -719,6 +721,17 @@ export default function AdminOrdersPage() {
                                     <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-2 mt-1.5 whitespace-nowrap">
                                     <Phone className="h-3 w-3" /> {order.customer_phone}
                                     </span>
+
+                                    {(order.is_gift || order.gift_message || order.note?.includes('GIFT')) && (
+                                        <div className="mt-3 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-[10px] space-y-1 max-w-[200px]">
+                                            <div className="flex items-center gap-1.5 font-black uppercase text-amber-800 text-[9px] tracking-widest">
+                                                <span>🎁 GIFT PACKAGE</span>
+                                            </div>
+                                            {order.gift_message && (
+                                                <p className="font-bold italic uppercase leading-snug break-words">&quot;{order.gift_message}&quot;</p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                                 </td>
                                 <td className="px-8 py-8">

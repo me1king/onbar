@@ -430,7 +430,9 @@ function CheckoutContent() {
           captured_by: 'system',
           latitude: coords.lat || profile?.latitude || null,
           longitude: coords.lng || profile?.longitude || null,
-          note: `Region: ${currentRegion.label}${activeCoupon ? ` | Coupon: ${activeCoupon.code}` : ''}${usePoints ? ` | Used ${pointsDiscount * 10} points` : ''}${referralCode ? ` | Referred by ${referralCode}` : ''}${isGift ? ` | GIFT: ${giftMessage}` : ''}`
+          is_gift: isGift,
+          gift_message: giftMessage.trim() || null,
+          note: `Region: ${currentRegion.label}${activeCoupon ? ` | Coupon: ${activeCoupon.code}` : ''}${usePoints ? ` | Used ${pointsDiscount * 10} points` : ''}${referralCode ? ` | Referred by ${referralCode}` : ''}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`
       };
 
       const { data: headerData, error: headerError } = await client
@@ -448,6 +450,9 @@ function CheckoutContent() {
                   customer_name: customerName.trim(),
                   customer_phone: customerPhone.trim(),
                   total_price: total,
+                  is_gift: isGift,
+                  gift_message: giftMessage.trim() || null,
+                  note: `Region: ${currentRegion.label}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`,
                   status: "Pending"
               }])
               .select('id')
