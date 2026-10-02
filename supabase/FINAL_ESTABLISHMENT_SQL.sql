@@ -18,6 +18,7 @@ DROP VIEW IF EXISTS public.vw_purchase_frequency CASCADE;
 DROP FUNCTION IF EXISTS public.log_event_batch CASCADE;
 DROP FUNCTION IF EXISTS public.track_product_interaction CASCADE;
 DROP FUNCTION IF EXISTS public.handle_presence_heartbeat CASCADE;
+DROP FUNCTION IF EXISTS public.get_top_pages(integer);
 
 -- 2. IDENTITY NODE: PROFILES & STAFF
 CREATE TABLE IF NOT EXISTS public.profiles (
