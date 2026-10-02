@@ -11,6 +11,8 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- 1. CLEANUP NODE (Prevents conflicts)
+DROP VIEW IF EXISTS public.affiliate_performance_summary CASCADE;
+DROP VIEW IF EXISTS public.behavioral_intelligence_pulse CASCADE;
 DROP VIEW IF EXISTS public.live_behavior_radar CASCADE;
 DROP VIEW IF EXISTS public.vw_purchase_frequency CASCADE;
 DROP FUNCTION IF EXISTS public.log_event_batch CASCADE;
@@ -468,27 +470,7 @@ CREATE TABLE IF NOT EXISTS public.abandoned_carts (
 
 -- 9. VIEWS & RPC ENGINE
 
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'affiliate_performance_summary'
-          AND column_name = 'id'
-    ) AND NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'affiliate_performance_summary'
-          AND column_name = 'affiliate_id'
-    ) THEN
-        ALTER VIEW public.affiliate_performance_summary RENAME COLUMN id TO affiliate_id;
-    END IF;
-END;
-$$;
-
-CREATE OR REPLACE VIEW public.affiliate_performance_summary AS
+CREATE VIEW public.affiliate_performance_summary AS
 SELECT
     p.id as affiliate_id,
     p.full_name,
@@ -505,7 +487,7 @@ SELECT
 FROM public.profiles p
 WHERE p.referral_code IS NOT NULL;
 
-CREATE OR REPLACE VIEW public.behavioral_intelligence_pulse AS
+CREATE VIEW public.behavioral_intelligence_pulse AS
 SELECT
     (SELECT count(*) FROM public.customer_sessions WHERE last_seen_at > now() - interval '5 minutes') as live_users,
     (SELECT count(*) FROM public.analytics_events WHERE created_at > CURRENT_DATE) as events_today,
