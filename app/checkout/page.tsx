@@ -877,7 +877,7 @@ function CheckoutContent() {
                             </div>
                         </div>
                         <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 leading-relaxed max-w-xs">
-                            Tap to set your delivery pin. We’ll check it against the free-delivery areas configured by the store.
+                            Set and confirm a delivery pin to check free-delivery coverage. Saved pins are shown to authorized admins only as approximate grouped areas, never as live location.
                         </p>
                     </div>
                     <Button

@@ -161,7 +161,7 @@ export default function LocationPicker({ initialLat, initialLng, onConfirm, onCl
                                 <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tighter text-foreground leading-none">Drop Point</h2>
                             </div>
                             <p className="text-slate-600 text-xs leading-relaxed mt-2">
-                                Your location helps us check whether this address is inside a free-delivery area and place your order’s delivery pin. We only request device location when you tap the button; you can also set the pin manually.
+                                We only request device location when you tap the button. If you confirm a pin, it is saved to your profile for delivery planning and shown to authorized store admins only as an approximate grouped area. You can also place the pin manually.
                             </p>
                         </div>
 
@@ -179,7 +179,7 @@ export default function LocationPicker({ initialLat, initialLng, onConfirm, onCl
                         <div className="p-4 sm:p-5 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-start gap-3 sm:gap-4">
                             <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0 mt-0.5" />
                             <p className="text-[8px] sm:text-[10px] font-medium text-emerald-700 leading-relaxed italic">
-                                Pinned location will be linked to your account for future orders.
+                                Confirming saves this delivery pin to your account. Authorized admins see only its approximate area on the customer map, not your identity or live location.
                             </p>
                         </div>
                     </div>

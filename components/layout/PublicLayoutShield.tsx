@@ -97,16 +97,6 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
         const sendHeartbeat = async () => {
             if (!supabase) return;
 
-            let lat: number | null = null;
-            let lon: number | null = null;
-
-            if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
-                navigator.geolocation.getCurrentPosition((pos) => {
-                    lat = pos.coords.latitude;
-                    lon = pos.coords.longitude;
-                }, () => {}, { timeout: 5000 });
-            }
-
             const { data: { session } } = await supabase.auth.getSession();
             const cartData = localStorage.getItem('cart');
             let cartValue = 0;
@@ -123,8 +113,8 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
                 current_page: pathname,
                 last_active_at: new Date().toISOString(),
                 cart_value: cartValue,
-                latitude: lat,
-                longitude: lon,
+                latitude: null,
+                longitude: null,
                 status: pathname === '/checkout' ? 'Checkout' : cartValue > 0 ? 'Browsing' : 'Idle'
             }, { onConflict: 'session_id' });
         };

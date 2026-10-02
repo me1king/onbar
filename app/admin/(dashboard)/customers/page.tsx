@@ -66,6 +66,10 @@ interface CustomerStats {
   isPartner: boolean;
 }
 
+function normalizePhone(phone: string | null | undefined) {
+  return phone?.replace(/\D/g, '') ?? '';
+}
+
 export default function AdminCustomersPage() {
   const { role, permissions } = useAdmin();
   const router = useRouter();
@@ -90,12 +94,18 @@ export default function AdminCustomersPage() {
           supabase.from('profiles').select('id, phone_number, referral_code, full_name, birth_date, address, segment, lifetime_value, total_orders, last_purchase_at, latitude, longitude')
         ]);
 
-        if (ordersRes.error) console.error('Error loading customer orders:', ordersRes.error);
+        if (ordersRes.error) {
+          console.error('Error loading customer orders:', ordersRes.error);
+        }
         else if (ordersRes.data) setOrders(ordersRes.data as OrderRecord[]);
-        if (profilesRes.error) setLocationError(profilesRes.error.message);
+        if (profilesRes.error) console.error('Error loading customer profiles:', profilesRes.error);
         else if (profilesRes.data) setProfiles(profilesRes.data as CustomerProfile[]);
+        const locationErrors = [ordersRes.error?.message, profilesRes.error?.message]
+          .filter((message): message is string => Boolean(message));
+        if (locationErrors.length) setLocationError(locationErrors.join(' '));
       } catch (err) {
         console.error('Error loading customers:', err);
+        setLocationError(err instanceof Error ? err.message : 'An unexpected error occurred while loading customer locations.');
       } finally {
         setIsLoading(false);
       }
@@ -109,7 +119,8 @@ export default function AdminCustomersPage() {
     const profilesByPhone = new Map<string, CustomerProfile>();
     const profilesById = new Map(profiles.map(profile => [profile.id, profile]));
     for (const profile of profiles) {
-      if (profile.phone_number) profilesByPhone.set(profile.phone_number.trim(), profile);
+      const phone = normalizePhone(profile.phone_number);
+      if (phone) profilesByPhone.set(phone, profile);
     }
 
     for (const profile of profiles) {
@@ -120,9 +131,16 @@ export default function AdminCustomersPage() {
 
     for (const order of orders) {
       if (order.latitude === null || order.longitude === null) continue;
-      const profile = profilesByPhone.get(order.customer_phone.trim())
+      const phone = normalizePhone(order.customer_phone);
+      const profile = (phone ? profilesByPhone.get(phone) : undefined)
         || (order.user_id ? profilesById.get(order.user_id) : undefined);
-      const identity = profile ? `profile:${profile.id}` : order.user_id ? `user:${order.user_id}` : `guest:${order.customer_phone.trim()}`;
+      const identity = profile
+        ? `profile:${profile.id}`
+        : order.user_id
+          ? `user:${order.user_id}`
+          : phone
+            ? `guest:${phone}`
+            : `order:${order.id}`;
       if (!locations.has(identity)) {
         locations.set(identity, { latitude: order.latitude, longitude: order.longitude });
       }
