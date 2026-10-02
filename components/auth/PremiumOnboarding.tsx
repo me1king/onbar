@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import AuthForm from './AuthForm';
 
-type OnboardingStep = 'INTRO' | 'AUTH' | 'PERSONALIZE' | 'CONSENT' | 'COMPLETE';
+type OnboardingStep = 'INTRO' | 'AUTH' | 'PERSONALIZE' | 'COMPLETE';
 
 export default function PremiumOnboarding() {
     const router = useRouter();
@@ -36,39 +36,53 @@ export default function PremiumOnboarding() {
     const [preferredVibe, setPreferredVibe] = React.useState<string | null>(null);
     const [loading, setLoading] = React.useState(false);
     const [userId, setUserId] = React.useState<string | null>(null);
+    const [saveError, setSaveError] = React.useState<string | null>(null);
 
     const anonId = React.useMemo(() => typeof window !== 'undefined' ? localStorage.getItem('ob_anonymous_id') : null, []);
 
     // 🛡️ [IDENTITY_SYNC] Session Monitor
     // If a session is established (even via background trigger), advance the onboarding.
     React.useEffect(() => {
-        if (!supabase) return;
+        const client = supabase;
+        if (!client) return;
 
-        const checkSession = async () => {
-            if (!supabase) return;
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session?.user && (step === 'INTRO' || step === 'AUTH')) {
-                    console.log("[OB_OS] Active session detected. Synchronizing profile node...");
-                    setUserId(session.user.id);
-                    setStep('PERSONALIZE');
-                }
-            } catch (e) {
-                console.warn("[OB_OS] Session Check Error:", e);
+        const continueForUser = async (authenticatedUserId: string) => {
+            setUserId(authenticatedUserId);
+            const { data: profile, error } = await client
+                .from('profiles')
+                .select('interests')
+                .eq('id', authenticatedUserId)
+                .maybeSingle();
+            if (error) {
+                console.error('Could not check saved onboarding preferences:', error);
+                setSaveError('We could not load your saved preferences. Please try again.');
+                setStep('PERSONALIZE');
+                return;
             }
+            if (Array.isArray(profile?.interests) && profile.interests.length > 0) {
+                router.replace('/shop');
+                return;
+            }
+            setStep('PERSONALIZE');
         };
 
-        checkSession();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        client.auth.getSession().then(({ data: { session } }) => {
             if (session?.user && (step === 'INTRO' || step === 'AUTH')) {
-                setUserId(session.user.id);
-                setStep('PERSONALIZE');
+                void continueForUser(session.user.id);
+            }
+        }).catch(error => {
+            console.error('Could not check the current onboarding session:', error);
+            setSaveError('We could not verify your sign-in. Please try again.');
+        });
+
+        const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session?.user && (step === 'INTRO' || step === 'AUTH')) {
+                void continueForUser(session.user.id);
             }
         });
 
         return () => subscription.unsubscribe();
-    }, [step]);
+    }, [router, step]);
 
     React.useEffect(() => {
         OB_OS.track('ONBOARDING_STARTED', { anonymousId: anonId || undefined });
@@ -76,8 +90,28 @@ export default function PremiumOnboarding() {
 
     const handleAuthSuccess = (uId: string) => {
         setUserId(uId);
-        setStep('PERSONALIZE');
-        OB_OS.track('ONBOARDING_STEP_COMPLETED', { userId: uId, anonymousId: anonId || undefined, details: { step: 'ACCOUNT' } });
+        setSaveError(null);
+        void (async () => {
+            if (!supabase) {
+                setStep('PERSONALIZE');
+                return;
+            }
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('interests')
+                .eq('id', uId)
+                .maybeSingle();
+            if (error) {
+                console.error('Could not check saved onboarding preferences:', error);
+                setSaveError('We could not load your saved preferences. Please try again.');
+                setStep('PERSONALIZE');
+            } else if (Array.isArray(profile?.interests) && profile.interests.length > 0) {
+                router.replace('/shop');
+            } else {
+                setStep('PERSONALIZE');
+                OB_OS.track('ONBOARDING_STEP_COMPLETED', { userId: uId, anonymousId: anonId || undefined, details: { step: 'ACCOUNT' } });
+            }
+        })();
     };
 
     const toggleInterest = (id: string) => {
@@ -86,40 +120,32 @@ export default function PremiumOnboarding() {
 
     const savePreferences = async () => {
         setLoading(true);
-
-        // 🛡️ [FAILSAFE] Guarantee spinner never exceeds 2 seconds
-        const failsafe = setTimeout(() => {
-            setLoading(false);
-            setStep('COMPLETE');
-        }, 2000);
+        setSaveError(null);
 
         try {
-            if (supabase) {
-                let currentUserId = userId;
-                if (!currentUserId) {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (session?.user) {
-                        currentUserId = session.user.id;
-                        setUserId(currentUserId);
-                    }
-                }
-
-                if (currentUserId) {
-                    await supabase.from('profiles').update({
-                        interests,
-                        preferred_vibe: preferredVibe,
-                        onboarding_step: 'COMPLETE'
-                    }).eq('id', currentUserId);
-
-                    await OB_OS.track('PREFERENCES_UPDATED', { userId: currentUserId, details: { interests, preferredVibe } });
-                }
+            if (!supabase) throw new Error('The account service is unavailable. Please try again later.');
+            let currentUserId = userId;
+            if (!currentUserId) {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) throw error;
+                currentUserId = session?.user.id ?? null;
             }
+            if (!currentUserId) throw new Error('Your sign-in expired. Please sign in again to save your preferences.');
+
+            const { error } = await supabase.from('profiles').update({
+                interests,
+                preferred_vibe: preferredVibe
+            }).eq('id', currentUserId);
+            if (error) throw error;
+
+            void OB_OS.track('PREFERENCES_UPDATED', { userId: currentUserId, details: { interests, preferredVibe } });
+            void OB_OS.track('ONBOARDING_STEP_COMPLETED', { userId: currentUserId, anonymousId: anonId || undefined, details: { step: 'PREFERENCES' } });
+            setStep('COMPLETE');
         } catch (err) {
             console.error("Preferences save error:", err);
+            setSaveError(err instanceof Error ? err.message : 'Could not save your preferences. Please try again.');
         } finally {
-            clearTimeout(failsafe);
             setLoading(false);
-            setStep('COMPLETE');
         }
     };
 
@@ -204,8 +230,8 @@ export default function PremiumOnboarding() {
                     <header className="space-y-4 text-left px-2">
                         <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Star size={20} fill="currentColor" /></div>
                         <div className="space-y-1">
-                            <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter text-foreground leading-none">Personalize Your Cellar</h2>
-                            <p className="text-slate-500 font-medium italic text-xs sm:text-sm">Select the vibes you enjoy. We&apos;ll curate your discovery grid accordingly.</p>
+                            <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter text-foreground leading-none">Choose Your Preferences</h2>
+                            <p className="text-slate-500 font-medium text-xs sm:text-sm">Pick your favorite categories and one mood. We&apos;ll use them to tailor your recommendations.</p>
                         </div>
                     </header>
 
@@ -233,11 +259,8 @@ export default function PremiumOnboarding() {
                         ))}
                     </div>
 
-                    <div className="space-y-6 pt-4 px-2">
-                        <header className="space-y-2 text-left">
-                            <p className="text-[9px] font-black uppercase text-primary tracking-[0.3em]">Select Your Atmosphere</p>
-                            <h3 className="text-xl font-black uppercase text-foreground">What&apos;s the vibe?</h3>
-                        </header>
+                    <div className="space-y-4 pt-2 px-2">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-foreground">Choose a mood</h3>
                         <div className="grid grid-cols-3 gap-3">
                             {[
                                 { id: 'CHILL', label: 'Chill', icon: Music },
@@ -259,6 +282,7 @@ export default function PremiumOnboarding() {
                     </div>
 
                     <div className="px-2 pt-4">
+                        {saveError && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-left text-sm text-rose-700">{saveError}</p>}
                         <Button
                             onClick={savePreferences}
                             disabled={interests.length === 0 || !preferredVibe || loading}

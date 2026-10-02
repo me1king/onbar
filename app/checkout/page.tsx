@@ -823,7 +823,11 @@ function CheckoutContent() {
                         className={`p-4 sm:p-6 rounded-3xl border-2 text-left transition-all active:scale-95 ${currentRegion.id === r.id ? 'border-primary bg-white shadow-xl scale-105' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}
                     >
                         <p className="font-black uppercase tracking-tight text-foreground text-[10px] sm:text-sm">{r.label}</p>
-                        <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 mt-1">{r.fee === 0 ? 'FREE' : `+ Ksh ${r.fee}`}</p>
+                        <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 mt-1">
+                            {r.fee === 0
+                                ? `Ksh ${settings.shipping.nairobi_outskirts} outside free areas`
+                                : `+ Ksh ${r.fee}`}
+                        </p>
                     </button>
                 ))}
             </div>

@@ -81,6 +81,32 @@ export interface StoreSettings {
     };
 }
 
+export function normalizeShippingSettings(value: unknown): StoreSettings['shipping'] {
+    const saved = typeof value === 'object' && value !== null
+        ? value as Record<string, unknown>
+        : {};
+    const defaults = DEFAULT_SETTINGS.shipping;
+    const readLabel = (key: keyof StoreSettings['shipping'], fallback: string) => {
+        const label = saved[key];
+        return typeof label === 'string' && label.trim() ? label.trim() : fallback;
+    };
+    const readFee = (key: keyof StoreSettings['shipping'], fallback: number) => {
+        const rawFee = saved[key];
+        if (rawFee === null || rawFee === undefined || rawFee === '') return fallback;
+        const fee = Number(rawFee);
+        return Number.isFinite(fee) && fee >= 0 ? Math.round(fee) : fallback;
+    };
+
+    return {
+        nairobi_cbd_label: readLabel('nairobi_cbd_label', defaults.nairobi_cbd_label),
+        nairobi_cbd: readFee('nairobi_cbd', defaults.nairobi_cbd),
+        nairobi_outskirts_label: readLabel('nairobi_outskirts_label', defaults.nairobi_outskirts_label),
+        nairobi_outskirts: readFee('nairobi_outskirts', defaults.nairobi_outskirts),
+        upcountry_label: readLabel('upcountry_label', defaults.upcountry_label),
+        upcountry: readFee('upcountry', defaults.upcountry)
+    };
+}
+
 export const DEFAULT_SETTINGS: StoreSettings = {
     contact: {
         whatsapp: "254769345599",
@@ -179,7 +205,7 @@ export function useSettings() {
                         if (item.key === 'branding') newSettings.branding = { ...newSettings.branding, ...item.value };
                         if (item.key === 'homepage') newSettings.homepage = { ...newSettings.homepage, ...item.value };
                         if (item.key === 'catalog') newSettings.catalog = { ...newSettings.catalog, ...item.value };
-                        if (item.key === 'shipping') newSettings.shipping = { ...newSettings.shipping, ...item.value };
+                        if (item.key === 'shipping') newSettings.shipping = normalizeShippingSettings(item.value);
                         if (item.key === 'logistics') newSettings.logistics = { ...newSettings.logistics, ...item.value };
                         if (item.key === 'theme_config') newSettings.theme_config = { ...newSettings.theme_config, ...item.value };
                         if (item.key === 'seo_config') newSettings.seo_config = { ...newSettings.seo_config, ...item.value };

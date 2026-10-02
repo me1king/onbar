@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
+import { normalizeShippingSettings } from '@/lib/useSettings';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 import {
@@ -165,7 +166,7 @@ export default function AdminSettingsPage() {
                         const val = item.value as typeof DEFAULTS.homepage;
                         if (val.hero_image_url) setHeroPreview(val.hero_image_url);
                     }
-                    if (item.key === 'shipping') setShipping(item.value as typeof DEFAULTS.shipping);
+                    if (item.key === 'shipping') setShipping(normalizeShippingSettings(item.value));
                     if (item.key === 'logistics') setLogistics(item.value as typeof DEFAULTS.logistics);
                     if (item.key === 'catalog') setCatalog(item.value as typeof DEFAULTS.catalog);
                     if (item.key === 'promotions') setPromotions(item.value as typeof DEFAULTS.promotions);
@@ -260,8 +261,43 @@ export default function AdminSettingsPage() {
         }
     };
 
+    const saveOperationsSettings = async () => {
+        if (!supabase) {
+            setMessage({ type: 'error', text: 'Supabase is not connected. Delivery prices were not saved.' });
+            return;
+        }
+        const fees = [shipping.nairobi_cbd, shipping.nairobi_outskirts, shipping.upcountry];
+        if (fees.some(fee => !Number.isSafeInteger(fee) || fee < 0)) {
+            setMessage({ type: 'error', text: 'Enter a whole-number delivery fee of zero or more for each zone.' });
+            return;
+        }
+
+        setSavingKey('ops');
+        setMessage(null);
+        try {
+            const { error } = await supabase.from('settings').upsert([
+                { key: 'contact', value: contact, is_published: true, updated_at: new Date().toISOString() },
+                { key: 'shipping', value: shipping, is_published: true, updated_at: new Date().toISOString() }
+            ], { onConflict: 'key' });
+            if (error) throw error;
+
+            await logAuditAction(email, 'UPDATE_SETTINGS', { keys: ['contact', 'shipping'], published: true });
+            setMessage({ type: 'success', text: 'Contact and delivery prices are live at checkout.' });
+            setTimeout(() => setMessage(null), 5000);
+        } catch (err) {
+            console.error('Operations settings save failed:', err);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not save contact and delivery settings.' });
+        } finally {
+            setSavingKey(null);
+        }
+    };
+
     const handlePublishAll = async () => {
         if (!supabase) return;
+        if ([shipping.nairobi_cbd, shipping.nairobi_outskirts, shipping.upcountry].some(fee => !Number.isSafeInteger(fee) || fee < 0)) {
+            setMessage({ type: 'error', text: 'Enter a whole-number delivery fee of zero or more for each zone before publishing.' });
+            return;
+        }
         setSavingKey('all');
         try {
             const updatedBrandingLocal = { ...branding };
@@ -330,6 +366,7 @@ export default function AdminSettingsPage() {
                         <RefreshCcw className="h-4 w-4 mr-2" /> Sync Records
                     </Button>
                     <Button
+                        disabled={savingKey !== null}
                         onClick={() => {
                             if (activeTab === 'identity') handleSave('branding', branding, true);
                             else if (activeTab === 'homepage') handleSave('homepage', homepage, true);
@@ -337,8 +374,7 @@ export default function AdminSettingsPage() {
                             else if (activeTab === 'theme') handleSave('theme_config', theme, true);
                             else if (activeTab === 'seo') handleSave('seo_config', seo, true);
                             else if (activeTab === 'ops') {
-                                handleSave('contact', contact, true);
-                                handleSave('shipping', shipping, true);
+                                saveOperationsSettings();
                             }
                             else if (activeTab === 'catalog') handleSave('catalog', catalog, true);
                             else if (activeTab === 'ai') handleSave('ai_config', aiConfig, true);
@@ -352,7 +388,8 @@ export default function AdminSettingsPage() {
                         }}
                         className="rounded-xl h-12 px-6 bg-primary text-white font-black uppercase text-[10px] tracking-widest hover:bg-primary/90 transition-all active:scale-95 shadow-xl shadow-primary/20"
                     >
-                        <Save className="h-4 w-4 mr-2" /> Sync Changes
+                        {savingKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                        {savingKey ? 'Saving…' : 'Sync Changes'}
                     </Button>
                 </div>
             </header>
@@ -822,8 +859,9 @@ export default function AdminSettingsPage() {
 
                                 <div className="bg-card rounded-[2.5rem] border border-border p-10 shadow-sm space-y-8 flex flex-col text-left">
                                     <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3">
-                                        <Truck className="h-5 w-5 text-primary" /> Bar Dispatch
+                                        <Truck className="h-5 w-5 text-primary" /> Delivery Prices
                                     </h2>
+                                    <p className="text-sm text-muted-foreground">Set the standard transport charge for each checkout region. Saved prices appear in the customer&apos;s order total; a configured free-delivery boundary overrides the charge.</p>
                                     <div className="space-y-4 flex-1 text-left">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-1">
@@ -832,7 +870,7 @@ export default function AdminSettingsPage() {
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Fee (Ksh)</label>
-                                                <Input type="number" value={shipping.nairobi_cbd} onChange={e => setShipping({...shipping, nairobi_cbd: Number(e.target.value)})} className="rounded-xl h-12 bg-secondary border-border font-black text-foreground" />
+                                                <Input type="number" min="0" step="1" value={shipping.nairobi_cbd} onChange={e => setShipping({...shipping, nairobi_cbd: Number(e.target.value)})} className="rounded-xl h-12 bg-secondary border-border font-black text-foreground" />
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
@@ -842,7 +880,17 @@ export default function AdminSettingsPage() {
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Fee (Ksh)</label>
-                                                <Input type="number" value={shipping.nairobi_outskirts} onChange={e => setShipping({...shipping, nairobi_outskirts: Number(e.target.value)})} className="rounded-xl h-12 bg-secondary border-border font-black text-foreground" />
+                                                <Input type="number" min="0" step="1" value={shipping.nairobi_outskirts} onChange={e => setShipping({...shipping, nairobi_outskirts: Number(e.target.value)})} className="rounded-xl h-12 bg-secondary border-border font-black text-foreground" />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Upcountry Label</label>
+                                                <Input value={shipping.upcountry_label} onChange={e => setShipping({...shipping, upcountry_label: e.target.value})} className="rounded-xl h-12 bg-secondary border-border font-bold text-foreground" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Fee (Ksh)</label>
+                                                <Input type="number" min="0" step="1" value={shipping.upcountry} onChange={e => setShipping({...shipping, upcountry: Number(e.target.value)})} className="rounded-xl h-12 bg-secondary border-border font-black text-foreground" />
                                             </div>
                                         </div>
                                     </div>
