@@ -16,7 +16,6 @@ import {
     Navigation,
     ShieldCheck,
     Star,
-    Eye,
     MapPin,
     Calendar
 } from 'lucide-react';
@@ -123,9 +122,9 @@ export default function BuzzCommandTower() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8 animate-in fade-in duration-700">
                 {[
                     { label: 'Active Buzz', val: posts.filter(p => p.status === 'LIVE' || p.status === 'TRENDING').length, icon: Zap, color: 'primary' },
-                    { label: 'Global Pulse', val: posts.length > 0 ? `${Math.round((posts.filter(p => p.status === 'LIVE').length / posts.length) * 100)}/100` : '0/100', icon: TrendingUp, color: 'emerald' },
-                    { label: 'Discovery Reach', val: posts.length > 0 ? `${(posts.length * 1.2).toFixed(1)}k` : '0', icon: Eye, color: 'indigo' },
-                    { label: 'Sector Signal', val: areas.some(a => a.is_active) ? 'Strong' : 'Standby', icon: MapPin, color: 'rose' },
+                    { label: 'Live Posts', val: posts.filter(p => p.status === 'LIVE').length, icon: TrendingUp, color: 'emerald' },
+                    { label: 'Registered Areas', val: areas.length, icon: MapPin, color: 'indigo' },
+                    { label: 'Active Areas', val: areas.filter(a => a.is_active).length, icon: Activity, color: 'rose' },
                 ].map((node) => (
                     <Card key={node.label} className="p-8 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-4 text-center group hover:shadow-xl transition-all">
                         <div className={cn(
@@ -184,7 +183,6 @@ export default function BuzzCommandTower() {
                                             <h3 className="text-2xl font-black text-foreground uppercase tracking-tight truncate leading-none">{post.title}</h3>
                                             <div className="flex items-center gap-4 text-[9px] font-black text-slate-300 uppercase tracking-widest mt-3">
                                                 <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-50 text-emerald-600 border border-emerald-100"><CheckCircle2 size={10} /> {post.confidence}% Confident</span>
-                                                <span className="flex items-center gap-1.5"><Eye size={10} /> 1.2k Views</span>
                                             </div>
                                         </div>
                                     </div>

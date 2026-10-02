@@ -30,7 +30,6 @@ interface DossierOverview {
     category: string;
     is_dossier_complete: boolean;
     last_verified: string;
-    source_confidence: string;
 }
 
 export default function ProductDossierGrid() {
@@ -73,8 +72,7 @@ export default function ProductDossierGrid() {
                         brand: p.brand || 'Unknown',
                         category: p.category || 'Spirits',
                         is_dossier_complete: !!dossier?.id,
-                        last_verified: dossier?.last_verified_at || 'Never',
-                        source_confidence: dossier ? 'Optimal' : 'Low'
+                        last_verified: dossier?.last_verified_at || 'Never'
                     };
                 }));
             }
@@ -133,7 +131,7 @@ export default function ProductDossierGrid() {
                     { label: 'Total Dossiers', val: products.length, icon: Database, color: 'primary' },
                     { label: 'Verified Nodes', val: products.filter(p => p.is_dossier_complete).length, icon: ShieldCheck, color: 'emerald' },
                     { label: 'Awaiting Research', val: products.filter(p => !p.is_dossier_complete).length, icon: AlertTriangle, color: 'rose' },
-                    { label: 'Network Confidence', val: '92%', icon: CheckCircle2, color: 'indigo' },
+                    { label: 'Dossier Completion', val: products.length ? `${Math.round((products.filter(p => p.is_dossier_complete).length / products.length) * 100)}%` : '—', icon: CheckCircle2, color: 'indigo' },
                 ].map(stat => (
                     <Card key={stat.label} className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm group hover:shadow-xl transition-all">
                         <div className={cn(

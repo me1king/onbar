@@ -7,49 +7,74 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export default function SystemPulseWidget() {
-    const [latency, setLatency] = React.useState({ db: 0, api: 0, logistics: 0 });
-    const [status, setStatus] = React.useState({ db: 'online', api: 'online', logistics: 'active' });
-    const [killSwitchActive, setKillSwitchActive] = React.useState(false);
+    const [latency, setLatency] = React.useState<{ db: number | null; api: null; logistics: null }>({ db: null, api: null, logistics: null });
+    const [status, setStatus] = React.useState({ db: 'checking', api: 'not connected', logistics: 'not connected' });
+    const [killSwitchActive, setKillSwitchActive] = React.useState<boolean | null>(null);
+    const [settingsError, setSettingsError] = React.useState<string | null>(null);
+    const [savingLockdown, setSavingLockdown] = React.useState(false);
 
     React.useEffect(() => {
         async function checkLatency() {
+            if (!supabase) {
+                setStatus(prev => ({ ...prev, db: 'not configured' }));
+                setLatency(prev => ({ ...prev, db: null }));
+                setKillSwitchActive(null);
+                return;
+            }
             const start = performance.now();
             try {
-                // Real DB ping
-                await supabase?.from('settings').select('key').limit(1);
+                const [{ error: pingError }, { data, error: settingsError }] = await Promise.all([
+                    supabase.from('settings').select('key').limit(1),
+                    supabase.from('settings').select('value').eq('key', 'system_lockdown').maybeSingle()
+                ]);
+                if (pingError) throw pingError;
+                if (settingsError) throw settingsError;
                 const end = performance.now();
 
-                setLatency({
-                    db: Math.round(end - start),
-                    api: Math.round((end - start) * 0.8),
-                    logistics: Math.round((end - start) * 1.2)
-                });
-            } catch {
-                setStatus(prev => ({ ...prev, db: 'offline' }));
+                setLatency(prev => ({ ...prev, db: Math.round(end - start) }));
+                setStatus(prev => ({ ...prev, db: 'online' }));
+                const value = data?.value;
+                setKillSwitchActive(
+                    typeof value === 'object' && value !== null && 'active' in value && value.active === true
+                );
+            } catch (error) {
+                console.error('System status check failed:', error);
+                setStatus(prev => ({ ...prev, db: 'unavailable' }));
+                setLatency(prev => ({ ...prev, db: null }));
+                setKillSwitchActive(null);
             }
         }
 
-        checkLatency();
-        const interval = setInterval(checkLatency, 15000);
+        void checkLatency();
+        const interval = setInterval(() => void checkLatency(), 15000);
         return () => clearInterval(interval);
     }, []);
 
     const metrics = [
-        { label: 'Cellar DB', val: `${latency.db}ms`, icon: Database, status: status.db },
-        { label: 'Menu API', val: `${latency.api}ms`, icon: Globe, status: status.api },
-        { label: 'Runners', val: `${latency.logistics}ms`, icon: Truck, status: status.logistics },
+        { label: 'Cellar DB', val: latency.db === null ? '—' : `${latency.db}ms`, icon: Database, status: status.db },
+        { label: 'Menu API', val: '—', icon: Globe, status: status.api },
+        { label: 'Runners', val: '—', icon: Truck, status: status.logistics },
     ];
 
     const toggleKillSwitch = async () => {
-        if (!supabase) return;
+        if (!supabase || killSwitchActive === null || savingLockdown) return;
         const next = !killSwitchActive;
-        setKillSwitchActive(next);
-
-        // Persist to settings
-        await supabase.from('settings').upsert({
-            key: 'system_lockdown',
-            value: { active: next, timestamp: new Date().toISOString() }
-        });
+        setSavingLockdown(true);
+        setSettingsError(null);
+        try {
+            const { error } = await supabase.from('settings').upsert({
+                key: 'system_lockdown',
+                value: { active: next, timestamp: new Date().toISOString() },
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'key' });
+            if (error) throw error;
+            setKillSwitchActive(next);
+        } catch (error) {
+            console.error('Could not save the system lockdown setting:', error);
+            setSettingsError(error instanceof Error ? error.message : 'Could not save the lockdown setting.');
+        } finally {
+            setSavingLockdown(false);
+        }
     };
 
     return (
@@ -77,7 +102,7 @@ export default function SystemPulseWidget() {
                             <div className="text-right">
                                 <span className={cn(
                                     "text-[8px] font-black uppercase block",
-                                    m.status === 'online' || m.status === 'active' ? "text-emerald-500" : "text-rose-500"
+                                    m.status === 'online' ? "text-emerald-500" : "text-slate-400"
                                 )}>{m.status}</span>
                                 <span className="text-[7px] font-bold text-slate-400 uppercase">{m.val}</span>
                             </div>
@@ -90,19 +115,21 @@ export default function SystemPulseWidget() {
                         <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Kill Switch</span>
                         <span className={cn(
                             "text-[7px] font-black uppercase",
-                            killSwitchActive ? "text-rose-600 animate-pulse" : "text-slate-300"
-                        )}>{killSwitchActive ? 'LOCKDOWN ACTIVE' : 'SECURE'}</span>
+                            killSwitchActive === true ? "text-rose-600 animate-pulse" : "text-slate-300"
+                        )}>{killSwitchActive === null ? 'STATUS UNAVAILABLE' : killSwitchActive ? 'LOCKDOWN ACTIVE' : 'INACTIVE'}</span>
                     </div>
+                    {settingsError && <p role="alert" className="text-xs text-rose-600">{settingsError}</p>}
                     <Button
                         onClick={toggleKillSwitch}
-                        variant={killSwitchActive ? 'default' : 'outline'}
+                        variant={killSwitchActive === true ? 'default' : 'outline'}
+                        disabled={killSwitchActive === null || savingLockdown}
                         className={cn(
                             "w-full h-12 rounded-xl text-[9px] font-black uppercase transition-all active:scale-95",
-                            killSwitchActive ? "bg-rose-600 text-white border-rose-600" : "border-slate-100 text-slate-400 hover:text-rose-600 hover:border-rose-100"
+                            killSwitchActive === true ? "bg-rose-600 text-white border-rose-600" : "border-slate-100 text-slate-400 hover:text-rose-600 hover:border-rose-100"
                         )}
                     >
                         <Power className="h-3 w-3 mr-2" />
-                        {killSwitchActive ? 'Deactivate Lockdown' : 'Initiate Lockdown'}
+                        {savingLockdown ? 'Saving…' : killSwitchActive === null ? 'Unavailable' : killSwitchActive ? 'Deactivate Lockdown' : 'Initiate Lockdown'}
                     </Button>
                 </div>
             </div>

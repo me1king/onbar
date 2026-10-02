@@ -30,6 +30,7 @@ interface SouvenirProduct {
     price: number;
     old_price?: number;
     stock: number;
+    low_stock_alert?: number;
     is_available_now: boolean;
     image_url: string | null;
     description?: string;
@@ -40,6 +41,9 @@ export default function SouvenirForgePage() {
     const [souvenirs, setSouvenirs] = React.useState<SouvenirProduct[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [loadError, setLoadError] = React.useState<string | null>(null);
+    const [giftOrdersCount, setGiftOrdersCount] = React.useState<number | null>(null);
+    const [topSeller, setTopSeller] = React.useState<{ name: string; quantity: number } | null>(null);
+    const [salesReportAvailable, setSalesReportAvailable] = React.useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [activeCategoryFilter, setActiveCategoryFilter] = React.useState('All');
@@ -77,24 +81,74 @@ export default function SouvenirForgePage() {
         if (!supabase) {
             setLoadError('Supabase is not configured. Souvenir inventory is unavailable.');
             setSouvenirs([]);
+            setGiftOrdersCount(null);
+            setTopSeller(null);
+            setSalesReportAvailable(false);
             setLoading(false);
             return;
         }
         setLoading(true);
         setLoadError(null);
         try {
-            const { data, error } = await supabase
-                .from('products')
-                .select('*')
-                .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%')
-                .order('name');
+            const [productsResult, giftsResult] = await Promise.all([
+                supabase
+                    .from('products')
+                    .select('*')
+                    .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%')
+                    .order('name'),
+                supabase
+                    .from('orders')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('is_gift', true),
+            ]);
 
-            if (error) throw error;
-            setSouvenirs((data || []) as SouvenirProduct[]);
+            if (productsResult.error) throw productsResult.error;
+            setSouvenirs((productsResult.data || []) as SouvenirProduct[]);
+
+            setGiftOrdersCount(giftsResult.error ? null : giftsResult.count ?? 0);
+
+            const salesRows = [];
+            let salesReportError = false;
+            for (let page = 0; ; page += 1) {
+                const { data, error } = await supabase
+                    .from('order_items')
+                    .select('quantity, products!inner(id, name, category, is_souvenir), orders!inner(status)')
+                    .eq('orders.status', 'Delivered')
+                    .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%', { foreignTable: 'products' })
+                    .range(page * 500, page * 500 + 499);
+                if (error) {
+                    salesReportError = true;
+                    break;
+                }
+                salesRows.push(...(data || []));
+                if ((data || []).length < 500) break;
+            }
+
+            if (salesReportError) {
+                setSalesReportAvailable(false);
+                setTopSeller(null);
+            } else {
+                const quantitiesByProduct = new Map<number, { name: string; quantity: number }>();
+                for (const item of salesRows) {
+                    const product = Array.isArray(item.products) ? item.products[0] : item.products;
+                    if (!product?.name) continue;
+                    const prior = quantitiesByProduct.get(product.id);
+                    quantitiesByProduct.set(product.id, {
+                        name: product.name,
+                        quantity: (prior?.quantity || 0) + Number(item.quantity || 0)
+                    });
+                }
+                const bestSeller = [...quantitiesByProduct.values()].sort((a, b) => b.quantity - a.quantity)[0];
+                setTopSeller(bestSeller || null);
+                setSalesReportAvailable(true);
+            }
         } catch (e) {
             console.error('Error fetching souvenirs:', e);
             setSouvenirs([]);
             setLoadError(e instanceof Error ? e.message : 'Unable to load souvenir inventory.');
+            setGiftOrdersCount(null);
+            setTopSeller(null);
+            setSalesReportAvailable(false);
         } finally {
             setLoading(false);
         }
@@ -104,15 +158,31 @@ export default function SouvenirForgePage() {
         fetchSouvenirs();
 
         if (supabase) {
-            const channel = supabase
+            const productChannel = supabase
                 .channel('realtime_admin_souvenirs')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
                     fetchSouvenirs();
                 })
                 .subscribe();
+            const orderChannel = supabase
+                .channel('realtime_admin_souvenir_orders')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+                    fetchSouvenirs();
+                })
+                .subscribe();
+            const orderItemsChannel = supabase
+                .channel('realtime_admin_souvenir_order_items')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {
+                    fetchSouvenirs();
+                })
+                .subscribe();
 
             return () => {
-                if (supabase) supabase.removeChannel(channel);
+                if (supabase) {
+                    supabase.removeChannel(productChannel);
+                    supabase.removeChannel(orderChannel);
+                    supabase.removeChannel(orderItemsChannel);
+                }
             };
         }
     }, [fetchSouvenirs]);
@@ -242,7 +312,7 @@ export default function SouvenirForgePage() {
         count: souvenirs.filter(item => item.category === category).length,
         image: souvenirs.find(item => item.category === category && item.image_url)?.image_url
     }));
-    const lowStockCount = souvenirs.filter(item => Number(item.stock) <= 10).length;
+    const lowStockCount = souvenirs.filter(item => Number(item.stock ?? 0) <= Number(item.low_stock_alert ?? 5)).length;
 
     return (
         <div
@@ -282,10 +352,10 @@ export default function SouvenirForgePage() {
             {/* LIVE MERCH STATS */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-8 relative z-10">
                 {[
-                    { label: 'Merch Items', val: souvenirs.length.toLocaleString(), sub: 'Loaded from product catalog', icon: Gift, color: 'indigo' },
-                    { label: 'Low Stock', val: lowStockCount.toLocaleString(), sub: 'Products with 10 or fewer units', icon: Gift, color: 'rose' },
-                    { label: 'Gift Orders', val: 'Unavailable', sub: 'No product-level order report', icon: Gift, color: 'emerald' },
-                    { label: 'Top Seller', val: 'Unavailable', sub: 'No product-level sales report', icon: Gift, color: 'amber' },
+                    { label: 'Merch Items', val: loading ? 'Loading' : loadError ? 'Unavailable' : souvenirs.length.toLocaleString(), sub: 'Loaded from product catalog', icon: Gift, color: 'indigo' },
+                    { label: 'Low Stock', val: loading ? 'Loading' : loadError ? 'Unavailable' : lowStockCount.toLocaleString(), sub: 'Products at or below their stock alert', icon: Gift, color: 'rose' },
+                    { label: 'Gift Orders', val: giftOrdersCount === null ? 'Unavailable' : giftOrdersCount.toLocaleString(), sub: giftOrdersCount === null ? 'Gift order count unavailable' : 'Recorded gift orders', icon: Gift, color: 'emerald' },
+                    { label: 'Top Seller', val: !salesReportAvailable ? 'Unavailable' : topSeller?.name || 'No sales yet', sub: topSeller ? `${topSeller.quantity.toLocaleString()} units sold on delivered orders` : salesReportAvailable ? 'No delivered souvenir sales' : 'Delivered souvenir sales report unavailable', icon: Gift, color: 'amber' },
                 ].map(stat => (
                     <Card key={stat.label} className="min-w-0 p-4 sm:p-8 rounded-2xl sm:rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md group">
                         <div className={cn(

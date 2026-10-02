@@ -39,6 +39,7 @@ ALTER TABLE public.audience_segments
 CREATE TABLE IF NOT EXISTS public.marketing_campaigns (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
+    base_message TEXT,
     type TEXT,
     status TEXT DEFAULT 'Draft',
     product_id BIGINT REFERENCES public.products(id),
@@ -49,6 +50,7 @@ CREATE TABLE IF NOT EXISTS public.marketing_campaigns (
 );
 
 ALTER TABLE public.marketing_campaigns
+    ADD COLUMN IF NOT EXISTS base_message TEXT,
     ADD COLUMN IF NOT EXISTS type TEXT,
     ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Draft',
     ADD COLUMN IF NOT EXISTS product_id BIGINT REFERENCES public.products(id),

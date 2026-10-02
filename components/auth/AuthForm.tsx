@@ -170,10 +170,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
       const isFetchError = errorText.toLowerCase().includes('failed to fetch') || err.name === 'AuthRetryableFetchError';
 
       if (isFetchError) {
-          const isStripeKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.startsWith('sb_publishable_');
-          errorText = isStripeKey
-            ? "🛑 CRITICAL ERROR: Your Supabase Key is actually a STRIPE key. Check your .env.local 🛰️"
-            : "Network Error: Cannot reach Supabase Grid. Check your connection or ad-blockers. 🛰️";
+          errorText = "Network error: Could not reach Supabase. Check your connection and Supabase project URL/key configuration, then try again.";
       }
 
       if (err.code === 'over_email_send_rate_limit' || err.code === 'over_sms_send_rate_limit') {

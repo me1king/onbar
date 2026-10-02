@@ -10,8 +10,6 @@ import {
     Target,
     Activity,
     MousePointer2,
-    BarChart4,
-    ShieldCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -51,7 +49,7 @@ export default function ConversionFunnelsPage() {
         fetchData();
     }, [fetchData]);
 
-    const totalVolume = funnelData[0]?.volume || 1;
+    const totalVolume = funnelData[0]?.volume ?? 0;
 
     return (
         <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20">
@@ -95,56 +93,35 @@ export default function ConversionFunnelsPage() {
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">Synchronizing Conversion Nodes...</p>
                                 </div>
                             ) : (
-                                <div className="space-y-2">
-                                    {funnelData.map((step, idx) => (
-                                        <FunnelStep
-                                            key={step.step_name}
-                                            name={step.step_name}
-                                            volume={step.volume}
-                                            dropOff={step.drop_off_rate}
-                                            totalVolume={totalVolume}
-                                            color={idx === 4 ? "bg-emerald-500" : idx === 0 ? "bg-indigo-600" : "bg-primary"}
-                                        />
-                                    ))}
-                                </div>
+                                funnelData.length > 0 && totalVolume > 0 ? (
+                                    <div className="space-y-2">
+                                        {funnelData.map((step, idx) => (
+                                            <FunnelStep
+                                                key={step.step_name}
+                                                name={step.step_name}
+                                                volume={step.volume}
+                                                dropOff={step.drop_off_rate}
+                                                totalVolume={totalVolume}
+                                                color={idx === 4 ? "bg-emerald-500" : idx === 0 ? "bg-indigo-600" : "bg-primary"}
+                                            />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="py-20 text-center text-sm font-bold uppercase tracking-widest text-slate-400">No funnel data available.</p>
+                                )
                             )}
                         </div>
                         <Target className="absolute -bottom-10 -right-10 h-64 w-64 text-emerald-500/5 rotate-12 -z-0" />
                     </Card>
 
                     {/* CHANNEL EFFICIENCY */}
-                    <div className="grid sm:grid-cols-2 gap-6 text-left">
+                    <div className="text-left">
                         <Card className="p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm relative overflow-hidden">
                             <div className="relative z-10 space-y-6">
-                                <h3 className="text-xl font-black uppercase tracking-tight italic text-primary">Highest Impact Step</h3>
-                                <div className="flex items-center gap-4">
-                                    <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary"><Activity size={24} /></div>
-                                    <div>
-                                        <p className="text-2xl font-black uppercase tracking-tighter text-foreground">Product View</p>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Crucial Consideration Node</p>
-                                    </div>
-                                </div>
-                                <p className="text-xs font-medium text-slate-500 leading-relaxed italic">
-                                    &quot;Optimizing the 3D Stage on product pages could reduce the current 12% drop-off at this node.&quot;
+                                <h3 className="text-xl font-black uppercase tracking-tight italic">Funnel Data</h3>
+                                <p className="text-sm font-medium text-slate-500 leading-relaxed">
+                                    Funnel steps and drop-off metrics are shown above when available from the live conversion data source.
                                 </p>
-                            </div>
-                        </Card>
-                        <Card className="p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm relative overflow-hidden">
-                            <div className="relative z-10 space-y-6">
-                                <h3 className="text-xl font-black uppercase tracking-tight italic">Uplink Confidence</h3>
-                                <div className="flex items-center gap-6">
-                                     <div className="h-16 w-16 rounded-full border-4 border-emerald-500 flex items-center justify-center text-emerald-500 bg-emerald-50 shadow-inner">
-                                        <span className="text-xl font-black">94%</span>
-                                     </div>
-                                     <div className="space-y-1">
-                                        <p className="text-[10px] font-black uppercase text-slate-400">Signal Clarity</p>
-                                        <p className="text-xs font-bold text-foreground uppercase tracking-widest">High Integrity Node</p>
-                                     </div>
-                                </div>
-                                <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-100 w-fit">
-                                    <ShieldCheck size={14} className="text-emerald-500" />
-                                    <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Verified behavioral stream</span>
-                                </div>
                             </div>
                         </Card>
                     </div>
@@ -152,36 +129,6 @@ export default function ConversionFunnelsPage() {
 
                 {/* RIGHT: FUNNEL COMMANDS */}
                 <div className="xl:col-span-4 space-y-10">
-
-                    <Card className="p-10 rounded-[4rem] bg-white border border-slate-100 shadow-sm space-y-10 text-left">
-                        <div className="space-y-2">
-                             <div className="flex items-center gap-3">
-                                <BarChart4 className="h-4 w-4 text-primary" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 italic">Analysis Protocol</span>
-                             </div>
-                             <h3 className="text-2xl font-black uppercase tracking-tight leading-none italic">Drop-off Insights</h3>
-                        </div>
-
-                        <div className="space-y-6">
-                             <div className="p-5 rounded-2xl bg-rose-50 border border-rose-100 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <p className="text-[9px] font-black uppercase text-rose-600 tracking-widest">Critical Leak</p>
-                                    <span className="text-[10px] font-black text-rose-500">64% Drop</span>
-                                </div>
-                                <h4 className="text-sm font-black text-rose-700 uppercase tracking-tight italic">Cart → Checkout</h4>
-                                <p className="text-[8px] font-bold text-rose-400 uppercase tracking-tighter">Recommended: Review Shipping Logic</p>
-                             </div>
-
-                             <div className="p-5 rounded-2xl bg-indigo-50 border border-indigo-100 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <p className="text-[9px] font-black uppercase text-indigo-600 tracking-widest">Health Node</p>
-                                    <span className="text-[10px] font-black text-indigo-500">81% Conv</span>
-                                </div>
-                                <h4 className="text-sm font-black text-indigo-700 uppercase tracking-tight italic">Checkout → Payment</h4>
-                                <p className="text-[8px] font-bold text-indigo-400 uppercase tracking-tighter">Payment nodes are operating optimally.</p>
-                             </div>
-                        </div>
-                    </Card>
 
                     <Card className="p-8 rounded-[3rem] bg-indigo-600 text-white space-y-6 relative overflow-hidden shadow-2xl text-left">
                         <div className="relative z-10 space-y-4">

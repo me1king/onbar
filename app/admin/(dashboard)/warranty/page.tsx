@@ -9,7 +9,6 @@ import {
     Truck,
     Wrench,
     CheckCircle2,
-    Clock,
     Search,
     AlertTriangle,
     Loader2,
@@ -113,7 +112,6 @@ export default function WarrantyHub() {
                     { label: 'Active Cases', val: stats.active, icon: ShieldAlert, color: 'rose' },
                     { label: 'Pending Pickup', val: stats.pickups, icon: Truck, color: 'primary' },
                     { label: 'In Workshop', val: stats.repairs, icon: Wrench, color: 'indigo' },
-                    { label: 'SLA Health', val: '94%', icon: Clock, color: 'emerald' },
                 ].map(item => (
                     <Card key={item.label} className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm group hover:shadow-xl transition-all">
                         <div className="flex justify-between items-start mb-6">

@@ -36,14 +36,14 @@ interface TopComponent {
 
 export default function BehaviorOverview() {
     const [loading, setLoading] = React.useState(true);
-    const [stats, setStats] = React.useState({
-        liveUsers: 14,
-        eventsToday: 182,
-        avgEngagedTime: '03:42',
-        cartRate: 18,
-        rage_clicks_24h: 0,
-        zero_results_24h: 0
-    });
+    const [stats, setStats] = React.useState<{
+        liveUsers: number;
+        eventsToday: number;
+        avgEngagedTime: string;
+        cartRate: number;
+        rage_clicks_24h: number | null;
+        zero_results_24h: number | null;
+    } | null>(null);
     const [topScreens, setTopScreens] = React.useState<TopScreen[]>([]);
     const [topComponents, setTopComponents] = React.useState<TopComponent[]>([]);
 
@@ -57,76 +57,42 @@ export default function BehaviorOverview() {
             // 1. Fetch Behavioral Pulse (View / RPC)
             const { data: pulse } = await supabase.from('behavioral_intelligence_pulse').select('*').single();
 
-            // 2. Top Screens
-            const { data: screens } = await supabase.rpc('get_top_pages', { limit_count: 5 });
-
-            // 3. Component Interaction
-            const { data: components } = await supabase.from('component_interaction_audit').select('*').limit(5);
-
-            // 4. Real Table Direct Queries for Live Signals
-            const [ordersRes, logsRes, productsRes] = await Promise.all([
-                supabase.from('orders').select('id, total_price, created_at'),
-                supabase.from('audit_logs').select('id, action, created_at'),
-                supabase.from('products').select('id, name')
+            // Top Screens and Component Interaction
+            const [screensRes, componentsRes] = await Promise.all([
+                supabase.rpc('get_top_pages', { limit_count: 5 }),
+                supabase.from('component_interaction_audit').select('*').limit(5)
             ]);
 
-            const totalOrders = ordersRes.data?.length || 0;
-            const totalLogs = logsRes.data?.length || 0;
-            const totalProducts = productsRes.data?.length || 0;
+            const pulseStats = pulse && [
+                pulse.live_users,
+                pulse.events_today,
+                pulse.avg_active_sec,
+                pulse.cart_rate
+            ].every(value => typeof value === 'number' && Number.isFinite(value));
 
-            // Compute Live Telemetry Signals
-            const liveUsersCalc = Math.max(14, totalOrders * 2 + 6);
-            const eventsTodayCalc = Math.max(182, totalLogs * 2 + totalOrders * 5 + totalProducts);
-            const cartRateCalc = totalOrders > 0 ? Math.min(38, Math.round((totalOrders / (totalOrders + 10)) * 100)) : 18;
-
-            if (pulse) {
+            if (pulseStats) {
                 const mins = Math.floor(pulse.avg_active_sec / 60);
                 const secs = Math.floor(pulse.avg_active_sec % 60);
                 setStats({
-                    liveUsers: pulse.live_users || liveUsersCalc,
-                    eventsToday: pulse.events_today || eventsTodayCalc,
+                    liveUsers: pulse.live_users,
+                    eventsToday: pulse.events_today,
                     avgEngagedTime: `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
-                    cartRate: pulse.cart_rate || cartRateCalc,
-                    rage_clicks_24h: pulse.rage_clicks_24h || 0,
-                    zero_results_24h: pulse.zero_results_24h || 0
+                    cartRate: pulse.cart_rate,
+                    rage_clicks_24h: typeof pulse.rage_clicks_24h === 'number' ? pulse.rage_clicks_24h : null,
+                    zero_results_24h: typeof pulse.zero_results_24h === 'number' ? pulse.zero_results_24h : null
                 });
             } else {
-                setStats({
-                    liveUsers: liveUsersCalc,
-                    eventsToday: eventsTodayCalc,
-                    avgEngagedTime: '03:42',
-                    cartRate: cartRateCalc,
-                    rage_clicks_24h: 0,
-                    zero_results_24h: 0
-                });
+                setStats(null);
             }
 
-            if (screens && screens.length > 0) {
-                setTopScreens(screens);
-            } else {
-                setTopScreens([
-                    { page_url: '/shop (Main Cellar)', view_count: 342, avg_time: 48 },
-                    { page_url: '/beverages (Chill Vault)', view_count: 218, avg_time: 32 },
-                    { page_url: '/bites (Night Bites)', view_count: 185, avg_time: 28 },
-                    { page_url: '/souvenirs (Merch Vault)', view_count: 142, avg_time: 36 },
-                    { page_url: '/checkout (Express Terminal)', view_count: 89, avg_time: 22 },
-                ]);
-            }
-
-            if (components && components.length > 0) {
-                setTopComponents(components);
-            } else {
-                setTopComponents([
-                    { component_id: 'add_to_cart_btn', component_label: 'Add to Cart Control', interaction_count: 142 },
-                    { component_id: 'custom_engrave_btn', component_label: 'Digital Engraving Studio', interaction_count: 88 },
-                    { component_id: 'build_my_night_btn', component_label: 'Build My Night Wizard', interaction_count: 64 },
-                    { component_id: 'category_chip_filter', component_label: 'Category Filter Chips', interaction_count: 52 },
-                    { component_id: 'whatsapp_order_btn', component_label: 'WhatsApp Quick Dispatch', interaction_count: 41 },
-                ]);
-            }
+            setTopScreens(screensRes.data || []);
+            setTopComponents(componentsRes.data || []);
 
         } catch (err) {
             console.error("Behavioral telemetry error:", err);
+            setStats(null);
+            setTopScreens([]);
+            setTopComponents([]);
         } finally {
             setLoading(false);
         }
@@ -160,7 +126,14 @@ export default function BehaviorOverview() {
                 </div>
             </header>
 
-            <BehaviorPulse stats={stats} />
+            {stats ? (
+                <BehaviorPulse stats={stats} />
+            ) : (
+                <Card className="p-10 rounded-[3rem] bg-white border border-slate-100 text-center">
+                    <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Behavioral metrics unavailable</p>
+                    <p className="mt-2 text-xs text-slate-400">No valid telemetry data is currently available.</p>
+                </Card>
+            )}
 
             <div className="grid xl:grid-cols-12 gap-10">
 
@@ -276,7 +249,9 @@ export default function BehaviorOverview() {
                                 <div>
                                     <p className="text-[10px] font-black uppercase mb-1">Rage Click Alert</p>
                                     <p className="text-[9px] font-medium leading-relaxed uppercase tracking-tight">
-                                        Detected {stats.rage_clicks_24h} rage clicks on critical components in the last 24 hours.
+                                        {stats?.rage_clicks_24h == null
+                                            ? 'Rage-click data unavailable.'
+                                            : `Detected ${stats.rage_clicks_24h} rage clicks in the last 24 hours.`}
                                     </p>
                                 </div>
                             </div>
@@ -285,7 +260,9 @@ export default function BehaviorOverview() {
                                 <div>
                                     <p className="text-[10px] font-black uppercase mb-1">Zero Results Surge</p>
                                     <p className="text-[9px] font-medium leading-relaxed uppercase tracking-tight">
-                                        {stats.zero_results_24h} searches returned zero results today. Catalogue expansion recommended.
+                                        {stats?.zero_results_24h == null
+                                            ? 'Zero-result search data unavailable.'
+                                            : `${stats.zero_results_24h} searches returned zero results today.`}
                                     </p>
                                 </div>
                             </div>

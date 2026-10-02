@@ -8,6 +8,8 @@ Use this guide to configure the Supabase database and the external services used
 2. Copy [`supabase/FINAL_ESTABLISHMENT_SQL.sql`](./supabase/FINAL_ESTABLISHMENT_SQL.sql).
 3. Paste and run the script to create the application tables and views.
 
+Configure `NEXT_PUBLIC_SUPABASE_URL` and either `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the deployment environment. Both variables must contain Supabase project values; a Supabase `sb_publishable_...` key is valid and is not a Stripe key. Never put a Supabase `service_role` key in a `NEXT_PUBLIC_` variable or expose it to the browser. Restart the development server after changing local environment variables.
+
 For an existing database, run the `ALTER TABLE public.orders` migration block in the script's **Operations & Logistics** section to add gift-card details to existing orders. Do not re-run the entire setup script on a live database just to apply that migration.
 
 For the current delivery, audience, and analytics features on an already configured database, run [`supabase/OPERATIONAL_FEATURES_MIGRATION.sql`](./supabase/OPERATIONAL_FEATURES_MIGRATION.sql) in the SQL Editor. It adds the souvenir fields and reporting functions used by the admin screens without re-running the full setup script.
@@ -39,7 +41,7 @@ Set `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` to your Paystack public key in the deploym
 
 If you are experiencing the `AuthRetryableFetchError` or "Identity already exists" issues:
 
-1. **Verify your .env.local**: Ensure `NEXT_PUBLIC_SUPABASE_ANON_KEY` starts with `eyJ...` (Supabase Key) and **NOT** `sb_publishable_...` (Stripe Key).
+1. **Verify your environment**: Confirm the Supabase project URL and either the publishable key (`sb_publishable_...`) or legacy anon JWT are set correctly. A Supabase publishable key is not a Stripe key.
 2. **Reset Auth Cache**: If you see "Identity already exists", use the **Switch to Vault Login** button I've integrated into the Auth Form.
 3. **Identity Stitching**: The system now automatically links your anonymous browsing session to your profile upon login.
 

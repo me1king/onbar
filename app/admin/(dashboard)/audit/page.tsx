@@ -209,7 +209,7 @@ export default function AdminAuditPage() {
 
       const isFetchError = error.message?.toLowerCase().includes('failed to fetch') || !error.message;
       const alertMsg = isFetchError
-        ? "Uplink Blocked: Possible Supabase Key mismatch (Stripe key detected). Check your .env.local and restart the server. 🛡️"
+        ? "Cannot connect to Supabase. Verify the project URL and Supabase publishable/anon key in your environment settings."
         : error.message;
 
       alert(alertMsg);
@@ -242,7 +242,7 @@ export default function AdminAuditPage() {
           alert("🛰️ Grid Uplink: HEALTHY. Audit node is online.");
       } catch (err: unknown) {
           const error = err as { message: string, code?: string };
-          alert(`🛑 Grid Uplink: FAILED.\nMessage: ${error.message}\nCode: ${error.code || 'UNKNOWN'}\n\nHint: Check your .env.local for Key Mismatch!`);
+          alert(`🛑 Grid Uplink: FAILED.\nMessage: ${error.message}\nCode: ${error.code || 'UNKNOWN'}\n\nVerify the Supabase URL and public key configuration.`);
       }
   };
 

@@ -235,9 +235,7 @@ export default function HubsManagement() {
 
                             <div className="space-y-4">
                                 {[
-                                    { label: 'Network Reach', val: '84%', color: 'rose' },
-                                    { label: 'Dispatch Precision', val: '98.2%', color: 'emerald' },
-                                    { label: 'Global Inventory', val: '12.4k', color: 'indigo' },
+                                    { label: 'Global Inventory', val: hubs.reduce((total, hub) => total + (hub.stock_count || 0), 0).toLocaleString(), color: 'indigo' },
                                 ].map(stat => (
                                     <div key={stat.label} className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
                                         <span className="text-[10px] font-black uppercase text-slate-500">{stat.label}</span>

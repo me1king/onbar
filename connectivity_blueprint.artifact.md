@@ -74,6 +74,6 @@ graph TD
 
 Ensure your `.env.local` is synchronized with these keys:
 - `NEXT_PUBLIC_SUPABASE_URL`: Your Project URL.
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Service Role/Anon Key.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase publishable key or legacy anon key. Never expose a service-role key in a `NEXT_PUBLIC_` variable.
 - `ADMIN_PASSWORD`: Your Master Owner PIN.
 - `RESEND_API_KEY`: For Broadcast Email delivery.
