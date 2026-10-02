@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
  * ONLINE BAR OS: MOBILE WIDGET API v2
  * Serves structured data for PWA Home Screen Widgets.
  */
-export async function GET() {
+export async function GET(request: Request) {
     if (!supabase) return NextResponse.json({ error: 'Database Offline' }, { status: 500 });
 
     try {
@@ -24,26 +24,29 @@ export async function GET() {
 
         if (error) throw error;
 
-        // 2. Default Payload (Fallback)
+        // No configured widget is an explicit empty state, not an invented promotion.
         if (!widget) {
-            return NextResponse.json({
-                title: 'Nairobi Buzz Active',
-                description: 'The premium cellar is synchronized and ready for dispatch.',
-                image_url: 'https://onlinebar.co.ke/images/NoImage.jpg',
-                cta_label: 'OPEN BAR',
-                deep_link: '/shop',
-                content_type: 'DEFAULT'
-            });
+            return NextResponse.json({ available: false });
         }
 
-        // 3. Structured Payload for Adaptive Cards
+        const baseUrl = new URL(request.url).origin;
+        const configuredPath = widget.deep_link || (widget.product_id ? `/shop/${widget.product_id}` : '/shop');
+        const deepLink = new URL(configuredPath, baseUrl);
+        if (deepLink.origin !== baseUrl) {
+            throw new Error('Widget deep links must remain on the storefront to preserve sales attribution.');
+        }
+        deepLink.searchParams.set('utm_source', 'mobile_widget');
+        deepLink.searchParams.set('utm_campaign', 'home_widget');
+        deepLink.searchParams.set('utm_id', String(widget.id));
+
         return NextResponse.json({
+            available: true,
             id: widget.id,
             title: widget.title.toUpperCase(),
             description: widget.description,
-            image_url: widget.image_url || 'https://onlinebar.co.ke/images/NoImage.jpg',
+            image_url: widget.image_url || null,
             cta_label: widget.cta_label || 'EXPLORE',
-            deep_link: widget.deep_link || `/shop/${widget.product_id || ''}`,
+            deep_link: deepLink.toString(),
             content_type: widget.content_type
         });
 

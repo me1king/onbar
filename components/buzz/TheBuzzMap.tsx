@@ -17,7 +17,6 @@ interface BuzzPoint {
     longitude: number;
     status: string;
     buzz_level: number;
-    interest_count: number;
     category: string;
 }
 
@@ -28,8 +27,8 @@ interface DBBuzzPoint {
     start_at: string;
     venue_id: string;
     trend_score: number;
-    latitude: number;
-    longitude: number;
+    latitude: number | null;
+    longitude: number | null;
     buzz_venues: { name: string } | null;
     buzz_categories: { label: string } | null;
 }
@@ -84,33 +83,44 @@ const createBuzzIcon = (status: string, level: number) => {
 export default function TheBuzzMap() {
     const [points, setPoints] = useState<BuzzPoint[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fixLeafletIcons();
         async function fetchPoints() {
-            if (!supabase) return;
+            if (!supabase) {
+                setError('The events database is not connected.');
+                setLoading(false);
+                return;
+            }
             try {
                 // High-fidelity fetch for Map Discovery
-                const { data } = await supabase
+                const { data, error: queryError } = await supabase
                     .from('buzz_posts')
                     .select('id, title, status, start_at, venue_id, trend_score, latitude, longitude, buzz_venues(name), buzz_categories(label)')
                     .in('status', ['LIVE', 'TRENDING', 'STARTING_SOON']);
 
+                if (queryError) throw queryError;
                 if (data) {
-                    setPoints((data as unknown as DBBuzzPoint[]).map(p => ({
+                    setPoints((data as unknown as DBBuzzPoint[])
+                        .filter(p => p.latitude !== null && p.longitude !== null
+                            && Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude))
+                            && Number(p.latitude) >= -90 && Number(p.latitude) <= 90
+                            && Number(p.longitude) >= -180 && Number(p.longitude) <= 180)
+                        .map(p => ({
                         id: p.id,
                         title: p.title,
-                        venue_name: p.buzz_venues?.name || 'Premium Venue',
+                        venue_name: p.buzz_venues?.name || 'Venue not listed',
                         latitude: Number(p.latitude),
                         longitude: Number(p.longitude),
                         status: p.status,
                         buzz_level: p.trend_score || 0,
-                        interest_count: p.trend_score ? Math.round(p.trend_score * 3.5) : 124,
                         category: p.buzz_categories?.label || 'Vibe'
                     })));
                 }
             } catch (err) {
                 console.error("Map Link Failure:", err);
+                setError(err instanceof Error ? err.message : 'Unable to load published events.');
             } finally {
                 setLoading(false);
             }
@@ -167,7 +177,7 @@ export default function TheBuzzMap() {
                                     <div className="space-y-1">
                                         <p className="text-[8px] font-black text-slate-300 uppercase">Interest</p>
                                         <p className="text-sm font-black text-foreground flex items-center gap-1">
-                                            <Users size={14} className="text-primary" /> {point.interest_count}+
+                                            <Users size={14} className="text-primary" /> Not tracked
                                         </p>
                                     </div>
                                 </div>
@@ -201,6 +211,11 @@ export default function TheBuzzMap() {
                 <div className="absolute inset-0 z-[2000] bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
                     <Loader2 className="animate-spin text-primary" size={32} />
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 animate-pulse">Syncing Buzz Nodes...</p>
+                </div>
+            )}
+            {error && (
+                <div role="alert" className="absolute bottom-4 left-4 right-4 z-[2000] rounded-xl bg-white/95 p-4 text-sm text-rose-700 shadow-lg">
+                    Events map unavailable: {error}
                 </div>
             )}
         </div>

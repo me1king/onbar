@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+import { cn, formatPrice } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 import Image from 'next/image';
@@ -44,18 +44,54 @@ export default function MobileWidgetCommand() {
     const [loading, setLoading] = React.useState(true);
     const [editing, setEditing] = React.useState<Partial<MobileWidget> | null>(null);
     const [products, setProducts] = React.useState<Array<{ id: string, name: string, image_url: string }>>([]);
+    const [conversions, setConversions] = React.useState<Record<string, { orders: number; revenue: number }>>({});
+    const [conversionError, setConversionError] = React.useState<string | null>(null);
+    const [pinMessage, setPinMessage] = React.useState<string | null>(null);
 
     const fetchWidgets = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setConversionError('Database is not connected.');
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
-            const { data } = await supabase.from('mobile_app_widgets').select('*').order('priority', { ascending: false });
-            if (data) setWidgets(data as MobileWidget[]);
+            const { data, error } = await supabase.from('mobile_app_widgets').select('*').order('priority', { ascending: false });
+            if (error) throw error;
+            const loadedWidgets = (data || []) as MobileWidget[];
+            setWidgets(loadedWidgets);
 
-            const { data: prodData } = await supabase.from('products').select('id, name, image_url').limit(10);
+            if (loadedWidgets.length) {
+                const { data: orderData, error: ordersError } = await supabase
+                    .from('orders')
+                    .select('attribution_id, total_price')
+                    .in('attribution_id', loadedWidgets.map(widget => widget.id))
+                    .in('status', ['Paid', 'Delivered', 'Completed']);
+                if (ordersError) {
+                    setConversionError(ordersError.message);
+                } else {
+                    const totals: Record<string, { orders: number; revenue: number }> = {};
+                    for (const order of orderData || []) {
+                        if (!order.attribution_id) continue;
+                        const total = totals[order.attribution_id] || { orders: 0, revenue: 0 };
+                        total.orders += 1;
+                        total.revenue += Number(order.total_price) || 0;
+                        totals[order.attribution_id] = total;
+                    }
+                    setConversions(totals);
+                    setConversionError(null);
+                }
+            } else {
+                setConversions({});
+                setConversionError(null);
+            }
+
+            const { data: prodData, error: productsError } = await supabase.from('products').select('id, name, image_url').limit(10);
+            if (productsError) throw productsError;
             if (prodData) setProducts(prodData as Array<{ id: string, name: string, image_url: string }>);
         } catch (err) {
-            console.error(err);
+            console.error('[MobileWidgetCommand] Unable to load widget data:', err);
+            setConversionError(err instanceof Error ? err.message : 'Unable to load widget data.');
         } finally {
             setLoading(false);
         }
@@ -64,6 +100,16 @@ export default function MobileWidgetCommand() {
     React.useEffect(() => {
         fetchWidgets();
     }, [fetchWidgets]);
+
+    const requestWidgetPin = () => {
+        const nativeWindow = window as Window & { TitanNode?: { requestWidgetPin: () => void } };
+        if (!nativeWindow.TitanNode?.requestWidgetPin) {
+            setPinMessage('Widget placement can only be requested from the installed Android app. Your phone launcher will ask you to confirm; the app cannot place it silently.');
+            return;
+        }
+        setPinMessage('Accept the Android launcher prompt to add the widget to your home screen.');
+        nativeWindow.TitanNode.requestWidgetPin();
+    };
 
     const handleSave = async () => {
         if (!supabase || !editing) return;
@@ -99,21 +145,27 @@ export default function MobileWidgetCommand() {
                     <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">App Widget Command</h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1">Design and publish live content nodes directly to patrons&apos; home screens.</p>
                 </div>
-                <Button
-                    onClick={() => setEditing({
-                        title: 'New Widget',
-                        content_type: 'PRODUCT',
-                        status: 'DRAFT',
-                        priority: 10,
-                        target_segment: 'ALL',
-                        cta_label: 'SHOP NOW',
-                        start_at: new Date().toISOString().substring(0, 16)
-                    })}
-                    className="rounded-xl h-12 px-8 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
-                >
-                    <Plus className="h-4 w-4 mr-2" /> Design New Widget
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                    <Button onClick={requestWidgetPin} variant="outline" className="rounded-xl h-12 px-5 font-black uppercase text-[10px] tracking-widest">
+                        <Smartphone className="h-4 w-4 mr-2" /> Add to Home Screen
+                    </Button>
+                    <Button
+                        onClick={() => setEditing({
+                            title: 'New Widget',
+                            content_type: 'PRODUCT',
+                            status: 'DRAFT',
+                            priority: 10,
+                            target_segment: 'ALL',
+                            cta_label: 'SHOP NOW',
+                            start_at: new Date().toISOString().substring(0, 16)
+                        })}
+                        className="rounded-xl h-12 px-8 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+                    >
+                        <Plus className="h-4 w-4 mr-2" /> Design New Widget
+                    </Button>
+                </div>
             </header>
+            {pinMessage && <p role="status" className="rounded-xl bg-white p-4 text-sm text-slate-600">{pinMessage}</p>}
 
             <div className="grid lg:grid-cols-12 gap-10">
                 <div className="lg:col-span-8 space-y-6">
@@ -148,6 +200,9 @@ export default function MobileWidgetCommand() {
                                         </div>
                                         <h3 className="text-xl font-black uppercase tracking-tight text-foreground">{w.title}</h3>
                                         <p className="text-[10px] font-medium text-slate-500 truncate italic">&quot;{w.description}&quot;</p>
+                                        <p className="pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                            {conversionError ? 'Sales attribution unavailable' : `${conversions[w.id]?.orders || 0} attributed orders · ${formatPrice(conversions[w.id]?.revenue || 0)} paid revenue`}
+                                        </p>
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <Button variant="ghost" size="icon" onClick={() => setEditing(w)} className="h-10 w-10 rounded-xl hover:bg-slate-50"><Settings2 size={18} /></Button>
@@ -159,6 +214,7 @@ export default function MobileWidgetCommand() {
                                             {w.status}
                                         </div>
                                     </div>
+                                    <p className="text-xs text-slate-500">Orders are attributed when shoppers open this widget’s link and complete payment. Android requires the user to accept the launcher’s widget prompt.</p>
                                 </div>
                             </Card>
                         ))}

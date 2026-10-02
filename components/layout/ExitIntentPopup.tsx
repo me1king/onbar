@@ -3,10 +3,18 @@
 import { useState, useEffect } from 'react';
 import { X, Gift, ArrowRight, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
+import { supabase } from '@/lib/supabaseClient';
+
+interface ActiveCoupon {
+    code: string;
+    discount_percent: number;
+}
 
 export default function ExitIntentPopup() {
     const [isVisible, setIsVisible] = useState(false);
     const [hasBeenShown, setHasBeenShown] = useState(false);
+    const [coupon, setCoupon] = useState<ActiveCoupon | null>(null);
+    const [couponLoaded, setCouponLoaded] = useState(false);
 
     useEffect(() => {
         if (isVisible) {
@@ -31,6 +39,34 @@ export default function ExitIntentPopup() {
     }, []);
 
     useEffect(() => {
+        let active = true;
+        async function loadActiveCoupon() {
+            if (!supabase) {
+                setCouponLoaded(true);
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('coupons')
+                .select('code, discount_percent')
+                .eq('is_active', true)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (error) console.error('[ExitIntentPopup] Unable to load active coupon:', error);
+            if (active) {
+                setCoupon(data || null);
+                setCouponLoaded(true);
+            }
+        }
+
+        loadActiveCoupon();
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (!couponLoaded || !coupon) return;
         const shown = sessionStorage.getItem('exit_popup_shown');
         if (shown) {
             setHasBeenShown(true);
@@ -47,9 +83,9 @@ export default function ExitIntentPopup() {
 
         document.addEventListener('mouseleave', handleMouseLeave);
         return () => document.removeEventListener('mouseleave', handleMouseLeave);
-    }, [hasBeenShown]);
+    }, [couponLoaded, coupon, hasBeenShown]);
 
-    if (!isVisible) return null;
+    if (!isVisible || !coupon) return null;
 
   return (
     <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-500/10 backdrop-blur-md animate-in fade-in duration-300">
@@ -74,24 +110,23 @@ export default function ExitIntentPopup() {
                 <div className="bg-slate-50 rounded-2xl p-6 border border-dashed border-slate-200">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Exclusive Exit Offer</p>
                     <div className="flex items-center justify-center gap-2 mb-2">
-                        <span className="text-4xl font-black text-primary">5% OFF</span>
+                        <span className="text-4xl font-black text-primary">{coupon.discount_percent}% OFF</span>
                     </div>
                     <div className="flex items-center justify-center gap-2 bg-white rounded-xl py-3 px-4 border border-slate-100">
-                        <code className="text-xl font-black text-foreground tracking-widest">STAY5</code>
+                        <code className="text-xl font-black text-foreground tracking-widest">{coupon.code}</code>
                     </div>
                 </div>
 
                 <div className="space-y-4 pt-4">
                     <Button
                         onClick={() => {
-                            navigator.clipboard.writeText('STAY5');
-                            localStorage.setItem('ob_exit_intent', 'true');
+                            localStorage.setItem('ob_exit_coupon', coupon.code);
                             setIsVisible(false);
                             window.location.href = '/checkout';
                         }}
                         className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 group hover:bg-primary/90 transition-all active:scale-95"
                     >
-                        Copy & Checkout <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                        Use Coupon at Checkout <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
                     </Button>
                     <button
                         onClick={() => setIsVisible(false)}

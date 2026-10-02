@@ -10,6 +10,11 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import android.widget.RemoteViews
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.NetworkType
 import org.json.JSONObject
 import java.net.URL
 
@@ -19,6 +24,18 @@ class OnlineBarWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId)
         }
+        val request = OneTimeWorkRequestBuilder<WidgetUpdateWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "ob_widget_refresh",
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -42,8 +59,24 @@ class OnlineBarWidgetProvider : AppWidgetProvider() {
             if (configStr != null) {
                 try {
                     val config = JSONObject(configStr)
+                    if (!config.optBoolean("available", true)) {
+                        views.setTextViewText(R.id.widget_title, "Online Bar")
+                        views.setTextViewText(R.id.widget_description, "No active widget content is available.")
+                        views.setTextViewText(R.id.widget_button, "OPEN SHOP")
+                        val shopIntent = Intent(Intent.ACTION_VIEW, Uri.parse("${MainActivity.BASE_URL}/shop")).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        val shopPendingIntent = PendingIntent.getActivity(
+                            context, appWidgetId, shopIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        views.setOnClickPendingIntent(R.id.widget_button, shopPendingIntent)
+                        views.setOnClickPendingIntent(R.id.widget_root, shopPendingIntent)
+                        appWidgetManager.updateAppWidget(appWidgetId, views)
+                        return
+                    }
                     val title = config.optString("title", "Online Bar")
-                    val description = config.optString("description", "Loading latest status...")
+                    val description = config.optString("description", "")
                     val ctaLabel = config.optString("cta_label", "OPEN APP")
                     val deepLink = config.optString("deep_link", MainActivity.ADMIN_URL)
 

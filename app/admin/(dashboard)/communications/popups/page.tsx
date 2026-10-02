@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Bell,
     Plus,
@@ -30,6 +29,7 @@ interface Template {
     duration: number;
     priority: string;
     is_active: boolean;
+    cta_url?: string | null;
 }
 
 interface AuditLog {
@@ -46,25 +46,21 @@ export default function PopupManager() {
     const [editing, setEditing] = React.useState<Template | null>(null);
     const [preview, setPreview] = React.useState<boolean>(false);
     const [auditLog, setAuditLog] = React.useState<AuditLog[]>([]);
+    const [error, setError] = React.useState<string | null>(null);
 
     const fetchTemplates = React.useCallback(async () => {
-        if (!supabase) return;
         setLoading(true);
         try {
-            const { data } = await supabase.from('notification_templates').select('*').order('name');
-            if (data) setTemplates(data as Template[]);
-
-            // Fetch recent audit logs
-            const { data: logs } = await supabase
-                .from('notifications_log')
-                .select(`
-                    *,
-                    notification_templates(name)
-                `)
-                .order('created_at', { ascending: false })
-                .limit(5);
-            if (logs) setAuditLog(logs);
-        } catch (err) { console.error(err); }
+            const response = await fetch('/api/admin/popups');
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Unable to load popup configuration.');
+            setTemplates(result.templates as Template[]);
+            setAuditLog(result.logs as AuditLog[]);
+            setError(null);
+        } catch (err) {
+            console.error('[PopupManager] Unable to load data:', err);
+            setError(err instanceof Error ? err.message : 'Unable to load popup configuration.');
+        }
         finally { setLoading(false); }
     }, []);
 
@@ -73,22 +69,39 @@ export default function PopupManager() {
     }, [fetchTemplates]);
 
     const handleSave = async () => {
-        if (!editing || !supabase) return;
+        if (!editing) return;
         setLoading(true);
         try {
-            const { error } = await supabase.from('notification_templates').upsert(editing);
-            if (!error) {
-                setEditing(null);
-                fetchTemplates();
-            }
-        } catch (err) { console.error(err); }
+            const response = await fetch('/api/admin/popups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editing)
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Unable to save popup template.');
+            setEditing(null);
+            await fetchTemplates();
+        } catch (err) {
+            console.error('[PopupManager] Unable to save template:', err);
+            setError(err instanceof Error ? err.message : 'Unable to save popup template.');
+        }
         finally { setLoading(false); }
     };
 
     const toggleActive = async (id: string, current: boolean) => {
-        if (!supabase) return;
-        await supabase.from('notification_templates').update({ is_active: !current }).eq('id', id);
-        fetchTemplates();
+        try {
+            const response = await fetch('/api/admin/popups', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, is_active: !current })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Unable to update popup state.');
+            await fetchTemplates();
+        } catch (err) {
+            console.error('[PopupManager] Unable to update template:', err);
+            setError(err instanceof Error ? err.message : 'Unable to update popup state.');
+        }
     };
 
     return (
@@ -106,6 +119,8 @@ export default function PopupManager() {
                     <Plus className="h-4 w-4 mr-2" /> Design New Template
                 </Button>
             </header>
+
+            {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
             <div className="grid lg:grid-cols-12 gap-10">
 

@@ -19,14 +19,20 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
+import dynamic from 'next/dynamic';
+
+const CustomerLocationsMap = dynamic(() => import('@/components/admin/customers/CustomerLocationsMap'), { ssr: false });
 
 interface OrderRecord {
   id: number;
+  user_id: string | null;
   customer_name: string;
   customer_phone: string;
   total_price: number;
   created_at: string;
   referred_by_code?: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface CustomerProfile {
@@ -41,6 +47,8 @@ interface CustomerProfile {
     total_orders?: number;
     last_purchase_at?: string;
     is_partner?: boolean;
+    latitude: number | null;
+    longitude: number | null;
 }
 
 interface CustomerStats {
@@ -66,19 +74,26 @@ export default function AdminCustomersPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [segmentFilter, setSegmentFilter] = React.useState<string>('all');
+  const [locationError, setLocationError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     async function loadCustomers() {
-      if (!supabase) return;
+      if (!supabase) {
+        setLocationError('Database is not connected.');
+        setIsLoading(false);
+        return;
+      }
 
       try {
         const [ordersRes, profilesRes] = await Promise.all([
-          supabase.from('orders').select('id, customer_name, customer_phone, total_price, created_at, referred_by_code'),
-          supabase.from('profiles').select('phone_number, referral_code, full_name, birth_date, address, segment, lifetime_value, total_orders, last_purchase_at')
+          supabase.from('orders').select('id, user_id, customer_name, customer_phone, total_price, created_at, referred_by_code, latitude, longitude').order('created_at', { ascending: false }),
+          supabase.from('profiles').select('id, phone_number, referral_code, full_name, birth_date, address, segment, lifetime_value, total_orders, last_purchase_at, latitude, longitude')
         ]);
 
-        if (ordersRes.data) setOrders(ordersRes.data as OrderRecord[]);
-        if (profilesRes.data) setProfiles(profilesRes.data as CustomerProfile[]);
+        if (ordersRes.error) console.error('Error loading customer orders:', ordersRes.error);
+        else if (ordersRes.data) setOrders(ordersRes.data as OrderRecord[]);
+        if (profilesRes.error) setLocationError(profilesRes.error.message);
+        else if (profilesRes.data) setProfiles(profilesRes.data as CustomerProfile[]);
       } catch (err) {
         console.error('Error loading customers:', err);
       } finally {
@@ -88,6 +103,33 @@ export default function AdminCustomersPage() {
 
     loadCustomers();
   }, [role]);
+
+  const customerLocations = React.useMemo(() => {
+    const locations = new Map<string, { latitude: number | null; longitude: number | null }>();
+    const profilesByPhone = new Map<string, CustomerProfile>();
+    const profilesById = new Map(profiles.map(profile => [profile.id, profile]));
+    for (const profile of profiles) {
+      if (profile.phone_number) profilesByPhone.set(profile.phone_number.trim(), profile);
+    }
+
+    for (const profile of profiles) {
+      if (profile.latitude !== null && profile.longitude !== null) {
+        locations.set(`profile:${profile.id}`, { latitude: profile.latitude, longitude: profile.longitude });
+      }
+    }
+
+    for (const order of orders) {
+      if (order.latitude === null || order.longitude === null) continue;
+      const profile = profilesByPhone.get(order.customer_phone.trim())
+        || (order.user_id ? profilesById.get(order.user_id) : undefined);
+      const identity = profile ? `profile:${profile.id}` : order.user_id ? `user:${order.user_id}` : `guest:${order.customer_phone.trim()}`;
+      if (!locations.has(identity)) {
+        locations.set(identity, { latitude: order.latitude, longitude: order.longitude });
+      }
+    }
+
+    return Array.from(locations.values());
+  }, [orders, profiles]);
 
   const customers = React.useMemo(() => {
     const map = new Map<string, CustomerStats>();
@@ -228,6 +270,12 @@ export default function AdminCustomersPage() {
             </div>
         </div>
       </div>
+
+      <CustomerLocationsMap
+        locations={customerLocations}
+        loading={isLoading}
+        error={locationError}
+      />
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

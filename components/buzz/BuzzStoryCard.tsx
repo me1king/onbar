@@ -30,13 +30,17 @@ export interface BuzzStory {
 
 export default function BuzzStoryCard({ story }: { story: BuzzStory }) {
     const cover = story.media[0];
+    const startDate = new Date(story.starts_at);
+    const startLabel = Number.isNaN(startDate.getTime())
+        ? 'Time not listed'
+        : startDate.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
     return (
         <div className="relative aspect-[9/16] w-full max-w-sm rounded-[3rem] bg-white border border-slate-100 overflow-hidden group shadow-2xl animate-in zoom-in-95 duration-500">
 
             {/* Background Media */}
             <div className="absolute inset-0">
-                {cover.type === 'VIDEO' ? (
+                {cover?.type === 'VIDEO' ? (
                     <video
                         src={cover.url}
                         autoPlay
@@ -45,13 +49,15 @@ export default function BuzzStoryCard({ story }: { story: BuzzStory }) {
                         playsInline
                         className="h-full w-full object-cover opacity-60"
                     />
-                ) : (
+                ) : cover ? (
                     <Image
                         src={cover.url}
                         alt={story.title}
                         fill
                         className="object-cover opacity-60 transition-transform duration-[2s] group-hover:scale-110"
                     />
+                ) : (
+                    <div className="h-full w-full bg-gradient-to-br from-slate-700 to-slate-950" />
                 )}
                 {/* Gradient Overlays */}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/90" />
@@ -61,7 +67,7 @@ export default function BuzzStoryCard({ story }: { story: BuzzStory }) {
             <div className="absolute top-8 left-8 right-8 flex justify-between items-start z-20">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-500 rounded-full text-[8px] font-black uppercase text-white shadow-xl animate-pulse">
-                        <Flame size={10} fill="currentColor" /> LIVE BUZZ
+                        <Flame size={10} fill="currentColor" /> {story.status.replace(/_/g, ' ')}
                     </div>
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 backdrop-blur-md rounded-full text-[8px] font-black uppercase text-white border border-white/10">
                         <TrendingUp size={10} className="text-primary" /> {story.trend_score} TREND_SCORE
@@ -94,7 +100,7 @@ export default function BuzzStoryCard({ story }: { story: BuzzStory }) {
                     <div className="flex items-center gap-4 text-[10px] font-black uppercase text-slate-300 tracking-widest pt-2">
                         <span className="flex items-center gap-1.5"><MapPin size={12} className="text-primary" /> {story.area_zone}</span>
                         <div className="h-1 w-1 rounded-full bg-white/20" />
-                        <span className="flex items-center gap-1.5"><Clock size={12} className="text-primary" /> Tonight</span>
+                        <span className="flex items-center gap-1.5"><Clock size={12} className="text-primary" /> {startLabel}</span>
                     </div>
                 </div>
 

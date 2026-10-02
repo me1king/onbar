@@ -7,30 +7,24 @@ import {
     TrendingUp,
     Zap,
     Wine,
+    Clock,
     ChevronRight,
     MapPin,
     Smartphone,
-    Clock,
     Loader2,
     ArrowRight,
     Sparkles,
-    CheckCircle2,
     X,
-    Sun,
-    ShoppingBag,
-    Radio,
-    Check
+    CheckCircle2
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { cn, normalizeImage } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import PulseDetailModal from '@/components/buzz/PulseDetailModal';
 import BuildMyNightWidget from '@/components/widgets/concierge/BuildMyNightWidget';
 import BuzzStoryCard, { BuzzStory } from '@/components/buzz/BuzzStoryCard';
-import { useCart } from '@/context/CartContext';
-import Image from 'next/image';
 
 const LiveBuzzMap = dynamic(() => import('@/components/buzz/TheBuzzMap'), {
     ssr: false,
@@ -44,7 +38,6 @@ interface BuzzArea {
     buzz_status: 'BUZZING' | 'BUSY' | 'ACTIVE' | 'QUIET';
     active_visitors: number;
     active_orders: number;
-    confidence?: number;
 }
 
 interface DBBuzzPost {
@@ -61,28 +54,14 @@ interface DBBuzzPost {
     media: Array<{ media_type: string, url: string }> | null;
 }
 
-const VENUE_STORIES_BUBBLES = [
-    { name: 'K1 Clubhouse', avatar: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&q=80', status: 'LIVE', liveTag: 'DJ JOE' },
-    { name: 'The Alchemist', avatar: 'https://images.unsplash.com/photo-1574391884720-bbc3740c59d1?auto=format&fit=crop&q=80', status: 'LIVE', liveTag: 'BOILER ROOM' },
-    { name: 'Quiver Lounge', avatar: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb1?auto=format&fit=crop&q=80', status: 'HOT', liveTag: 'SUNDAY SCHOOL' },
-    { name: 'Brew Bistro', avatar: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&q=80', status: 'LIVE', liveTag: 'BEER FEST' },
-    { name: 'Online Bar HQ', avatar: 'https://images.unsplash.com/photo-1554866585-cd94860890b7?auto=format&fit=crop&q=80', status: 'STATION', liveTag: 'EXPRESS NODE' },
-];
-
 export default function TheBuzzDiscovery() {
     const [hotspots, setHotspots] = React.useState<BuzzArea[]>([]);
     const [stories, setStories] = React.useState<BuzzStory[]>([]);
     const [selectedArea, setSelectedArea] = React.useState<BuzzArea | null>(null);
     const [isDetailOpen, setIsDetailOpen] = React.useState(false);
-    const [filter, setFilter] = React.useState<'trending' | 'near-me' | 'tonight'>('trending');
+    const [filter, setFilter] = React.useState<'trending' | 'live' | 'tonight'>('trending');
     const [loading, setLoading] = React.useState(true);
     const [nightPlannerOpen, setNightPlannerOpen] = React.useState(false);
-    const [addedCartId, setAddedCartId] = React.useState<string | number | null>(null);
-
-    // Live Happy Hour Countdown Timer (Seconds)
-    const [countdownSeconds, setCountdownSeconds] = React.useState(512);
-
-    const { addToCart } = useCart();
 
     React.useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -93,22 +72,11 @@ export default function TheBuzzDiscovery() {
         }
     }, []);
 
-    // Live Happy Hour Countdown Effect
-    React.useEffect(() => {
-        const timer = setInterval(() => {
-            setCountdownSeconds(prev => (prev > 0 ? prev - 1 : 1800));
-        }, 1000);
-        return () => clearInterval(timer);
-    }, []);
-
-    const formatCountdown = (totalSeconds: number) => {
-        const mins = Math.floor(totalSeconds / 60);
-        const secs = totalSeconds % 60;
-        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    };
-
     const fetchBuzzData = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const [hotspotsRes, storiesRes] = await Promise.all([
@@ -117,19 +85,14 @@ export default function TheBuzzDiscovery() {
             ]);
 
             if (hotspotsRes.data) {
-                const data = (hotspotsRes.data as Array<{ zone_name: string, buzz_score: number, buzz_status: string, active_visitors: number, active_orders: number }>).map((h, i) => {
-                    // BAR OS Dynamic Hotspot Formula: Score = (Orders * 5) + (Visitors * 0.2) + Base
-                    const computedScore = Math.min(99, Math.max(65, (h.active_orders * 5) + Math.round((h.active_visitors || 100) * 0.15)));
-                    return {
-                        id: String(i),
+                const data = (hotspotsRes.data as Array<{ zone_name: string, buzz_score: number, buzz_status: BuzzArea['buzz_status'], active_visitors: number, active_orders: number }>).map((h) => ({
+                        id: h.zone_name,
                         zone_name: h.zone_name,
-                        buzz_score: computedScore,
-                        buzz_status: computedScore > 88 ? 'BUZZING' : computedScore > 75 ? 'BUSY' : 'ACTIVE',
+                        buzz_score: Number(h.buzz_score) || 0,
+                        buzz_status: h.buzz_status,
                         active_visitors: h.active_visitors,
-                        active_orders: h.active_orders,
-                        confidence: 94
-                    };
-                });
+                        active_orders: h.active_orders
+                    }));
                 setHotspots(data as BuzzArea[]);
                 if (data.length > 0) setSelectedArea(data[0] as BuzzArea);
             }
@@ -139,15 +102,14 @@ export default function TheBuzzDiscovery() {
                     id: s.id,
                     title: s.title,
                     description: s.description || '',
-                    area_zone: s.area_zone || 'Nairobi',
-                    category: s.category?.label || 'General',
+                    area_zone: s.area_zone || 'Area not provided',
+                    category: s.category?.label || 'Uncategorized',
                     status: s.status,
                     trend_score: s.trend_score,
                     latitude: Number(s.latitude),
                     longitude: Number(s.longitude),
                     starts_at: s.start_at,
                     media: s.media?.map((m) => ({ type: m.media_type as 'IMAGE' | 'VIDEO', url: m.url })) || [],
-                    distance: '1.2 km'
                 })));
             }
         } catch (err) { console.error(err); }
@@ -158,19 +120,20 @@ export default function TheBuzzDiscovery() {
         fetchBuzzData();
     }, [fetchBuzzData]);
 
-    const handleQuickAdd = (id: string | number, name: string, price: number, image: string, category: string) => {
-        addToCart({
-            id: Number(id) || Date.now(),
-            name,
-            price,
-            base_price: price,
-            image: normalizeImage(image),
-            quantity: 1,
-            category
-        });
-        setAddedCartId(id);
-        setTimeout(() => setAddedCartId(null), 2000);
-    };
+    const visibleStories = React.useMemo(() => {
+        if (filter === 'live') return stories.filter(story => story.status === 'LIVE');
+        if (filter === 'tonight') {
+            const today = new Date();
+            return stories.filter(story => {
+                const startsAt = new Date(story.starts_at);
+                return Number.isFinite(startsAt.getTime())
+                    && startsAt.getFullYear() === today.getFullYear()
+                    && startsAt.getMonth() === today.getMonth()
+                    && startsAt.getDate() === today.getDate();
+            });
+        }
+        return [...stories].sort((first, second) => second.trend_score - first.trend_score);
+    }, [filter, stories]);
 
     if (loading) return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white">
@@ -206,33 +169,20 @@ export default function TheBuzzDiscovery() {
                             The <br /> <span className="text-primary italic">City Buzz.</span>
                         </h1>
                         <p className="text-slate-500 text-lg font-medium italic leading-relaxed">
-                            &quot;Nairobi is alive. Verified hotspots, live DJ events, hot street bites, and instant drink dispatch.&quot;
+                            Explore events and activity published by the Online Bar community.
                         </p>
                     </div>
 
-                    {/* LIVE METRICS HUD & WEATHER INTEGRATION */}
                     <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-                        {/* Weather Widget */}
-                        <div className="bg-amber-500/10 border border-amber-500/20 p-5 rounded-[2.5rem] flex items-center gap-4 shrink-0 shadow-sm">
-                            <div className="h-12 w-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md">
-                                <Sun size={24} className="animate-spin-slow" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-black text-amber-950 leading-none">22°C</p>
-                                <p className="text-[9px] font-black uppercase text-amber-800 tracking-wider mt-1">Clear &bull; Perfect Rooftop Weather</p>
-                            </div>
-                        </div>
-
-                        {/* Live City Stats */}
                         <div className="bg-white/90 backdrop-blur-md p-6 rounded-[2.5rem] border border-slate-200/80 flex items-center gap-6 shadow-md shrink-0">
                             <div className="space-y-1">
-                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Live Browsing</p>
-                                <p className="text-2xl font-black text-foreground tabular-nums leading-none">128</p>
+                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Published hotspots</p>
+                                <p className="text-2xl font-black text-foreground tabular-nums leading-none">{hotspots.length}</p>
                             </div>
                             <div className="h-8 w-px bg-slate-200" />
                             <div className="space-y-1">
-                                <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Active Orders</p>
-                                <p className="text-2xl font-black text-emerald-600 tabular-nums leading-none">42</p>
+                                <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Live events</p>
+                                <p className="text-2xl font-black text-emerald-600 tabular-nums leading-none">{stories.filter(story => story.status === 'LIVE').length}</p>
                             </div>
                         </div>
 
@@ -245,122 +195,16 @@ export default function TheBuzzDiscovery() {
                     </div>
                 </header>
 
-                {/* 📱 INSTAGRAM-STYLE LIVE VENUE STORIES */}
-                <section className="space-y-4 text-left">
-                    <div className="flex items-center gap-2 px-2">
-                        <Radio size={16} className="text-rose-500 animate-pulse" />
-                        <h3 className="text-xs font-black uppercase tracking-[0.3em] text-foreground">Live Venue Stories</h3>
-                    </div>
-                    <div className="flex gap-6 overflow-x-auto no-scrollbar py-2">
-                        {VENUE_STORIES_BUBBLES.map((v, i) => (
-                            <div key={i} className="flex flex-col items-center gap-2 shrink-0 group cursor-pointer">
-                                <div className="p-1 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 shadow-md group-hover:scale-110 transition-transform">
-                                    <div className="h-16 w-16 rounded-full border-2 border-white relative overflow-hidden bg-slate-900">
-                                        <Image src={v.avatar} alt={v.name} fill className="object-cover" />
-                                    </div>
-                                </div>
-                                <div className="text-center space-y-0.5">
-                                    <p className="text-[10px] font-black uppercase text-foreground truncate max-w-[80px]">{v.name}</p>
-                                    <span className="text-[8px] font-extrabold uppercase tracking-widest text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
-                                        {v.liveTag}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                {/* ⏱️ LIVE COUNTDOWN & FAST FOOD CROSS-SELL BANNER */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {/* Happy Hour Live Countdown Card */}
-                    <Card className="p-8 rounded-[3.5rem] bg-white border border-amber-200/80 shadow-md flex flex-col justify-between text-left relative overflow-hidden group">
-                        <div className="space-y-3 relative z-10">
-                            <div className="flex justify-between items-center">
-                                <span className="px-3 py-1 rounded-full bg-amber-500 text-white text-[9px] font-black uppercase tracking-widest shadow-md">
-                                    🍻 HAPPY HOUR SPECIAL
-                                </span>
-                                <Clock size={16} className="text-amber-500 animate-pulse" />
-                            </div>
-                            <h3 className="text-2xl font-black text-foreground uppercase tracking-tight leading-none">2 for 1 Amarula</h3>
-                            <p className="text-xs text-slate-500 font-medium italic">Buy one Amarula 750ml, get second bottle at 50% off.</p>
-                        </div>
-                        <div className="pt-6 relative z-10 flex items-center justify-between border-t border-amber-100">
-                            <div>
-                                <p className="text-[9px] font-black uppercase text-slate-400">Ends In</p>
-                                <p className="text-3xl font-black text-primary font-mono tabular-nums tracking-wider">{formatCountdown(countdownSeconds)}</p>
-                            </div>
-                            <Button
-                                onClick={() => handleQuickAdd(1001, 'Amarula 750ml (2 for 1 Offer)', 2600, 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&q=80', 'Liquor')}
-                                className="h-12 px-6 rounded-2xl bg-amber-500 text-white font-black uppercase text-[10px] tracking-widest hover:bg-amber-600 shadow-md"
-                            >
-                                {addedCartId === 1001 ? <Check size={16} /> : <><ShoppingBag size={14} className="mr-1" /> Claim Offer</>}
-                            </Button>
-                        </div>
-                    </Card>
-
-                    {/* Fast Food Cross-Sell: Smocha Supreme */}
-                    <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md flex flex-col justify-between text-left relative overflow-hidden group">
-                        <div className="space-y-3 relative z-10">
-                            <div className="flex justify-between items-center">
-                                <span className="px-3 py-1 rounded-full bg-rose-500 text-white text-[9px] font-black uppercase tracking-widest shadow-md">
-                                    🌭 HOT STREET BITE
-                                </span>
-                                <span className="text-[9px] font-black uppercase text-emerald-600">12 min prep</span>
-                            </div>
-                            <h3 className="text-2xl font-black text-foreground uppercase tracking-tight leading-none">Smocha Supreme</h3>
-                            <p className="text-xs text-slate-500 font-medium italic">Sausage wrapped in chapati with house pili pili & kachumbari.</p>
-                        </div>
-                        <div className="pt-6 relative z-10 flex items-center justify-between border-t border-slate-100">
-                            <div>
-                                <p className="text-[9px] font-black uppercase text-slate-400">Price</p>
-                                <p className="text-3xl font-black text-primary tracking-tight">KSh 180</p>
-                            </div>
-                            <Button
-                                onClick={() => handleQuickAdd(101, 'Smocha Supreme', 180, 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&q=80', 'Street Bites')}
-                                className="h-12 px-6 rounded-2xl bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-primary transition-colors"
-                            >
-                                {addedCartId === 101 ? <Check size={16} /> : <><ShoppingBag size={14} className="mr-1" /> Quick Order</>}
-                            </Button>
-                        </div>
-                    </Card>
-
-                    {/* Fast Food Cross-Sell: Loaded Masala Fries */}
-                    <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md flex flex-col justify-between text-left relative overflow-hidden group">
-                        <div className="space-y-3 relative z-10">
-                            <div className="flex justify-between items-center">
-                                <span className="px-3 py-1 rounded-full bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest shadow-md">
-                                    🍟 NIGHT BITE
-                                </span>
-                                <span className="text-[9px] font-black uppercase text-emerald-600">9 min prep</span>
-                            </div>
-                            <h3 className="text-2xl font-black text-foreground uppercase tracking-tight leading-none">Chips Masala</h3>
-                            <p className="text-xs text-slate-500 font-medium italic">Crispy fries tossed in spicy garlic tomato masala.</p>
-                        </div>
-                        <div className="pt-6 relative z-10 flex items-center justify-between border-t border-slate-100">
-                            <div>
-                                <p className="text-[9px] font-black uppercase text-slate-400">Price</p>
-                                <p className="text-3xl font-black text-primary tracking-tight">KSh 250</p>
-                            </div>
-                            <Button
-                                onClick={() => handleQuickAdd(102, 'Chips Masala', 250, 'https://images.unsplash.com/photo-1576107232684-1279f3908594?auto=format&fit=crop&q=80', 'Hot Right Now')}
-                                className="h-12 px-6 rounded-2xl bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-primary transition-colors"
-                            >
-                                {addedCartId === 102 ? <Check size={16} /> : <><ShoppingBag size={14} className="mr-1" /> Quick Order</>}
-                            </Button>
-                        </div>
-                    </Card>
-                </div>
-
                 {/* 🔍 TACTICAL FILTERS */}
                 <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
                     {[
                         { id: 'trending', label: 'Trending Now', icon: Flame },
-                        { id: 'near-me', label: 'Happening Near Me', icon: MapPin },
+                        { id: 'live', label: 'Live Now', icon: Zap },
                         { id: 'tonight', label: 'Tonight\'s Selections', icon: Clock }
                     ].map(f => (
                         <button
                             key={f.id}
-                            onClick={() => setFilter(f.id as 'trending' | 'near-me' | 'tonight')}
+                            onClick={() => setFilter(f.id as 'trending' | 'live' | 'tonight')}
                             className={cn(
                                 "flex items-center gap-3 px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 border-2 shadow-sm",
                                 filter === f.id ? "bg-primary border-primary text-white shadow-xl shadow-primary/20 scale-105" : "bg-white text-slate-400 border-slate-100 hover:border-primary/20 hover:text-primary"
@@ -374,52 +218,24 @@ export default function TheBuzzDiscovery() {
 
                 {/* 🎞️ CINEMATIC DISCOVERY FEED */}
                 <section className="space-y-12">
-                    {stories.filter(s => s.status === 'LIVE').length > 0 && (
+                    {visibleStories.length > 0 ? (
                         <div className="space-y-8">
                             <div className="flex items-center gap-3 px-4">
-                                <div className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Live Now</h2>
+                                <div className="h-2 w-2 rounded-full bg-primary" />
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">
+                                    {filter === 'live' ? 'Live Now' : filter === 'tonight' ? 'Tonight' : 'Trending'}
+                                </h2>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-                                {stories.filter(s => s.status === 'LIVE').map(story => (
+                                {visibleStories.map(story => (
                                     <BuzzStoryCard key={story.id} story={story} />
                                 ))}
                             </div>
                         </div>
-                    )}
-
-                    {stories.filter(s => s.status === 'STARTING_SOON').length > 0 && (
-                        <div className="space-y-8">
-                            <div className="flex items-center gap-3 px-4">
-                                <div className="h-2 w-2 rounded-full bg-amber-500" />
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Starting Soon</h2>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-                                {stories.filter(s => s.status === 'STARTING_SOON').map(story => (
-                                    <BuzzStoryCard key={story.id} story={story} />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {stories.filter(s => s.status === 'TRENDING').length > 0 && (
-                        <div className="space-y-8">
-                            <div className="flex items-center gap-3 px-4">
-                                <div className="h-2 w-2 rounded-full bg-indigo-500" />
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Trending Tonight</h2>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-                                {stories.filter(s => s.status === 'TRENDING').map(story => (
-                                    <BuzzStoryCard key={story.id} story={story} />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {stories.length === 0 && (
+                    ) : (
                         <div className="py-40 text-center opacity-20 border-2 border-dashed border-slate-100 rounded-[4rem]">
                             <Flame size={64} className="mx-auto mb-6" />
-                            <p className="text-xl font-black uppercase tracking-widest">Awaiting the next Buzz...</p>
+                            <p className="text-xl font-black uppercase tracking-widest">No events currently match this filter.</p>
                         </div>
                     )}
                 </section>

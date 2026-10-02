@@ -33,10 +33,10 @@ export interface MasterMessage {
  * High-level function to trigger notifications based on system events.
  */
 export async function triggerNotificationByEvent(eventType: string, payload: NotificationPayload) {
-    if (!supabase) return;
+    if (!supabase) throw new Error('Notification database is not connected.');
 
     // 1. Fetch Template
-    const { data: template } = await supabase
+    const { data: template, error: templateError } = await supabase
         .from('notification_templates')
         .select('*')
         .eq('event_type', eventType)
@@ -45,7 +45,11 @@ export async function triggerNotificationByEvent(eventType: string, payload: Not
         .limit(1)
         .maybeSingle();
 
-    if (!template) return;
+    if (templateError) throw templateError;
+    if (!template) {
+        console.info(`[NOTIFICATION_SERVICE] No active template configured for ${eventType}.`);
+        return;
+    }
 
     // 2. Hydrate Variables
     const context = {
@@ -58,15 +62,16 @@ export async function triggerNotificationByEvent(eventType: string, payload: Not
     const hydratedMessage = hydrateTemplate(template.message, context);
 
     // 3. Log to Database (Real-time Trigger)
-    await supabase.from('notifications_log').insert([{
+    const { error: logError } = await supabase.from('notifications_log').insert([{
         user_id: payload.userId,
         order_id: payload.orderId,
         template_id: template.id,
         payload: context
     }]);
+    if (logError) throw logError;
 
     // 4. Save to User Inbox
-    await supabase.from('user_notifications').insert([{
+    const { error: inboxError } = await supabase.from('user_notifications').insert([{
         user_id: payload.userId,
         title: hydratedTitle,
         message: hydratedMessage,
@@ -74,6 +79,7 @@ export async function triggerNotificationByEvent(eventType: string, payload: Not
         style: template.style,
         action_url: template.cta_url ? hydrateTemplate(template.cta_url, context) : null
     }]);
+    if (inboxError) throw inboxError;
 
     // 5. Optionally dispatch to other channels (WhatsApp/Email)
     // if (template.priority === 'CRITICAL' || template.priority === 'HIGH') {

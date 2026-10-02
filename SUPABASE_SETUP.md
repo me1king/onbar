@@ -12,7 +12,7 @@ Configure `NEXT_PUBLIC_SUPABASE_URL` and either `NEXT_PUBLIC_SUPABASE_PUBLISHABL
 
 For an existing database, run the `ALTER TABLE public.orders` migration block in the script's **Operations & Logistics** section to add gift-card details to existing orders. Do not re-run the entire setup script on a live database just to apply that migration.
 
-For the current delivery, audience, and analytics features on an already configured database, run [`supabase/OPERATIONAL_FEATURES_MIGRATION.sql`](./supabase/OPERATIONAL_FEATURES_MIGRATION.sql) in the SQL Editor. It adds the souvenir fields and reporting functions used by the admin screens without re-running the full setup script. Campaign-channel foreign keys are created to match the existing campaign ID type; if an older channel table has rows with a different ID type, missing campaign links, or references to missing campaigns, the migration stops rather than discarding or guessing at those links.
+For the current delivery, audience, and analytics features on an already configured database, run [`supabase/OPERATIONAL_FEATURES_MIGRATION.sql`](./supabase/OPERATIONAL_FEATURES_MIGRATION.sql) in the SQL Editor. It adds the souvenir fields and reporting functions used by the admin screens without re-running the full setup script. It also creates the notification templates, private per-customer notification inbox/log, and Realtime publication entries used by the popup manager and in-app alerts. Campaign-channel foreign keys are created to match the existing campaign ID type; if an older channel table has rows with a different ID type, missing campaign links, or references to missing campaigns, the migration stops rather than discarding or guessing at those links.
 
 ### Delivery coverage and customer location
 

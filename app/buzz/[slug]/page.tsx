@@ -8,18 +8,15 @@ import {
     Flame,
     MapPin,
     Clock,
-    Users,
     ChevronLeft,
     Navigation,
     Loader2,
     Zap,
-    Heart,
-    CheckCircle2,
     Camera
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { cn, normalizeImage } from '@/lib/utils';
+import { normalizeImage } from '@/lib/utils';
 import Image from 'next/image';
 import { OB_OS } from '@/lib/onlineBarOS';
 
@@ -39,13 +36,12 @@ interface BuzzDetail {
         address: string;
         category: string;
         hero_image_url: string;
-    };
+    } | null;
     category: {
         label: string;
     };
     media: Array<{ media_type: string, url: string }>;
     updates: Array<{ id: string, message: string, media_url: string | null, created_at: string }>;
-    interest_count: number;
 }
 
 interface DBBuzzPostDetail {
@@ -78,7 +74,6 @@ export default function BuzzDetailPage() {
     const router = useRouter();
     const [buzz, setBuzz] = React.useState<BuzzDetail | null>(null);
     const [loading, setLoading] = React.useState(true);
-    const [isInterested, setIsInterested] = React.useState(false);
 
     const fetchBuzzDetail = React.useCallback(async () => {
         if (!supabase || !slug) return;
@@ -103,11 +98,10 @@ export default function BuzzDetailPage() {
                     trend_score: dbBuzz.trend_score,
                     latitude: dbBuzz.latitude,
                     longitude: dbBuzz.longitude,
-                    venue: dbBuzz.venue || { id: '', name: 'Premium Venue', address: '', category: '', hero_image_url: '' },
-                    category: dbBuzz.category || { label: 'General' },
+                    venue: dbBuzz.venue,
+                    category: dbBuzz.category || { label: 'Uncategorized' },
                     media: dbBuzz.media || [],
-                    updates: dbBuzz.updates || [],
-                    interest_count: dbBuzz.trend_score ? Math.round(dbBuzz.trend_score * 3.5) : 120
+                    updates: dbBuzz.updates || []
                 });
 
                 // Track the Discovery
@@ -125,13 +119,6 @@ export default function BuzzDetailPage() {
     React.useEffect(() => {
         fetchBuzzDetail();
     }, [fetchBuzzDetail]);
-
-    const handleRSVP = async () => {
-        setIsInterested(!isInterested);
-        OB_OS.track('RSVP_INTERESTED', {
-            details: { buzzId: buzz?.id, status: !isInterested }
-        });
-    };
 
     if (loading) return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white">
@@ -165,7 +152,7 @@ export default function BuzzDetailPage() {
                 <div className="absolute bottom-10 left-10 right-10 z-20 space-y-6">
                     <div className="flex flex-wrap items-center gap-4">
                         <span className="px-4 py-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl animate-pulse">
-                            <Flame size={12} className="inline mr-2 fill-current mb-0.5" /> Live Buzz
+                            <Flame size={12} className="inline mr-2 fill-current mb-0.5" /> {buzz.status.replace(/_/g, ' ')}
                         </span>
                         <span className="px-4 py-1.5 rounded-full bg-white/20 backdrop-blur-md text-white border border-white/20 text-[10px] font-black uppercase tracking-widest">
                             {buzz.category?.label}
@@ -193,7 +180,9 @@ export default function BuzzDetailPage() {
                         <section className="space-y-8">
                             <div className="flex justify-between items-center">
                                 <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Live Updates</h3>
-                                <span className="text-[10px] font-black text-primary uppercase animate-pulse">Updated 2m ago</span>
+                                <span className="text-[10px] font-black text-primary uppercase">
+                                    {buzz.updates.length} published update{buzz.updates.length === 1 ? '' : 's'}
+                                </span>
                             </div>
                             <div className="grid gap-6">
                                 {buzz.updates.length > 0 ? buzz.updates.map((update) => (
@@ -225,8 +214,7 @@ export default function BuzzDetailPage() {
                     {/* RIGHT: TACTICAL HUD */}
                     <div className="lg:col-span-5 space-y-12">
 
-                        {/* VENUE CARD */}
-                        <Card className="p-10 rounded-[4rem] bg-slate-900 text-white border-none shadow-2xl space-y-10 relative overflow-hidden group">
+                        {buzz.venue ? <Card className="p-10 rounded-[4rem] bg-slate-900 text-white border-none shadow-2xl space-y-10 relative overflow-hidden group">
                             <div className="absolute inset-0">
                                 <Image src={normalizeImage(buzz.venue?.hero_image_url)} alt="" fill className="object-cover opacity-20 transition-transform duration-[3s] group-hover:scale-110" />
                                 <div className="absolute inset-0 bg-slate-900/60" />
@@ -248,53 +236,18 @@ export default function BuzzDetailPage() {
                                     >
                                         <Navigation size={16} className="mr-2" /> Navigate
                                     </Button>
-                                    <Link href={`/venue/${buzz.venue?.id}`} className="block">
+                                    <Link href={`/venue/${buzz.venue.id}`} className="block">
                                         <Button variant="outline" className="w-full h-16 rounded-2xl border-white/10 bg-white/5 text-white font-black uppercase text-[10px] tracking-widest hover:bg-white/10">
                                             Profile Node
                                         </Button>
                                     </Link>
                                 </div>
                             </div>
-                        </Card>
-
-                        {/* ENGAGEMENT MODULE */}
-                        <Card className="p-10 rounded-[3.5rem] bg-slate-50 border border-slate-100 shadow-sm space-y-10 text-left">
-                            <div className="space-y-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Users size={20} /></div>
-                                    <h3 className="text-xl font-black uppercase tracking-tighter">Who&apos;s Interested?</h3>
-                                </div>
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] ml-1">Real-time Patron Radar</p>
-                            </div>
-
-                            <div className="flex items-center gap-8">
-                                <div>
-                                    <p className="text-5xl font-black text-foreground tracking-tighter leading-none">{buzz.interest_count}+</p>
-                                    <p className="text-[10px] font-bold text-primary uppercase mt-2 tracking-widest">Patrons Synchronized</p>
-                                </div>
-                                <div className="h-12 w-px bg-slate-200" />
-                                <div className="flex -space-x-4">
-                                    {[1,2,3,4].map(i => (
-                                        <div key={i} className="h-12 w-12 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-xl animate-in fade-in zoom-in" style={{ animationDelay: `${i*100}ms` }}>
-                                            <div className="h-full w-full bg-gradient-to-br from-slate-100 to-slate-300 flex items-center justify-center"><Users size={16} className="text-slate-400" /></div>
-                                        </div>
-                                    ))}
-                                    <div className="h-12 w-12 rounded-full border-4 border-white bg-primary text-white flex items-center justify-center text-[10px] font-black shadow-xl">+{buzz.interest_count - 4}</div>
-                                </div>
-                            </div>
-
-                            <div className="pt-4 border-t border-slate-100">
-                                <Button
-                                    onClick={handleRSVP}
-                                    className={cn(
-                                        "w-full h-20 rounded-[2rem] font-black uppercase tracking-[0.2em] text-xs shadow-2xl transition-all active:scale-95",
-                                        isInterested ? "bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-100" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
-                                    )}
-                                >
-                                    {isInterested ? <><CheckCircle2 size={18} className="mr-3" /> Mission Locked</> : <><Heart size={18} className="mr-3" /> I&apos;m Interested</>}
-                                </Button>
-                            </div>
-                        </Card>
+                        </Card> : (
+                            <Card className="p-8 rounded-3xl bg-slate-50 border border-slate-100 text-sm text-slate-500">
+                                No venue is attached to this event.
+                            </Card>
+                        )}
 
                     </div>
                 </div>

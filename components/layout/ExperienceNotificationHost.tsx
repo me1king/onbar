@@ -3,28 +3,75 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import ExperienceToast, { ToastProps } from './ExperienceToast';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
-/**
- * GLOBAL NOTIFICATION HOST
- * Listens for real-time alerts dispatched to the current user.
- */
+interface NotificationLog {
+    id: string;
+    template_id: string;
+    payload: Record<string, string | number>;
+}
+
 export default function ExperienceNotificationHost() {
     const [toasts, setToasts] = React.useState<ToastProps[]>([]);
+    const removeToast = React.useCallback((id: string) => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+    }, []);
 
     React.useEffect(() => {
         let isMounted = true;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let channel: any = null;
+        let channel: RealtimeChannel | null = null;
+        let activeUserId: string | null = null;
+        const handledNotifications = new Set<string>();
 
-        async function setupRealtime() {
-            if (!supabase) return;
+        function hydrateTemplate(text: string, context: Record<string, string | number | undefined>): string {
+            return text.replace(/{{(.*?)}}/g, (match, key) => {
+                const value = context[key.trim()];
+                return value !== undefined ? String(value) : match;
+            });
+        }
 
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session || !isMounted) return;
+        async function showNotification(notification: NotificationLog) {
+            if (!isMounted || !supabase || handledNotifications.has(notification.id)) return;
+            handledNotifications.add(notification.id);
 
-            const userId = session.user.id;
+            try {
+                const { data: template, error } = await supabase
+                    .from('notification_templates')
+                    .select('*')
+                    .eq('id', notification.template_id)
+                    .maybeSingle();
+                if (error) throw error;
+                if (!template) {
+                    console.warn('[ExperienceHost] Notification template is missing or inactive:', notification.template_id);
+                    return;
+                }
 
-            // Subscribe to the notifications log for this user
+                const payload = notification.payload || {};
+                const toast: ToastProps = {
+                    id: notification.id,
+                    title: hydrateTemplate(template.title, payload),
+                    message: hydrateTemplate(template.message, payload),
+                    icon: template.icon,
+                    style: template.style,
+                    actionUrl: template.cta_url ? hydrateTemplate(template.cta_url, payload) : undefined,
+                    duration: template.duration,
+                    onClose: removeToast
+                };
+                setToasts(current => [toast, ...current].slice(0, 3));
+            } catch (err) {
+                console.error('[ExperienceHost] Payload processing failed:', err);
+            }
+        }
+
+        async function connectToUser(userId: string | null) {
+            if (!supabase || !isMounted || activeUserId === userId) return;
+            activeUserId = userId;
+            if (channel) {
+                await supabase.removeChannel(channel);
+                channel = null;
+            }
+            if (!userId) return;
+
             channel = supabase
                 .channel(`experience-alerts-${userId}`)
                 .on(
@@ -35,63 +82,35 @@ export default function ExperienceNotificationHost() {
                         table: 'notifications_log',
                         filter: `user_id=eq.${userId}`
                     },
-                    async (payload: { new: { template_id: string, payload: Record<string, string | number>, id: string } }) => {
-                        if (!isMounted || !supabase) return;
-
-                        try {
-                            // Fetch template details to build the toast
-                            const { data: template, error: templateError } = await supabase
-                                .from('notification_templates')
-                                .select('*')
-                                .eq('id', payload.new.template_id)
-                                .maybeSingle();
-
-                            if (template && !templateError) {
-                                const payloadData = payload.new.payload || {};
-                                const hydratedTitle = hydrateTemplate(template.title, payloadData);
-                                const hydratedMessage = hydrateTemplate(template.message, payloadData);
-
-                                const newToast: ToastProps = {
-                                    id: payload.new.id,
-                                    title: hydratedTitle,
-                                    message: hydratedMessage,
-                                    icon: template.icon,
-                                    style: template.style,
-                                    actionUrl: template.cta_url ? hydrateTemplate(template.cta_url, payloadData) : undefined,
-                                    duration: template.duration,
-                                    onClose: removeToast
-                                };
-
-                                setToasts(prev => [newToast, ...prev].slice(0, 3)); // Max 3 visible
-                            }
-                        } catch (err) {
-                            console.error("[ExperienceHost] Payload processing failed:", err);
-                        }
+                    (change) => {
+                        void showNotification(change.new as NotificationLog);
                     }
                 )
-                .subscribe();
+                .subscribe((status, error) => {
+                    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                        console.error('[ExperienceHost] Realtime subscription failed:', error);
+                    }
+                });
         }
 
-        setupRealtime();
+        if (!supabase) return () => { isMounted = false; };
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            void connectToUser(session?.user.id || null);
+        });
+        supabase.auth.getSession()
+            .then(({ data: { session }, error }) => {
+                if (error) throw error;
+                return connectToUser(session?.user.id || null);
+            })
+            .catch(err => console.error('[ExperienceHost] Unable to initialize notifications:', err));
 
         return () => {
             isMounted = false;
-            if (channel && supabase) {
-                supabase.removeChannel(channel);
-            }
+            subscription.unsubscribe();
+            if (channel && supabase) void supabase.removeChannel(channel);
         };
-    }, []);
-
-    const removeToast = (id: string) => {
-        setToasts(prev => prev.filter(t => t.id !== id));
-    };
-
-    function hydrateTemplate(text: string, context: Record<string, string | number | undefined>): string {
-        return text.replace(/{{(.*?)}}/g, (match, key) => {
-            const value = context[key.trim()];
-            return value !== undefined ? String(value) : match;
-        });
-    }
+    }, [removeToast]);
 
     return (
         <div className="fixed top-6 right-6 lg:top-10 lg:right-10 z-[2000] flex flex-col gap-4 pointer-events-none w-full max-w-[400px]">

@@ -1,6 +1,8 @@
 package com.example.theapp
 
 import android.app.Activity
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -301,6 +303,14 @@ class MainActivity : FragmentActivity() {
             ExistingPeriodicWorkPolicy.KEEP,
             request
         )
+        val initialSync = OneTimeWorkRequestBuilder<WidgetUpdateWorker>()
+            .setConstraints(constraints)
+            .build()
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            "ob_widget_initial_sync",
+            ExistingWorkPolicy.KEEP,
+            initialSync
+        )
     }
 
     private fun syncOfflineDrops() {
@@ -322,6 +332,27 @@ class MainActivity : FragmentActivity() {
 
 class TitanBridge(private val activity: MainActivity, private val webView: WebView) {
     private val prefs = activity.getSharedPreferences(MainActivity.OFFLINE_STORAGE_PREFS, Context.MODE_PRIVATE)
+
+    @JavascriptInterface
+    fun requestWidgetPin() {
+        activity.runOnUiThread {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                Toast.makeText(activity, "Home-screen widgets require Android 8 or newer.", Toast.LENGTH_LONG).show()
+                return@runOnUiThread
+            }
+
+            val manager = AppWidgetManager.getInstance(activity)
+            if (!manager.isRequestPinAppWidgetSupported) {
+                Toast.makeText(activity, "This launcher does not support adding widgets from the app.", Toast.LENGTH_LONG).show()
+                return@runOnUiThread
+            }
+
+            val provider = ComponentName(activity, OnlineBarWidgetProvider::class.java)
+            if (!manager.requestPinAppWidget(provider, null, null)) {
+                Toast.makeText(activity, "Your launcher could not start the widget request.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     @JavascriptInterface
     fun triggerScanner(mode: String = "BARCODE") {

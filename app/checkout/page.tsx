@@ -81,6 +81,18 @@ function CheckoutContent() {
   const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const attributionId = params.get('utm_id');
+    if (attributionId) sessionStorage.setItem('ob_attribution_id', attributionId);
+
+    const exitCoupon = localStorage.getItem('ob_exit_coupon');
+    if (exitCoupon) {
+      setCouponCode(exitCoupon);
+      localStorage.removeItem('ob_exit_coupon');
+    }
+  }, []);
+
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [usePoints, setUsePoints] = useState(false);
   const [isRestoredBonus, setIsRestoredBonus] = useState(false);
@@ -1134,17 +1146,6 @@ function CheckoutContent() {
                   <div className="pt-4 border-t border-slate-100">
                       <div className="flex items-center justify-between mb-3 px-1">
                           <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Coupon Code</p>
-                          {typeof window !== 'undefined' && localStorage.getItem('ob_exit_intent') === 'true' && (
-                              <button
-                                onClick={() => {
-                                    setCouponCode('STAY5');
-                                    localStorage.removeItem('ob_exit_intent');
-                                }}
-                                className="text-[8px] font-black text-primary uppercase underline tracking-widest animate-pulse"
-                              >
-                                Apply &quot;STAY5&quot; (5% Off)
-                              </button>
-                          )}
                       </div>
                       <div className="flex gap-2">
                           <Input

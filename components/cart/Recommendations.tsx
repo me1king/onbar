@@ -19,53 +19,23 @@ interface RecommendedProduct {
   is_souvenir?: boolean;
 }
 
-const DEFAULT_RECOMMENDED: RecommendedProduct[] = [
-    {
-        id: 301,
-        name: 'BAR OS Premium Leather Hip Flask',
-        price: 1200,
-        category: 'Hip Flask Collection',
-        image_url: 'https://images.unsplash.com/photo-1597075687490-8f673c3c175d?auto=format&fit=crop&q=80',
-        is_souvenir: true
-    },
-    {
-        id: 302,
-        name: 'Engraved Crystal Shot Glass',
-        price: 500,
-        category: 'Shot Glass Vault',
-        image_url: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80',
-        is_souvenir: true
-    },
-    {
-        id: 303,
-        name: 'Glencairn Whiskey Tasting Glass',
-        price: 850,
-        category: 'Whiskey Glass Collection',
-        image_url: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&q=80',
-        is_souvenir: true
-    },
-    {
-        id: 304,
-        name: 'Tactical Stainless Bottle Opener',
-        price: 450,
-        category: 'Bottle Accessories',
-        image_url: 'https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?auto=format&fit=crop&q=80',
-        is_souvenir: true
-    }
-];
-
 export default function Recommendations() {
-  const [products, setProducts] = useState<RecommendedProduct[]>(DEFAULT_RECOMMENDED);
+  const [products, setProducts] = useState<RecommendedProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { cart, addToCart } = useCart();
 
   useEffect(() => {
     async function fetchRecommended() {
       if (!supabase) {
+        setProducts([]);
+        setError('Product recommendations are unavailable because the catalog is not connected.');
         setLoading(false);
         return;
       }
 
+      setLoading(true);
+      setError(null);
       try {
         // Smart Pairing Algorithm based on Cart Categories
         const cartCategories = cart.map(c => (c.category || '').toLowerCase());
@@ -85,13 +55,14 @@ export default function Recommendations() {
             query = query.or('is_souvenir.eq.true,is_snack.eq.true').limit(4);
         }
 
-        const { data, error } = await query.limit(4);
+        const { data, error: queryError } = await query.limit(4);
 
-        if (!error && data && data.length > 0) {
-            setProducts(data as unknown as RecommendedProduct[]);
-        }
+        if (queryError) throw queryError;
+        setProducts((data || []) as unknown as RecommendedProduct[]);
       } catch (err) {
         console.error("Recommendations query failed:", err);
+        setProducts([]);
+        setError('Unable to load recommendations from the product catalog.');
       } finally {
         setLoading(false);
       }
@@ -108,7 +79,13 @@ export default function Recommendations() {
     );
   }
 
-  if (products.length === 0) return null;
+  if (error) {
+    return <p role="status" className="mt-8 text-center text-sm text-slate-500">{error}</p>;
+  }
+
+  if (products.length === 0) {
+    return <p role="status" className="mt-8 text-center text-sm text-slate-500">No matching accessories are currently listed.</p>;
+  }
 
   return (
     <div className="mt-20 space-y-10">
@@ -129,7 +106,7 @@ export default function Recommendations() {
           <Card key={String(product.id)} className="group rounded-[2.5rem] bg-white border border-slate-100 shadow-sm hover:shadow-2xl hover:border-primary/20 transition-all overflow-hidden flex flex-col">
             <div className="block aspect-square bg-slate-50 relative overflow-hidden">
                 <Image
-                    src={normalizeImage(product.image_url)}
+                    src={product.image_url ? normalizeImage(product.image_url) : '/images/NoImage.jpg'}
                     alt={product.name}
                     fill
                     className="object-contain p-8 group-hover:scale-110 transition-transform duration-500"
@@ -145,15 +122,17 @@ export default function Recommendations() {
                 <p className="text-lg font-black text-primary">{formatPrice(product.price)}</p>
               </div>
               <Button
-                onClick={() => addToCart({
-                  id: Number(product.id) || Date.now(),
-                  name: product.name,
-                  price: product.price,
-                  base_price: product.price,
-                  image: normalizeImage(product.image_url),
-                  quantity: 1,
-                  category: product.category || 'Merch'
-                } as CartItem)}
+                onClick={() => {
+                  addToCart({
+                    id: Number(product.id),
+                    name: product.name,
+                    price: product.price,
+                    base_price: product.price,
+                    image: product.image_url ? normalizeImage(product.image_url) : '/images/NoImage.jpg',
+                    quantity: 1,
+                    category: product.category || 'Merch'
+                  } as CartItem);
+                }}
                 className="w-full h-12 rounded-2xl bg-slate-900 text-white font-black uppercase text-[9px] tracking-widest hover:bg-primary transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
               >
                 <ShoppingCart size={14} /> Add to Cart

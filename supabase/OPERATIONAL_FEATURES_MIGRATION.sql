@@ -36,6 +36,92 @@ CREATE TABLE IF NOT EXISTS public.audience_segments (
 ALTER TABLE public.audience_segments
     ADD COLUMN IF NOT EXISTS rules JSONB;
 
+CREATE TABLE IF NOT EXISTS public.notification_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    icon TEXT NOT NULL DEFAULT 'Bell',
+    style TEXT NOT NULL DEFAULT 'info',
+    duration INTEGER NOT NULL DEFAULT 7 CHECK (duration BETWEEN 1 AND 60),
+    priority TEXT NOT NULL DEFAULT 'NORMAL',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    cta_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.notifications_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    order_id BIGINT REFERENCES public.orders(id) ON DELETE SET NULL,
+    template_id UUID REFERENCES public.notification_templates(id) ON DELETE SET NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::JSONB,
+    status TEXT NOT NULL DEFAULT 'QUEUED',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.user_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    icon TEXT,
+    style TEXT,
+    action_url TEXT,
+    is_read BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+ALTER TABLE public.notification_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS notification_templates_read_active ON public.notification_templates;
+CREATE POLICY notification_templates_read_active ON public.notification_templates
+    FOR SELECT TO anon, authenticated USING (is_active);
+
+DROP POLICY IF EXISTS notifications_log_read_own ON public.notifications_log;
+CREATE POLICY notifications_log_read_own ON public.notifications_log
+    FOR SELECT TO authenticated USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS notifications_log_insert_own ON public.notifications_log;
+CREATE POLICY notifications_log_insert_own ON public.notifications_log
+    FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS user_notifications_read_own ON public.user_notifications;
+CREATE POLICY user_notifications_read_own ON public.user_notifications
+    FOR SELECT TO authenticated USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS user_notifications_insert_own ON public.user_notifications;
+CREATE POLICY user_notifications_insert_own ON public.user_notifications
+    FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS user_notifications_update_own ON public.user_notifications;
+CREATE POLICY user_notifications_update_own ON public.user_notifications
+    FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+GRANT SELECT ON public.notification_templates TO anon, authenticated;
+GRANT SELECT, INSERT ON public.notifications_log TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.user_notifications TO authenticated;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_publication_tables
+             WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'notifications_log'
+        ) THEN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications_log;
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_publication_tables
+             WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'user_notifications'
+        ) THEN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.user_notifications;
+        END IF;
+    END IF;
+END;
+$$;
+
 CREATE TABLE IF NOT EXISTS public.marketing_campaigns (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,

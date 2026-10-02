@@ -84,15 +84,14 @@ export default function VenueProfilePage() {
                         id: e.id,
                         title: e.title,
                         description: e.description || '',
-                        area_zone: e.area_zone || 'Nairobi',
-                        category: e.category?.label || 'General',
+                        area_zone: e.area_zone || 'Area not provided',
+                        category: e.category?.label || 'Uncategorized',
                         status: e.status,
                         trend_score: e.trend_score,
                         latitude: Number(e.latitude),
                         longitude: Number(e.longitude),
                         starts_at: e.start_at,
-                        media: e.media?.map((m) => ({ type: m.media_type as 'IMAGE' | 'VIDEO', url: m.url })) || [],
-                        distance: '1.2 km'
+                        media: e.media?.map((m) => ({ type: m.media_type as 'IMAGE' | 'VIDEO', url: m.url })) || []
                     })));
                 }
 
