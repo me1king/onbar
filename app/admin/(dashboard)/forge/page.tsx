@@ -26,12 +26,9 @@ interface ForgeProduct {
     id: number;
     name: string;
     brand: string;
-    category: string;
     price: number;
     image_url: string;
-    readiness_score: number;
     has_3d: boolean;
-    status: string;
     stock: number;
 }
 
@@ -44,28 +41,30 @@ export default function ProductForgeDashboard() {
     const [filterMode, setFilterMode] = React.useState<ForgeFilterMode>('all');
 
     const fetchData = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setProducts([]);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('products')
                 .select('*')
                 .order('name');
 
-            if (data) {
+            if (!error && data) {
                 setProducts(data.map(p => ({
                     id: p.id,
                     name: p.name,
-                    brand: p.brand || 'Unknown',
-                    category: p.category || 'Spirits',
+                    brand: p.brand || 'Brand unavailable',
                     price: p.price,
                     image_url: p.image_url,
                     stock: p.stock,
-                    // Simulated readiness score logic
-                    readiness_score: Math.floor(Math.random() * (98 - 65 + 1) + 65),
-                    has_3d: !!p.beverage_specs?.model_3d_url,
-                    status: p.status || 'Live'
+                    has_3d: !!p.beverage_specs?.model_3d_url
                 })));
+            } else {
+                setProducts([]);
             }
         } catch (err) {
             console.error(err);
@@ -84,8 +83,8 @@ export default function ProductForgeDashboard() {
 
         let matchesFilter = true;
         if (filterMode === '3d') matchesFilter = p.has_3d;
-        if (filterMode === 'gaps') matchesFilter = p.readiness_score < 80;
-        if (filterMode === 'readiness') matchesFilter = p.readiness_score >= 90;
+        if (filterMode === 'gaps') matchesFilter = !p.image_url || !p.has_3d;
+        if (filterMode === 'readiness') matchesFilter = Boolean(p.image_url) && p.has_3d;
 
         return matchesSearch && matchesFilter;
     });
@@ -120,10 +119,10 @@ export default function ProductForgeDashboard() {
             {/* CATALOG ANALYTICS */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 {[
-                    { id: 'all', label: 'Catalog Health', val: '94%', icon: ShieldCheck, color: 'emerald' },
+                    { id: 'all', label: 'Catalog Products', val: products.length, icon: ShieldCheck, color: 'emerald' },
                     { id: '3d', label: '3D Coverage', val: `${Math.round((products.filter(p => p.has_3d).length / products.length) * 100) || 0}%`, icon: Box, color: 'indigo' },
-                    { id: 'gaps', label: 'Media Gaps', val: products.filter(p => p.readiness_score < 80).length, icon: AlertTriangle, color: 'rose' },
-                    { id: 'readiness', label: 'Market Readiness', val: products.filter(p => p.readiness_score >= 90).length, icon: Zap, color: 'primary' },
+                    { id: 'gaps', label: 'Media Gaps', val: products.filter(p => !p.image_url || !p.has_3d).length, icon: AlertTriangle, color: 'rose' },
+                    { id: 'readiness', label: 'Complete Media', val: products.filter(p => Boolean(p.image_url) && p.has_3d).length, icon: Zap, color: 'primary' },
                 ].map(stat => (
                     <Card
                         key={stat.label}
@@ -171,17 +170,20 @@ export default function ProductForgeDashboard() {
                             <Loader2 className="h-10 w-10 text-primary animate-spin" />
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">Synchronizing Forge Hub...</p>
                         </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="col-span-full py-20 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            No product data available
+                        </div>
                     ) : filtered.map(item => (
                         <Card key={item.id} className="rounded-[3.5rem] bg-white border border-slate-100 shadow-sm hover:shadow-2xl transition-all group overflow-hidden flex flex-col h-full text-left">
                             {/* SCORE HEADER */}
                             <div className="px-8 pt-8 pb-4 flex justify-between items-start">
                                 <div className={cn(
                                     "px-4 py-1.5 rounded-full border text-[8px] font-black uppercase tracking-widest",
-                                    item.readiness_score >= 90 ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                                    item.readiness_score >= 75 ? "bg-primary/5 text-primary border-primary/10" :
+                                    item.image_url && item.has_3d ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
                                     "bg-rose-50 text-rose-600 border-rose-100"
                                 )}>
-                                    Forge Score: {item.readiness_score}
+                                    Media: {item.image_url && item.has_3d ? 'Complete' : 'Incomplete'}
                                 </div>
                                 {item.has_3d && <Box size={14} className="text-indigo-400 animate-pulse" />}
                             </div>
@@ -207,13 +209,13 @@ export default function ProductForgeDashboard() {
                                     </div>
                                 </div>
 
-                                {/* GAP ANALYSIS (Simulated) */}
+                                {/* GAP ANALYSIS */}
                                 <div className="space-y-3 bg-slate-50 p-6 rounded-[2rem] border border-slate-100/50">
                                     <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Readiness Protocol</p>
                                     <div className="space-y-2">
                                         <div className="flex items-center gap-2">
-                                            <ShieldCheck size={10} className={item.readiness_score > 80 ? "text-emerald-500" : "text-slate-300"} />
-                                            <span className="text-[8px] font-black uppercase text-slate-500">Visual Quality Certified</span>
+                                            {item.image_url ? <ShieldCheck size={10} className="text-emerald-500" /> : <AlertTriangle size={10} className="text-amber-500" />}
+                                            <span className="text-[8px] font-black uppercase text-slate-500">{item.image_url ? 'Product Image Available' : 'Product Image Missing'}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             {item.has_3d ? (
@@ -245,8 +247,8 @@ export default function ProductForgeDashboard() {
                     <Link href="/admin/audit" className="flex items-center gap-4 hover:bg-slate-50 p-2 rounded-xl transition-all">
                         <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                         <div>
-                            <p className="text-[8px] font-black uppercase text-emerald-600 tracking-widest leading-none">Global Status</p>
-                            <p className="text-[10px] font-black text-foreground uppercase mt-1">Operational</p>
+                            <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">Catalog Status</p>
+                            <p className="text-[10px] font-black text-foreground uppercase mt-1">Health unavailable</p>
                         </div>
                     </Link>
                     <div className="h-8 w-[1px] bg-slate-100" />

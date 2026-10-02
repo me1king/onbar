@@ -23,9 +23,9 @@ interface BuzzReach {
     buzz_id: string;
     title: string;
     venue: string;
-    impressions: number;
-    clicks: number;
-    ctr: number;
+    impressions: number | null;
+    clicks: number | null;
+    ctr: number | null;
     status: string;
 }
 
@@ -44,18 +44,22 @@ interface DBBuzzPost {
 }
 
 export default function BuzzCommandCenter() {
-    const [stats] = React.useState({
-        live: 38,
-        upcoming: 94,
-        campaigns: 17,
-        reach: 24821
+    const [stats, setStats] = React.useState<{ live: number | null; upcoming: number | null; campaigns: number | null }>({
+        live: null,
+        upcoming: null,
+        campaigns: null
     });
     const [campaigns, setCampaigns] = React.useState<BuzzReach[]>([]);
-    const [pendingBuzz, setPendingBuzz] = React.useState<PendingBuzz[]>([]);
+    const [pendingBuzz, setPendingBuzz] = React.useState<PendingBuzz[] | null>(null);
     const [loading, setLoading] = React.useState(true);
 
     const fetchAnalytics = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setLoading(false);
+            setCampaigns([]);
+            setPendingBuzz(null);
+            return;
+        }
         setLoading(true);
         try {
             // High-fidelity fetch for Buzz Funnel & Moderation
@@ -64,21 +68,31 @@ export default function BuzzCommandCenter() {
                 supabase.from('buzz_posts').select('*, venue:buzz_venues(name)').eq('status', 'SUBMITTED')
             ]);
 
-            if (postsRes.data) {
-                setCampaigns((postsRes.data as unknown as DBBuzzPost[]).map(b => ({
+            if (postsRes.data && !postsRes.error) {
+                const posts = postsRes.data as unknown as DBBuzzPost[];
+                setStats({
+                    live: posts.filter(post => post.status === 'LIVE').length,
+                    upcoming: posts.filter(post => post.status === 'UPCOMING').length,
+                    campaigns: posts.length
+                });
+                setCampaigns(posts.map(b => ({
                     buzz_id: b.id,
                     title: b.title,
-                    venue: b.venue?.name || 'Premium Venue',
-                    impressions: Math.floor(Math.random() * 10000 + 5000),
-                    clicks: Math.floor(Math.random() * 1000 + 200),
-                    ctr: 8.2,
+                    venue: b.venue?.name || 'Venue unavailable',
+                    impressions: null,
+                    clicks: null,
+                    ctr: null,
                     status: b.status
                 })));
+            } else {
+                setStats({ live: null, upcoming: null, campaigns: null });
+                setCampaigns([]);
             }
 
-            if (pendingRes.data) setPendingBuzz(pendingRes.data as unknown as PendingBuzz[]);
+            setPendingBuzz(pendingRes.error ? null : (pendingRes.data as unknown as PendingBuzz[] | null) || []);
         } catch (err) {
             console.error("Command Node Failure:", err);
+            setPendingBuzz(null);
         } finally {
             setLoading(false);
         }
@@ -123,10 +137,10 @@ export default function BuzzCommandCenter() {
             {/* REAL-TIME RADAR STATS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                 {[
-                    { label: 'Live Buzz', val: stats.live, icon: Flame, color: 'rose' },
-                    { label: 'Upcoming', val: stats.upcoming, icon: Clock, color: 'indigo' },
-                    { label: 'Active Campaigns', val: stats.campaigns, icon: Zap, color: 'primary' },
-                    { label: 'Today\'s Reach', val: stats.reach.toLocaleString(), icon: Globe, color: 'emerald' },
+                    { label: 'Live Buzz', val: stats.live ?? 'Unavailable', icon: Flame, color: 'rose' },
+                    { label: 'Upcoming', val: stats.upcoming ?? 'Unavailable', icon: Clock, color: 'indigo' },
+                    { label: 'Total Buzz Posts', val: stats.campaigns ?? 'Unavailable', icon: Zap, color: 'primary' },
+                    { label: 'Today\'s Reach', val: 'Unavailable', icon: Globe, color: 'emerald' },
                 ].map(stat => (
                     <Card key={stat.label} className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm group hover:shadow-2xl transition-all">
                         <div className={cn(
@@ -177,12 +191,12 @@ export default function BuzzCommandCenter() {
                                                     <span className="text-[9px] font-bold text-primary uppercase tracking-widest mt-1.5">{camp.venue}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-8 text-sm font-black text-slate-500 tabular-nums">{camp.impressions.toLocaleString()}</td>
-                                            <td className="px-8 py-8 text-sm font-black text-slate-500 tabular-nums">{camp.clicks.toLocaleString()}</td>
+                                            <td className="px-8 py-8 text-sm font-black text-slate-500 tabular-nums">{camp.impressions?.toLocaleString() ?? 'Unavailable'}</td>
+                                            <td className="px-8 py-8 text-sm font-black text-slate-500 tabular-nums">{camp.clicks?.toLocaleString() ?? 'Unavailable'}</td>
                                             <td className="px-8 py-8">
-                                                <div className="flex items-center gap-2 text-emerald-600 font-black">
-                                                    <span className="text-sm">{camp.ctr}%</span>
-                                                    <ArrowUpRight size={12} />
+                                                <div className={`flex items-center gap-2 font-black ${camp.ctr === null ? 'text-slate-400' : 'text-emerald-600'}`}>
+                                                    <span className="text-sm">{camp.ctr === null ? 'Unavailable' : `${camp.ctr}%`}</span>
+                                                    {camp.ctr !== null && <ArrowUpRight size={12} />}
                                                 </div>
                                             </td>
                                             <td className="px-8 py-8">
@@ -212,7 +226,12 @@ export default function BuzzCommandCenter() {
                 <aside className="lg:col-span-4 space-y-8">
                     <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground px-6 italic">Moderation Node</h2>
                     <div className="space-y-4">
-                        {pendingBuzz.length === 0 ? (
+                        {pendingBuzz === null ? (
+                            <div className="p-12 rounded-[3.5rem] bg-slate-50 border border-slate-100 text-center text-slate-400">
+                                <ShieldCheck size={40} className="mx-auto mb-4" />
+                                <p className="text-[10px] font-black uppercase tracking-widest">Queue data unavailable</p>
+                            </div>
+                        ) : pendingBuzz.length === 0 ? (
                             <div className="p-12 rounded-[3.5rem] bg-slate-50 border border-slate-100 text-center opacity-30 italic">
                                 <ShieldCheck size={40} className="mx-auto mb-4" />
                                 <p className="text-[10px] font-black uppercase tracking-widest">Queue Clear</p>

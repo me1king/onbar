@@ -69,38 +69,18 @@ export default function AdminAffiliateCommandCenter() {
     const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const fetchAffiliateNetwork = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setLoading(false);
+            setAffiliates([]);
+            return;
+        }
         setLoading(true);
         try {
             const { data, error } = await supabase
                 .from('affiliate_performance_summary')
                 .select('*');
 
-            if (error) {
-                const { data: profiles } = await supabase
-                    .from('profiles')
-                    .select('id, full_name, email, referral_code')
-                    .not('referral_code', 'is', null);
-
-                if (profiles && profiles.length > 0) {
-                    const fallbackData: AffiliateSummary[] = profiles.map(p => ({
-                        affiliate_id: String(p.id),
-                        full_name: p.full_name || 'Creator Member',
-                        email: p.email || 'partner@onlinebar.co.ke',
-                        referral_code: p.referral_code || 'REF-001',
-                        affiliate_tier: 'Silver Partner',
-                        status: 'Active',
-                        clicks: 0,
-                        conversions: 0,
-                        total_revenue: 0,
-                        available_earnings: 0,
-                        pending_earnings: 0,
-                        last_conversion_at: null
-                    }));
-                    setAffiliates(fallbackData);
-                    return;
-                }
-            }
+            if (error) throw error;
             setAffiliates(data || []);
         } catch {
             setAffiliates([]);
@@ -246,8 +226,8 @@ export default function AdminAffiliateCommandCenter() {
                         <Card className="lg:col-span-8 rounded-[3.5rem] border border-slate-100 p-10 bg-white shadow-sm flex flex-col min-h-[500px]">
                             <div className="flex justify-between items-center mb-12">
                                 <div className="text-left">
-                                    <h2 className="text-2xl font-black text-foreground uppercase tracking-tighter leading-none">Network Velocity</h2>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Historical Revenue Stream</p>
+                                    <h2 className="text-2xl font-black text-foreground uppercase tracking-tighter leading-none">Partner Revenue</h2>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Current totals from affiliate summary</p>
                                 </div>
                             </div>
                             <div className="flex-1 w-full min-h-[350px]">
@@ -339,7 +319,13 @@ export default function AdminAffiliateCommandCenter() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
-                                    {filteredAffiliates.map(aff => (
+                                    {filteredAffiliates.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={6} className="px-10 py-12 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                                No affiliate performance records available
+                                            </td>
+                                        </tr>
+                                    ) : filteredAffiliates.map(aff => (
                                         <tr key={aff.affiliate_id} className="hover:bg-slate-50/50 transition-all group">
                                             <td className="px-10 py-8">
                                                 <div className="flex items-center gap-4">
@@ -491,12 +477,12 @@ export default function AdminAffiliateCommandCenter() {
                                     <div className="p-6 rounded-3xl border border-slate-100 bg-white space-y-6 text-left">
                                         <div className="space-y-1 text-left">
                                             <p className="text-[10px] font-black uppercase text-foreground">Commission Override</p>
-                                            <p className="text-[8px] font-medium text-slate-400 italic leading-relaxed">Default system rate is 5%.</p>
+                                            <p className="text-[8px] font-medium text-slate-400 italic leading-relaxed">Commission settings are unavailable because no persisted rate is configured.</p>
                                         </div>
                                         <div className="flex items-center gap-4">
-                                            <Input defaultValue="10" className="h-12 w-24 rounded-xl bg-slate-50 border-slate-100 font-black text-xl text-primary text-center" />
+                                            <Input placeholder="Unavailable" disabled className="h-12 w-32 rounded-xl bg-slate-50 border-slate-100 font-black text-sm text-primary text-center" />
                                             <span className="font-black text-slate-300">%</span>
-                                            <Button size="sm" className="h-10 rounded-xl bg-slate-900 text-white font-black uppercase text-[8px] px-4">Set</Button>
+                                            <Button size="sm" disabled className="h-10 rounded-xl bg-slate-900 text-white font-black uppercase text-[8px] px-4">Unavailable</Button>
                                         </div>
                                     </div>
                                     <div className="p-6 rounded-3xl border border-slate-100 bg-white space-y-6 text-left">

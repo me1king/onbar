@@ -43,6 +43,7 @@ export default function BeverageCommandAdmin() {
     const { email } = useAdmin();
     const [beverages, setBeverages] = React.useState<BeverageNode[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState<string | null>(null);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
@@ -53,79 +54,39 @@ export default function BeverageCommandAdmin() {
         brand: 'BAR OS Originals',
         category: 'Soft Drinks',
         size_label: '500ml',
-        price: '120',
-        stock: '100',
-        temperature: '4.0',
+        price: '',
+        stock: '0',
+        temperature: '',
         image_url: '',
         pairings: 'Smocha Deluxe, Chips Masala, Chicken Wings'
     });
 
     const fetchBeverages = React.useCallback(async () => {
         if (!supabase) {
+            setLoadError('Supabase is not configured. Inventory is unavailable.');
             setLoading(false);
             return;
         }
         setLoading(true);
+        setLoadError(null);
         try {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('products')
                 .select('*')
                 .order('created_at', { ascending: false });
 
-            if (data && data.length > 0) {
-                const alcoholicCategories = ['whiskey', 'whisky', 'wine', 'spirits', 'champagne', 'vodka', 'gin', 'rum', 'tequila', 'cognac', 'liquor', 'cellar', 'snacks'];
-                const nonAlcoholicBevs = (data as unknown as BeverageNode[]).filter(b => {
-                    const cat = (b.category || '').toLowerCase();
-                    const subCat = (b.sub_category || '').toLowerCase();
-                    return !alcoholicCategories.some(a => cat.includes(a) || subCat.includes(a));
-                });
-                setBeverages(nonAlcoholicBevs);
-            } else {
-                // Initial Default Beverage Nodes
-                setBeverages([
-                    {
-                        id: 401,
-                        name: 'Coca-Cola Original',
-                        brand: 'Coca-Cola',
-                        category: 'Soft Drinks',
-                        size_label: '500ml',
-                        price: 120,
-                        stock: 85,
-                        is_ice_cold: true,
-                        temperature_celsius: 4.0,
-                        is_available_now: true,
-                        image_url: 'https://images.unsplash.com/photo-1554866585-cd94860890b7?auto=format&fit=crop&q=80'
-                    },
-                    {
-                        id: 402,
-                        name: 'Red Bull Energy Drink',
-                        brand: 'Red Bull',
-                        category: 'Energy',
-                        size_label: '250ml',
-                        price: 280,
-                        stock: 40,
-                        is_ice_cold: true,
-                        temperature_celsius: 3.5,
-                        is_available_now: true,
-                        image_url: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&q=80'
-                    },
-                    {
-                        id: 403,
-                        name: 'Minute Maid Tropical Juice',
-                        brand: 'Minute Maid',
-                        category: 'Juices',
-                        size_label: '1L',
-                        price: 250,
-                        stock: 30,
-                        is_ice_cold: true,
-                        temperature_celsius: 4.0,
-                        is_available_now: true,
-                        image_url: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?auto=format&fit=crop&q=80'
-                    }
-                ]);
-            }
+            if (error) throw error;
+            const alcoholicCategories = ['whiskey', 'whisky', 'wine', 'spirits', 'champagne', 'vodka', 'gin', 'rum', 'tequila', 'cognac', 'liquor', 'cellar', 'snacks'];
+            const nonAlcoholicBevs = ((data || []) as BeverageNode[]).filter(b => {
+                const cat = (b.category || '').toLowerCase();
+                const subCat = (b.sub_category || '').toLowerCase();
+                return !alcoholicCategories.some(a => cat.includes(a) || subCat.includes(a));
+            });
+            setBeverages(nonAlcoholicBevs);
         } catch (err) {
             console.error('Error loading beverages:', err);
+            setBeverages([]);
+            setLoadError(err instanceof Error ? err.message : 'Unable to load beverage inventory.');
         } finally {
             setLoading(false);
         }
@@ -161,15 +122,15 @@ export default function BeverageCommandAdmin() {
                 category: form.category,
                 sub_category: form.category,
                 price: Number(form.price),
-                stock: Number(form.stock) || 50,
+                stock: Number(form.stock),
                 size_label: form.size_label,
-                is_ice_cold: true,
-                temperature_celsius: Number(form.temperature) || 4.0,
+                is_ice_cold: Boolean(form.temperature),
+                temperature_celsius: form.temperature ? Number(form.temperature) : null,
                 is_available_now: true,
                 beverage_specs: {
                     pairings: pairings
                 },
-                image_url: form.image_url || 'https://images.unsplash.com/photo-1554866585-cd94860890b7?auto=format&fit=crop&q=80'
+                image_url: form.image_url.trim() || null
             };
 
             const { data, error } = await supabase.from('products').insert([payload]).select();
@@ -182,9 +143,9 @@ export default function BeverageCommandAdmin() {
                 brand: 'BAR OS Originals',
                 category: 'Soft Drinks',
                 size_label: '500ml',
-                price: '120',
-                stock: '100',
-                temperature: '4.0',
+                price: '',
+                stock: '0',
+                temperature: '',
                 image_url: '',
                 pairings: 'Smocha Deluxe, Chips Masala'
             });
@@ -250,24 +211,25 @@ export default function BeverageCommandAdmin() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
                     <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Beverage Nodes</p>
-                    <p className="text-3xl font-black text-foreground">{beverages.length || 248}</p>
+                    <p className="text-3xl font-black text-foreground">{beverages.length}</p>
                 </Card>
                 <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
-                    <p className="text-[9px] font-black uppercase text-cyan-600 tracking-widest">Chill Status (4°C)</p>
-                    <p className="text-3xl font-black text-cyan-600">Active</p>
+                    <p className="text-[9px] font-black uppercase text-cyan-600 tracking-widest">Chilled Products</p>
+                    <p className="text-3xl font-black text-cyan-600">{beverages.filter(beverage => beverage.is_ice_cold).length}</p>
                 </Card>
                 <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
-                    <p className="text-[9px] font-black uppercase text-amber-600 tracking-widest">In Stock Rate</p>
-                    <p className="text-3xl font-black text-amber-600">98%</p>
+                    <p className="text-[9px] font-black uppercase text-amber-600 tracking-widest">In-stock Products</p>
+                    <p className="text-3xl font-black text-amber-600">{beverages.filter(beverage => Number(beverage.stock) > 0).length}</p>
                 </Card>
                 <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
-                    <p className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Storefront Status</p>
-                    <p className="text-xl font-black text-emerald-600 uppercase italic mt-1">Live & Syncing</p>
+                    <p className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Available Now</p>
+                    <p className="text-xl font-black text-emerald-600 uppercase italic mt-1">{beverages.filter(beverage => beverage.is_available_now !== false).length}</p>
                 </Card>
             </div>
 
             {/* SEARCH & INVENTORY TABLE */}
             <Card className="rounded-[3rem] bg-white border border-slate-100 shadow-sm overflow-hidden">
+                {loadError && <p role="alert" className="m-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{loadError}</p>}
                 <div className="p-8 border-b border-slate-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                         <Coffee className="h-6 w-6 text-primary" />
@@ -289,7 +251,7 @@ export default function BeverageCommandAdmin() {
                 ) : filteredBeverages.length === 0 ? (
                     <div className="py-24 text-center text-slate-300">
                         <Layers size={48} className="mx-auto mb-4 opacity-20" />
-                        <p className="text-[10px] font-black uppercase tracking-widest italic">&quot;No beverage nodes match search. Upload a new beverage to publish.&quot;</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest italic">No beverage products match this search.</p>
                     </div>
                 ) : (
                     <div className="divide-y divide-slate-50">

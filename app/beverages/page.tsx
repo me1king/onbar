@@ -38,6 +38,8 @@ const CATEGORIES = ['All Drinks', 'Soft Drinks', 'Energy', 'Water', 'Juices', 'C
 export default function BeverageCommandPage() {
     const [beverages, setBeverages] = useState<BeverageItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [addError, setAddError] = useState<string | null>(null);
     const [activeCat, setActiveCat] = useState('All Drinks');
     const [addedId, setAddedId] = useState<string | number | null>(null);
     const { addToCart } = useCart();
@@ -45,7 +47,9 @@ export default function BeverageCommandPage() {
     useEffect(() => {
         async function fetchBeverages() {
             setLoading(true);
+            setError(null);
             if (!supabase) {
+                setError('Product data is unavailable.');
                 setLoading(false);
                 return;
             }
@@ -56,7 +60,10 @@ export default function BeverageCommandPage() {
                     .select('*')
                     .order('created_at', { ascending: false });
 
-                if (!error && data && data.length > 0) {
+                if (error) {
+                    throw error;
+                }
+                if (data) {
                     const alcoholicCategories = ['whiskey', 'whisky', 'wine', 'spirits', 'champagne', 'vodka', 'gin', 'rum', 'tequila', 'cognac', 'liquor', 'cellar', 'snacks'];
                     let items = (data as unknown as BeverageItem[]).filter(i => {
                         const cat = (i.category || '').toLowerCase();
@@ -74,57 +81,11 @@ export default function BeverageCommandPage() {
                         });
                     }
                     setBeverages(items);
-                } else {
-                    // Fallback dataset if database returns empty
-                    setBeverages([
-                        {
-                            id: 101,
-                            name: 'Coca-Cola Original',
-                            brand: 'Coca-Cola',
-                            category: 'Soft Drinks',
-                            price: 120,
-                            image_url: 'https://images.unsplash.com/photo-1554866585-cd94860890b7?auto=format&fit=crop&q=80',
-                            size_label: '500ml',
-                            is_ice_cold: true,
-                            stock: 45
-                        },
-                        {
-                            id: 102,
-                            name: 'Red Bull Energy',
-                            brand: 'Red Bull',
-                            category: 'Energy',
-                            price: 280,
-                            image_url: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&q=80',
-                            size_label: '250ml',
-                            is_ice_cold: true,
-                            stock: 30
-                        },
-                        {
-                            id: 103,
-                            name: 'Minute Maid Juice',
-                            brand: 'Minute Maid',
-                            category: 'Juices',
-                            price: 250,
-                            image_url: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?auto=format&fit=crop&q=80',
-                            size_label: '1L',
-                            is_ice_cold: true,
-                            stock: 18
-                        },
-                        {
-                            id: 104,
-                            name: 'Sprite Ice Chilled',
-                            brand: 'Coca-Cola',
-                            category: 'Soft Drinks',
-                            price: 120,
-                            image_url: 'https://images.unsplash.com/photo-1625772299848-39176a82107c?auto=format&fit=crop&q=80',
-                            size_label: '500ml',
-                            is_ice_cold: true,
-                            stock: 50
-                        }
-                    ]);
                 }
             } catch (err) {
                 console.error('Error loading beverages:', err);
+                setBeverages([]);
+                setError('Could not load beverages. Please try again.');
             } finally {
                 setLoading(false);
             }
@@ -146,9 +107,15 @@ export default function BeverageCommandPage() {
     }, [activeCat]);
 
     const handleAddBev = (item: BeverageItem) => {
+        const productId = Number(item.id);
+        if (!Number.isSafeInteger(productId) || productId <= 0) {
+            setAddError('This product has an invalid catalogue ID and cannot be added to your bag.');
+            return;
+        }
+
         const img = item.image_url || item.image || '';
         addToCart({
-            id: Number(item.id) || Date.now(),
+            id: productId,
             name: item.name,
             price: item.price,
             base_price: item.price,
@@ -156,6 +123,7 @@ export default function BeverageCommandPage() {
             quantity: 1,
             category: item.category || 'Beverages'
         });
+        setAddError(null);
         setAddedId(item.id);
         setTimeout(() => setAddedId(null), 2000);
     };
@@ -171,7 +139,7 @@ export default function BeverageCommandPage() {
 
                     <div className="max-w-2xl space-y-3">
                         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[9px] font-black uppercase tracking-[0.3em]">
-                            <Snowflake size={14} className="animate-spin text-amber-500" /> Chill Meter™ Active (4°C)
+                            <Snowflake size={14} className="text-amber-500" /> Beverages
                         </div>
                         <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tighter leading-none italic text-foreground">
                             Beverage <span className="text-primary italic">Command.</span>
@@ -207,15 +175,24 @@ export default function BeverageCommandPage() {
 
             {/* FLOATING CARDS GRID */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                {addError && (
+                    <p role="alert" className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
+                        {addError}
+                    </p>
+                )}
                 {loading ? (
                     <div className="py-32 flex flex-col items-center justify-center gap-4">
                         <Loader2 className="animate-spin text-primary" size={48} />
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Scanning Chilled Nodes...</p>
                     </div>
+                ) : error ? (
+                    <div role="alert" className="py-32 text-center text-rose-600">
+                        <p className="text-sm font-black uppercase tracking-widest">{error}</p>
+                    </div>
                 ) : beverages.length === 0 ? (
                     <div className="py-32 text-center text-slate-400 space-y-4">
                         <Coffee size={56} className="mx-auto opacity-30" />
-                        <p className="text-sm font-black uppercase tracking-widest italic">&quot;No beverages matched this filter. Select All Drinks.&quot;</p>
+                        <p className="text-sm font-black uppercase tracking-widest italic">{activeCat === 'All Drinks' ? 'No beverages are currently available.' : 'No beverages matched this filter. Select All Drinks.'}</p>
                         <Button onClick={() => setActiveCat('All Drinks')} className="rounded-xl bg-primary text-white font-black uppercase text-xs px-6 py-3">
                             Show All Drinks
                         </Button>
@@ -232,9 +209,6 @@ export default function BeverageCommandPage() {
                                             <div className="bg-primary text-white px-4 py-1.5 rounded-full text-xs font-black tracking-tight shadow-md shadow-primary/20">
                                                 {formatPrice(item.price)}
                                             </div>
-                                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-700 text-[8px] font-black uppercase">
-                                                <Snowflake size={10} /> Ice Cold (4°C)
-                                            </div>
                                         </div>
 
                                         {/* Product Image Stage */}
@@ -246,17 +220,8 @@ export default function BeverageCommandPage() {
                                         <div className="space-y-1">
                                             <h3 className="text-lg font-black text-foreground uppercase tracking-tight leading-tight line-clamp-2">{item.name}</h3>
                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                                {item.category || 'Soft Drink'} &bull; {item.size_label || '500ml'}
+                                                {[item.category, item.size_label].filter(Boolean).join(' • ')}
                                             </p>
-                                        </div>
-
-                                        {/* Stock Indicator */}
-                                        <div className="flex items-center gap-2">
-                                            <div className="flex gap-0.5">
-                                                <span className="h-2 w-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                                                <span className="h-2 w-1.5 bg-emerald-500 rounded-full" />
-                                            </div>
-                                            <span className="text-[9px] font-black uppercase text-emerald-600 tracking-wider">Many in stock</span>
                                         </div>
                                     </div>
 

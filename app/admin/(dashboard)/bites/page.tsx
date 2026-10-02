@@ -11,11 +11,8 @@ import {
     Plus,
     Loader2,
     Trash2,
-    Power,
     X,
     CheckCircle2,
-    Activity,
-    AlertTriangle,
     Truck
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -29,18 +26,17 @@ interface BiteProduct {
     id: number | string;
     name: string;
     price: number;
-    stock: number;
-    prep_time: number;
-    is_available_now: boolean;
+    stock: number | null;
+    status: string;
     image_url: string;
     category: string;
     description?: string;
+    pairing_suggestions?: string[];
 }
 
 interface OrderTimelineItem {
     id: string;
     items: string;
-    stage: 'Prep' | 'Packing' | 'Delivered';
     statusText: string;
     timeLabel: string;
     badgeColor: string;
@@ -50,75 +46,77 @@ export default function BiteCommandCenter() {
     const [bites, setBites] = React.useState<BiteProduct[]>([]);
     const [timeline, setTimeline] = React.useState<OrderTimelineItem[]>([]);
     const [loading, setLoading] = React.useState(true);
-    const [isGlobalActive, setIsGlobalActive] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
-    const [commandPulseCount, setCommandPulseCount] = React.useState(0);
 
     // New Food Item Form State
     const [newFood, setNewFood] = React.useState({
         name: '',
-        category: 'Street Bites',
+        category: '',
         price: '',
-        prep_time: '15',
+        stock: '',
         image_url: '',
         description: '',
-        drink_pairings: 'Amarula, Coca-Cola, Tusker'
+        pairing_suggestions: ''
     });
 
     const [stats, setStats] = React.useState({
-        cooking: 7,
-        avgPrep: 11,
-        dispatchReady: 4,
-        kitchenLoad: 'Stable'
+        cooking: 0,
+        avgPrep: null as number | null,
+        dispatchReady: 0,
+        kitchenLoad: 'Unavailable'
     });
 
     const fetchBites = React.useCallback(async () => {
         if (!supabase) {
+            setError('Supabase is not configured. Food and order data are unavailable.');
+            setBites([]);
+            setTimeline([]);
             setLoading(false);
             return;
         }
         setLoading(true);
+        setError(null);
         try {
-            const { data } = await supabase
+            const { data, error: productsError } = await supabase
                 .from('products')
                 .select('*')
                 .or('is_bite.eq.true,is_snack.eq.true')
                 .order('name');
 
-            if (data && data.length > 0) {
-                setBites(data as BiteProduct[]);
-            }
+            if (productsError) throw productsError;
+            setBites((data || []) as BiteProduct[]);
 
-            const { data: ordData } = await supabase
+            const { data: ordData, error: ordersError } = await supabase
                 .from('orders')
                 .select('id, total_price, status, created_at')
                 .order('created_at', { ascending: false })
-                .limit(5);
+                .limit(50);
+            if (ordersError) throw ordersError;
 
-            if (ordData && ordData.length > 0) {
-                const liveTimelineItems: OrderTimelineItem[] = ordData.map((ord) => ({
+            const orderRecords = ordData || [];
+            setTimeline(orderRecords.slice(0, 5).map(ord => {
+                const status = String(ord.status || 'Unknown');
+                return {
                     id: `#${ord.id}`,
-                    items: `Order #${ord.id} - ${ord.status || 'Active'}`,
-                    stage: ord.status === 'PREPARING' ? 'Prep' : ord.status === 'PACKED' ? 'Packing' : 'Delivered',
-                    statusText: `Status: ${ord.status || 'Received'} • Value: KSh ${ord.total_price || 1200}`,
-                    timeLabel: new Date(ord.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    badgeColor: ord.status === 'PREPARING' ? 'bg-amber-500 text-white' : ord.status === 'PACKED' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'
-                }));
-                setTimeline(liveTimelineItems);
-            }
-
-            const { data: metrics } = await supabase.from('kitchen_load_metrics').select('*').single();
-            if (metrics) {
-                setStats(s => ({
-                    ...s,
-                    cooking: metrics.active_orders || 7,
-                    avgPrep: Math.round(metrics.avg_prep_min) || 11,
-                    kitchenLoad: metrics.load_status || 'Stable'
-                }));
-            }
+                    items: `Order #${ord.id}`,
+                    statusText: `Status: ${status} • Value: ${ord.total_price == null ? 'Not recorded' : formatPrice(Number(ord.total_price))}`,
+                    timeLabel: ord.created_at ? new Date(ord.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Time not recorded',
+                    badgeColor: status.toUpperCase() === 'PREPARING' ? 'bg-amber-500 text-white' : status.toUpperCase() === 'PACKED' ? 'bg-indigo-500 text-white' : 'bg-slate-500 text-white'
+                };
+            }));
+            setStats({
+                cooking: orderRecords.filter(order => String(order.status).toUpperCase() === 'PREPARING').length,
+                avgPrep: null,
+                dispatchReady: orderRecords.filter(order => String(order.status).toUpperCase() === 'PACKED').length,
+                kitchenLoad: 'Unavailable'
+            });
         } catch (err) {
             console.error("Bite Link Failure:", err);
+            setBites([]);
+            setTimeline([]);
+            setError(err instanceof Error ? err.message : 'Unable to load food and order data.');
         } finally {
             setLoading(false);
         }
@@ -141,74 +139,78 @@ export default function BiteCommandCenter() {
         }
     }, [fetchBites]);
 
-    // Live Command Pulse Timer (5s interval)
-    React.useEffect(() => {
-        const timer = setInterval(() => {
-            setCommandPulseCount(prev => prev + 1);
-        }, 5000);
-        return () => clearInterval(timer);
-    }, []);
-
     const toggleAvailability = async (id: number | string, current: boolean) => {
         if (!supabase) return;
-        const { error } = await supabase.from('products').update({ is_available_now: !current }).eq('id', id);
-        if (!error) {
-            setBites(bites.map(b => b.id === id ? { ...b, is_available_now: !current } : b));
+        const status = current ? 'Draft' : 'Live';
+        const { error: updateError } = await supabase.from('products').update({ status }).eq('id', id);
+        if (updateError) {
+            alert(`Unable to update product status: ${updateError.message}`);
+        } else {
+            setBites(bites.map(b => b.id === id ? { ...b, status } : b));
         }
     };
 
     const handleDelete = async (id: number | string) => {
         if (!supabase) return;
         if (!confirm('Are you sure you want to remove this food item from the menu?')) return;
-        const { error } = await supabase.from('products').delete().eq('id', id);
-        if (!error) {
+        const { error: deleteError } = await supabase.from('products').delete().eq('id', id);
+        if (deleteError) {
+            alert(`Unable to remove food item: ${deleteError.message}`);
+        } else {
             setBites(bites.filter(b => b.id !== id));
         }
     };
 
     const handleCreateBite = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newFood.name || !newFood.price) {
-            alert('Please provide food name and price');
+        if (!newFood.name.trim() || !newFood.category || !newFood.price || !newFood.stock) {
+            alert('Please provide a name, category, price, and stock quantity.');
+            return;
+        }
+        if (!supabase) {
+            alert('Supabase is not configured. The food item was not saved.');
             return;
         }
 
         setIsSubmitting(true);
-        const pairings = newFood.drink_pairings.split(',').map(s => s.trim()).filter(Boolean);
+        const pairings = newFood.pairing_suggestions.split(',').map(s => s.trim()).filter(Boolean);
 
         const payload = {
-            name: newFood.name,
+            name: newFood.name.trim(),
             category: newFood.category,
             price: Number(newFood.price),
-            prep_time: Number(newFood.prep_time) || 15,
-            image_url: newFood.image_url || 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&q=80',
-            description: newFood.description,
-            drink_pairings: pairings,
+            stock: Number(newFood.stock),
+            image_url: newFood.image_url.trim() || null,
+            description: newFood.description.trim() || null,
+            pairing_suggestions: pairings,
             is_snack: true,
             is_bite: true,
-            is_available_now: true,
-            stock: 50
+            status: 'Live'
         };
 
-        if (supabase) {
-            const { data, error } = await supabase.from('products').insert([payload]).select();
-            if (error) {
-                alert(`Error adding food item: ${error.message}`);
+        try {
+            const { data, error: insertError } = await supabase.from('products').insert([payload]).select().single();
+            if (insertError) {
+                alert(`Error adding food item: ${insertError.message}`);
             } else if (data) {
-                setBites([data[0] as BiteProduct, ...bites]);
+                setBites([data as BiteProduct, ...bites]);
                 setIsAddModalOpen(false);
                 setNewFood({
                     name: '',
-                    category: 'Street Bites',
+                    category: '',
                     price: '',
-                    prep_time: '15',
+                    stock: '',
                     image_url: '',
                     description: '',
-                    drink_pairings: 'Amarula, Coca-Cola, Tusker'
+                    pairing_suggestions: ''
                 });
             }
+        } catch (insertError) {
+            console.error('Unable to add food item:', insertError);
+            alert('Unable to add food item because the request failed. Please try again.');
+        } finally {
+            setIsSubmitting(false);
         }
-        setIsSubmitting(false);
     };
 
     return (
@@ -224,29 +226,16 @@ export default function BiteCommandCenter() {
                 <div className="space-y-3">
                     <div className="flex items-center gap-3">
                         <Utensils className="h-4 w-4 text-primary" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary italic">Live Kitchen Operations Center</span>
-                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 text-[8px] font-black uppercase tracking-widest">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" /> ONLINE
-                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary italic">Food Menu Management</span>
                     </div>
                     <h1 className="text-4xl lg:text-6xl font-black text-foreground uppercase tracking-tighter leading-none italic">
                         Bite <span className="text-primary italic">Command.</span>
                     </h1>
                     <p className="text-muted-foreground text-sm font-medium italic">
-                        Prepare &bull; Pack &bull; Dispatch &bull; Real-time food velocity & drink pairings.
+                        Manage food products, availability, pricing, and stock.
                     </p>
                 </div>
                 <div className="flex gap-4 shrink-0">
-                    <Button
-                        variant={isGlobalActive ? 'outline' : 'default'}
-                        onClick={() => setIsGlobalActive(!isGlobalActive)}
-                        className={cn(
-                            "rounded-2xl h-14 px-8 font-black uppercase text-[10px] tracking-widest transition-all shadow-md",
-                            isGlobalActive ? "border-emerald-200 text-emerald-700 bg-emerald-50" : "bg-rose-500 text-white shadow-xl shadow-rose-200"
-                        )}
-                    >
-                        <Power size={16} className="mr-3" /> {isGlobalActive ? 'Kitchen Live' : 'Kitchen Offline'}
-                    </Button>
                     <Button
                         onClick={() => setIsAddModalOpen(true)}
                         className="rounded-2xl h-14 px-10 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
@@ -259,10 +248,10 @@ export default function BiteCommandCenter() {
             {/* LIVE STATS CARDS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 relative z-10">
                 {[
-                    { label: 'Cooking Now', val: `${stats.cooking} Orders`, sub: '+2 in last 5 min', icon: Flame, color: 'rose' },
-                    { label: 'Average Prep Time', val: `${stats.avgPrep} min`, sub: 'Target: 15 min', icon: Clock, color: 'indigo' },
-                    { label: 'Dispatch Ready', val: `${stats.dispatchReady} Orders`, sub: 'Waiting for rider', icon: Truck, color: 'amber' },
-                    { label: 'Kitchen Load', val: stats.kitchenLoad, sub: 'Green Zone', icon: Zap, color: 'emerald' },
+                    { label: 'Preparing (Latest 50)', val: `${stats.cooking} Orders`, sub: 'Based on recorded order statuses', icon: Flame, color: 'rose' },
+                    { label: 'Average Prep Time', val: stats.avgPrep == null ? 'Unavailable' : `${stats.avgPrep} min`, sub: 'Preparation timing is not recorded', icon: Clock, color: 'indigo' },
+                    { label: 'Packed (Latest 50)', val: `${stats.dispatchReady} Orders`, sub: 'Based on recorded order statuses', icon: Truck, color: 'amber' },
+                    { label: 'Kitchen Load', val: stats.kitchenLoad, sub: 'No station capacity data recorded', icon: Zap, color: 'emerald' },
                 ].map(stat => (
                     <Card key={stat.label} className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
                         <div className={cn(
@@ -281,25 +270,19 @@ export default function BiteCommandCenter() {
                 ))}
             </div>
 
-            {/* LIVE ORDER TIMELINE & KITCHEN HEAT MAP SECTION */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-10">
-                {/* LIVE ORDER TIMELINE (2 COLS) */}
-                <Card className="lg:col-span-2 p-8 sm:p-10 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-8 text-left">
+            {/* RECENT ORDERS */}
+            <div className="grid grid-cols-1 gap-8 relative z-10">
+                <Card className="p-8 sm:p-10 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-8 text-left">
                     <div className="flex justify-between items-center border-b border-slate-100 pb-6">
                         <div>
-                            <div className="flex items-center gap-2 text-primary font-black uppercase text-[10px] tracking-[0.3em]">
-                                <Activity size={14} className="animate-pulse" /> Live Telemetry
-                            </div>
-                            <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Live Order Timeline</h2>
+                            <p className="text-primary font-black uppercase text-[10px] tracking-[0.3em]">Order records</p>
+                            <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Recent Orders</h2>
                         </div>
-                        <span className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-700 text-[9px] font-black uppercase">
-                            Pulse #{commandPulseCount} &bull; Active
-                        </span>
                     </div>
 
                     <div className="space-y-4">
                         {timeline.length === 0 ? (
-                            <div className="p-8 text-center text-slate-400 text-xs uppercase font-bold">No active orders in timeline</div>
+                            <div className="p-8 text-center text-slate-400 text-xs uppercase font-bold">No order records found</div>
                         ) : timeline.map((order) => (
                             <div key={order.id} className="p-5 rounded-3xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-100/80 transition-colors">
                                 <div className="flex items-center gap-4 min-w-0">
@@ -318,81 +301,35 @@ export default function BiteCommandCenter() {
                         ))}
                     </div>
                 </Card>
-
-                {/* KITCHEN HEAT MAP (1 COL) */}
-                <Card className="p-8 sm:p-10 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-8 text-left flex flex-col justify-between">
-                    <div>
-                        <div className="flex items-center gap-2 text-primary font-black uppercase text-[10px] tracking-[0.3em] mb-1">
-                            <Flame size={14} /> Station Load
-                        </div>
-                        <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Kitchen Heat Map</h2>
-                    </div>
-
-                    <div className="space-y-6 my-auto">
-                        {[
-                            { station: 'Grill Station', load: 80, status: 'Heavy', color: 'bg-rose-500' },
-                            { station: 'Fryer Station', load: 45, status: 'Optimal', color: 'bg-amber-500' },
-                            { station: 'Packing Station', load: 20, status: 'Light', color: 'bg-emerald-500' }
-                        ].map(st => (
-                            <div key={st.station} className="space-y-2">
-                                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider">
-                                    <span className="text-slate-600">{st.station}</span>
-                                    <span className="text-foreground">{st.load}% ({st.status})</span>
-                                </div>
-                                <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200/60">
-                                    <div
-                                        className={cn("h-full rounded-full transition-all duration-1000", st.color)}
-                                        style={{ width: `${st.load}%` }}
-                                    />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center gap-3">
-                        <CheckCircle2 size={20} className="text-emerald-600 shrink-0" />
-                        <p className="text-[10px] font-bold text-emerald-900 uppercase">
-                            All kitchen stations running within 15-minute SLA target.
-                        </p>
-                    </div>
-                </Card>
-            </div>
-
-            {/* TACTICAL ALERTS */}
-            <div className="p-6 rounded-[2.5rem] bg-amber-50 border border-amber-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left relative z-10 shadow-sm">
-                <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md">
-                        <AlertTriangle size={20} />
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Tactical Kitchen Alert</p>
-                        <p className="text-sm font-black text-amber-950 uppercase">Order #2041 prep speed optimal. High demand for Smocha Supreme detected.</p>
-                    </div>
-                </div>
-                <span className="text-[9px] font-black uppercase tracking-widest text-amber-800 bg-amber-100 px-4 py-2 rounded-xl shrink-0">
-                    Auto-Balanced
-                </span>
             </div>
 
             {/* LIVE MENU GRID */}
             <section className="space-y-8 relative z-10">
                 <div className="flex justify-between items-center px-6">
-                    <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Live Food Menu Grid</h2>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">BAR OS Live Syncing</span>
+                    <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Food Menu</h2>
                 </div>
 
+                {error && <p role="alert" className="mx-6 rounded-xl bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</p>}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                     {loading ? (
                         <div className="col-span-full py-40 text-center opacity-20"><Loader2 className="animate-spin mx-auto text-primary" size={48} /></div>
+                    ) : bites.length === 0 ? (
+                        <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+                            No food products found. Add a food product to get started.
+                        </div>
                     ) : bites.map(bite => (
                         <Card key={bite.id} className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col group text-left">
                             <div className="relative aspect-square rounded-[2.5rem] bg-slate-50 border border-slate-100 overflow-hidden mb-6 shadow-inner">
-                                <Image src={normalizeImage(bite.image_url)} alt={bite.name} fill className="object-contain p-4 group-hover:scale-110 transition-transform duration-700" />
+                                {bite.image_url ? (
+                                    <Image src={normalizeImage(bite.image_url)} alt={bite.name} fill className="object-contain p-4 group-hover:scale-110 transition-transform duration-700" />
+                                ) : (
+                                    <div className="flex h-full items-center justify-center text-sm text-slate-400">No product image</div>
+                                )}
                                 <div className={cn(
                                     "absolute top-4 right-4 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg",
-                                    bite.is_available_now ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"
+                                    bite.status === 'Live' ? "bg-emerald-500 text-white" : "bg-slate-500 text-white"
                                 )}>
-                                    {bite.is_available_now ? 'Live' : 'Hidden'}
+                                    {bite.status || 'Status unavailable'}
                                 </div>
                             </div>
 
@@ -411,20 +348,20 @@ export default function BiteCommandCenter() {
                                         <p className="text-sm font-black text-primary">{formatPrice(bite.price)}</p>
                                     </div>
                                     <div>
-                                        <p className="text-[8px] font-black text-slate-400 uppercase">Prep Time</p>
-                                        <p className="text-sm font-black text-foreground">{bite.prep_time || 15} min</p>
+                                        <p className="text-[8px] font-black text-slate-400 uppercase">Stock</p>
+                                        <p className="text-sm font-black text-foreground">{bite.stock ?? 'Not recorded'}</p>
                                     </div>
                                 </div>
 
                                 <div className="flex gap-2 pt-2">
                                     <Button
-                                        onClick={() => toggleAvailability(bite.id, bite.is_available_now)}
+                                        onClick={() => toggleAvailability(bite.id, bite.status === 'Live')}
                                         className={cn(
                                             "flex-1 h-12 rounded-xl font-black uppercase text-[9px] tracking-widest transition-all active:scale-95",
-                                            bite.is_available_now ? "bg-slate-900 text-white hover:bg-primary" : "bg-emerald-500 text-white shadow-emerald-200 shadow-lg"
+                                            bite.status === 'Live' ? "bg-slate-900 text-white hover:bg-primary" : "bg-emerald-500 text-white shadow-emerald-200 shadow-lg"
                                         )}
                                     >
-                                        {bite.is_available_now ? 'Deactivate' : 'Activate'}
+                                        {bite.status === 'Live' ? 'Deactivate' : 'Activate'}
                                     </Button>
                                     <Button
                                         onClick={() => handleDelete(bite.id)}
@@ -477,9 +414,8 @@ export default function BiteCommandCenter() {
                                         onChange={e => setNewFood({ ...newFood, category: e.target.value })}
                                         className="w-full rounded-xl h-12 bg-slate-50 border-none px-3 text-xs font-bold"
                                     >
-                                        <option value="Street Bites">Street Bites</option>
-                                        <option value="Hot Right Now">Hot Right Now</option>
-                                        <option value="Burgers & Wings">Burgers & Wings</option>
+                                        <option value="">Select a category</option>
+                                        <option value="Food">Food</option>
                                         <option value="Snacks">Snacks</option>
                                     </select>
                                 </div>
@@ -488,6 +424,7 @@ export default function BiteCommandCenter() {
                                     <label className="text-[10px] font-black uppercase text-slate-400">Price (KSh)</label>
                                     <Input
                                         type="number"
+                                        min="0"
                                         value={newFood.price}
                                         onChange={e => setNewFood({ ...newFood, price: e.target.value })}
                                         placeholder="180"
@@ -499,12 +436,14 @@ export default function BiteCommandCenter() {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase text-slate-400">Prep Time (min)</label>
+                                    <label className="text-[10px] font-black uppercase text-slate-400">Stock quantity</label>
                                     <Input
                                         type="number"
-                                        value={newFood.prep_time}
-                                        onChange={e => setNewFood({ ...newFood, prep_time: e.target.value })}
-                                        placeholder="15"
+                                        min="0"
+                                        value={newFood.stock}
+                                        onChange={e => setNewFood({ ...newFood, stock: e.target.value })}
+                                        placeholder="Enter current stock"
+                                        required
                                         className="rounded-xl h-12 bg-slate-50 border-none"
                                     />
                                 </div>
@@ -532,11 +471,11 @@ export default function BiteCommandCenter() {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black uppercase text-slate-400">Recommended Drinks (Comma Separated)</label>
+                                <label className="text-[10px] font-black uppercase text-slate-400">Pairing suggestions (comma separated)</label>
                                 <Input
-                                    value={newFood.drink_pairings}
-                                    onChange={e => setNewFood({ ...newFood, drink_pairings: e.target.value })}
-                                    placeholder="Amarula, Coca-Cola, Tusker"
+                                    value={newFood.pairing_suggestions}
+                                    onChange={e => setNewFood({ ...newFood, pairing_suggestions: e.target.value })}
+                                    placeholder="Optional product or food pairings"
                                     className="rounded-xl h-12 bg-slate-50 border-none"
                                 />
                             </div>

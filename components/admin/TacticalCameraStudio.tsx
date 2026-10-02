@@ -11,10 +11,8 @@ import {
     Camera as Instagram,
     Share2 as Facebook,
     Video as Youtube,
-    CheckCircle2,
     Loader2,
     Zap,
-    Clock,
     Tag,
     X
 } from 'lucide-react';
@@ -35,9 +33,10 @@ interface ProductNode {
 
 export default function TacticalCameraStudio() {
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
-    const [analyzingLabel, setAnalyzingLabel] = React.useState(false);
     const [detectedProduct, setDetectedProduct] = React.useState<ProductNode | null>(null);
     const [products, setProducts] = React.useState<ProductNode[]>([]);
+    const [error, setError] = React.useState<string | null>(null);
+    const [catalogLoading, setCatalogLoading] = React.useState(true);
     const [caption, setCaption] = React.useState('');
     const [hashtags, setHashtags] = React.useState('#OnlineBar #NairobiDispatch #Mixology #CellarVault');
     const [generatingAI, setGeneratingAI] = React.useState(false);
@@ -49,20 +48,30 @@ export default function TacticalCameraStudio() {
         YOUTUBE: false,
     });
 
-    const [timing, setTiming] = React.useState<'NOW' | 'SCHEDULED'>('NOW');
     const [publishing, setPublishing] = React.useState(false);
-    const [publishProgress, setPublishProgress] = React.useState(0);
-    const [publishedSuccess, setPublishedSuccess] = React.useState(false);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     React.useEffect(() => {
         async function fetchProducts() {
-            if (!supabase) return;
-            const { data } = await supabase.from('products').select('id, name, price, stock, image_url, category').limit(12);
-            if (data && data.length > 0) {
-                setProducts(data as ProductNode[]);
-                setDetectedProduct(data[0] as ProductNode);
+            if (!supabase) {
+                setError('Supabase is not configured. Product selection is unavailable.');
+                setCatalogLoading(false);
+                return;
+            }
+            try {
+                const { data, error: queryError } = await supabase
+                    .from('products')
+                    .select('id, name, price, stock, image_url, category')
+                    .order('name')
+                    .limit(100);
+                if (queryError) throw queryError;
+                setProducts(data || []);
+            } catch (err) {
+                console.error('Product catalog fetch error:', err);
+                setError(err instanceof Error ? err.message : 'Unable to load products.');
+            } finally {
+                setCatalogLoading(false);
             }
         }
         fetchProducts();
@@ -70,16 +79,6 @@ export default function TacticalCameraStudio() {
 
     const handleImageSelect = (imageUrl: string) => {
         setSelectedImage(imageUrl);
-        setAnalyzingLabel(true);
-
-        setTimeout(() => {
-            setAnalyzingLabel(false);
-            if (products.length > 0) {
-                const matched = products[Math.floor(Math.random() * products.length)];
-                setDetectedProduct(matched);
-                generateAICopy(matched.name, matched.category || 'whiskey');
-            }
-        }, 1200);
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -96,8 +95,13 @@ export default function TacticalCameraStudio() {
     };
 
     const generateAICopy = async (productName?: string, category?: string) => {
-        const targetName = productName || detectedProduct?.name || 'Jameson Irish Whiskey 750ml';
+        const targetName = productName || detectedProduct?.name;
+        if (!targetName) {
+            setError('Select a catalog product before generating its description.');
+            return;
+        }
         setGeneratingAI(true);
+        setError(null);
 
         try {
             const res = await fetch('/api/admin/generate-description', {
@@ -106,13 +110,13 @@ export default function TacticalCameraStudio() {
                 body: JSON.stringify({ name: targetName, category: category || 'whiskey' })
             });
             const data = await res.json();
-            if (data.description) {
-                setCaption(`🍾 ${targetName.toUpperCase()} NOW LIVE IN CELLAR HUB!\n\n${data.description}\n\n🛒 Order now for direct dispatch in under 30 mins.`);
-            } else {
-                setCaption(`🔥 WEEKEND DROP: ${targetName.toUpperCase()}\n\nPremium chilling elevated. Available now at Online Bar Nairobi with fast dispatch.\n\n🥂 Tap link to order directly.`);
+            if (!res.ok || !data.description) {
+                throw new Error(data.error || 'AI copy generation failed.');
             }
-        } catch {
-            setCaption(`🔥 WEEKEND DROP: ${targetName.toUpperCase()}\n\nPremium chilling elevated. Available now at Online Bar Nairobi with fast dispatch.\n\n🥂 Tap link to order directly.`);
+            setCaption(`${targetName}\n\n${data.description}`);
+        } catch (err) {
+            console.error('AI copy generation error:', err);
+            setError(err instanceof Error ? err.message : 'AI copy generation failed.');
         } finally {
             setGeneratingAI(false);
         }
@@ -130,56 +134,39 @@ export default function TacticalCameraStudio() {
         }
 
         setPublishing(true);
-        setPublishProgress(10);
+        setError(null);
 
         try {
-            const interval = setInterval(() => {
-                setPublishProgress(prev => {
-                    if (prev >= 90) {
-                        clearInterval(interval);
-                        return 90;
-                    }
-                    return prev + 20;
-                });
-            }, 300);
-
             const res = await fetch('/api/admin/social/publish', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    mediaUrl: selectedImage || detectedProduct?.image_url || 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?auto=format&fit=crop&q=80',
+                    mediaUrl: selectedImage || detectedProduct?.image_url,
                     caption: `${caption}\n\n${hashtags}`,
                     productId: detectedProduct?.id,
-                    platforms: activePlatforms,
-                    timing,
-                    scheduleTime: '21:00'
+                    platforms: activePlatforms
                 })
             });
 
             const data = await res.json();
-            clearInterval(interval);
-            setPublishProgress(100);
-
-            if (data.success) {
-                setPublishedSuccess(true);
-                setTimeout(() => {
-                    setPublishing(false);
-                    setPublishedSuccess(false);
-                    setPublishProgress(0);
-                }, 3000);
-            } else {
+            if (!res.ok || !data.success) {
                 throw new Error(data.error || 'Publish failed');
             }
         } catch (err: unknown) {
-            console.error(err);
-            alert(`Publish Protocol Failure: ${(err as Error).message}`);
+            console.error('Social publishing error:', err);
+            setError(err instanceof Error ? err.message : 'Social publishing failed.');
+        } finally {
             setPublishing(false);
-            setPublishProgress(0);
         }
     };
 
     return (
         <div className="space-y-8 text-left selection:bg-primary/20">
+            {error && (
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
+                    {error}
+                </div>
+            )}
             {/* Header Banner */}
             <div className="p-8 rounded-[3rem] bg-white border border-slate-200/80 text-foreground shadow-md relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="relative z-10 space-y-2">
@@ -189,14 +176,13 @@ export default function TacticalCameraStudio() {
                     </div>
                     <h2 className="text-3xl font-black uppercase tracking-tighter text-foreground">Publish Protocol Studio</h2>
                     <p className="text-xs font-medium text-slate-500 max-w-xl">
-                        Capture bottle label &rarr; AI links Cellar Hub product &rarr; Generates copy &rarr; Single-tap publish to Instagram, Facebook, WhatsApp & YouTube.
+                        Upload a photo and manually select a catalog product. AI copy and social publishing require configured provider integrations.
                     </p>
                 </div>
 
                 <div className="relative z-10 flex items-center gap-3">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-200">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-                        SYSTEM READY
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-slate-50 text-slate-600 border border-slate-200">
+                        Draft mode
                     </span>
                 </div>
             </div>
@@ -212,7 +198,7 @@ export default function TacticalCameraStudio() {
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-black uppercase tracking-tight text-foreground">Tactical Lens</h3>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Bottle & Label Recognition</p>
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Photo upload</p>
                                 </div>
                             </div>
 
@@ -244,21 +230,29 @@ export default function TacticalCameraStudio() {
                                         <Camera size={28} />
                                     </div>
                                     <div className="space-y-1">
-                                        <p className="text-xs font-black uppercase text-foreground">Point Camera at Bottle</p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Tap to capture live frame or select from phone</p>
+                                        <p className="text-xs font-black uppercase text-foreground">Upload a product photo</p>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Product matching is selected manually below</p>
                                     </div>
-                                </div>
-                            )}
-
-                            {analyzingLabel && (
-                                <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center gap-3 p-6 text-center">
-                                    <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-primary">Executing OCR Label Match &bull; Neural Vision Node...</p>
                                 </div>
                             )}
                         </div>
 
-                        {/* Detected Linked Product Card */}
+                        <div className="space-y-3">
+                            <label htmlFor="campaign-product" className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Link catalog product</label>
+                            <select
+                                id="campaign-product"
+                                value={detectedProduct?.id ?? ''}
+                                onChange={event => setDetectedProduct(products.find(product => product.id === Number(event.target.value)) || null)}
+                                disabled={catalogLoading || products.length === 0}
+                                className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-foreground disabled:opacity-60"
+                            >
+                                <option value="">{catalogLoading ? 'Loading products...' : products.length ? 'Select a product' : 'No products available'}</option>
+                                {products.map(product => (
+                                    <option key={product.id} value={product.id}>{product.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         {detectedProduct && (
                             <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-3 min-w-0">
@@ -270,7 +264,7 @@ export default function TacticalCameraStudio() {
                                     </div>
                                 </div>
                                 <span className="px-3 py-1 rounded-xl bg-white text-emerald-700 text-[9px] font-black uppercase border border-emerald-200 shrink-0">
-                                    In Stock ({detectedProduct.stock})
+                                    Stock: {detectedProduct.stock}
                                 </span>
                             </div>
                         )}
@@ -283,7 +277,7 @@ export default function TacticalCameraStudio() {
                         <div className="flex justify-between items-center border-b border-slate-100 pb-4">
                             <div>
                                 <h3 className="text-xl font-black uppercase tracking-tight text-foreground">AI Copy & Narrative</h3>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase">Kenya Nightlife & Bar Conversion Copy</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase">Generated from the selected catalog product</p>
                             </div>
 
                             <Button
@@ -303,7 +297,7 @@ export default function TacticalCameraStudio() {
                                 <Textarea
                                     value={caption}
                                     onChange={e => setCaption(e.target.value)}
-                                    placeholder="Caption will be auto-generated upon capturing bottle image..."
+                                    placeholder="Enter a caption or generate one using the selected catalog product..."
                                     className="min-h-[120px] rounded-2xl bg-slate-50 border-slate-200 text-xs font-medium text-foreground leading-relaxed p-4"
                                 />
                             </div>
@@ -354,7 +348,7 @@ export default function TacticalCameraStudio() {
                                 className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 hover:scale-105 transition-all"
                             >
                                 {publishing ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Zap size={18} className="mr-2 fill-current" />}
-                                {publishing ? `Executing Protocol (${publishProgress}%)...` : 'Execute Omnichannel Launch Protocol'}
+                                {publishing ? 'Checking publishing integrations...' : 'Publish'}
                             </Button>
                         </div>
                     </Card>

@@ -53,7 +53,6 @@ interface PlatformConfig {
     accent: string;
     description: string;
     scopes: string[];
-    stats: Record<string, string>;
 }
 
 const SQL_MIGRATION_QUERY = `-- BAR OS Complete Master Migration
@@ -65,8 +64,8 @@ CREATE TABLE IF NOT EXISTS social_accounts (
     access_token TEXT,
     refresh_token TEXT,
     token_expires_at TIMESTAMPTZ,
-    status TEXT DEFAULT 'CONNECTED',
-    connected BOOLEAN DEFAULT TRUE,
+    status TEXT DEFAULT 'DISCONNECTED',
+    connected BOOLEAN DEFAULT FALSE,
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -77,7 +76,7 @@ ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS refresh_token TEXT;
 ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
 ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS account_name TEXT;
 ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS account_id TEXT;
-ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS connected BOOLEAN DEFAULT TRUE;
+ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS connected BOOLEAN DEFAULT FALSE;
 ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();`;
 
@@ -99,30 +98,30 @@ export default function SocialAccountManagement() {
         {
             title: 'AES-256 Token Vault',
             icon: Lock,
-            detail: 'OAuth tokens encrypted at rest with AES-256 keys. Decrypted strictly during dispatch jobs.',
-            badge: 'ENCRYPTION ACTIVE',
-            color: 'text-emerald-400'
+            detail: 'Token storage encryption status is not available from the configured backend.',
+            badge: 'STATUS UNAVAILABLE',
+            color: 'text-slate-400'
         },
         {
             title: 'Meta Webhook Gateway',
             icon: Server,
-            detail: 'Real-time HTTPS Webhooks active on /webhooks/whatsapp & /webhooks/instagram.',
-            badge: 'LISTENER ONLINE',
-            color: 'text-cyan-400'
+            detail: 'Webhook listener status is not available from the configured backend.',
+            badge: 'STATUS UNAVAILABLE',
+            color: 'text-slate-400'
         },
         {
             title: 'OAuth 2.0 Token Renewal',
             icon: Key,
-            detail: 'Token auto-refresh engine active. Expiring credentials re-handshake automatically.',
-            badge: 'GATEWAY VERIFIED',
-            color: 'text-amber-400'
+            detail: 'OAuth token renewal is not configured in this dashboard.',
+            badge: 'NOT CONFIGURED',
+            color: 'text-slate-400'
         },
         {
             title: 'Rate Limit Sentinel',
             icon: Shield,
-            detail: 'Exponential back-off retry algorithm monitoring Meta, Google, and TikTok API rate limits.',
-            badge: 'SENTINEL OK',
-            color: 'text-indigo-400'
+            detail: 'Provider rate-limit monitoring is not available from the configured backend.',
+            badge: 'STATUS UNAVAILABLE',
+            color: 'text-slate-400'
         }
     ];
 
@@ -156,70 +155,18 @@ export default function SocialAccountManagement() {
     }, [fetchAccounts]);
 
     const handleConfirmOAuthHandshake = async () => {
-        if (!selectedPlatform || !supabase) return;
+        if (!selectedPlatform) return;
         setIsAuthorizing(true);
-
         try {
-            // Delete existing connection
-            await supabase.from('social_accounts').delete().eq('platform', selectedPlatform.id);
-
-            const accountName = `@onlinebar.${selectedPlatform.id.toLowerCase()}`;
-            const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
-            const fakeEncryptedToken = `BAROS_AES256_${Math.random().toString(36).substring(2).toUpperCase()}`;
-
-            // First Attempt: Rich Payload
-            const richPayload = {
-                platform: selectedPlatform.id,
-                account_name: accountName,
-                status: 'CONNECTED',
-                access_token: fakeEncryptedToken,
-                refresh_token: fakeEncryptedToken,
-                token_expires_at: expiresAt,
-                connected: true,
-                metadata: {
-                    provider: selectedPlatform.label,
-                    scopes: selectedPlatform.scopes,
-                    authorized_by: email,
-                    handshake_time: new Date().toISOString()
-                }
-            };
-
-            const { error: richError } = await supabase.from('social_accounts').insert([richPayload]);
-
-            if (richError) {
-                console.warn("Rich OAuth insertion fallback triggered:", richError.message);
-                // Fail-Safe Base Insertion
-                await supabase.from('social_accounts').insert([{
-                    platform: selectedPlatform.id,
-                    account_name: accountName,
-                    status: 'CONNECTED'
-                }]);
-            }
-
-            await logAuditAction(email, 'SOCIAL_OAUTH_CONNECTED', { platform: selectedPlatform.id });
-            fetchAccounts();
-            setSelectedPlatform(null);
-            alert(`🎉 ${selectedPlatform.label} OAuth 2.0 Handshake Verified! Tokens encrypted and active.`);
-        } catch (err) {
-            console.error("OAuth handshake error:", err);
-            fetchAccounts();
+            alert(`${selectedPlatform.label} OAuth authorization is not configured. No account or token was saved.`);
             setSelectedPlatform(null);
         } finally {
             setIsAuthorizing(false);
         }
     };
 
-    const handleRefreshToken = async (id: string, platformLabel: string) => {
-        if (!supabase) return;
-        try {
-            const newExpires = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
-            await supabase.from('social_accounts').update({ token_expires_at: newExpires, updated_at: new Date().toISOString() }).eq('id', id);
-            await logAuditAction(email, 'SOCIAL_TOKEN_RENEWED', { id });
-            fetchAccounts();
-            alert(`Token renewed for 60 days for ${platformLabel}! 🟢`);
-        } catch (e) {
-            console.error("Token renew failed:", e);
-        }
+    const handleRefreshToken = (platformLabel: string) => {
+        alert(`Token renewal is not configured for ${platformLabel}. No token was changed.`);
     };
 
     const handleDisconnect = async (id: string, platform: string) => {
@@ -250,7 +197,6 @@ export default function SocialAccountManagement() {
             accent: 'rose',
             description: 'Meta Graph API Node (Reels, Stories, Feed)',
             scopes: ['instagram_basic', 'pages_show_list', 'pages_read_engagement', 'instagram_content_publish'],
-            stats: { followers: '12.4K', queued: '4 Posts', reach: '92%' }
         },
         {
             id: 'WHATSAPP',
@@ -260,7 +206,6 @@ export default function SocialAccountManagement() {
             accent: 'emerald',
             description: 'Cloud API Sales Room Node (Automated Messages)',
             scopes: ['whatsapp_business_messaging', 'whatsapp_business_management'],
-            stats: { chats: '18 Unread', responseTime: '< 2m', conversion: '84%' }
         },
         {
             id: 'GOOGLE',
@@ -270,7 +215,6 @@ export default function SocialAccountManagement() {
             accent: 'red',
             description: 'Google Cloud Data v3 Node',
             scopes: ['youtube.upload', 'youtube.readonly'],
-            stats: { subscribers: '8.9K', uploads: '2 Shorts Pending', views: '142K' }
         },
         {
             id: 'TIKTOK',
@@ -280,7 +224,6 @@ export default function SocialAccountManagement() {
             accent: 'cyan',
             description: 'TikTok Business Open API',
             scopes: ['user.info.basic', 'video.upload', 'video.list'],
-            stats: { followers: '24.1K', engagement: '14.2%', virality: 'High' }
         },
         {
             id: 'X',
@@ -290,7 +233,6 @@ export default function SocialAccountManagement() {
             accent: 'sky',
             description: 'X Developer v2 Protocol',
             scopes: ['tweet.read', 'tweet.write', 'users.read'],
-            stats: { impressions: '48K', mentions: '312', health: '99%' }
         },
         {
             id: 'LINKEDIN',
@@ -300,7 +242,6 @@ export default function SocialAccountManagement() {
             accent: 'indigo',
             description: 'Corporate Relations Node',
             scopes: ['w_member_social', 'r_organization_social'],
-            stats: { connection: 'VIP B2B', status: 'Online' }
         },
         {
             id: 'THREADS',
@@ -310,7 +251,6 @@ export default function SocialAccountManagement() {
             accent: 'purple',
             description: 'Threads API Node',
             scopes: ['threads_basic', 'threads_content_publish'],
-            stats: { followers: '4.2K', reach: '88%' }
         },
         {
             id: 'PINTEREST',
@@ -320,7 +260,6 @@ export default function SocialAccountManagement() {
             accent: 'red',
             description: 'Pinterest API Node',
             scopes: ['boards:read', 'pins:write'],
-            stats: { pins: '140+', saves: '1.2K' }
         }
     ];
 
@@ -422,12 +361,9 @@ export default function SocialAccountManagement() {
                                     <div className="mt-6 relative z-10">
                                         {connected ? (
                                             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 grid grid-cols-3 gap-2 text-center">
-                                                {Object.entries(p.stats).map(([k, v]) => (
-                                                    <div key={k} className="space-y-0.5">
-                                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{k}</p>
-                                                        <p className="text-xs font-black text-foreground uppercase tracking-tight">{v}</p>
-                                                    </div>
-                                                ))}
+                                                <div className="col-span-3 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                                    Provider metrics unavailable
+                                                </div>
                                             </div>
                                         ) : (
                                             <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-slate-300 space-y-1 text-left">
@@ -436,7 +372,7 @@ export default function SocialAccountManagement() {
                                                     No Token In Database
                                                 </p>
                                                 <p className="text-[10px] font-medium text-slate-400 leading-relaxed">
-                                                    OAuth authorization has not been completed. Click Authorize Protocol to grant permissions and save tokens in Supabase.
+                                                    Provider OAuth is not configured. Authorization and token storage are unavailable.
                                                 </p>
                                             </div>
                                         )}
@@ -449,14 +385,14 @@ export default function SocialAccountManagement() {
                                                 <div className="flex items-center gap-2 text-emerald-500">
                                                     <CheckCircle2 size={14} />
                                                     <span className="text-[10px] font-black uppercase tracking-widest truncate max-w-[120px]">
-                                                        {connected.account_name || `@onlinebar.${p.id.toLowerCase()}`}
+                                                        {connected.account_name || p.label}
                                                     </span>
                                                 </div>
                                                 <button
-                                                    onClick={() => handleRefreshToken(connected.id, p.label)}
+                                                    onClick={() => handleRefreshToken(p.label)}
                                                     className="px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all flex items-center gap-1"
                                                 >
-                                                    <RefreshCcw size={10} /> Renew (59d)
+                                                    <RefreshCcw size={10} /> Renew Token
                                                 </button>
                                             </div>
                                         ) : (
@@ -572,7 +508,7 @@ export default function SocialAccountManagement() {
                                 disabled={isAuthorizing}
                                 className="rounded-2xl h-14 px-8 bg-amber-500 text-white font-black uppercase text-xs shadow-xl hover:bg-amber-600"
                             >
-                                {isAuthorizing ? <Loader2 className="animate-spin" size={16} /> : <><Sparkles size={16} className="mr-2" /> Grant Authorization & Connect</>}
+                                {isAuthorizing ? <Loader2 className="animate-spin" size={16} /> : <><Sparkles size={16} className="mr-2" /> Check OAuth Availability</>}
                             </Button>
                         </div>
                     </div>
@@ -623,7 +559,7 @@ export default function SocialAccountManagement() {
             <div className="pt-6">
                 <TacticalEventFeed
                     title="Social & Dispatch Telemetry Engine"
-                    subtitle="Live Real-time Cross-Platform Event Ticker"
+                    subtitle="Provider event availability depends on configured integrations"
                 />
             </div>
         </div>

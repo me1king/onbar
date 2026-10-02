@@ -11,16 +11,17 @@ export async function trackEvent(eventName: string, properties: Record<string, u
     if (typeof window === 'undefined' || !supabase) return;
 
     try {
-        const sessionId = (window as unknown as { sessionId?: string }).sessionId || 'sess-anon-001';
+        const sessionId = localStorage.getItem('ob_session_id');
+        const anonymousId = localStorage.getItem('ob_anonymous_id');
         const page = window.location.pathname;
         const installed = isInstalledApp();
 
         await supabase.from('analytics_events').insert([{
             session_id: sessionId,
+            anonymous_id: anonymousId,
             event_name: eventName,
-            page,
-            properties,
-            installed
+            page_url: page,
+            payload: { ...properties, installed }
         }]);
     } catch (err) {
         console.warn("Analytics telemetry dispatch failed:", err);

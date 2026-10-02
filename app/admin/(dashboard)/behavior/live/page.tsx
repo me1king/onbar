@@ -10,7 +10,6 @@ import {
     Smartphone,
     Eye,
     X,
-    ShieldAlert
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,83 +21,122 @@ interface LiveTerminalSession {
     id: string;
     session_code: string;
     customer_name: string;
-    device: 'Mobile' | 'Desktop';
+    device: 'Mobile' | 'Desktop' | 'Unknown';
     location: string;
-    viewing_product: string;
     active_time_sec: number;
-    pages_viewed: number;
-    clicks: number;
-    scroll_depth_pct: number;
     cart_value: number;
+    last_seen_at: string;
     last_action: string;
-    intent_score: 'HIGH INTENT' | 'WARM' | 'EXPLORING' | 'AT RISK';
+    session_status: string;
 }
 
 interface StreamEventItem {
-    id: string;
+    id: number;
     timestamp: string;
     customer_code: string;
-    action_type: 'PRODUCTS' | 'SEARCH' | 'CART' | 'CHECKOUT' | 'ORDERS' | 'ERRORS';
+    session_id: string | null;
+    action_type: string;
     description: string;
-    badge_color: string;
-    url: string;
+    page_url: string;
+}
+
+function categorizeEvent(eventName: string) {
+    const name = eventName.toUpperCase();
+    if (name.includes('PRODUCT')) return 'PRODUCTS';
+    if (name.includes('SEARCH')) return 'SEARCH';
+    if (name.includes('CART')) return 'CART';
+    if (name.includes('CHECKOUT') || name.includes('PAYMENT')) return 'CHECKOUT';
+    if (name.includes('ORDER')) return 'ORDERS';
+    if (name.includes('ERROR')) return 'ERRORS';
+    return 'OTHER';
 }
 
 export default function LiveBehaviorCommandCenter() {
     const router = useRouter();
     const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
     const [terminals, setTerminals] = React.useState<LiveTerminalSession[]>([]);
     const [streamEvents, setStreamEvents] = React.useState<StreamEventItem[]>([]);
     const [activeEventFilter, setActiveEventFilter] = React.useState<string>('ALL');
+    const [metrics, setMetrics] = React.useState({
+        activeSessions: 0,
+        productViews: 0,
+        cartsWithItems: 0,
+        checkoutsStarted: 0,
+        ordersToday: 0,
+        activeDeliveries: 0
+    });
 
     // "WATCH SESSION" Drawer State
     const [selectedTerminal, setSelectedTerminal] = React.useState<LiveTerminalSession | null>(null);
 
     const fetchLiveData = React.useCallback(async () => {
         if (!supabase) {
+            setError('Supabase is not configured. Live behavior data is unavailable.');
             setLoading(false);
             return;
         }
         setLoading(true);
+        setError(null);
         try {
-            const [logsRes, ordersRes] = await Promise.all([
-                supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(10),
-                supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(5)
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+            const activeSince = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+            const [sessionsRes, eventsRes, activeRes, productViewsRes, cartsRes, checkoutsRes, ordersRes, dispatchRes] = await Promise.all([
+                supabase.from('customer_sessions').select('*').order('last_seen_at', { ascending: false }).limit(20),
+                supabase.from('analytics_events').select('id, event_name, session_id, anonymous_id, page_url, payload, created_at').order('created_at', { ascending: false }).limit(30),
+                supabase.from('customer_sessions').select('id', { count: 'exact', head: true }).gte('last_seen_at', activeSince),
+                supabase.from('analytics_events').select('id', { count: 'exact', head: true }).eq('event_name', 'PRODUCT_VIEW').gte('created_at', todayStart),
+                supabase.from('customer_sessions').select('id', { count: 'exact', head: true }).gt('cart_value', 0),
+                supabase.from('analytics_events').select('id', { count: 'exact', head: true }).eq('event_name', 'CHECKOUT_START').gte('created_at', todayStart),
+                supabase.from('orders').select('id', { count: 'exact', head: true }).gte('created_at', todayStart),
+                supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'Dispatched')
             ]);
 
-            if (logsRes.data && logsRes.data.length > 0) {
-                const liveEvts: StreamEventItem[] = logsRes.data.map((log, idx) => ({
-                    id: `se-${log.id}`,
-                    timestamp: new Date(log.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                    customer_code: `OB-${1000 + idx}`,
-                    action_type: log.action?.includes('PRODUCT') ? 'PRODUCTS' : log.action?.includes('ORDER') ? 'ORDERS' : 'CART',
-                    description: `${log.action?.replace(/_/g, ' ')} • Operator: ${log.staff_email || 'Patron'}`,
-                    badge_color: 'bg-emerald-500/10 text-emerald-600 border-emerald-200',
-                    url: '/admin/behavior'
-                }));
-                setStreamEvents(liveEvts);
-            }
+            const queryError = sessionsRes.error || eventsRes.error || activeRes.error || productViewsRes.error || cartsRes.error || checkoutsRes.error || ordersRes.error || dispatchRes.error;
+            if (queryError) throw queryError;
 
-            if (ordersRes.data && ordersRes.data.length > 0) {
-                const liveTerms: LiveTerminalSession[] = ordersRes.data.map((ord, idx) => ({
-                    id: `term-${ord.id}`,
-                    session_code: `OB-${ord.id}`,
-                    customer_name: ord.customer_name || 'Patron',
-                    device: idx % 2 === 0 ? 'Mobile' : 'Desktop',
-                    location: ord.delivery_address || 'Express Dispatch Node',
-                    viewing_product: 'Checkout Terminal',
-                    active_time_sec: 300 + idx * 60,
-                    pages_viewed: 6 + idx,
-                    clicks: 18 + idx * 4,
-                    scroll_depth_pct: 85,
-                    cart_value: ord.total_price || 2600,
-                    last_action: `Order #${ord.id} - ${ord.status || 'Active'}`,
-                    intent_score: ord.status === 'Delivered' ? 'HIGH INTENT' : 'WARM'
-                }));
-                setTerminals(liveTerms);
-            }
+            const events = eventsRes.data || [];
+            setMetrics({
+                activeSessions: activeRes.count || 0,
+                productViews: productViewsRes.count || 0,
+                cartsWithItems: cartsRes.count || 0,
+                checkoutsStarted: checkoutsRes.count || 0,
+                ordersToday: ordersRes.count || 0,
+                activeDeliveries: dispatchRes.count || 0
+            });
+            setStreamEvents(events.map(event => ({
+                id: event.id,
+                timestamp: new Date(event.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                customer_code: event.session_id ? `Session ${event.session_id}` : event.anonymous_id ? `Visitor ${event.anonymous_id}` : 'Unidentified event',
+                session_id: event.session_id,
+                action_type: categorizeEvent(event.event_name),
+                description: JSON.stringify(event.payload || {}),
+                page_url: event.page_url || 'Page not recorded'
+            })));
+            setTerminals((sessionsRes.data || []).map(session => {
+                const deviceInfo = session.device_info as { user_agent?: string; ua?: string } | null;
+                const userAgent = deviceInfo?.user_agent || deviceInfo?.ua || '';
+                const sessionEvent = events.find(event => event.session_id === session.id);
+                return {
+                    id: session.id,
+                    session_code: session.id,
+                    customer_name: `Session ${session.id}`,
+                    device: userAgent ? (/mobile/i.test(userAgent) ? 'Mobile' : 'Desktop') : 'Unknown',
+                    location: session.current_page || session.entry_page || 'Page not recorded',
+                    active_time_sec: Number(session.total_active_time_sec || 0),
+                    cart_value: Number(session.cart_value || 0),
+                    last_seen_at: session.last_seen_at,
+                    last_action: sessionEvent?.event_name || 'No recent event',
+                    session_status: session.session_status || 'Unknown',
+                };
+            }));
         } catch (err) {
-            console.error(err);
+            console.error('Live behavior fetch error:', err);
+            setTerminals([]);
+            setStreamEvents([]);
+            setMetrics({ activeSessions: 0, productViews: 0, cartsWithItems: 0, checkoutsStarted: 0, ordersToday: 0, activeDeliveries: 0 });
+            setError(err instanceof Error ? err.message : 'Unable to load live behavior data.');
         } finally {
             setLoading(false);
         }
@@ -109,7 +147,8 @@ export default function LiveBehaviorCommandCenter() {
 
         if (supabase) {
             const channel = supabase.channel('live_behavior_stream')
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, fetchLiveData)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_sessions' }, fetchLiveData)
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'analytics_events' }, fetchLiveData)
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, fetchLiveData)
                 .subscribe();
             return () => { if (supabase) supabase.removeChannel(channel); };
@@ -120,6 +159,15 @@ export default function LiveBehaviorCommandCenter() {
         if (activeEventFilter === 'ALL') return true;
         return evt.action_type === activeEventFilter;
     });
+
+    const metricCards = [
+        { label: 'Active Sessions', value: metrics.activeSessions },
+        { label: 'Product Views Today', value: metrics.productViews },
+        { label: 'Carts With Items', value: metrics.cartsWithItems },
+        { label: 'Checkouts Today', value: metrics.checkoutsStarted },
+        { label: 'Orders Today', value: metrics.ordersToday },
+        { label: 'Active Deliveries', value: metrics.activeDeliveries }
+    ];
 
     return (
         <div className="p-4 sm:p-8 space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20 animate-in fade-in duration-700">
@@ -135,8 +183,8 @@ export default function LiveBehaviorCommandCenter() {
                             <div className="flex items-center gap-3 mb-1">
                                 <Flame className="h-5 w-5 text-rose-500 animate-pulse" />
                                 <span className="text-[10px] font-black uppercase tracking-[0.3em] text-rose-600 italic">REAL-TIME INTERACTION RADAR</span>
-                                <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                                    LIVE TELEMETRY UPLINK
+                                                <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                                    Recorded analytics
                                 </span>
                             </div>
                             <h1 className="text-4xl lg:text-5xl font-black text-foreground uppercase tracking-tighter leading-none italic">
@@ -150,44 +198,26 @@ export default function LiveBehaviorCommandCenter() {
                     </Button>
                 </div>
 
-                {/* 1. LIVE TELEMETRY STRIP HUD */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 pt-2">
-                    <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-0.5">
-                        <p className="text-[8px] font-black uppercase text-slate-400">Active Patrons</p>
-                        <p className="text-2xl font-black text-emerald-600 flex items-center gap-1.5">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> 27
-                        </p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-0.5">
-                        <p className="text-[8px] font-black uppercase text-slate-400">Product Views</p>
-                        <p className="text-2xl font-black text-foreground">84</p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-0.5">
-                        <p className="text-[8px] font-black uppercase text-slate-400">Carts Active</p>
-                        <p className="text-2xl font-black text-amber-600">12</p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-0.5">
-                        <p className="text-[8px] font-black uppercase text-slate-400">Checkouts</p>
-                        <p className="text-2xl font-black text-indigo-600">6</p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-0.5">
-                        <p className="text-[8px] font-black uppercase text-slate-400">Orders Today</p>
-                        <p className="text-2xl font-black text-emerald-600">43</p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-0.5">
-                        <p className="text-[8px] font-black uppercase text-slate-400">Hot Product</p>
-                        <p className="text-xs font-black text-primary truncate">Hennessy VS</p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-0.5">
-                        <p className="text-[8px] font-black uppercase text-slate-400">Active Deliveries</p>
-                        <p className="text-2xl font-black text-slate-900">8 Runners</p>
-                    </div>
-                </div>
+                <p className="text-sm font-medium text-slate-500">Current session activity and order metrics loaded from Supabase.</p>
             </header>
 
+            {error && (
+                <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
+                    {error}
+                </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {metricCards.map(metric => (
+                    <Card key={metric.label} className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+                        <p className="text-[8px] font-black uppercase text-slate-400">{metric.label}</p>
+                        <p className="mt-1 text-2xl font-black text-foreground tabular-nums">{metric.value.toLocaleString()}</p>
+                    </Card>
+                ))}
+            </div>
             {/* EVENT STREAM FILTER BAR */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                {['ALL', 'PRODUCTS', 'SEARCH', 'CART', 'CHECKOUT', 'ORDERS', 'ERRORS'].map(f => (
+                {['ALL', 'PRODUCTS', 'SEARCH', 'CART', 'CHECKOUT', 'ORDERS', 'ERRORS', 'OTHER'].map(f => (
                     <button
                         key={f}
                         onClick={() => setActiveEventFilter(f)}
@@ -205,8 +235,7 @@ export default function LiveBehaviorCommandCenter() {
 
             <div className="grid xl:grid-cols-12 gap-8 text-left">
 
-                {/* LEFT: REAL-TIME INTERACTION STREAM & ATTENTION REQUIRED QUEUE */}
-                <div className="xl:col-span-7 space-y-8">
+                <div className="xl:col-span-7">
 
                     {/* 2. REAL-TIME INTERACTION STREAM */}
                     <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
@@ -215,76 +244,50 @@ export default function LiveBehaviorCommandCenter() {
                                 <h2 className="text-2xl font-black uppercase tracking-tight text-foreground italic">Real-Time Interaction Stream</h2>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase">Live Signal Uplink</p>
                             </div>
-                            <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                🟢 Event Bus Active
+                            <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-slate-50 text-slate-600 border border-slate-200">
+                                Supabase analytics
                             </span>
                         </div>
 
                         <div className="space-y-3 max-h-[480px] overflow-y-auto no-scrollbar pr-1">
+                            {loading && <p className="py-8 text-center text-sm font-bold text-slate-400">Loading analytics events...</p>}
+                            {!loading && filteredEvents.length === 0 && (
+                                <p className="py-8 text-center text-sm font-bold text-slate-400">
+                                    {error ? 'Analytics events could not be loaded.' : 'No matching analytics events have been recorded.'}
+                                </p>
+                            )}
                             {filteredEvents.map(evt => (
                                 <div key={evt.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-4 hover:bg-slate-100 transition-colors">
                                     <div className="flex items-center gap-3 min-w-0">
                                         <span className="text-[10px] font-mono font-black text-slate-400 shrink-0">{evt.timestamp}</span>
-                                        <span className={cn("px-2.5 py-1 rounded-lg text-[8px] font-black uppercase border shrink-0", evt.badge_color)}>
+                                        <span className="shrink-0 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[8px] font-black uppercase text-indigo-700">
                                             {evt.action_type}
                                         </span>
                                         <p className="text-xs font-bold text-foreground truncate">{evt.customer_code} &bull; {evt.description}</p>
                                     </div>
                                     <Button
-                                        onClick={() => setSelectedTerminal(terminals[0])}
+                                        onClick={() => setSelectedTerminal(terminals.find(terminal => terminal.id === evt.session_id) || null)}
+                                        disabled={!evt.session_id || !terminals.some(terminal => terminal.id === evt.session_id)}
                                         variant="outline"
                                         className="h-8 px-3 rounded-xl border-slate-200 text-[8px] font-black uppercase hover:bg-primary hover:text-white shrink-0"
                                     >
-                                        [WATCH SESSION]
+                                        View session
                                     </Button>
                                 </div>
                             ))}
                         </div>
                     </Card>
 
-                    {/* 3. ATTENTION REQUIRED PRIORITY QUEUE */}
-                    <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                            <ShieldAlert className="h-6 w-6 text-rose-500" />
-                            <div>
-                                <h3 className="text-xl font-black uppercase tracking-tight text-foreground">Attention Required Queue</h3>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase">Priority High-Friction Operational Alerts</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-3">
-                            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center justify-between gap-4">
-                                <div>
-                                    <p className="text-xs font-black uppercase text-rose-800">🔴 Checkout Abandonment Alert</p>
-                                    <p className="text-[10px] font-bold text-rose-900 uppercase">Customer OB-7742 dropped at payment (Cart: KSh 18,400) &bull; 4m ago</p>
-                                </div>
-                                <Button onClick={() => alert("WhatsApp Cart Recovery Discount sent to OB-7742! 💬")} className="h-9 px-4 rounded-xl bg-rose-600 text-white font-black uppercase text-[9px]">
-                                    Recover Cart
-                                </Button>
-                            </div>
-
-                            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-between gap-4">
-                                <div>
-                                    <p className="text-xs font-black uppercase text-amber-800">🟠 Stock Pressure Alert</p>
-                                    <p className="text-[10px] font-bold text-amber-900 uppercase">Hennessy VS 750ml &bull; 17 active patrons viewing &bull; 4 left in stock</p>
-                                </div>
-                                <Button onClick={() => router.push('/admin/upload')} className="h-9 px-4 rounded-xl bg-amber-600 text-white font-black uppercase text-[9px]">
-                                    Restock Cellar
-                                </Button>
-                            </div>
-                        </div>
-                    </Card>
                 </div>
 
-                {/* RIGHT: SESSION RADAR TERMINALS & INTENT ENGINE */}
-                <div className="xl:col-span-5 space-y-8">
+                <div className="xl:col-span-5">
 
                     {/* 4. SESSION RADAR TERMINALS */}
                     <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
                         <div className="flex justify-between items-center border-b border-slate-100 pb-4">
                             <div>
                                 <h3 className="text-2xl font-black uppercase tracking-tight text-foreground italic">Session Radar Terminals</h3>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase">Intent Scoring & Live Active Patrons</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Stored customer sessions</p>
                             </div>
                             <Users size={20} className="text-primary animate-pulse" />
                         </div>
@@ -298,17 +301,16 @@ export default function LiveBehaviorCommandCenter() {
                                                 {t.device === 'Mobile' ? <Smartphone size={18} /> : <Monitor size={18} />}
                                             </div>
                                             <div>
-                                                <h4 className="text-xs font-black uppercase text-foreground">{t.session_code} &bull; {t.customer_name}</h4>
+                                                <h4 className="text-xs font-black uppercase text-foreground">{t.customer_name}</h4>
                                                 <p className="text-[9px] font-bold text-slate-400 uppercase">{t.location}</p>
                                             </div>
                                         </div>
                                         <span className={cn(
                                             "px-3 py-1 rounded-full text-[8px] font-black uppercase border",
-                                            t.intent_score === 'HIGH INTENT' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                            t.intent_score === 'WARM' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                                            "bg-rose-50 text-rose-700 border-rose-200"
+                                            t.session_status.toUpperCase() === 'ACTIVE' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                            "bg-slate-50 text-slate-700 border-slate-200"
                                         )}>
-                                            {t.intent_score}
+                                            {t.session_status}
                                         </span>
                                     </div>
 
@@ -318,8 +320,8 @@ export default function LiveBehaviorCommandCenter() {
                                             <p className="font-bold text-foreground">{Math.floor(t.active_time_sec / 60)}m {t.active_time_sec % 60}s</p>
                                         </div>
                                         <div className="p-2 bg-white rounded-xl border border-slate-200">
-                                            <p className="text-slate-400 uppercase text-[7px] font-sans">Pages / Clicks</p>
-                                            <p className="font-bold text-foreground">{t.pages_viewed}p / {t.clicks}c</p>
+                                            <p className="text-slate-400 uppercase text-[7px] font-sans">Last Activity</p>
+                                            <p className="font-bold text-foreground">{t.last_action}</p>
                                         </div>
                                         <div className="p-2 bg-white rounded-xl border border-slate-200">
                                             <p className="text-slate-400 uppercase text-[7px] font-sans">Cart Value</p>
@@ -329,54 +331,20 @@ export default function LiveBehaviorCommandCenter() {
 
                                     <Button
                                         onClick={() => setSelectedTerminal(t)}
-                                        className="w-full h-11 rounded-2xl bg-slate-900 text-white font-black uppercase text-[9px] tracking-widest hover:bg-primary transition-colors"
+                                        className="w-full h-11 rounded-2xl bg-primary text-white font-black uppercase text-[9px] tracking-widest hover:bg-primary/90 transition-colors"
                                     >
-                                        <Eye size={14} className="mr-2" /> [WATCH SESSION & DNA]
+                                        <Eye size={14} className="mr-2" /> View session
                                     </Button>
                                 </div>
                             ))}
                         </div>
                     </Card>
 
-                    {/* 5. LIVE DEMAND PULSE & NAIROBI SECTOR HEATMAP */}
-                    <Card className="p-8 rounded-[3.5rem] bg-slate-950 text-white shadow-2xl space-y-6">
-                        <div className="border-b border-slate-800 pb-4">
-                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-rose-400">DEMAND PULSE & NAIROBI HEATMAP</span>
-                            <h3 className="text-xl font-black uppercase tracking-tight text-white mt-1">Hot Products & Sector Intensity</h3>
-                        </div>
-
-                        <div className="space-y-3 text-xs font-bold font-mono">
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-[9px] uppercase text-slate-400">
-                                    <span>Hennessy VS 750ml</span>
-                                    <span className="text-rose-400">38 views</span>
-                                </div>
-                                <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
-                                    <div className="h-full bg-rose-500 rounded-full" style={{ width: '85%' }} />
-                                </div>
-                            </div>
-
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-[9px] uppercase text-slate-400">
-                                    <span>Jameson Black Barrel</span>
-                                    <span className="text-amber-400">29 views</span>
-                                </div>
-                                <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
-                                    <div className="h-full bg-amber-500 rounded-full" style={{ width: '65%' }} />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="pt-2 border-t border-slate-800 text-[10px] font-bold text-slate-400 space-y-1">
-                            <p className="text-slate-300 uppercase font-black">Nairobi Sector Heatmap</p>
-                            <p>Westlands (14) &bull; Kilimani (11) &bull; Kileleshwa (7) &bull; CBD (5) &bull; Karen (4)</p>
-                        </div>
-                    </Card>
                 </div>
 
             </div>
 
-            {/* 6. CUSTOMER JOURNEY "WATCH SESSION" DRAWER WITH CUSTOMER DNA */}
+            {/* Session details contain only fields captured for this session. */}
             {selectedTerminal && (
                 <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
                     <div className="bg-white rounded-[3rem] p-8 sm:p-10 max-w-lg w-full space-y-6 shadow-2xl relative border border-slate-100 text-left max-h-[90vh] overflow-y-auto no-scrollbar">
@@ -388,45 +356,22 @@ export default function LiveBehaviorCommandCenter() {
                         </button>
 
                         <div className="space-y-1">
-                            <span className="text-[10px] font-black uppercase text-primary tracking-widest">CUSTOMER JOURNEY &amp; DNA AUDIT</span>
+                            <span className="text-[10px] font-black uppercase text-primary tracking-widest">Session details</span>
                             <h2 className="text-3xl font-black text-foreground uppercase tracking-tight">{selectedTerminal.customer_name} ({selectedTerminal.session_code})</h2>
                         </div>
 
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3 font-mono text-xs">
                             <div className="flex justify-between">
-                                <span className="text-slate-400 uppercase font-sans text-[9px] font-black">Current URL:</span>
-                                <span className="font-bold text-foreground truncate max-w-[200px]">{selectedTerminal.viewing_product}</span>
+                                <span className="text-slate-400 uppercase font-sans text-[9px] font-black">Last activity:</span>
+                                <span className="font-bold text-foreground truncate max-w-[200px]">{selectedTerminal.last_action}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-slate-400 uppercase font-sans text-[9px] font-black">Scroll Depth:</span>
-                                <span className="font-bold text-emerald-600">{selectedTerminal.scroll_depth_pct}%</span>
+                                <span className="text-slate-400 uppercase font-sans text-[9px] font-black">Last seen:</span>
+                                <span className="font-bold text-foreground">{new Date(selectedTerminal.last_seen_at).toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-400 uppercase font-sans text-[9px] font-black">Cart Total:</span>
                                 <span className="font-bold text-primary">{formatPrice(selectedTerminal.cart_value)}</span>
-                            </div>
-                        </div>
-
-                        {/* Customer DNA Profile */}
-                        <div className="p-5 rounded-3xl bg-slate-950 text-white space-y-3">
-                            <p className="text-[10px] font-black uppercase text-amber-400 tracking-widest">Customer DNA Profile</p>
-                            <div className="grid grid-cols-2 gap-3 text-xs">
-                                <div>
-                                    <p className="text-[8px] uppercase text-slate-400 font-bold">Lifetime Spend</p>
-                                    <p className="font-black text-white text-base">KSh 84,200</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] uppercase text-slate-400 font-bold">Total Orders</p>
-                                    <p className="font-black text-white text-base">6 Orders</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] uppercase text-slate-400 font-bold">Top Categories</p>
-                                    <p className="font-bold text-amber-300">Whiskey, Gin</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] uppercase text-slate-400 font-bold">Preferred Hours</p>
-                                    <p className="font-bold text-amber-300">20:00 - 01:00</p>
-                                </div>
                             </div>
                         </div>
 

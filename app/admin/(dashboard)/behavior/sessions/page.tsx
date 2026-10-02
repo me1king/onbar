@@ -35,14 +35,10 @@ interface SessionNode {
     total_active_time_sec: number;
     pages_viewed: number;
     created_at: string;
-    status: 'Purchased' | 'Abandoned' | 'Browsing';
+    status: string;
     device_info: {
         ua?: string;
         res?: string;
-    };
-    profiles?: {
-        full_name: string;
-        email: string;
     };
 }
 
@@ -54,61 +50,6 @@ interface ForensicEvent {
     timestamp: string;
 }
 
-const SAMPLE_SESSIONS: SessionNode[] = [
-    {
-        id: 'S-82A9',
-        entry_page: '/shop',
-        source_channel: 'Instagram Reel',
-        total_active_time_sec: 258,
-        pages_viewed: 12,
-        created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-        status: 'Purchased',
-        device_info: { ua: 'Android Chrome Mobile', res: '1080x2400' },
-        profiles: { full_name: 'David Maganga', email: 'davidmaganga130@gmail.com' }
-    },
-    {
-        id: 'S-12BF',
-        entry_page: '/',
-        source_channel: 'Direct Traffic',
-        total_active_time_sec: 37,
-        pages_viewed: 3,
-        created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-        status: 'Abandoned',
-        device_info: { ua: 'iPhone Safari Mobile', res: '1170x2532' },
-        profiles: { full_name: 'Guest Patron', email: 'guest@onlinebar.co.ke' }
-    },
-    {
-        id: 'S-90C4',
-        entry_page: '/beverages',
-        source_channel: 'TikTok Video',
-        total_active_time_sec: 182,
-        pages_viewed: 8,
-        created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-        status: 'Browsing',
-        device_info: { ua: 'Android Chrome Mobile', res: '1080x2340' },
-        profiles: { full_name: 'Sarah K.', email: 'sarah.k@onlinebar.co.ke' }
-    }
-];
-
-const SAMPLE_EVENTS: Record<string, ForensicEvent[]> = {
-    'S-82A9': [
-        { id: 1, action_type: 'PAGE_VIEW', page_url: '/', metadata: { duration: '2s' }, timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString() },
-        { id: 2, action_type: 'PAGE_VIEW', page_url: '/shop/35', metadata: { item: 'Amarula 750ml', category: 'wine' }, timestamp: new Date(Date.now() - 1000 * 60 * 14).toISOString() },
-        { id: 3, action_type: 'UI_INTERACTION', page_url: '/shop/35', metadata: { action: 'Dwell 47s on bottle specs' }, timestamp: new Date(Date.now() - 1000 * 60 * 13).toISOString() },
-        { id: 4, action_type: 'ADD_TO_CART', page_url: '/shop/35', metadata: { item: 'Amarula 750ml', price: 2600 }, timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString() },
-        { id: 5, action_type: 'SEARCH', page_url: '/shop', metadata: { query: 'chevda' }, timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString() },
-        { id: 6, action_type: 'ADD_TO_CART', page_url: '/shop/39', metadata: { item: 'chevda', price: 500 }, timestamp: new Date(Date.now() - 1000 * 60 * 8).toISOString() },
-        { id: 7, action_type: 'CHECKOUT_START', page_url: '/checkout', metadata: { cart_total: 3100 }, timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString() },
-        { id: 8, action_type: 'HEARTBEAT', page_url: '/checkout', metadata: { status: 'Payment Successful via M-Pesa' }, timestamp: new Date(Date.now() - 1000 * 60 * 2).toISOString() }
-    ],
-    'S-12BF': [
-        { id: 1, action_type: 'PAGE_VIEW', page_url: '/', metadata: { duration: '5s' }, timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString() },
-        { id: 2, action_type: 'PAGE_VIEW', page_url: '/beverages', metadata: { category: 'wine' }, timestamp: new Date(Date.now() - 1000 * 60 * 44).toISOString() },
-        { id: 3, action_type: 'ADD_TO_CART', page_url: '/beverages', metadata: { item: 'martini', price: 2400 }, timestamp: new Date(Date.now() - 1000 * 60 * 43).toISOString() },
-        { id: 4, action_type: 'HEARTBEAT', page_url: '/cart', metadata: { status: 'Abandoned at cart' }, timestamp: new Date(Date.now() - 1000 * 60 * 42).toISOString() }
-    ]
-};
-
 export default function SessionLibraryPage() {
     const router = useRouter();
     const [loading, setLoading] = React.useState(true);
@@ -117,6 +58,8 @@ export default function SessionLibraryPage() {
     const [forensics, setForensics] = React.useState<ForensicEvent[]>([]);
     const [loadingForensics, setLoadingForensics] = React.useState(false);
     const [search, setSearch] = React.useState('');
+    const [error, setError] = React.useState<string | null>(null);
+    const [forensicsError, setForensicsError] = React.useState<string | null>(null);
     const [hud, setHud] = React.useState({
         activeSessions: 0,
         cartsCreated: 0,
@@ -126,54 +69,69 @@ export default function SessionLibraryPage() {
 
     const fetchSessions = React.useCallback(async () => {
         if (!supabase) {
-            setSessions(SAMPLE_SESSIONS);
-            setSelectedSession(SAMPLE_SESSIONS[0]);
-            setForensics(SAMPLE_EVENTS['S-82A9']);
+            setError('Supabase is not configured. Session data is unavailable.');
             setLoading(false);
             return;
         }
         setLoading(true);
+        setError(null);
         try {
-            const [sessRes, sigRes, ordRes] = await Promise.all([
-                supabase.from('user_sessions').select('*').order('created_at', { ascending: false }).limit(50),
-                supabase.from('user_signals').select('id, event_type', { count: 'exact' }),
-                supabase.from('orders').select('id', { count: 'exact' })
+            const activeSince = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+            const [sessionsRes, eventsRes, cartsRes, ordersRes, bouncedRes, activeRes] = await Promise.all([
+                supabase.from('customer_sessions').select('*').order('last_seen_at', { ascending: false }).limit(50),
+                supabase.from('analytics_events').select('id, event_name, session_id, page_url, payload, created_at').not('session_id', 'is', null).order('created_at', { ascending: false }).limit(1000),
+                supabase.from('analytics_events').select('id', { count: 'exact', head: true }).eq('event_name', 'ADD_TO_CART'),
+                supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'Delivered'),
+                supabase.from('customer_sessions').select('id', { count: 'exact', head: true }).eq('session_status', 'ABANDONED'),
+                supabase.from('customer_sessions').select('id', { count: 'exact', head: true }).gte('last_seen_at', activeSince)
             ]);
 
-            const userSess = sessRes.data || [];
-            const carts = (sigRes.data || []).filter(s => s.event_type === 'ADD_TO_BAG').length;
-            const completedOrders = ordRes.count || 0;
+            const queryError = sessionsRes.error || eventsRes.error || cartsRes.error || ordersRes.error || bouncedRes.error || activeRes.error;
+            if (queryError) throw queryError;
 
             setHud({
-                activeSessions: Math.max(userSess.length, 3),
-                cartsCreated: Math.max(carts, 31),
-                ordersCompleted: Math.max(completedOrders, 12),
-                bouncedVisitors: 18
+                activeSessions: activeRes.count || 0,
+                cartsCreated: cartsRes.count || 0,
+                ordersCompleted: ordersRes.count || 0,
+                bouncedVisitors: bouncedRes.count || 0
             });
 
-            if (userSess.length > 0) {
-                const mapped: SessionNode[] = userSess.map((s, idx) => ({
-                    id: s.session_id || `S-${idx + 100}`,
-                    entry_page: s.entry_url || '/shop',
-                    source_channel: s.utm_source || s.affiliate_id || 'Direct',
-                    total_active_time_sec: 180 + idx * 25,
-                    pages_viewed: 5 + (idx % 4),
-                    created_at: s.created_at || new Date().toISOString(),
-                    status: idx === 0 ? 'Purchased' : idx % 2 === 0 ? 'Abandoned' : 'Browsing',
-                    device_info: { ua: s.device_type || 'Mobile', res: '1080x2400' },
-                    profiles: { full_name: 'Patron ' + (idx + 1), email: 'patron' + (idx + 1) + '@onlinebar.co.ke' }
-                }));
-                setSessions(mapped);
-                setSelectedSession(mapped[0]);
-            } else {
-                setSessions(SAMPLE_SESSIONS);
-                setSelectedSession(SAMPLE_SESSIONS[0]);
-                setForensics(SAMPLE_EVENTS['S-82A9']);
+            const eventsBySession = new Map<string, typeof eventsRes.data>();
+            for (const event of eventsRes.data || []) {
+                if (!event.session_id) continue;
+                const sessionEvents = eventsBySession.get(event.session_id) || [];
+                sessionEvents.push(event);
+                eventsBySession.set(event.session_id, sessionEvents);
             }
-        } catch {
-            setSessions(SAMPLE_SESSIONS);
-            setSelectedSession(SAMPLE_SESSIONS[0]);
-            setForensics(SAMPLE_EVENTS['S-82A9']);
+
+            const mapped: SessionNode[] = (sessionsRes.data || []).map(session => {
+                const sessionEvents = eventsBySession.get(session.id) || [];
+                const firstEvent = sessionEvents.at(-1);
+                return {
+                    id: session.id,
+                    entry_page: session.entry_page || firstEvent?.page_url || 'Unknown entry page',
+                    source_channel: session.source_channel || 'Unknown source',
+                    total_active_time_sec: session.total_active_time_sec || 0,
+                    pages_viewed: new Set(sessionEvents.map(event => event.page_url).filter(Boolean)).size,
+                    created_at: session.created_at,
+                    status: session.session_status || 'Unknown',
+                    device_info: session.device_info || {}
+                };
+            });
+            setSessions(mapped);
+            setSelectedSession(mapped[0] || null);
+            if (mapped[0]) {
+                await fetchForensics(mapped[0]);
+            } else {
+                setForensics([]);
+                setForensicsError(null);
+            }
+        } catch (err) {
+            console.error('Session data fetch error:', err);
+            setError(err instanceof Error ? err.message : 'Unable to load session data.');
+            setSessions([]);
+            setSelectedSession(null);
+            setForensics([]);
         } finally {
             setLoading(false);
         }
@@ -181,31 +139,30 @@ export default function SessionLibraryPage() {
 
     const fetchForensics = async (session: SessionNode) => {
         if (!supabase) {
-            setForensics(SAMPLE_EVENTS[session.id] || SAMPLE_EVENTS['S-82A9']);
+            setForensicsError('Supabase is not configured. Session activity is unavailable.');
             return;
         }
         setLoadingForensics(true);
+        setForensicsError(null);
         try {
-            const { data } = await supabase
-                .from('user_signals')
-                .select('*')
+            const { data, error: fetchError } = await supabase
+                .from('analytics_events')
+                .select('id, event_name, page_url, payload, created_at')
                 .eq('session_id', session.id)
                 .order('created_at', { ascending: true });
 
-            if (data && data.length > 0) {
-                const events: ForensicEvent[] = data.map((d, idx) => ({
-                    id: d.id || idx,
-                    action_type: d.event_type || 'PAGE_VIEW',
-                    page_url: d.url || '/shop',
-                    metadata: d.metadata || {},
-                    timestamp: d.created_at || new Date().toISOString()
-                }));
-                setForensics(events);
-            } else {
-                setForensics(SAMPLE_EVENTS[session.id] || SAMPLE_EVENTS['S-82A9']);
-            }
-        } catch {
-            setForensics(SAMPLE_EVENTS[session.id] || SAMPLE_EVENTS['S-82A9']);
+            if (fetchError) throw fetchError;
+            setForensics((data || []).map(event => ({
+                id: event.id,
+                action_type: event.event_name,
+                page_url: event.page_url || 'Unknown page',
+                metadata: event.payload || {},
+                timestamp: event.created_at
+            })));
+        } catch (err) {
+            console.error('Session activity fetch error:', err);
+            setForensics([]);
+            setForensicsError(err instanceof Error ? err.message : 'Unable to load session activity.');
         } finally {
             setLoadingForensics(false);
         }
@@ -217,7 +174,6 @@ export default function SessionLibraryPage() {
 
     const filtered = sessions.filter(s =>
         s.id.toLowerCase().includes(search.toLowerCase()) ||
-        s.profiles?.full_name?.toLowerCase().includes(search.toLowerCase()) ||
         s.entry_page?.toLowerCase().includes(search.toLowerCase())
     );
 
@@ -256,6 +212,12 @@ export default function SessionLibraryPage() {
                 </div>
             </header>
 
+            {error && (
+                <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
+                    {error}
+                </div>
+            )}
+
             {/* 1. TOP LIVE SESSION HUD CARDS */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
@@ -288,7 +250,7 @@ export default function SessionLibraryPage() {
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
                     <div className="flex items-center gap-2">
                         <Flame className="h-4 w-4 text-rose-500" />
-                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Bounced Visitors</p>
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Abandoned Sessions</p>
                     </div>
                     <p className="text-3xl font-black text-foreground">{hud.bouncedVisitors.toLocaleString()}</p>
                     <span className="text-[8px] font-black uppercase text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Drop-off Node</span>
@@ -309,6 +271,10 @@ export default function SessionLibraryPage() {
                             <div className="py-40 text-center opacity-30 flex flex-col items-center gap-6">
                                 <Loader2 size={40} className="animate-spin text-indigo-600" />
                                 <p className="text-[10px] font-black uppercase tracking-widest">Decrypting Journey Metadata...</p>
+                            </div>
+                        ) : filtered.length === 0 ? (
+                            <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-medium text-slate-500">
+                                {search ? 'No sessions match this search.' : 'No recorded sessions yet.'}
                             </div>
                         ) : filtered.map(session => {
                             const isMobile = session.device_info?.ua?.toLowerCase().includes('mobile');
@@ -339,7 +305,7 @@ export default function SessionLibraryPage() {
                                                     <div className="h-1 w-1 rounded-full bg-slate-200" />
                                                     <span className="text-[8px] font-bold text-slate-400 uppercase">{session.id}</span>
                                                 </div>
-                                                <h3 className="text-sm font-black text-foreground uppercase tracking-tight truncate italic">{session.profiles?.full_name || 'Anonymous Node'}</h3>
+                                                <h3 className="text-sm font-black text-foreground uppercase tracking-tight truncate italic">Session {session.id}</h3>
                                                 <div className="flex items-center gap-3 mt-2">
                                                     <div className="flex items-center gap-1 text-[9px] font-black uppercase text-slate-400">
                                                         <Clock size={10} /> {session.total_active_time_sec}s Active
@@ -347,8 +313,8 @@ export default function SessionLibraryPage() {
                                                     <div className="h-1 w-1 rounded-full bg-slate-200" />
                                                     <span className={cn(
                                                         "text-[8px] font-black uppercase px-2 py-0.5 rounded-full border",
-                                                        session.status === 'Purchased' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                                                        session.status === 'Abandoned' ? "bg-rose-50 text-rose-500 border-rose-100" :
+                                                        session.status === 'PURCHASED' || session.status === 'Delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                                                        session.status === 'ABANDONED' ? "bg-rose-50 text-rose-500 border-rose-100" :
                                                         "bg-indigo-50 text-indigo-600 border-indigo-100"
                                                     )}>
                                                         {session.status}
@@ -373,7 +339,7 @@ export default function SessionLibraryPage() {
                                 <div>
                                     <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600">Forensic View &bull; {selectedSession.id}</span>
                                     <h2 className="text-2xl font-black uppercase tracking-tighter italic">
-                                        {selectedSession.profiles?.full_name} ({selectedSession.status})
+                                        Session {selectedSession.id} ({selectedSession.status})
                                     </h2>
                                 </div>
                                 <div className="flex items-center gap-4">
@@ -389,6 +355,10 @@ export default function SessionLibraryPage() {
                                     <div className="py-40 flex flex-col items-center gap-6">
                                         <Loader2 size={40} className="animate-spin text-indigo-600" />
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">Synchronizing Forensic Nodes...</p>
+                                    </div>
+                                ) : forensicsError ? (
+                                    <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
+                                        {forensicsError}
                                     </div>
                                 ) : (
                                     <ForensicTimeline events={forensics} />

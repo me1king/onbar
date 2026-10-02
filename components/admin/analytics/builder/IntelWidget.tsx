@@ -4,7 +4,6 @@ import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import {
     TrendingUp,
-    ArrowUpRight,
     BarChart3,
     Activity,
     AlertCircle
@@ -30,17 +29,22 @@ export default function IntelWidget({ widget }: WidgetProps) {
             if (!supabase) return;
             try {
                 if (widget.data_source === 'TOTAL_REVENUE') {
-                    const { data: rev } = await supabase.from('product_intelligence').select('total_revenue');
+                    const { data: rev, error } = await supabase.from('product_intelligence').select('total_revenue');
+                    if (error) throw error;
                     const total = rev?.reduce((s, r) => s + Number(r.total_revenue), 0) || 0;
                     setData(total);
                 } else if (widget.data_source === 'UNITS_SOLD') {
-                    const { data: units } = await supabase.from('product_intelligence').select('units_sold');
+                    const { data: units, error } = await supabase.from('product_intelligence').select('units_sold');
+                    if (error) throw error;
                     const total = units?.reduce((s, r) => s + r.units_sold, 0) || 0;
                     setData(total);
                 } else {
-                    setData(Math.floor(Math.random() * 1000) + 100);
+                    setData(null);
                 }
-            } catch (err) { console.error(err); }
+            } catch (err) {
+                console.error(err);
+                setData(null);
+            }
         }
         fetchWidgetData();
     }, [widget]);
@@ -56,12 +60,11 @@ export default function IntelWidget({ widget }: WidgetProps) {
                 </div>
                 <div className="mt-4">
                     <h3 className="text-3xl font-black text-foreground tracking-tighter uppercase leading-none">
-                        {widget.data_source.includes('REVENUE') ? formatPrice(data || 0) : (data || 0).toLocaleString()}
+                        {data === null ? 'Unavailable' : widget.data_source.includes('REVENUE') ? formatPrice(data) : data.toLocaleString()}
                     </h3>
-                    <div className="flex items-center gap-1.5 mt-2">
-                        <span className="text-emerald-500 font-black text-[10px]">+18.4%</span>
-                        <ArrowUpRight size={12} className="text-emerald-500" />
-                    </div>
+                    <p className="text-slate-400 font-black text-[10px] mt-2">
+                        {data === null ? 'Metric unavailable' : 'Current total'}
+                    </p>
                 </div>
             </Card>
         );
@@ -73,7 +76,7 @@ export default function IntelWidget({ widget }: WidgetProps) {
                 <div className="flex justify-between items-start px-2">
                     <div className="space-y-1">
                         <h3 className="text-xl font-black uppercase tracking-tight text-foreground">{widget.title}</h3>
-                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest italic">Live Aggregation</p>
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest italic">Chart data unavailable</p>
                     </div>
                     <div className="h-10 w-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300"><BarChart3 size={20} /></div>
                 </div>

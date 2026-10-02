@@ -9,7 +9,6 @@ import {
     Save,
     Zap,
     Target,
-    BarChart3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,8 +26,7 @@ export default function AudienceBuilder() {
     const [rules, setRules] = React.useState<Rule[]>([
         { id: '1', field: 'lifetime_value', operator: 'gt', value: '10000' }
     ]);
-    const [estimatedReach, setEstimatedReach] = React.useState(0);
-    const [calculating, setCalculating] = React.useState(false);
+    const [estimatedReach] = React.useState<number | null>(null);
 
     const addRule = () => {
         setRules([...rules, { id: Math.random().toString(), field: 'category_affinity', operator: 'eq', value: '' }]);
@@ -39,12 +37,7 @@ export default function AudienceBuilder() {
     };
 
     const calculateReach = () => {
-        setCalculating(true);
-        // Simulated neural reach calculation
-        setTimeout(() => {
-            setEstimatedReach(Math.floor(Math.random() * 500) + 50);
-            setCalculating(false);
-        }, 1500);
+        alert('Audience reach calculation is unavailable because no backend calculator is configured.');
     };
 
     const handleSave = async () => {
@@ -53,7 +46,6 @@ export default function AudienceBuilder() {
             const { error } = await supabase.from('audience_segments').insert([{
                 name,
                 rule_logic: rules,
-                estimated_reach: estimatedReach
             }]);
             if (!error) {
                 alert("Neural Segment established. 🚀");
@@ -76,7 +68,7 @@ export default function AudienceBuilder() {
                 </div>
                 <div className="text-right">
                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Est. Reach</p>
-                    <p className="text-3xl font-black text-indigo-600 tracking-tighter">{estimatedReach.toLocaleString()}</p>
+                    <p className="text-3xl font-black text-indigo-600 tracking-tighter">{estimatedReach?.toLocaleString() ?? 'Unavailable'}</p>
                 </div>
             </header>
 
@@ -127,15 +119,14 @@ export default function AudienceBuilder() {
             <div className="pt-8 border-t border-slate-50 flex gap-4">
                 <Button
                     onClick={calculateReach}
-                    disabled={calculating}
                     variant="outline"
                     className="flex-1 h-14 rounded-2xl border-slate-200 text-foreground font-black uppercase text-[10px] tracking-widest active:scale-95"
                 >
-                    {calculating ? <BarChart3 className="animate-spin mr-2" /> : <><RefreshCcw className="mr-2" size={14} /> Calculate Reach</>}
+                    <><RefreshCcw className="mr-2" size={14} /> Calculate Reach</>
                 </Button>
                 <Button
                     onClick={handleSave}
-                    disabled={!name || estimatedReach === 0}
+                    disabled={!name}
                     className="flex-[2] h-14 rounded-2xl bg-indigo-600 text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/10 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                     <Save size={16} className="mr-2" /> Commit Segment to Registry
@@ -149,7 +140,7 @@ export default function AudienceBuilder() {
                         <span className="text-[10px] font-black uppercase text-indigo-700">Precision Targeting</span>
                     </div>
                     <p className="text-[10px] font-medium text-indigo-600 italic">
-                        &quot;Higher segment precision results in 18% lower unsubscribe rates. Aim for audiences smaller than 500 patrons for tactical drop campaigns.&quot;
+                        &quot;Define audience rules to target the patrons who match your campaign criteria. Reach estimates are unavailable until a backend calculator is configured.&quot;
                     </p>
                 </div>
                 <Zap size={48} className="absolute -bottom-6 -right-6 text-indigo-200 opacity-20 rotate-12" />

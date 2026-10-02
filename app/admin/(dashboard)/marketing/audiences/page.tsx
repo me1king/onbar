@@ -38,7 +38,6 @@ export default function AudiencesPage() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [isDefining, setIsDefining] = useState(false);
-    const [isCalculating, setIsCalculating] = useState(false);
 
     // Define State
     const [newSegment, setNewSegment] = useState({
@@ -46,20 +45,12 @@ export default function AudiencesPage() {
         spend_min: '0',
         orders_min: '0',
         last_order_days: '90',
-        reach: 0
+        reach: null as number | null
     });
 
     const calculateReach = async () => {
-        if (!supabase) return;
-        setIsCalculating(true);
-        try {
-            // Simulated rule-based calculation on the server/DB
-            await new Promise(r => setTimeout(r, 1500));
-            const baseReach = Math.floor(Math.random() * 500) + 50;
-            setNewSegment(prev => ({ ...prev, reach: baseReach }));
-        } finally {
-            setIsCalculating(false);
-        }
+        setNewSegment(prev => ({ ...prev, reach: null }));
+        alert('Audience reach calculation is unavailable because no backend calculator is configured.');
     };
 
     const handleCreateSegment = async () => {
@@ -68,7 +59,6 @@ export default function AudiencesPage() {
         try {
             const { error } = await supabase.from('customer_segments').insert([{
                 name: newSegment.name,
-                estimated_reach: newSegment.reach,
                 rules: {
                     spend_min: Number(newSegment.spend_min),
                     orders_min: Number(newSegment.orders_min),
@@ -77,7 +67,7 @@ export default function AudiencesPage() {
             }]);
             if (error) throw error;
             setIsDefining(false);
-            setNewSegment({ name: '', spend_min: '0', orders_min: '0', last_order_days: '90', reach: 0 });
+            setNewSegment({ name: '', spend_min: '0', orders_min: '0', last_order_days: '90', reach: null });
             // Refresh list
             const { data } = await supabase.from('customer_segments').select('*').order('created_at', { ascending: false });
             setSegments(data || []);
@@ -164,16 +154,15 @@ export default function AudiencesPage() {
                                     <div className="space-y-1">
                                         <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Estimated Reach</p>
                                         <h4 className="text-5xl font-black text-primary tracking-tighter tabular-nums">
-                                            {isCalculating ? '---' : newSegment.reach.toLocaleString()}
+                                            {newSegment.reach?.toLocaleString() ?? 'Unavailable'}
                                         </h4>
                                     </div>
                                     <Button
                                         onClick={calculateReach}
-                                        disabled={isCalculating}
                                         variant="outline"
                                         className="h-10 rounded-xl bg-white text-[8px] font-black uppercase tracking-widest shadow-sm hover:bg-slate-50"
                                     >
-                                        {isCalculating ? <Loader2 size={12} className="animate-spin mr-2" /> : <Activity size={12} className="mr-2" />}
+                                        <Activity size={12} className="mr-2" />
                                         Run Reach Scan
                                     </Button>
                                 </div>

@@ -19,6 +19,7 @@ import {
   Navigation,
   CheckSquare,
   Square,
+  Gift,
   ThermometerSnowflake,
   Coffee,
   Trash2
@@ -26,6 +27,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/supabaseClient';
 import { formatPrice, cn } from '@/lib/utils';
 import { generateReceiptPDF, getWhatsAppReceiptLink } from '@/lib/receiptService';
@@ -62,6 +64,8 @@ interface OrderRecord {
   warehouse_location?: string;
   is_gift?: boolean;
   gift_message?: string | null;
+  gift_recipient?: string | null;
+  gift_occasion?: string | null;
 }
 
 interface ManualOrderForm {
@@ -107,6 +111,9 @@ export default function AdminOrdersPage() {
   const [isBulkUpdating, setIsBulkUpdating] = React.useState(false);
   const [assigningRiderId, setAssigningRiderId] = React.useState<number | null>(null);
   const [riderForm, setRiderForm] = React.useState({ name: '', phone: '' });
+  const [editingGiftOrderId, setEditingGiftOrderId] = React.useState<number | null>(null);
+  const [giftMessageDraft, setGiftMessageDraft] = React.useState('');
+  const [isSavingGiftMessage, setIsSavingGiftMessage] = React.useState(false);
 
   const canManageOrders = role === 'staff' || role === 'admin' || role === 'owner';
   const canSeeMoney = role === 'staff' || role === 'admin' || role === 'owner';
@@ -320,6 +327,33 @@ export default function AdminOrdersPage() {
   const handleShareOnWhatsApp = (order: OrderRecord) => {
       const link = getWhatsAppReceiptLink(order as Parameters<typeof getWhatsAppReceiptLink>[0]);
       window.open(link, '_blank');
+  };
+
+  const handleSaveGiftMessage = async (order: OrderRecord) => {
+      if (!supabase || !canManageOrders) return;
+      setIsSavingGiftMessage(true);
+      try {
+          const message = giftMessageDraft.trim();
+          const { error } = await supabase
+              .from('orders')
+              .update({ is_gift: true, gift_message: message || null })
+              .eq('id', order.id);
+
+          if (error) throw error;
+
+          await logAuditAction(email, 'UPDATE_GIFT_MESSAGE', { id: order.id });
+          setOrders(current => current.map(item => item.id === order.id
+              ? { ...item, is_gift: true, gift_message: message || null }
+              : item));
+          setEditingGiftOrderId(null);
+          setGiftMessageDraft('');
+          setStatusMessage({ type: 'success', text: `Gift card message saved for order #${order.id}.` });
+      } catch (err: unknown) {
+          const error = err as Error;
+          setStatusMessage({ type: 'error', text: error.message || 'Unable to save gift card message.' });
+      } finally {
+          setIsSavingGiftMessage(false);
+      }
   };
 
   const copyTrackingLink = (orderId: number) => {
@@ -723,12 +757,67 @@ export default function AdminOrdersPage() {
                                     </span>
 
                                     {(order.is_gift || order.gift_message || order.note?.includes('GIFT')) && (
-                                        <div className="mt-3 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-[10px] space-y-1 max-w-[200px]">
+                                        <div className="mt-3 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-[10px] space-y-2 max-w-[240px]">
                                             <div className="flex items-center gap-1.5 font-black uppercase text-amber-800 text-[9px] tracking-widest">
-                                                <span>🎁 GIFT PACKAGE</span>
+                                                <Gift className="h-3 w-3" /> GIFT PACKAGE
                                             </div>
-                                            {order.gift_message && (
-                                                <p className="font-bold italic uppercase leading-snug break-words">&quot;{order.gift_message}&quot;</p>
+                                            {(order.gift_recipient || order.gift_occasion) && (
+                                                <p className="text-amber-800 font-bold">
+                                                    {[order.gift_recipient, order.gift_occasion].filter(Boolean).join(' · ')}
+                                                </p>
+                                            )}
+                                            {editingGiftOrderId === order.id ? (
+                                                <div className="space-y-2">
+                                                    <Textarea
+                                                        value={giftMessageDraft}
+                                                        onChange={event => setGiftMessageDraft(event.target.value)}
+                                                        placeholder="Write the message for the gift card..."
+                                                        maxLength={500}
+                                                        className="min-h-20 rounded-xl border-amber-200 bg-white p-3 text-xs text-slate-900"
+                                                    />
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            disabled={isSavingGiftMessage}
+                                                            onClick={() => handleSaveGiftMessage(order)}
+                                                            className="h-8 rounded-lg bg-amber-600 px-3 text-[9px] font-black uppercase text-white hover:bg-amber-700"
+                                                        >
+                                                            {isSavingGiftMessage ? 'Saving...' : 'Save Message'}
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            disabled={isSavingGiftMessage}
+                                                            onClick={() => {
+                                                                setEditingGiftOrderId(null);
+                                                                setGiftMessageDraft('');
+                                                            }}
+                                                            className="h-8 rounded-lg border-amber-200 px-3 text-[9px] font-black uppercase"
+                                                        >
+                                                            Cancel
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {order.gift_message ? (
+                                                        <p className="font-bold italic leading-snug break-words">&quot;{order.gift_message}&quot;</p>
+                                                    ) : (
+                                                        <p className="text-amber-700 italic">No gift card message yet.</p>
+                                                    )}
+                                                    {canManageOrders && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingGiftOrderId(order.id);
+                                                                setGiftMessageDraft(order.gift_message || '');
+                                                            }}
+                                                            className="font-black uppercase tracking-wider text-amber-800 underline underline-offset-2"
+                                                        >
+                                                            {order.gift_message ? 'Edit card message' : 'Write card message'}
+                                                        </button>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
                                     )}

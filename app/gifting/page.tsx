@@ -72,15 +72,20 @@ export default function GiftingHub() {
             ...selectedSnacks.map(s => ({ ...s, quantity: 1, base_price: s.price, image: s.image_url }))
         ];
 
-        addBundleToCart(items);
-        // Persist note to session/local storage for checkout to pick up automatically
-        if (personalNote) {
-            try {
-                sessionStorage.setItem('ob_gift_note', personalNote);
-                localStorage.setItem('ob_gift_note', personalNote);
-            } catch {}
+        try {
+            sessionStorage.setItem('ob_gift_note', personalNote);
+            localStorage.setItem('ob_gift_note', personalNote);
+            sessionStorage.setItem('ob_gift_recipient', recipient || '');
+            sessionStorage.setItem('ob_gift_occasion', occasion || '');
+            localStorage.setItem('ob_gift_recipient', recipient || '');
+            localStorage.setItem('ob_gift_occasion', occasion || '');
+        } catch (error) {
+            console.error('Unable to preserve gift details:', error);
+            alert('Gift details could not be saved. Please enable browser storage and try again.');
+            return;
         }
 
+        addBundleToCart(items);
         alert("Gift Box established in your bag! 🎁");
         router.push('/cart');
     };

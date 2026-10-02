@@ -87,6 +87,8 @@ function CheckoutContent() {
   const [isPickingLocation, setIsPickingLocation] = useState(false);
   const [isGift, setIsGift] = useState(false);
   const [giftMessage, setGiftMessage] = useState("");
+  const [giftRecipient, setGiftRecipient] = useState("");
+  const [giftOccasion, setGiftOccasion] = useState("");
   const [coords, setCoords] = useState<{ lat: number | null, lng: number | null }>({ lat: null, lng: null });
   const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus>({
     type: "idle",
@@ -112,12 +114,17 @@ function CheckoutContent() {
         ? (sessionStorage.getItem('ob_gift_note') || localStorage.getItem('ob_gift_note'))
         : null;
 
-      if (savedGiftNote && savedGiftNote.trim().length > 0) {
+      const savedRecipient = sessionStorage.getItem('ob_gift_recipient') || localStorage.getItem('ob_gift_recipient') || "";
+      const savedOccasion = sessionStorage.getItem('ob_gift_occasion') || localStorage.getItem('ob_gift_occasion') || "";
+      if ((savedGiftNote && savedGiftNote.trim().length > 0) || savedRecipient || savedOccasion) {
         setIsGift(true);
-        setGiftMessage(savedGiftNote.trim());
+        setGiftMessage(savedGiftNote?.trim() || "");
+        setGiftRecipient(savedRecipient);
+        setGiftOccasion(savedOccasion);
       }
     } catch (err) {
       console.warn("Gift note restore error:", err);
+      setCheckoutStatus({ type: "error", message: "Gift details could not be restored. Please re-enter the message before ordering." });
     }
   }, []);
 
@@ -264,6 +271,21 @@ function CheckoutContent() {
     };
   }, [placedOrderId]);
 
+  const clearGiftDraft = () => {
+      setIsGift(false);
+      setGiftMessage("");
+      setGiftRecipient("");
+      setGiftOccasion("");
+      try {
+          for (const key of ['ob_gift_note', 'ob_gift_recipient', 'ob_gift_occasion']) {
+              sessionStorage.removeItem(key);
+              localStorage.removeItem(key);
+          }
+      } catch (error) {
+          console.warn('Unable to clear saved gift details:', error);
+      }
+  };
+
   const handleApplyCoupon = async () => {
       if (!couponCode.trim()) return;
       setIsValidatingCoupon(true);
@@ -304,6 +326,17 @@ function CheckoutContent() {
       return;
     }
 
+    if (paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+      setCheckoutStatus({ type: "error", message: "Enter a valid email address to continue with Paystack." });
+      return;
+    }
+
+    const paystackPublicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY?.trim();
+    if (paymentMethod === "M-Pesa" && !paystackPublicKey) {
+      setCheckoutStatus({ type: "error", message: "Online payments are not configured. Please choose Cash on Delivery or contact support." });
+      return;
+    }
+
     setIsPlacingOrder(true);
     setCheckoutStatus({ type: "processing", message: "Verifying beverage availability..." });
 
@@ -313,26 +346,27 @@ function CheckoutContent() {
       // 0.5 Smart Stock Guard: Final real-time check
       let dbProducts: DBProduct[] = [];
       const productIds = cart.map(item => item.id);
-      const { data } = await client
+      const { data, error: stockError } = await client
           .from('products')
           .select('id, name, stock, variant_stock, cost_price')
           .in('id', productIds);
-      dbProducts = (data as unknown as DBProduct[]) || [];
+      if (stockError) throw stockError;
+      dbProducts = (data as DBProduct[] | null) || [];
 
-      if (dbProducts.length > 0) {
-          for (const item of cart) {
-              const dbProd = dbProducts.find(p => p.id === item.id);
-              if (!dbProd) continue;
+      for (const item of cart) {
+          const dbProd = dbProducts.find(p => p.id === item.id);
+          if (!dbProd) {
+              throw new Error(`Product ${item.name} is no longer available. Please refresh your cart.`);
+          }
 
-              const vStock = dbProd.variant_stock?.[item.size || 'Standard'] ?? dbProd.stock;
-              if (vStock < item.quantity) {
-                  setCheckoutStatus({
-                      type: "error",
-                      message: `Sorry, ${dbProd.name} (${item.size || 'Standard'}) just sold out or has insufficient stock! Please remove it from your cart.`
-                  });
-                  setIsPlacingOrder(false);
-                  return;
-              }
+          const vStock = dbProd.variant_stock?.[item.size || 'Standard'] ?? dbProd.stock;
+          if (vStock < item.quantity) {
+              setCheckoutStatus({
+                  type: "error",
+                  message: `Sorry, ${dbProd.name} (${item.size || 'Standard'}) just sold out or has insufficient stock! Please remove it from your cart.`
+              });
+              setIsPlacingOrder(false);
+              return;
           }
       }
 
@@ -353,20 +387,30 @@ function CheckoutContent() {
         setCheckoutStatus({ type: "processing", message: "Launching secure payment window..." });
 
         const handler = window.PaystackPop.setup({
-            key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || 'pk_live_0cf2e82a868e445c53ee0b61b5045360b96c75a5',
-            email: customerEmail || 'patron@onlinebar.co.ke',
+            key: paystackPublicKey,
+            email: customerEmail.trim(),
             amount: Math.round(total * 100), // KES to Cents
             currency: 'KES',
             ref: checkoutRequestId,
             callback: async (response: PaystackResponse) => {
                 if (response.status === 'success' && supabase) {
-                    await supabase.from('orders').update({
+                    const { error: paymentUpdateError } = await supabase.from('orders').update({
                         status: 'Paid',
                         payment_verified_at: new Date().toISOString(),
                         note: `Paystack Ref: ${response.reference}`
                     }).eq('checkout_request_id', checkoutRequestId);
+                    if (paymentUpdateError) {
+                        console.error("Order payment confirmation error:", paymentUpdateError);
+                        setCheckoutStatus({
+                            type: "error",
+                            message: `Payment was received, but order confirmation is still pending. Contact support with reference ${response.reference}.`
+                        });
+                        setIsPlacingOrder(false);
+                        return;
+                    }
 
                     // FORCE REDIRECT - prevent being stuck in Paystack modal
+                    clearGiftDraft();
                     window.location.href = `/checkout/success?orderId=${orderId}`;
                 }
             },
@@ -432,6 +476,8 @@ function CheckoutContent() {
           longitude: coords.lng || profile?.longitude || null,
           is_gift: isGift,
           gift_message: giftMessage.trim() || null,
+          gift_recipient: isGift ? giftRecipient || null : null,
+          gift_occasion: isGift ? giftOccasion || null : null,
           note: `Region: ${currentRegion.label}${activeCoupon ? ` | Coupon: ${activeCoupon.code}` : ''}${usePoints ? ` | Used ${pointsDiscount * 10} points` : ''}${referralCode ? ` | Referred by ${referralCode}` : ''}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`
       };
 
@@ -442,35 +488,21 @@ function CheckoutContent() {
           .single();
 
       if (headerError) {
-          console.error("Header Save Error:", headerError);
-          // Silent retry with sanitized payload if columns missing
-          const { data: retryData, error: retryError } = await client
-              .from("orders")
-              .insert([{
-                  customer_name: customerName.trim(),
-                  customer_phone: customerPhone.trim(),
-                  total_price: total,
-                  is_gift: isGift,
-                  gift_message: giftMessage.trim() || null,
-                  note: `Region: ${currentRegion.label}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`,
-                  status: "Pending"
-              }])
-              .select('id')
-              .single();
-
-          if (retryError) throw retryError;
-          if (retryData) {
-              await createOrderItems(retryData.id, products);
-              setPlacedOrderId(retryData.id);
-              return retryData.id;
-          }
-      } else if (headerData) {
-          await createOrderItems(headerData.id, products);
-          setPlacedOrderId(headerData.id);
-          return headerData.id;
+          throw headerError;
       }
 
-      return null;
+      if (!headerData) throw new Error("The order could not be saved.");
+
+      try {
+          await createOrderItems(headerData.id, products);
+      } catch (itemError) {
+          const { error: cleanupError } = await client.from("orders").delete().eq("id", headerData.id);
+          if (cleanupError) console.error("Unable to remove incomplete order:", cleanupError);
+          throw itemError;
+      }
+
+      setPlacedOrderId(headerData.id);
+      return headerData.id;
     } catch (error: unknown) {
       const err = error as Error;
       console.error("Order save error:", err);
@@ -494,14 +526,7 @@ function CheckoutContent() {
       });
 
       const { error } = await supabase.from("order_items").insert(itemRows);
-      if (error) {
-          console.warn("Item save warning (falling back to legacy single-row mode):", error);
-          // If order_items table doesn't exist yet, we've already saved the header
-          // but we might need to link the product_id to the header for legacy support
-          if (cart.length > 0) {
-              await supabase.from('orders').update({ product_id: cart[0].id }).eq('id', orderId);
-          }
-      }
+      if (error) throw error;
   };
 
   const finalizeOrder = async (orderId?: number) => {
@@ -620,6 +645,7 @@ function CheckoutContent() {
     }
 
     clearCart();
+    clearGiftDraft();
     setCustomerName("");
     setCustomerPhone("");
 
@@ -700,8 +726,8 @@ function CheckoutContent() {
                   <Input placeholder="07XXXXXXXX" className="rounded-2xl border-slate-100 bg-slate-50/50 h-14" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} disabled={isPlacingOrder} />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Address (For PDF Receipt)</label>
-                  <Input type="email" placeholder="patron@onlinebar.co.ke" className="rounded-2xl border-slate-100 bg-slate-50/50 h-14" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} disabled={isPlacingOrder} />
+                  <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Address {paymentMethod === "M-Pesa" ? "(Required for Paystack)" : "(For PDF Receipt)"}</label>
+                  <Input type="email" placeholder="you@example.com" className="rounded-2xl border-slate-100 bg-slate-50/50 h-14" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} disabled={isPlacingOrder} />
                 </div>
             </div>
           </section>
@@ -818,12 +844,7 @@ function CheckoutContent() {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setGiftMessage('');
-                                    setIsGift(false);
-                                    try {
-                                        sessionStorage.removeItem('ob_gift_note');
-                                        localStorage.removeItem('ob_gift_note');
-                                    } catch {}
+                                    clearGiftDraft();
                                 }}
                                 className="text-slate-400 hover:text-rose-500 underline"
                             >
@@ -838,9 +859,16 @@ function CheckoutContent() {
                                 try {
                                     sessionStorage.setItem('ob_gift_note', val);
                                     localStorage.setItem('ob_gift_note', val);
-                                } catch {}
+                                } catch (err) {
+                                    console.error('Unable to preserve gift message in browser storage:', err);
+                                    setCheckoutStatus({
+                                        type: "error",
+                                        message: "The message will be included with this order, but could not be saved for a later checkout."
+                                    });
+                                }
                             }}
                             placeholder="Enter your gift message here... (e.g. Happy Birthday Kelvin!)"
+                            maxLength={500}
                             className="w-full h-32 rounded-[1.8rem] border border-primary/20 bg-white p-6 text-sm font-medium italic outline-none focus:ring-4 focus:ring-primary/10 transition-all resize-none shadow-inner"
                         />
                         <p className="text-[9px] font-black uppercase text-primary/80 tracking-widest text-left ml-2 animate-pulse">✓ Premium wrapping & personalized card included</p>
@@ -1066,7 +1094,7 @@ function CheckoutContent() {
 
               {checkoutStatus.type === 'error' && (
                 <div className="space-y-4 mt-8">
-                    <Card className="bg-slate-900 text-white rounded-[3.5rem] border-none shadow-2xl animate-in zoom-in-95 duration-700 relative overflow-hidden">
+                    <Card className="bg-rose-50 text-slate-900 rounded-[3.5rem] border border-rose-200 shadow-xl animate-in zoom-in-95 duration-700 relative overflow-hidden">
                       <div className="p-10 sm:p-12 relative z-10 text-center">
                           <div className="flex justify-center mb-8">
                               <div className="h-16 w-16 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-lg shadow-rose-500/20">
@@ -1074,7 +1102,7 @@ function CheckoutContent() {
                               </div>
                           </div>
                           <h3 className="text-2xl font-black uppercase tracking-tighter mb-4">Protocol Conflict</h3>
-                          <p className="mb-12 text-sm font-medium text-slate-400 italic leading-relaxed max-w-xs mx-auto">&quot;{checkoutStatus.message}&quot;</p>
+                          <p className="mb-12 text-sm font-medium text-slate-600 italic leading-relaxed max-w-xs mx-auto">&quot;{checkoutStatus.message}&quot;</p>
 
                           <div className="flex flex-col gap-4">
                               <Button
@@ -1086,13 +1114,13 @@ function CheckoutContent() {
                               <Button
                                 variant="outline"
                                 onClick={() => { setPaymentMethod("COD"); setCheckoutStatus({ type: "idle", message: "" }); }}
-                                className="h-16 rounded-2xl border-2 border-slate-800 bg-transparent text-slate-400 font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 hover:text-white transition-all active:scale-95"
+                                className="h-16 rounded-2xl border-2 border-slate-300 bg-white text-slate-600 font-black uppercase text-[10px] tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
                               >
                                   Switch to Cash on Delivery
                               </Button>
                           </div>
                       </div>
-                      <Zap className="absolute -bottom-10 -left-10 h-64 w-64 text-white/5 rotate-12 -z-0" />
+                      <Zap className="absolute -bottom-10 -left-10 h-64 w-64 text-rose-900/5 rotate-12 -z-0" />
                     </Card>
                 </div>
               )}

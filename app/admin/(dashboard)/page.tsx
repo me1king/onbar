@@ -13,15 +13,11 @@ import {
   GlassWater,
   Plus,
   AlertTriangle,
-  Rocket,
-  CheckCircle2,
-  X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import dynamic from 'next/dynamic';
 
@@ -119,34 +115,9 @@ export default function AdminDashboard() {
   const [peakHours, setPeakHours] = React.useState<{ hour: string; count: number }[]>([]);
   const [categoryMix, setCategoryBreakdown] = React.useState<{ name: string; value: number }[]>([]);
 
-  // Interactive 6-Step Deploy Sequence State
-  const [isDeployModalOpen, setIsDeployModalOpen] = React.useState(false);
-  const [deployStepIndex, setDeployStepIndex] = React.useState(0);
-
-  const deploySteps = [
-      'Product Validated',
-      'Image Quality Checked',
-      'Pricing Validated',
-      'Inventory Verified',
-      'Search Index Updated',
-      'Storefront Updated'
-  ];
-
   React.useEffect(() => {
       setMounted(true);
   }, []);
-
-  const handleStartDeploySequence = () => {
-      setIsDeployModalOpen(true);
-      setDeployStepIndex(0);
-      const interval = setInterval(() => {
-          setDeployStepIndex(prev => {
-              if (prev < deploySteps.length) return prev + 1;
-              clearInterval(interval);
-              return prev;
-          });
-      }, 700);
-  };
 
   React.useEffect(() => {
     async function loadStats() {
@@ -280,6 +251,7 @@ export default function AdminDashboard() {
           };
       });
   }, [orders, ledger]);
+  const lowStockProducts = products.filter(product => Number(product.stock) <= 10);
 
   if (isLoading) {
     return (
@@ -309,12 +281,11 @@ export default function AdminDashboard() {
               </div>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-              <Button
-                onClick={handleStartDeploySequence}
-                className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl bg-amber-500 text-slate-950 font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-xl shadow-amber-500/20 hover:bg-amber-400 transition-all flex items-center gap-2"
-              >
-                  <Rocket className="h-4 w-4 fill-current" /> Deploy to Bar Sequence
-              </Button>
+              <Link href="/admin/forge" className="w-full sm:w-auto">
+                  <Button className="w-full h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl bg-primary text-white font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-xl hover:bg-primary/90 transition-all">
+                      <Package className="h-4 w-4 mr-2" /> Manage Products
+                  </Button>
+              </Link>
           </div>
       </header>
 
@@ -338,43 +309,24 @@ export default function AdminDashboard() {
               </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 space-y-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-amber-100 text-amber-800">LOW STOCK</span>
-                  <p className="text-xs font-black uppercase text-amber-950">Amarula 750ml</p>
-                  <p className="text-[9px] text-amber-800 font-bold uppercase">10 units remaining</p>
-                  <Link href="/admin/upload">
-                      <Button className="w-full h-8 rounded-xl bg-amber-500 text-white font-black uppercase text-[8px] mt-2">Restock Cellar</Button>
-                  </Link>
+          {lowStockProducts.length ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {lowStockProducts.map(product => (
+                      <div key={product.id} className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 space-y-2">
+                          <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-amber-100 text-amber-800">LOW STOCK</span>
+                          <p className="text-xs font-black uppercase text-amber-950">{product.name}</p>
+                          <p className="text-[9px] text-amber-800 font-bold uppercase">{product.stock} units remaining</p>
+                          <Link href="/admin/forge">
+                              <Button className="w-full h-8 rounded-xl bg-amber-500 text-white font-black uppercase text-[8px] mt-2">Manage Stock</Button>
+                          </Link>
+                      </div>
+                  ))}
               </div>
-
-              <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200/80 space-y-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-indigo-100 text-indigo-800">IMAGE QUALITY</span>
-                  <p className="text-xs font-black uppercase text-indigo-950">Product #183</p>
-                  <p className="text-[9px] text-indigo-800 font-bold uppercase">Image score: 64/100 ⚠️</p>
-                  <Link href="/admin/forge">
-                      <Button className="w-full h-8 rounded-xl bg-indigo-600 text-white font-black uppercase text-[8px] mt-2">Fix Image</Button>
-                  </Link>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 space-y-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-emerald-100 text-emerald-800">HIGH DEMAND</span>
-                  <p className="text-xs font-black uppercase text-emerald-950">Hennessy VS 750ml</p>
-                  <p className="text-[9px] text-emerald-800 font-bold uppercase">Views ↑ 48% today</p>
-                  <Link href="/admin/upload">
-                      <Button className="w-full h-8 rounded-xl bg-emerald-600 text-white font-black uppercase text-[8px] mt-2">View Stock</Button>
-                  </Link>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200/80 space-y-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-rose-100 text-rose-800">SYNC WARNING</span>
-                  <p className="text-xs font-black uppercase text-rose-950">Product Forge</p>
-                  <p className="text-[9px] text-rose-800 font-bold uppercase">2 products awaiting sync</p>
-                  <Link href="/admin/forge">
-                      <Button className="w-full h-8 rounded-xl bg-rose-600 text-white font-black uppercase text-[8px] mt-2">Review Sync</Button>
-                  </Link>
-              </div>
-          </div>
+          ) : (
+              <p className="rounded-2xl bg-slate-50 p-5 text-sm font-bold text-slate-500">
+                  {isLoading ? 'Loading inventory alerts...' : supabase ? 'No products at or below the 10-unit restock threshold.' : 'Inventory alerts are unavailable because Supabase is not configured.'}
+              </p>
+          )}
       </Card>
 
       {/* INTELLIGENCE COMMAND: MISSION BOARD */}
@@ -616,70 +568,6 @@ export default function AdminDashboard() {
               subtitle="Live Real-time Operations Stream Across Cellar, Growth & Dispatch"
           />
       </section>
-
-      {/* INTERACTIVE 6-STEP DEPLOYMENT SEQUENCE MODAL */}
-      {isDeployModalOpen && (
-          <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-              <div className="bg-white rounded-[3rem] p-8 sm:p-10 max-w-lg w-full space-y-6 shadow-2xl relative border border-slate-100 text-left">
-                  <button
-                      onClick={() => setIsDeployModalOpen(false)}
-                      className="absolute top-6 right-6 h-10 w-10 rounded-full bg-slate-100 text-slate-500 hover:text-foreground flex items-center justify-center transition-colors"
-                  >
-                      <X size={18} />
-                  </button>
-
-                  <div className="space-y-1">
-                      <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest">DEPLOYMENT SEQUENCE ENGINE</span>
-                      <h2 className="text-3xl font-black text-foreground uppercase tracking-tight">Publish to Online Bar</h2>
-                  </div>
-
-                  <div className="space-y-3 font-mono text-xs">
-                      {deploySteps.map((stepLabel, idx) => {
-                          const isDone = idx < deployStepIndex;
-                          const isCurrent = idx === deployStepIndex;
-
-                          return (
-                              <div
-                                  key={idx}
-                                  className={cn(
-                                      "p-3.5 rounded-2xl flex items-center justify-between border transition-all",
-                                      isDone ? "bg-emerald-50 border-emerald-200 text-emerald-900 font-bold" :
-                                      isCurrent ? "bg-amber-50 border-amber-300 text-amber-950 font-black animate-pulse" :
-                                      "bg-slate-50 border-slate-100 text-slate-400"
-                                  )}
-                              >
-                                  <div className="flex items-center gap-3">
-                                      {isDone ? <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> :
-                                       isCurrent ? <Loader2 size={16} className="text-amber-500 animate-spin shrink-0" /> :
-                                       <span className="h-4 w-4 rounded-full border border-slate-300 shrink-0" />}
-                                      <span>Step {idx + 1}: {stepLabel}</span>
-                                  </div>
-                                  <span className="text-[9px] uppercase font-sans">
-                                      {isDone ? 'DONE ✓' : isCurrent ? 'RUNNING...' : 'PENDING'}
-                                  </span>
-                              </div>
-                          );
-                      })}
-                  </div>
-
-                  {deployStepIndex >= deploySteps.length && (
-                      <div className="p-4 rounded-2xl bg-emerald-500 text-white space-y-1 text-center animate-in zoom-in-95 duration-500 shadow-xl">
-                          <p className="text-sm font-black uppercase tracking-wider">🎉 DEPLOYED LIVE TO ONLINE BAR</p>
-                          <p className="text-[10px] font-medium opacity-90">All 6 verification steps passed. Product ID #184 is now live for 20-min dispatch.</p>
-                      </div>
-                  )}
-
-                  <div className="pt-2 flex justify-end">
-                      <Button
-                          onClick={() => setIsDeployModalOpen(false)}
-                          className="h-12 px-8 rounded-2xl bg-slate-900 text-white font-black uppercase text-xs"
-                      >
-                          {deployStepIndex >= deploySteps.length ? 'Complete' : 'Close Sequence'}
-                      </Button>
-                  </div>
-              </div>
-          </div>
-      )}
 
     </div>
   );

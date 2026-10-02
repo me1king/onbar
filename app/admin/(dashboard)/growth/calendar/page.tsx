@@ -6,7 +6,6 @@ import {
     Calendar as CalendarIcon,
     ChevronLeft,
     ChevronRight,
-    Clock,
     Loader2,
     Camera as Instagram,
     MessageCircle,
@@ -16,12 +15,8 @@ import {
     Utensils,
     Wine,
     X,
-    CheckCircle2,
-    Sparkles,
-    Flame,
     Share2,
-    Copy,
-    Image as ImageIcon
+    CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -37,9 +32,8 @@ interface ScheduledMission {
     time: string;
     day: number;
     type: 'instagram' | 'facebook' | 'whatsapp' | 'tiktok' | 'beverage' | 'food' | 'souvenir';
-    status: 'DRAFT' | 'APPROVED' | 'SCHEDULED' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED';
-    countdownLabel?: string;
-    targets?: Array<{ platform: string; status: string; external_id: string; reach: string }>;
+    status: 'DRAFT' | 'APPROVED' | 'SCHEDULED' | 'QUEUED' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED';
+    scheduledAt: string;
     image_url?: string;
 }
 
@@ -53,28 +47,15 @@ const MISSION_COLORS: Record<string, { bg: string; text: string; dot: string; la
     souvenir: { bg: "bg-purple-50 border-purple-200", text: "text-purple-700", dot: "bg-purple-500", label: "Souvenir" }
 };
 
-interface MediaAsset {
-    id: string;
-    name: string;
-    type: 'IMAGE' | 'VIDEO';
-    url: string;
-    category: string;
-}
-
-const UNUSED_MEDIA_ASSETS: MediaAsset[] = [
-    { id: 'asset-1', name: 'Amarula 750ml Studio Render', type: 'IMAGE', url: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&q=80', category: 'Liquor' },
-    { id: 'asset-2', name: 'Smocha Supreme Cooking Reel', type: 'VIDEO', url: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&q=80', category: 'Fast Food' },
-    { id: 'asset-3', name: 'Leather Flask Engraving Photo', type: 'IMAGE', url: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&q=80', category: 'Souvenirs' },
-    { id: 'asset-4', name: 'Chips Masala Night Promo', type: 'IMAGE', url: 'https://images.unsplash.com/photo-1576107232684-1279f3908594?auto=format&fit=crop&q=80', category: 'Bites' }
-];
-
 export default function GrowthCalendar() {
     const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
+    const [notice, setNotice] = React.useState<string | null>(null);
     const [viewMode, setViewMode] = React.useState<'month' | 'hourly'>('month');
+    const [calendarDate, setCalendarDate] = React.useState(() => new Date());
     const [missions, setMissions] = React.useState<ScheduledMission[]>([]);
     const [activeFilter, setActiveFilter] = React.useState<string>('all');
     const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
-    const [isAiGenerating, setIsAiGenerating] = React.useState(false);
 
     // Inspection Modal State
     const [selectedMission, setSelectedMission] = React.useState<ScheduledMission | null>(null);
@@ -83,42 +64,48 @@ export default function GrowthCalendar() {
     const [builderForm, setBuilderForm] = React.useState({
         title: '',
         type: 'instagram' as ScheduledMission['type'],
-        day: '6',
-        time: '20:00',
-        caption: '',
-        productName: 'Amarula 750ml',
-        imageUrl: ''
+        day: String(new Date().getDate()),
+        time: new Date().toTimeString().slice(0, 5),
+        caption: ''
     });
 
     const fetchCalendar = React.useCallback(async () => {
         if (!supabase) {
+            setError('Supabase is not configured. Scheduled content is unavailable.');
+            setMissions([]);
             setLoading(false);
             return;
         }
         setLoading(true);
+        setError(null);
         try {
-            const { data } = await supabase
+            const { data, error: queryError } = await supabase
                 .from('publishing_queue')
-                .select(`*, content_master(title)`)
+                .select(`*, content_master(title, base_description)`)
                 .order('scheduled_at', { ascending: true });
 
-            if (data && data.length > 0) {
-                const formatted: ScheduledMission[] = data.map((item, idx) => ({
-                    id: item.id || `m-${idx}`,
-                    title: item.content_master?.title || item.title || 'Scheduled Deployment',
-                    time: new Date(item.scheduled_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    day: new Date(item.scheduled_at || Date.now()).getDate(),
-                    type: (item.platform || 'instagram').toLowerCase() as ScheduledMission['type'],
-                    status: (item.status || 'SCHEDULED') as ScheduledMission['status'],
-                    countdownLabel: '01:24:00',
-                    targets: [
-                        { platform: item.platform || 'Instagram', status: item.status || 'Scheduled', external_id: `ext-${idx}`, reach: 'Active Queue' }
-                    ]
-                }));
-                setMissions(formatted);
-            }
+            if (queryError) throw queryError;
+            const formatted: ScheduledMission[] = (data || [])
+                .filter(item => item.scheduled_at && Number.isFinite(new Date(item.scheduled_at).getTime()))
+                .map(item => {
+                    const scheduledAt = new Date(item.scheduled_at);
+                    return {
+                        id: String(item.id),
+                        title: item.content_master?.title || item.title || 'Untitled schedule',
+                        time: scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        day: scheduledAt.getDate(),
+                        scheduledAt: scheduledAt.toISOString(),
+                        type: (item.platform || 'other').toLowerCase() as ScheduledMission['type'],
+                        status: (item.status || 'SCHEDULED') as ScheduledMission['status'],
+                        caption: item.content_master?.base_description || undefined,
+                        image_url: item.image_url || undefined
+                    };
+                });
+            setMissions(formatted);
         } catch (err) {
-            console.error(err);
+            console.error('Publishing queue fetch error:', err);
+            setMissions([]);
+            setError(err instanceof Error ? err.message : 'Unable to load the publishing queue.');
         } finally {
             setLoading(false);
         }
@@ -137,90 +124,53 @@ export default function GrowthCalendar() {
 
     const handleCreateMission = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!builderForm.title) {
-            alert('Please enter a Mission Title');
+        if (!supabase) {
+            setError('Supabase is not configured. The schedule was not saved.');
+            return;
+        }
+        if (!builderForm.title.trim()) {
+            setError('Enter a title before scheduling.');
             return;
         }
 
-        const scheduledAt = new Date(2026, 8, Number(builderForm.day) || 6, 20, 0).toISOString();
-
-        if (supabase) {
-            try {
-                const { data: master } = await supabase.from('content_master').insert([{
-                    title: builderForm.title,
-                    base_description: builderForm.caption,
-                    status: 'SCHEDULED'
-                }]).select().single();
-
-                await supabase.from('publishing_queue').insert([{
-                    master_id: master?.id,
-                    title: builderForm.title,
-                    platform: builderForm.type.toUpperCase(),
-                    scheduled_at: scheduledAt,
-                    status: 'SCHEDULED'
-                }]);
-            } catch (err) {
-                console.warn(err);
-            }
+        const day = Number(builderForm.day);
+        const [hours, minutes] = builderForm.time.split(':').map(Number);
+        const scheduledDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), day, hours, minutes);
+        if (!Number.isInteger(day) || day < 1 || day > new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate() || Number.isNaN(scheduledDate.getTime())) {
+            setError('Select a valid date and time.');
+            return;
         }
 
-        const newMission: ScheduledMission = {
-            id: `m-${Date.now()}`,
-            title: builderForm.title,
-            caption: builderForm.caption,
-            type: builderForm.type,
-            day: Number(builderForm.day) || 6,
-            time: builderForm.time,
-            status: 'SCHEDULED',
-            countdownLabel: '02:15:00',
-            image_url: builderForm.imageUrl || 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&q=80',
-            targets: [
-                { platform: builderForm.type.toUpperCase(), status: 'Scheduled', external_id: `job-${Date.now()}`, reach: 'Target Queue' }
-            ]
-        };
+        setError(null);
+        setNotice(null);
+        try {
+            const { data: master, error: masterError } = await supabase
+                .from('content_master')
+                .insert([{
+                    title: builderForm.title.trim(),
+                    base_description: builderForm.caption.trim() || null,
+                    status: 'SCHEDULED'
+                }])
+                .select('id')
+                .single();
+            if (masterError) throw masterError;
 
-        setMissions([newMission, ...missions]);
-        setIsBuilderOpen(false);
-        alert(`Mission "${newMission.title}" successfully scheduled & saved to Supabase! 🚀`);
-    };
+            const { error: queueError } = await supabase.from('publishing_queue').insert([{
+                master_id: master.id,
+                title: builderForm.title.trim(),
+                platform: builderForm.type.toUpperCase(),
+                scheduled_at: scheduledDate.toISOString(),
+                status: 'SCHEDULED'
+            }]);
+            if (queueError) throw queueError;
 
-    const handleQuickScheduleAsset = (asset: MediaAsset) => {
-        setBuilderForm({
-            title: asset.name,
-            type: asset.category === 'Liquor' ? 'beverage' : asset.category === 'Fast Food' ? 'food' : 'instagram',
-            day: '6',
-            time: '20:00',
-            caption: `Special promo feature: ${asset.name}. Order now on Online Bar!`,
-            productName: asset.name,
-            imageUrl: asset.url
-        });
-        setIsBuilderOpen(true);
-    };
-
-    const handleDuplicateMission = (mission: ScheduledMission) => {
-        const dup: ScheduledMission = {
-            ...mission,
-            id: `dup-${Date.now()}`,
-            title: `${mission.title} (Copy)`,
-            day: Math.min(30, mission.day + 1)
-        };
-        setMissions([dup, ...missions]);
-        setSelectedMission(null);
-        alert(`Campaign duplicated to Day ${dup.day}! 📋`);
-    };
-
-    const handleGenerateAiCampaign = async () => {
-        setIsAiGenerating(true);
-
-        const aiMissions: ScheduledMission[] = [
-            { id: `ai-1-${Date.now()}`, title: '🔥 AI Reel - Friday Night Bites', day: 12, time: '19:00', type: 'instagram', status: 'SCHEDULED', countdownLabel: '04:12:00' },
-            { id: `ai-2-${Date.now()}`, title: '💬 WhatsApp VIP Broadcast - 15% Off', day: 12, time: '20:00', type: 'whatsapp', status: 'SCHEDULED', countdownLabel: '05:12:00' },
-            { id: `ai-3-${Date.now()}`, title: '🎵 TikTok Smocha & Amarula Combo', day: 12, time: '21:30', type: 'tiktok', status: 'SCHEDULED', countdownLabel: '06:42:00' }
-        ];
-
-        setIsAiGenerating(false);
-        setMissions([...aiMissions, ...missions]);
-        alert('AI Campaign Generator created 3 platform-tailored missions! Check timeline.');
+            await fetchCalendar();
+            setIsBuilderOpen(false);
+            setNotice('Schedule saved to the internal queue. It will not publish until platform integrations are configured.');
+        } catch (err) {
+            console.error('Publishing queue save error:', err);
+            setError(err instanceof Error ? err.message : 'Unable to save the schedule.');
+        }
     };
 
     const filteredMissions = missions.filter(m => {
@@ -228,7 +178,25 @@ export default function GrowthCalendar() {
         return m.type === activeFilter;
     });
 
-    const days = Array.from({ length: 30 }, (_, i) => i + 1);
+    const days = Array.from({ length: new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate() }, (_, i) => i + 1);
+    const calendarCells: (number | null)[] = [
+        ...Array((new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1).getDay() + 6) % 7).fill(null),
+        ...days
+    ];
+    const visibleMissions = filteredMissions.filter(mission => {
+        const date = new Date(mission.scheduledAt);
+        return date.getFullYear() === calendarDate.getFullYear() && date.getMonth() === calendarDate.getMonth();
+    });
+    const platformRecords = [
+        { name: 'Instagram', type: 'instagram', color: 'bg-rose-500' },
+        { name: 'WhatsApp', type: 'whatsapp', color: 'bg-emerald-500' },
+        { name: 'TikTok', type: 'tiktok', color: 'bg-purple-600' },
+        { name: 'Facebook', type: 'facebook', color: 'bg-sky-500' }
+    ].map(platform => ({
+        ...platform,
+        count: missions.filter(mission => mission.type === platform.type).length
+    }));
+    const maxPlatformRecords = Math.max(1, ...platformRecords.map(platform => platform.count));
 
     return (
         <div className="p-4 sm:p-8 space-y-10 bg-slate-50 min-h-screen text-left selection:bg-primary/20 pb-40">
@@ -240,7 +208,7 @@ export default function GrowthCalendar() {
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">BAR OS MISSION CONTROL 3.0</span>
                     </div>
                     <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Content Studio & Calendar</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Multi-platform campaign scheduling, media library pool & impact analytics HUD.</p>
+                    <p className="text-muted-foreground text-sm font-medium mt-1">Review records saved to the internal publishing queue. Queue status does not confirm external delivery.</p>
                 </div>
                 <div className="flex gap-4 items-center flex-wrap">
                     <div className="flex p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
@@ -259,16 +227,10 @@ export default function GrowthCalendar() {
                     </div>
 
                     <Button
-                        onClick={handleGenerateAiCampaign}
-                        disabled={isAiGenerating}
-                        variant="outline"
-                        className="h-12 px-6 rounded-2xl border-amber-200 text-amber-700 bg-amber-50 font-black uppercase text-[9px] tracking-widest hover:bg-amber-100 shadow-sm"
-                    >
-                        {isAiGenerating ? <Loader2 className="animate-spin mr-2" size={16} /> : <Sparkles size={16} className="mr-2 text-amber-500" />}
-                        Run Autopilot AI
-                    </Button>
-                    <Button
-                        onClick={() => setIsBuilderOpen(true)}
+                        onClick={() => {
+                            setBuilderForm(form => ({ ...form, day: String(calendarDate.getDate()) }));
+                            setIsBuilderOpen(true);
+                        }}
                         className="h-12 px-8 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
                     >
                         <Plus size={16} className="mr-2" /> + Create Mission
@@ -276,28 +238,30 @@ export default function GrowthCalendar() {
                 </div>
             </header>
 
-            {/* 1. IMPACT ANALYTICS HUD (LATER & ZUPA INSPIRED) */}
+            {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{error}</p>}
+            {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-700">{notice}</p>}
+
             <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1">
-                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Hours Saved</p>
-                    <p className="text-3xl font-black text-foreground tabular-nums">143h</p>
+                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Queue Records</p>
+                    <p className="text-3xl font-black text-foreground tabular-nums">{missions.length.toLocaleString()}</p>
                 </Card>
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1">
-                    <p className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Money Saved</p>
-                    <p className="text-2xl font-black text-emerald-600 tabular-nums">KSh 620,000</p>
+                    <p className="text-[9px] font-black uppercase text-indigo-600 tracking-widest">Scheduled</p>
+                    <p className="text-3xl font-black text-indigo-600 tabular-nums">{missions.filter(mission => mission.status === 'SCHEDULED').length.toLocaleString()}</p>
                 </Card>
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1">
-                    <p className="text-[9px] font-black uppercase text-primary tracking-widest">Total Scheduled</p>
-                    <p className="text-3xl font-black text-foreground tabular-nums">{missions.length}</p>
+                    <p className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Published Records</p>
+                    <p className="text-3xl font-black text-emerald-600 tabular-nums">{missions.filter(mission => mission.status === 'PUBLISHED').length.toLocaleString()}</p>
                 </Card>
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1">
-                    <p className="text-[9px] font-black uppercase text-amber-600 tracking-widest">Media Assets</p>
-                    <p className="text-3xl font-black text-foreground tabular-nums">123 Assets</p>
+                    <p className="text-[9px] font-black uppercase text-rose-600 tracking-widest">Failed Records</p>
+                    <p className="text-3xl font-black text-rose-600 tabular-nums">{missions.filter(mission => mission.status === 'FAILED').length.toLocaleString()}</p>
                 </Card>
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1 col-span-2 md:col-span-1">
-                    <p className="text-[9px] font-black uppercase text-rose-500 tracking-widest">Posting Streak</p>
-                    <p className="text-2xl font-black text-rose-500 uppercase tracking-tight flex items-center gap-1 mt-1">
-                        4 Days <Flame size={18} className="fill-current animate-bounce" />
+                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Queue Source</p>
+                    <p className="text-xl font-black text-slate-600 uppercase tracking-tight flex items-center gap-1 mt-1">
+                        {supabase ? 'Supabase' : 'Unavailable'}
                     </p>
                 </Card>
             </div>
@@ -329,63 +293,20 @@ export default function GrowthCalendar() {
                 ))}
             </div>
 
-            {/* MAIN WORKING AREA: MEDIA LIBRARY SIDEBAR + CALENDAR GRID */}
+            {/* SCHEDULED QUEUE AND CALENDAR */}
             <div className="grid lg:grid-cols-12 gap-8 text-left">
-
-                {/* 2. MEDIA ASSET LIBRARY POOL SIDEBAR */}
                 <div className="lg:col-span-3 space-y-6">
-                    <Card className="p-6 sm:p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-6">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                            <div className="flex items-center gap-2">
-                                <ImageIcon className="h-5 w-5 text-primary" />
-                                <h3 className="text-base font-black uppercase tracking-tight text-foreground">Media Asset Pool</h3>
-                            </div>
-                            <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200">
-                                Unused (4)
-                            </span>
-                        </div>
-
-                        <div className="space-y-4">
-                            {UNUSED_MEDIA_ASSETS.map(asset => (
-                                <div key={asset.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-3 group hover:bg-white hover:border-slate-200 transition-all">
-                                    <div className="h-32 w-full rounded-xl relative overflow-hidden bg-slate-900 shadow-inner">
-                                        <Image src={asset.url} alt={asset.name} fill className="object-cover group-hover:scale-105 transition-transform" />
-                                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-slate-950/80 backdrop-blur-md text-white font-black uppercase text-[7px] tracking-widest">
-                                            {asset.type}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs font-black uppercase text-foreground truncate">{asset.name}</p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase">{asset.category}</p>
-                                    </div>
-                                    <Button
-                                        onClick={() => handleQuickScheduleAsset(asset)}
-                                        className="w-full h-10 rounded-xl bg-slate-900 text-white hover:bg-primary font-black uppercase text-[9px] tracking-widest transition-colors"
-                                    >
-                                        <Plus size={12} className="mr-1" /> Quick Schedule
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    </Card>
-
-                    {/* POSTS BY PLATFORM DISTRIBUTION BARS */}
                     <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-4">
-                        <h4 className="text-xs font-black uppercase text-foreground tracking-tight">Posts By Platform</h4>
+                        <h4 className="text-xs font-black uppercase text-foreground tracking-tight">Queue Records by Platform</h4>
                         <div className="space-y-3">
-                            {[
-                                { name: 'Instagram', val: 42, color: 'bg-rose-500' },
-                                { name: 'WhatsApp', val: 38, color: 'bg-emerald-500' },
-                                { name: 'TikTok', val: 28, color: 'bg-purple-600' },
-                                { name: 'Facebook', val: 18, color: 'bg-sky-500' },
-                            ].map(p => (
+                            {platformRecords.map(p => (
                                 <div key={p.name} className="space-y-1">
                                     <div className="flex justify-between text-[9px] font-black uppercase text-slate-400">
                                         <span>{p.name}</span>
-                                        <span>{p.val} posts</span>
+                                        <span>{p.count} records</span>
                                     </div>
                                     <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                        <div className={cn("h-full rounded-full", p.color)} style={{ width: `${p.val * 2}%` }} />
+                                        <div className={cn("h-full rounded-full", p.color)} style={{ width: `${(p.count / maxPlatformRecords) * 100}%` }} />
                                     </div>
                                 </div>
                             ))}
@@ -403,10 +324,20 @@ export default function GrowthCalendar() {
                     ) : viewMode === 'month' ? (
                         <div className="bg-white rounded-[3.5rem] border border-slate-200/80 p-8 sm:p-10 shadow-md space-y-8">
                             <div className="flex justify-between items-center px-4">
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">September 2026</h2>
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">
+                                    {calendarDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                                </h2>
                                 <div className="flex items-center gap-2">
-                                    <button className="h-10 w-10 rounded-full bg-slate-50 border border-slate-200/80 flex items-center justify-center hover:bg-white transition-all shadow-sm"><ChevronLeft size={18} /></button>
-                                    <button className="h-10 w-10 rounded-full bg-slate-50 border border-slate-200/80 flex items-center justify-center hover:bg-white transition-all shadow-sm"><ChevronRight size={18} /></button>
+                                            <button
+                                                aria-label="Previous month"
+                                                onClick={() => setCalendarDate(date => new Date(date.getFullYear(), date.getMonth() - 1, 1))}
+                                                className="h-10 w-10 rounded-full bg-slate-50 border border-slate-200/80 flex items-center justify-center hover:bg-white transition-all shadow-sm"
+                                            ><ChevronLeft size={18} /></button>
+                                            <button
+                                                aria-label="Next month"
+                                                onClick={() => setCalendarDate(date => new Date(date.getFullYear(), date.getMonth() + 1, 1))}
+                                                className="h-10 w-10 rounded-full bg-slate-50 border border-slate-200/80 flex items-center justify-center hover:bg-white transition-all shadow-sm"
+                                            ><ChevronRight size={18} /></button>
                                 </div>
                             </div>
 
@@ -416,8 +347,9 @@ export default function GrowthCalendar() {
                                         <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{d}</span>
                                     </div>
                                 ))}
-                                {days.map(d => {
-                                    const dayMissions = filteredMissions.filter(m => m.day === d);
+                                {calendarCells.map((d, index) => {
+                                    if (d === null) return <div key={`empty-${index}`} aria-hidden="true" />;
+                                    const dayMissions = visibleMissions.filter(m => m.day === d);
                                     return (
                                         <div key={d} className={cn(
                                             "min-h-[120px] p-3 rounded-2xl border transition-all flex flex-col gap-2 relative group",
@@ -455,7 +387,7 @@ export default function GrowthCalendar() {
                                             </div>
                                             <button
                                                 onClick={() => {
-                                                    setBuilderForm({ ...builderForm, day: String(d) });
+                                                    setBuilderForm(form => ({ ...form, day: String(d) }));
                                                     setIsBuilderOpen(true);
                                                 }}
                                                 className="absolute bottom-2 right-2 h-6 w-6 rounded-lg bg-slate-100 text-slate-400 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-primary hover:text-white"
@@ -468,85 +400,38 @@ export default function GrowthCalendar() {
                             </div>
                         </div>
                     ) : (
-                        /* HOURLY TIME-SLOTTED VIEW */
                         <Card className="p-8 sm:p-10 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
-                            <h3 className="text-xl font-black uppercase tracking-tight text-foreground">Time-Slotted Hourly Flow (Sept 6)</h3>
-                            <div className="space-y-4">
-                                {['07:00 AM', '10:00 AM', '01:00 PM', '04:00 PM', '06:00 PM', '08:00 PM', '10:00 PM'].map(timeSlot => {
-                                    const matched = missions.filter(m => m.day === 6);
-                                    return (
-                                        <div key={timeSlot} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-6">
-                                            <span className="text-xs font-black font-mono text-slate-400 w-20 shrink-0">{timeSlot}</span>
-                                            <div className="flex-1 flex gap-3 overflow-x-auto no-scrollbar">
-                                                {matched.map(m => {
-                                                    const col = MISSION_COLORS[m.type] || MISSION_COLORS.instagram;
-                                                    return (
-                                                        <div key={m.id} className={cn("px-4 py-2 rounded-xl text-xs font-black uppercase text-white shadow-sm shrink-0", col.bg)}>
-                                                            {m.title} &bull; {m.status}
-                                                        </div>
-                                                    );
-                                                })}
-                                                {matched.length === 0 && <span className="text-[10px] font-bold uppercase text-slate-300 italic">Empty Slot &bull; Available for AI Auto-Schedule</span>}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                            <h3 className="text-xl font-black uppercase tracking-tight text-foreground">
+                                {calendarDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })} queue
+                            </h3>
+                            {visibleMissions.length === 0 ? (
+                                <p className="py-8 text-center text-sm font-bold text-slate-500">No scheduled records for this month.</p>
+                            ) : visibleMissions
+                                .slice()
+                                .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+                                .map(mission => (
+                                    <button
+                                        key={mission.id}
+                                        onClick={() => setSelectedMission(mission)}
+                                        className="flex w-full items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-left hover:bg-slate-100"
+                                    >
+                                        <span className="min-w-0 truncate text-xs font-black uppercase text-foreground">{mission.title}</span>
+                                        <span className="shrink-0 text-xs font-bold text-slate-500">
+                                            {new Date(mission.scheduledAt).toLocaleString()}
+                                        </span>
+                                        <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-[8px] font-black uppercase text-slate-600">
+                                            {mission.status}
+                                        </span>
+                                    </button>
+                                ))}
                         </Card>
                     )}
 
-                    {/* CHRONOLOGICAL BUSINESS TIMELINE */}
-                    <Card className="p-8 sm:p-10 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6 text-left">
-                        <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-                            <div>
-                                <div className="flex items-center gap-2 text-primary font-black uppercase text-[10px] tracking-[0.3em]">
-                                    <Clock size={14} className="animate-pulse" /> Live Deployment Stream
-                                </div>
-                                <h3 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Today&apos;s Scheduled Deployments</h3>
-                            </div>
-                            <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase border border-emerald-200">
-                                🟢 Night Mode Active
-                            </span>
-                        </div>
-
-                        <div className="space-y-4">
-                            {[
-                                { time: '18:00', title: 'Happy Hour Specials Go Live', type: 'beverage', status: 'PUBLISHED' },
-                                { time: '19:00', title: 'Instagram Reel: Smocha Supreme Launch', type: 'instagram', status: 'PUBLISHING' },
-                                { time: '20:00', title: 'WhatsApp Broadcast: 15% VIP Coupon', type: 'whatsapp', status: 'SCHEDULED' },
-                                { time: '21:00', title: 'TikTok Video: Late Night Cellar Drop', type: 'tiktok', status: 'SCHEDULED' },
-                                { time: '22:00', title: 'Fast Food Night Bites Special', type: 'food', status: 'APPROVED' },
-                            ].map((slot, idx) => {
-                                const col = MISSION_COLORS[slot.type] || MISSION_COLORS.instagram;
-                                return (
-                                    <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-4 hover:bg-slate-100 transition-colors">
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-xs font-black font-mono text-foreground px-3 py-1 bg-white rounded-xl border border-slate-200">
-                                                {slot.time}
-                                            </span>
-                                            <span className={cn("px-2.5 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest", col.bg, col.text)}>
-                                                {col.label}
-                                            </span>
-                                            <h4 className="text-xs font-black text-foreground uppercase truncate">{slot.title}</h4>
-                                        </div>
-                                        <span className={cn(
-                                            "px-3 py-1 rounded-full text-[8px] font-black uppercase border",
-                                            slot.status === 'PUBLISHED' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                            slot.status === 'PUBLISHING' ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse" :
-                                            "bg-indigo-50 text-indigo-700 border-indigo-200"
-                                        )}>
-                                            {slot.status}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </Card>
                 </div>
 
             </div>
 
-            {/* CAMPAIGN TARGET INSPECTION MODAL */}
+            {/* QUEUE RECORD DETAILS */}
             {selectedMission && (
                 <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
                     <div className="bg-white rounded-[3rem] p-8 sm:p-10 max-w-lg w-full space-y-6 shadow-2xl relative border border-slate-100 text-left">
@@ -558,7 +443,7 @@ export default function GrowthCalendar() {
                         </button>
 
                         <div className="space-y-1">
-                            <span className="text-[10px] font-black uppercase text-primary tracking-widest">CAMPAIGN TARGET INSPECTION</span>
+                            <span className="text-[10px] font-black uppercase text-primary tracking-widest">Internal queue record</span>
                             <h2 className="text-3xl font-black text-foreground uppercase tracking-tight">{selectedMission.title}</h2>
                         </div>
 
@@ -568,36 +453,15 @@ export default function GrowthCalendar() {
                             </div>
                         )}
 
-                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
-                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Multi-Platform Target Delivery</p>
-                            <div className="space-y-2">
-                                {(selectedMission.targets || [
-                                    { platform: 'Instagram', status: 'Published', external_id: 'ig-9418', reach: '12.4K Views' },
-                                    { platform: 'Facebook', status: 'Published', external_id: 'fb-2019', reach: '8.1K Impressions' },
-                                    { platform: 'WhatsApp', status: 'Broadcast Sent', external_id: 'wa-8801', reach: '2,140 Delivered' }
-                                ]).map((tgt, i) => (
-                                    <div key={i} className="p-3 rounded-xl bg-white border border-slate-100 flex items-center justify-between text-xs font-bold">
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle2 size={14} className="text-emerald-500" />
-                                            <span className="uppercase text-foreground">{tgt.platform}</span>
-                                            <span className="text-[10px] font-mono text-slate-400">({tgt.external_id})</span>
-                                        </div>
-                                        <span className="px-2.5 py-1 rounded-full text-[8px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                            {tgt.status}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3 text-xs">
+                            <p><strong>Platform:</strong> {selectedMission.type}</p>
+                            <p><strong>Status:</strong> {selectedMission.status}</p>
+                            <p><strong>Scheduled:</strong> {new Date(selectedMission.scheduledAt).toLocaleString()}</p>
+                            <p className="break-words"><strong>Caption:</strong> {selectedMission.caption || 'No caption recorded.'}</p>
+                            <p className="font-bold text-slate-500">Queue status does not confirm delivery to the platform.</p>
                         </div>
 
-                        <div className="pt-2 flex justify-between items-center">
-                            <Button
-                                onClick={() => handleDuplicateMission(selectedMission)}
-                                variant="outline"
-                                className="h-12 px-6 rounded-2xl border-slate-200 font-black uppercase text-[10px] tracking-widest"
-                            >
-                                <Copy size={16} className="mr-2" /> Duplicate Campaign
-                            </Button>
+                        <div className="pt-2 flex justify-end items-center">
                             <Button
                                 onClick={() => setSelectedMission(null)}
                                 className="h-12 px-8 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest"
@@ -648,7 +512,7 @@ export default function GrowthCalendar() {
                                 <Input
                                     value={builderForm.title}
                                     onChange={e => setBuilderForm({ ...builderForm, title: e.target.value })}
-                                    placeholder="e.g. Weekend Amarula Offer"
+                                    placeholder="Enter a schedule title"
                                     required
                                     className="rounded-xl h-12 bg-slate-50 border-none"
                                 />
@@ -656,12 +520,16 @@ export default function GrowthCalendar() {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase text-slate-400">Day (September)</label>
+                                    <label className="text-[10px] font-black uppercase text-slate-400">
+                                        Day ({calendarDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })})
+                                    </label>
                                     <Input
                                         type="number"
+                                        min="1"
+                                        max={days.length}
                                         value={builderForm.day}
                                         onChange={e => setBuilderForm({ ...builderForm, day: e.target.value })}
-                                        placeholder="6"
+                                        required
                                         className="rounded-xl h-12 bg-slate-50 border-none font-bold"
                                     />
                                 </div>
@@ -669,22 +537,13 @@ export default function GrowthCalendar() {
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-black uppercase text-slate-400">Scheduled Time</label>
                                     <Input
+                                        type="time"
                                         value={builderForm.time}
                                         onChange={e => setBuilderForm({ ...builderForm, time: e.target.value })}
-                                        placeholder="20:00"
+                                        required
                                         className="rounded-xl h-12 bg-slate-50 border-none font-bold"
                                     />
                                 </div>
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black uppercase text-slate-400">Linked Product</label>
-                                <Input
-                                    value={builderForm.productName}
-                                    onChange={e => setBuilderForm({ ...builderForm, productName: e.target.value })}
-                                    placeholder="e.g. Amarula 750ml"
-                                    className="rounded-xl h-12 bg-slate-50 border-none"
-                                />
                             </div>
 
                             <div className="space-y-1">

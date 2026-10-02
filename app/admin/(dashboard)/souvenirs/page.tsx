@@ -9,12 +9,6 @@ import {
     Trash2,
     X,
     CheckCircle2,
-    Star,
-    ShoppingBag,
-    Bot,
-    Flame,
-    Zap,
-    Activity
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,131 +35,54 @@ interface SouvenirProduct {
     story?: string;
 }
 
-const COLLECTIONS = [
-    { title: 'Shot Glass Vault', count: '34 items', category: 'Shot Glass Vault', image: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80' },
-    { title: 'Hip Flask Collection', count: '18 items', category: 'Hip Flask Collection', image: 'https://images.unsplash.com/photo-1597075687490-8f673c3c175d?auto=format&fit=crop&q=80' },
-    { title: 'Bottle Accessories', count: '27 items', category: 'Bottle Accessories', image: 'https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?auto=format&fit=crop&q=80' },
-    { title: 'Glassware', count: '22 items', category: 'Whiskey Glass Collection', image: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&q=80' },
-    { title: 'BAR OS Wear', count: '15 items', category: 'BAR OS Wear', image: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&q=80' },
-    { title: 'Gift Boxes', count: '11 bundles', category: 'Gift Boxes', image: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&q=80' },
-];
-
 export default function SouvenirForgePage() {
     const [souvenirs, setSouvenirs] = React.useState<SouvenirProduct[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState<string | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
-    const [isDropModalOpen, setIsDropModalOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [activeCategoryFilter, setActiveCategoryFilter] = React.useState('All');
 
-    // Limited Drop Form State
-    const [dropData, setDropData] = React.useState({
-        title: 'Black & Gold Collection',
-        launch_date: 'Friday 8:00 PM',
-        inventory: '100',
-        badge: 'EXCLUSIVE DROP'
-    });
-
-    // Form State with AI Autofill
+    // Form values are entered by the admin; do not invent catalog details.
     const [formData, setFormData] = React.useState({
         name: '',
-        category: 'Hip Flask Collection',
-        brand: 'BAR OS Originals',
-        material: '304 Stainless Steel',
-        finish: 'Matte Black',
-        capacity_oz: '8',
-        weight_grams: '180',
-        price: '1200',
-        old_price: '1500',
+        category: '',
+        brand: '',
+        material: '',
+        finish: '',
+        capacity_oz: '',
+        weight_grams: '',
+        stock: '',
+        price: '',
+        old_price: '',
         image_url: '',
-        description: 'Premium stainless steel hip flask built for nights out.',
-        story: 'Crafted for nights that deserve a keepsake.',
-        drink_pairings: 'Whiskey, Rum, Brandy'
+        description: '',
+        story: '',
+        drink_pairings: ''
     });
 
     const fetchSouvenirs = React.useCallback(async () => {
         if (!supabase) {
+            setLoadError('Supabase is not configured. Souvenir inventory is unavailable.');
+            setSouvenirs([]);
             setLoading(false);
             return;
         }
         setLoading(true);
+        setLoadError(null);
         try {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('products')
                 .select('*')
                 .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%')
                 .order('name');
 
-            if (data && data.length > 0) {
-                setSouvenirs(data as SouvenirProduct[]);
-            } else {
-                // Default Initial Merch Catalogue
-                setSouvenirs([
-                    {
-                        id: 201,
-                        name: 'BAR OS Premium Leather Hip Flask',
-                        brand: 'BAR OS Originals',
-                        category: 'Hip Flask Collection',
-                        material: '304 Stainless Steel & Leather',
-                        finish: 'Matte Black',
-                        capacity_oz: 8,
-                        weight_grams: 180,
-                        price: 1200,
-                        old_price: 1500,
-                        stock: 42,
-                        is_available_now: true,
-                        image_url: 'https://images.unsplash.com/photo-1597075687490-8f673c3c175d?auto=format&fit=crop&q=80',
-                        description: 'Premium food-grade steel flask with leak-proof cap.'
-                    },
-                    {
-                        id: 202,
-                        name: 'Engraved Crystal Shot Glass',
-                        brand: 'BAR OS Vault',
-                        category: 'Shot Glass Vault',
-                        material: 'Heavy Lead-Free Crystal',
-                        finish: 'Laser Engraved',
-                        capacity_oz: 2,
-                        weight_grams: 120,
-                        price: 500,
-                        stock: 85,
-                        is_available_now: true,
-                        image_url: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80',
-                        description: 'Heavy base crystal shot glass with custom BAR OS emblem.'
-                    },
-                    {
-                        id: 203,
-                        name: 'Glencairn Whiskey Tasting Glass',
-                        brand: 'BAR OS Vault',
-                        category: 'Whiskey Glass Collection',
-                        material: 'Crystal Glass',
-                        finish: 'Clear Polish',
-                        capacity_oz: 6,
-                        weight_grams: 150,
-                        price: 850,
-                        stock: 30,
-                        is_available_now: true,
-                        image_url: 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&q=80',
-                        description: 'Official whiskey tasting glass shaped for aroma enhancement.'
-                    },
-                    {
-                        id: 204,
-                        name: 'Tactical Stainless Bottle Opener',
-                        brand: 'BAR OS Wear',
-                        category: 'Bottle Accessories',
-                        material: 'Heavy Duty Steel',
-                        finish: 'Brushed Black',
-                        capacity_oz: 0,
-                        weight_grams: 95,
-                        price: 450,
-                        stock: 120,
-                        is_available_now: true,
-                        image_url: 'https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?auto=format&fit=crop&q=80',
-                        description: 'Pocket-sized speed opener with ergonomic grip.'
-                    }
-                ]);
-            }
+            if (error) throw error;
+            setSouvenirs((data || []) as SouvenirProduct[]);
         } catch (e) {
             console.error('Error fetching souvenirs:', e);
+            setSouvenirs([]);
+            setLoadError(e instanceof Error ? e.message : 'Unable to load souvenir inventory.');
         } finally {
             setLoading(false);
         }
@@ -188,63 +105,6 @@ export default function SouvenirForgePage() {
         }
     }, [fetchSouvenirs]);
 
-    const handleAiAutofill = () => {
-        if (!formData.name) {
-            alert('Please enter a Product Name first (e.g. "Jack Daniel\'s Hip Flask Gift Set")');
-            return;
-        }
-
-        const title = formData.name.toLowerCase();
-        let cat = 'Hip Flask Collection';
-        let mat = '304 Stainless Steel';
-        let cap = '8';
-        let pr = '1200';
-        const desc = 'Crafted for nights that deserve a keepsake.';
-        let pair = 'Whiskey, Rum, Brandy';
-
-        if (title.includes('shot') || title.includes('glass')) {
-            cat = 'Shot Glass Vault';
-            mat = 'Heavy Lead-Free Crystal';
-            cap = '2';
-            pr = '500';
-            pair = 'Tequila, Vodka, Liqueur';
-        } else if (title.includes('whiskey') || title.includes('tumbler')) {
-            cat = 'Whiskey Glass Collection';
-            mat = 'Scotch Crystal Glass';
-            cap = '10';
-            pr = '850';
-            pair = 'Single Malt Whisky, Bourbon';
-        } else if (title.includes('opener') || title.includes('stopper') || title.includes('corkscrew')) {
-            cat = 'Bottle Accessories';
-            mat = 'Brushed Heavy Steel';
-            cap = '0';
-            pr = '450';
-            pair = 'Wine, Beer, Cider';
-        } else if (title.includes('shirt') || title.includes('hoodie') || title.includes('cap')) {
-            cat = 'BAR OS Wear';
-            mat = '400GSM Organic Cotton';
-            cap = '0';
-            pr = '2500';
-            pair = 'BAR OS Lifestyle';
-        } else if (title.includes('gift') || title.includes('box') || title.includes('set')) {
-            cat = 'Gift Boxes';
-            mat = 'Matte Box + Crystal + Leather Flask';
-            cap = '12';
-            pr = '3999';
-            pair = 'Jameson, Glenfiddich, Jack Daniels';
-        }
-
-        setFormData(f => ({
-            ...f,
-            category: cat,
-            material: mat,
-            capacity_oz: cap,
-            price: pr,
-            description: `${f.name} - ${desc}`,
-            drink_pairings: pair
-        }));
-    };
-
     const toggleAvailability = async (id: number | string, current: boolean) => {
         if (!supabase) return;
         const { error } = await supabase.from('products').update({ is_available_now: !current }).eq('id', id);
@@ -264,8 +124,14 @@ export default function SouvenirForgePage() {
 
     const handleCreateSouvenir = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.name || !formData.price) {
-            alert('Please enter souvenir name and price');
+        if (!supabase) {
+            setLoadError('Supabase is not configured. The souvenir was not saved.');
+            return;
+        }
+        const price = Number(formData.price);
+        const stock = Number(formData.stock);
+        if (!formData.name.trim() || !formData.category || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
+            setLoadError('Enter a product name, category, valid price, and non-negative whole-number stock.');
             return;
         }
 
@@ -273,55 +139,54 @@ export default function SouvenirForgePage() {
         const pairings = formData.drink_pairings.split(',').map(s => s.trim()).filter(Boolean);
 
         const payload = {
-            name: formData.name,
-            category: formData.category,
-            brand: formData.brand,
-            material: formData.material,
-            finish: formData.finish,
-            capacity_oz: Number(formData.capacity_oz) || 8,
-            weight_grams: Number(formData.weight_grams) || 180,
-            price: Number(formData.price),
+            name: formData.name.trim(),
+            category: formData.category || null,
+            brand: formData.brand.trim() || null,
+            material: formData.material.trim() || null,
+            finish: formData.finish.trim() || null,
+            capacity_oz: formData.capacity_oz ? Number(formData.capacity_oz) : null,
+            weight_grams: formData.weight_grams ? Number(formData.weight_grams) : null,
+            price,
             old_price: formData.old_price ? Number(formData.old_price) : null,
-            image_url: formData.image_url || 'https://images.unsplash.com/photo-1597075687490-8f673c3c175d?auto=format&fit=crop&q=80',
-            description: formData.description,
-            story: formData.story,
+            image_url: formData.image_url.trim() || null,
+            description: formData.description.trim() || null,
+            story: formData.story.trim() || null,
             drink_pairings: pairings,
             is_souvenir: true,
-            is_available_now: true,
-            stock: 50
+            is_available_now: stock > 0,
+            stock
         };
 
-        if (supabase) {
+        try {
             const { data, error } = await supabase.from('products').insert([payload]).select();
-            if (error) {
-                alert(`Failed to add souvenir: ${error.message}`);
-            } else if (data) {
-                setSouvenirs([data[0] as SouvenirProduct, ...souvenirs]);
-                setIsAddModalOpen(false);
-                setFormData({
-                    name: '',
-                    category: 'Hip Flask Collection',
-                    brand: 'BAR OS Originals',
-                    material: '304 Stainless Steel',
-                    finish: 'Matte Black',
-                    capacity_oz: '8',
-                    weight_grams: '180',
-                    price: '',
-                    old_price: '',
-                    image_url: '',
-                    description: 'Premium stainless steel hip flask built for nights out.',
-                    story: 'Crafted for nights that deserve a keepsake.',
-                    drink_pairings: 'Whiskey, Rum, Brandy'
-                });
-            }
+            if (error) throw error;
+            if (!data?.[0]) throw new Error('The database did not return the saved product.');
+            setSouvenirs(current => [data[0] as SouvenirProduct, ...current]);
+            setIsAddModalOpen(false);
+            setFormData({
+                name: '', category: '', brand: '', material: '', finish: '', capacity_oz: '',
+                weight_grams: '', stock: '', price: '', old_price: '', image_url: '', description: '',
+                story: '', drink_pairings: ''
+            });
+        } catch (err) {
+            console.error('Souvenir save error:', err);
+            setLoadError(err instanceof Error ? err.message : 'Unable to save the souvenir.');
+        } finally {
+            setIsSubmitting(false);
         }
-        setIsSubmitting(false);
     };
 
     const filteredSouvenirs = souvenirs.filter(s => {
         if (activeCategoryFilter === 'All') return true;
         return (s.category || '').toLowerCase().includes(activeCategoryFilter.toLowerCase());
     });
+    const collections = Array.from(new Set(souvenirs.map(item => item.category).filter(Boolean))).map(category => ({
+        category,
+        title: category,
+        count: souvenirs.filter(item => item.category === category).length,
+        image: souvenirs.find(item => item.category === category && item.image_url)?.image_url
+    }));
+    const lowStockCount = souvenirs.filter(item => Number(item.stock) <= 10).length;
 
     return (
         <div
@@ -338,7 +203,7 @@ export default function SouvenirForgePage() {
                         <Gift className="h-4 w-4 text-primary" />
                         <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary italic">LIMITED MERCH PROTOCOL</span>
                         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 text-[8px] font-black uppercase tracking-widest">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" /> MERCH STATUS: ONLINE
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" /> Catalog: {loading ? 'Loading' : loadError ? 'Unavailable' : 'Loaded'}
                         </div>
                     </div>
                     <h1 className="text-4xl lg:text-6xl font-black text-foreground uppercase tracking-tighter leading-none italic">
@@ -348,13 +213,6 @@ export default function SouvenirForgePage() {
                 </div>
                 <div className="flex gap-4 shrink-0">
                     <Button
-                        onClick={() => setIsDropModalOpen(true)}
-                        variant="outline"
-                        className="rounded-2xl h-14 px-8 border-amber-200 text-amber-700 bg-amber-50 font-black uppercase text-[10px] tracking-widest hover:bg-amber-100 transition-all shadow-sm"
-                    >
-                        <Flame size={16} className="mr-2 text-amber-500" /> Launch Limited Drop
-                    </Button>
-                    <Button
                         onClick={() => setIsAddModalOpen(true)}
                         className="rounded-2xl h-14 px-10 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
                     >
@@ -363,13 +221,15 @@ export default function SouvenirForgePage() {
                 </div>
             </header>
 
+            {loadError && <p role="alert" className="relative z-10 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{loadError}</p>}
+
             {/* LIVE MERCH STATS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 relative z-10">
                 {[
-                    { label: 'Merch Items', val: '142 Products', sub: 'Across 6 collections', icon: Gift, color: 'indigo' },
-                    { label: 'Low Stock Alert', val: '18 Items', sub: 'Needs restocking', icon: Zap, color: 'rose' },
-                    { label: 'Gift Orders', val: '34 Orders', sub: 'This week', icon: ShoppingBag, color: 'emerald' },
-                    { label: 'Top Seller', val: 'Hip Flask', sub: 'Last 24 hours', icon: Star, color: 'amber' },
+                    { label: 'Merch Items', val: souvenirs.length.toLocaleString(), sub: 'Loaded from product catalog', icon: Gift, color: 'indigo' },
+                    { label: 'Low Stock', val: lowStockCount.toLocaleString(), sub: 'Products with 10 or fewer units', icon: Gift, color: 'rose' },
+                    { label: 'Gift Orders', val: 'Unavailable', sub: 'No product-level order report', icon: Gift, color: 'emerald' },
+                    { label: 'Top Seller', val: 'Unavailable', sub: 'No product-level sales report', icon: Gift, color: 'amber' },
                 ].map(stat => (
                     <Card key={stat.label} className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
                         <div className={cn(
@@ -396,9 +256,14 @@ export default function SouvenirForgePage() {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                    {COLLECTIONS.map(col => (
+                    {collections.length === 0 && !loading && (
+                        <p className="col-span-full rounded-2xl bg-white p-6 text-sm font-bold text-slate-500">
+                            {loadError ? 'Collections could not be loaded.' : 'No souvenir collections are in the product catalog yet.'}
+                        </p>
+                    )}
+                    {collections.map(col => (
                         <button
-                            key={col.title}
+                            key={col.category}
                             onClick={() => setActiveCategoryFilter(activeCategoryFilter === col.category ? 'All' : col.category)}
                             className={cn(
                                 "p-5 rounded-[2.5rem] bg-white border text-left transition-all duration-300 group flex flex-col justify-between shadow-sm hover:shadow-xl hover:-translate-y-1 relative overflow-hidden",
@@ -406,44 +271,16 @@ export default function SouvenirForgePage() {
                             )}
                         >
                             <div className="relative aspect-square w-full rounded-2xl bg-slate-50 overflow-hidden mb-3">
-                                <Image src={col.image} alt={col.title} fill className="object-cover group-hover:scale-110 transition-transform duration-500" />
+                                {col.image && <Image src={normalizeImage(col.image)} alt={col.title} fill className="object-cover group-hover:scale-110 transition-transform duration-500" />}
                             </div>
                             <div className="space-y-0.5">
                                 <h4 className="text-xs font-black uppercase tracking-tight text-foreground line-clamp-1">{col.title}</h4>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase">{col.count}</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase">{col.count} items</p>
                             </div>
                         </button>
                     ))}
                 </div>
             </section>
-
-            {/* FORGE ACTIVITY TELEMETRY FEED */}
-            <Card className="p-8 sm:p-10 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6 text-left relative z-10">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-                    <div className="flex items-center gap-2 text-primary font-black uppercase text-[10px] tracking-[0.3em]">
-                        <Activity size={14} className="animate-pulse" /> Forge Activity
-                    </div>
-                    <span className="text-[9px] font-black text-slate-400 uppercase">Live Stream</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[
-                        { title: 'BAR OS Leather Flask Sold', time: '2 minutes ago', badge: 'Order #3021', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-                        { title: 'Crystal Shot Glass Restocked', time: '14 minutes ago', badge: '+50 Units', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
-                        { title: 'Gift Box Collection Scheduled', time: '1 hour ago', badge: 'Black Edition', color: 'bg-amber-50 text-amber-700 border-amber-100' },
-                    ].map((act, i) => (
-                        <div key={i} className={cn("p-4 rounded-2xl border flex items-center justify-between gap-3", act.color)}>
-                            <div>
-                                <p className="text-xs font-black uppercase tracking-tight">{act.title}</p>
-                                <p className="text-[9px] font-bold opacity-70 uppercase mt-0.5">{act.time}</p>
-                            </div>
-                            <span className="text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg bg-white/80 shrink-0">
-                                {act.badge}
-                            </span>
-                        </div>
-                    ))}
-                </div>
-            </Card>
 
             {/* LIVE MERCH GRID */}
             <section className="space-y-8 relative z-10">
@@ -461,6 +298,10 @@ export default function SouvenirForgePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                     {loading ? (
                         <div className="col-span-full py-40 text-center opacity-20"><Loader2 className="animate-spin mx-auto text-primary" size={48} /></div>
+                    ) : filteredSouvenirs.length === 0 ? (
+                        <p className="col-span-full py-16 text-center text-sm font-bold text-slate-500">
+                            {loadError ? 'Souvenirs could not be loaded.' : 'No souvenir products match this filter.'}
+                        </p>
                     ) : filteredSouvenirs.map(item => (
                         <Card key={item.id} className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col group text-left">
                             <div className="relative aspect-square rounded-[2.5rem] bg-slate-50 border border-slate-100 overflow-hidden mb-6 shadow-inner">
@@ -531,13 +372,6 @@ export default function SouvenirForgePage() {
                                 <span className="text-[10px] font-black uppercase text-primary tracking-widest">SOUVENIR FORGE</span>
                                 <h2 className="text-3xl font-black text-foreground uppercase tracking-tight">Upload New Collectible</h2>
                             </div>
-                            <Button
-                                type="button"
-                                onClick={handleAiAutofill}
-                                className="h-10 px-4 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-black uppercase tracking-widest hover:bg-amber-100"
-                            >
-                                <Bot size={14} className="mr-1 text-amber-600" /> AI Autofill
-                            </Button>
                         </div>
 
                         <form onSubmit={handleCreateSouvenir} className="space-y-4">
@@ -558,8 +392,10 @@ export default function SouvenirForgePage() {
                                     <select
                                         value={formData.category}
                                         onChange={e => setFormData({ ...formData, category: e.target.value })}
+                                        required
                                         className="w-full rounded-xl h-12 bg-slate-50 border-none px-3 text-xs font-bold"
                                     >
+                                        <option value="">Select category</option>
                                         <option value="Shot Glass Vault">Shot Glass Vault</option>
                                         <option value="Hip Flask Collection">Hip Flask Collection</option>
                                         <option value="Whiskey Glass Collection">Whiskey Glasses</option>
@@ -575,7 +411,21 @@ export default function SouvenirForgePage() {
                                         type="number"
                                         value={formData.price}
                                         onChange={e => setFormData({ ...formData, price: e.target.value })}
-                                        placeholder="1200"
+                                        placeholder="Enter price"
+                                        required
+                                        className="rounded-xl h-12 bg-slate-50 border-none"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase text-slate-400">Stock Units</label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        value={formData.stock}
+                                        onChange={e => setFormData({ ...formData, stock: e.target.value })}
+                                        placeholder="Enter current stock"
                                         required
                                         className="rounded-xl h-12 bg-slate-50 border-none"
                                     />
@@ -644,70 +494,6 @@ export default function SouvenirForgePage() {
                                 </Button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
-
-            {/* LIMITED DROP SCHEDULER MODAL */}
-            {isDropModalOpen && (
-                <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[3rem] p-8 sm:p-10 max-w-md w-full space-y-6 shadow-2xl relative border border-slate-100 text-left">
-                        <button
-                            onClick={() => setIsDropModalOpen(false)}
-                            className="absolute top-6 right-6 h-10 w-10 rounded-full bg-slate-100 text-slate-500 hover:text-foreground flex items-center justify-center transition-colors"
-                        >
-                            <X size={18} />
-                        </button>
-
-                        <div className="space-y-1">
-                            <span className="text-[10px] font-black uppercase text-amber-600 tracking-widest">LIMITED MERCH PROTOCOL</span>
-                            <h2 className="text-2xl font-black text-foreground uppercase tracking-tight">Launch Limited Drop</h2>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black uppercase text-slate-400">Collection Title</label>
-                                <Input
-                                    value={dropData.title}
-                                    onChange={e => setDropData({ ...dropData, title: e.target.value })}
-                                    className="rounded-xl h-12 bg-slate-50 border-none font-bold text-xs"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase text-slate-400">Launch Date/Time</label>
-                                    <Input
-                                        value={dropData.launch_date}
-                                        onChange={e => setDropData({ ...dropData, launch_date: e.target.value })}
-                                        className="rounded-xl h-12 bg-slate-50 border-none text-xs font-bold"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase text-slate-400">Drop Quantity</label>
-                                    <Input
-                                        value={dropData.inventory}
-                                        onChange={e => setDropData({ ...dropData, inventory: e.target.value })}
-                                        className="rounded-xl h-12 bg-slate-50 border-none text-xs font-bold"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 space-y-1">
-                                <p className="text-[10px] font-black uppercase text-amber-800">Countdown Live Broadcast</p>
-                                <p className="text-xs text-amber-950 font-bold">This drop will display a live countdown timer banner across customer store pages.</p>
-                            </div>
-
-                            <Button
-                                onClick={() => {
-                                    alert(`Limited Drop "${dropData.title}" scheduled for ${dropData.launch_date}!`);
-                                    setIsDropModalOpen(false);
-                                }}
-                                className="w-full h-14 rounded-2xl bg-amber-500 text-white font-black uppercase text-xs tracking-widest shadow-xl hover:bg-amber-600 transition-all"
-                            >
-                                Schedule Limited Drop
-                            </Button>
-                        </div>
                     </div>
                 </div>
             )}

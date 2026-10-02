@@ -1,20 +1,23 @@
-# Online Bar OS: Final Connectivity Guide (V33)
+# Online Bar Setup Guide
 
-This document provides the final instructions to ensure your frontend and backend are 100% linked and operational.
+Use this guide to configure the Supabase database and the external services used by the application.
 
-## ⚠️ The Nuclear Handshake (Mandatory)
+## Supabase setup
 
-To ensure the "Digital Concierge", "Live Pulse", and "Staff Identity" nodes function without errors, you **must** run the following SQL script in your Supabase Dashboard.
-
-### Step 1: Execute Global Master SQL
 1. Open your [Supabase SQL Editor](https://supabase.com/dashboard/project/_/sql/new).
-2. Copy the entire content of [`supabase/FINAL_ESTABLISHMENT_SQL.sql`](file:///C:/Users/hp/AndroidStudioProjects/fixesssss/supabase/FINAL_ESTABLISHMENT_SQL.sql).
-3. Paste and click **Run**.
-4. This script establishes all 22+ tables and views used by the application, including:
-   - **Identity**: Profiles, Staff, Vendors.
-   - **Inventory**: Products, Dossiers, Brands, Categories.
-   - **Operations**: Orders, Items, Hubs, Shipments.
-   - **Intelligence**: Analytics, Carts, Radar, Funnels.
+2. Copy [`supabase/FINAL_ESTABLISHMENT_SQL.sql`](./supabase/FINAL_ESTABLISHMENT_SQL.sql).
+3. Paste and run the script to create the application tables and views.
+
+For an existing database, run the `ALTER TABLE public.orders` migration block in the script's **Operations & Logistics** section to add gift-card details to existing orders. Do not re-run the entire setup script on a live database just to apply that migration.
+
+### Paystack Checkout
+
+Set `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` to your Paystack public key in the deployment environment. Online checkout requires the customer to provide a valid email address; the app no longer substitutes a demo email or an embedded payment key. Cash on Delivery does not require an email address.
+
+## Admin integrations
+
+- AI product descriptions require `GOOGLE_GEMINI_API_KEY` or `OPENAI_API_KEY`. If neither provider is configured or generation fails, the app reports that the description is unavailable instead of generating a template.
+- Social publishing is not available until platform publishing APIs are configured. Requests currently return an unavailable response and are not recorded as published posts.
 
 ## 🛡️ Identity & Access Recovery
 
@@ -36,11 +39,8 @@ After running the SQL, verify these core connections:
 | **Audit Logs** | `/admin/audit` | `audit_logs` |
 | **Treasury** | `/admin/finance` | `financial_ledger` |
 
-## 🚀 Performance Optimization
+## Troubleshooting
 
 If the webapp feels slow:
 1. Delete your `.next` folder to clear the corrupted build cache.
 2. Restart your development server (`npm run dev`).
-3. The new V33 SQL includes RPC batching, which reduces network latency by 60% during discovery sequences.
-
-The grid is officially in its **Elite Stable State**, bro. Execute the SQL and the bar is open! 🚀🍹💎

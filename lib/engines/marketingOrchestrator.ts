@@ -16,54 +16,46 @@ export interface CampaignPackage {
 }
 
 export async function orchestrateCampaign(pkg: CampaignPackage) {
-    if (!supabase) return `camp-${Date.now()}`;
+    if (!supabase) throw new Error('Marketing campaign backend is unavailable.');
 
     // 1. Initialize Campaign Header (Schema-Safe)
-    let campaignId = `camp-${Date.now()}`;
+    const payload: Record<string, unknown> = {
+        title: pkg.title,
+        product_id: pkg.productId,
+        base_message: pkg.message,
+        media_url: pkg.mediaUrl,
+        landing_url: pkg.landingUrl,
+        status: 'QUEUED'
+    };
 
-    try {
-        const payload: Record<string, unknown> = {
-            title: pkg.title,
-            product_id: pkg.productId,
-            base_message: pkg.message,
-            media_url: pkg.mediaUrl,
-            landing_url: pkg.landingUrl,
-            status: 'QUEUED'
-        };
+    let { data: campaign, error: initError } = await supabase
+        .from('marketing_campaigns_v2')
+        .insert([{ ...payload, audience_segment: pkg.audienceSegment }])
+        .select()
+        .single();
 
-        let { data: campaign, error: initError } = await supabase
+    if (initError && initError.message?.includes('audience_segment')) {
+        const retryRes = await supabase
             .from('marketing_campaigns_v2')
-            .insert([{ ...payload, audience_segment: pkg.audienceSegment }])
+            .insert([payload])
             .select()
             .single();
-
-        if (initError && initError.message?.includes('audience_segment')) {
-            // Retry without optional audience_segment column
-            const retryRes = await supabase
-                .from('marketing_campaigns_v2')
-                .insert([payload])
-                .select()
-                .single();
-            campaign = retryRes.data;
-            initError = retryRes.error;
-        }
-
-        if (campaign) campaignId = campaign.id;
-    } catch (err) {
-        console.warn("⚠️ [MARKETING_ORCHESTRATOR] Schema Fallback Active:", err);
+        campaign = retryRes.data;
+        initError = retryRes.error;
     }
+
+    if (initError) throw initError;
+    if (!campaign?.id) throw new Error('Campaign creation did not return a persisted campaign ID.');
+    const campaignId = campaign.id;
 
     // 2. Create Channel Jobs
-    try {
-        const jobs = pkg.channels.map(channel => ({
-            campaign_id: campaignId,
-            channel,
-            status: 'QUEUED'
-        }));
-        await supabase.from('campaign_jobs').insert(jobs);
-    } catch (err) {
-        console.warn("⚠️ [MARKETING_ORCHESTRATOR] Campaign Jobs Table Fallback:", err);
-    }
+    const jobs = pkg.channels.map(channel => ({
+        campaign_id: campaignId,
+        channel,
+        status: 'QUEUED'
+    }));
+    const { error: jobsError } = await supabase.from('campaign_jobs').insert(jobs);
+    if (jobsError) throw jobsError;
 
     // 3. Execute Async Publishing (Fire and forget for the UI)
     pkg.channels.forEach((channel) => {
@@ -112,6 +104,8 @@ async function publishToChannel(campaignId: string, channel: string, pkg: Campai
                 break;
         }
 
+        if (!platformPostId) throw new Error(`${channel} did not return a platform post ID.`);
+
         // Mark Job as Completed
         try {
             await supabase.from('campaign_jobs').update({
@@ -136,25 +130,25 @@ async function publishToChannel(campaignId: string, channel: string, pkg: Campai
 }
 
 /**
- * ADAPTERS (Stubs for the hardening phase - link to real provider APIs in production)
+ * Provider adapters reject until their real publishing integrations are configured.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function adapterWhatsApp(_: CampaignPackage) {
-    return `WA-${Math.random().toString(36).substring(7)}`;
+async function adapterWhatsApp(pkg: CampaignPackage): Promise<string> {
+    void pkg;
+    throw new Error('WhatsApp Business API integration is not configured.');
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function adapterMeta(_: CampaignPackage, __: 'instagram' | 'facebook') {
-    return `META-${Math.random().toString(36).substring(7)}`;
+async function adapterMeta(pkg: CampaignPackage, platform: 'instagram' | 'facebook'): Promise<string> {
+    void pkg;
+    throw new Error(`${platform} publishing integration is not configured.`);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function adapterTikTok(_: CampaignPackage) {
-    return `TT-${Math.random().toString(36).substring(7)}`;
+async function adapterTikTok(pkg: CampaignPackage): Promise<string> {
+    void pkg;
+    throw new Error('TikTok publishing integration is not configured.');
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function adapterGmail(_: CampaignPackage) {
-    return `GM-${Math.random().toString(36).substring(7)}`;
+async function adapterGmail(pkg: CampaignPackage): Promise<string> {
+    void pkg;
+    throw new Error('Gmail campaign integration is not configured.');
 }
