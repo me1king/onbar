@@ -538,7 +538,9 @@ CREATE TABLE IF NOT EXISTS public.component_interaction_audit (
     last_interaction_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
-CREATE OR REPLACE VIEW public.live_behavior_radar AS
+DROP VIEW IF EXISTS public.live_behavior_radar CASCADE;
+
+CREATE VIEW public.live_behavior_radar AS
 SELECT
     s.id as session_id,
     s.user_id,
