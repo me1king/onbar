@@ -405,6 +405,32 @@ CREATE TABLE IF NOT EXISTS public.analytics_events (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+ALTER TABLE public.analytics_events
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'analytics_events'
+          AND column_name = 'timestamp'
+    ) THEN
+        EXECUTE 'UPDATE public.analytics_events
+                 SET created_at = "timestamp"::TIMESTAMP WITH TIME ZONE
+                 WHERE created_at IS NULL AND "timestamp" IS NOT NULL';
+    END IF;
+END;
+$$;
+
+UPDATE public.analytics_events
+SET created_at = now()
+WHERE created_at IS NULL;
+
+ALTER TABLE public.analytics_events
+    ALTER COLUMN created_at SET DEFAULT now();
+
 CREATE TABLE IF NOT EXISTS public.customer_sessions (
     id TEXT PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
