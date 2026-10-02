@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS wallet_balance NUMERIC NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS public.staff (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT UNIQUE NOT NULL,
@@ -464,6 +467,26 @@ CREATE TABLE IF NOT EXISTS public.abandoned_carts (
 );
 
 -- 9. VIEWS & RPC ENGINE
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'affiliate_performance_summary'
+          AND column_name = 'id'
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'affiliate_performance_summary'
+          AND column_name = 'affiliate_id'
+    ) THEN
+        ALTER VIEW public.affiliate_performance_summary RENAME COLUMN id TO affiliate_id;
+    END IF;
+END;
+$$;
 
 CREATE OR REPLACE VIEW public.affiliate_performance_summary AS
 SELECT
