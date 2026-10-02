@@ -10,7 +10,6 @@ import {
     Plus,
     Loader2,
     Settings,
-    ChevronRight,
     Navigation,
     Camera,
     Video,
@@ -39,8 +38,8 @@ interface BuzzPost {
     id: string;
     title: string;
     status: string;
-    trend_score: number;
-    impressions: number;
+    trend_score: number | null;
+    impressions: number | null;
     start_at: string;
 }
 
@@ -92,9 +91,9 @@ export default function VenuePortalDashboard() {
                         id: p.id,
                         title: p.title,
                         status: p.status,
-                        trend_score: p.trend_score,
+                        trend_score: typeof p.trend_score === 'number' ? p.trend_score : null,
                         start_at: p.start_at,
-                        impressions: p.trend_score ? p.trend_score * 45 : 1250
+                        impressions: typeof p.impressions === 'number' ? p.impressions : null
                     })));
                 }
             }
@@ -153,10 +152,13 @@ export default function VenuePortalDashboard() {
                         </div>
                         <div>
                             <div className="flex items-center gap-2 mb-1">
-                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase rounded border border-emerald-100">Verified Venue</span>
+                                <span className={cn(
+                                    "px-2 py-0.5 text-[8px] font-black uppercase rounded border",
+                                    venue.is_verified ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-200"
+                                )}>{venue.is_verified ? 'Verified Venue' : 'Unverified Venue'}</span>
                                 <h1 className="text-2xl font-black text-foreground uppercase tracking-tight italic">{venue.name}</h1>
                             </div>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{venue.category} • Nairobi Sector 01</p>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{venue.category}</p>
                         </div>
                     </div>
                     <div className="flex gap-3">
@@ -173,10 +175,10 @@ export default function VenuePortalDashboard() {
                 {/* CORE ANALYTICS RADAR */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                     {[
-                        { label: 'Organic Reach', val: '12,482', icon: Globe, color: 'indigo' },
-                        { label: 'Engagement', val: '8.4%', icon: MousePointer2, color: 'primary' },
-                        { label: 'Map Signals', val: '431', icon: Navigation, color: 'emerald' },
-                        { label: 'Buzz Score', val: posts[0]?.trend_score || 0, icon: Flame, color: 'rose' },
+                        { label: 'Organic Reach', val: 'Unavailable', icon: Globe, color: 'indigo' },
+                        { label: 'Engagement', val: 'Unavailable', icon: MousePointer2, color: 'primary' },
+                        { label: 'Map Signals', val: 'Unavailable', icon: Navigation, color: 'emerald' },
+                        { label: 'Buzz Score', val: posts[0]?.trend_score?.toLocaleString() ?? 'Unavailable', icon: Flame, color: 'rose' },
                     ].map(stat => (
                         <Card key={stat.label} className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm group hover:shadow-xl transition-all">
                             <div className={cn(
@@ -248,7 +250,9 @@ export default function VenuePortalDashboard() {
                                                         "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
                                                         post.status === 'LIVE' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-50 text-slate-400 border-slate-100"
                                                     )}>{post.status}</span>
-                                                    <span className="text-[9px] font-black text-primary uppercase">Score: {post.trend_score}</span>
+                                                    <span className="text-[9px] font-black text-primary uppercase">
+                                                        {post.trend_score === null ? 'Score unavailable' : `Score: ${post.trend_score}`}
+                                                    </span>
                                                 </div>
                                                 <h3 className="text-xl font-black text-foreground uppercase tracking-tight truncate italic">{post.title}</h3>
                                                 <p className="text-[9px] font-bold text-slate-400 uppercase mt-2 tracking-widest">Started: {new Date(post.start_at).toLocaleString()}</p>
@@ -256,8 +260,8 @@ export default function VenuePortalDashboard() {
                                         </div>
                                         <div className="flex items-center gap-10 pr-4">
                                             <div className="text-right">
-                                                <p className="text-xl font-black text-foreground tracking-tighter tabular-nums">{post.impressions.toLocaleString()}</p>
-                                                <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Reach</p>
+                                                <p className="text-xl font-black text-foreground tracking-tighter tabular-nums">{post.impressions?.toLocaleString() ?? 'Unavailable'}</p>
+                                                <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Recorded impressions</p>
                                             </div>
                                             <Link href={`/admin/buzz/${post.id}`}>
                                                 <Button size="icon" variant="ghost" className="h-12 w-12 rounded-xl text-slate-200 hover:text-primary transition-all"><BarChart3 size={24} /></Button>
@@ -283,26 +287,13 @@ export default function VenuePortalDashboard() {
                                 </div>
 
                                 <div className="space-y-4">
-                                    {[
-                                        { id: 'spotlight', label: 'Buzz Spotlight', desc: 'Top of Discover Feed', price: 2500 },
-                                        { id: 'area', label: 'Area Surge', desc: 'Target local radius', price: 5000 },
-                                        { id: 'trending', label: 'Trending Inject', desc: 'Guaranteed Live status', price: 8000 },
-                                    ].map(boost => (
-                                        <button key={boost.id} className="w-full p-6 rounded-3xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-left flex items-center justify-between group/boost">
-                                            <div>
-                                                <p className="text-[11px] font-black uppercase text-foreground">{boost.label}</p>
-                                                <p className="text-[9px] text-slate-400 uppercase mt-1">{boost.desc}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm font-black text-primary">Ksh {boost.price.toLocaleString()}</p>
-                                                <ChevronRight size={14} className="ml-auto mt-1 opacity-0 group-hover/boost:opacity-100 transition-all" />
-                                            </div>
-                                        </button>
-                                    ))}
+                                    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-sm font-semibold text-slate-300">
+                                        Paid promotion is unavailable. Pricing, checkout, and external promotion delivery are not connected.
+                                    </div>
                                 </div>
 
-                                <Button className="w-full h-16 rounded-[1.8rem] bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
-                                    Initialize Campaign
+                                <Button disabled className="w-full h-16 rounded-[1.8rem] bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20">
+                                    Promotion Unavailable
                                 </Button>
                             </div>
                             <TrendingUp className="absolute -bottom-10 -left-10 h-64 w-64 text-white/5 rotate-12 -z-0" />
@@ -315,15 +306,15 @@ export default function VenuePortalDashboard() {
                                 <div className="flex items-start gap-4">
                                     <div className="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500 shrink-0"><ArrowUpRight size={16} /></div>
                                     <div>
-                                        <p className="text-[10px] font-black uppercase text-foreground">Traffic Spike</p>
-                                        <p className="text-[9px] text-slate-400 uppercase mt-1 leading-relaxed">34% increase in &quot;Cocktail Bar&quot; searches around your area.</p>
+                                        <p className="text-[10px] font-black uppercase text-foreground">Traffic Analytics</p>
+                                        <p className="text-[9px] text-slate-400 uppercase mt-1 leading-relaxed">Search trends are unavailable because venue-area search attribution is not recorded.</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-4">
                                     <div className="h-8 w-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500 shrink-0"><Users size={16} /></div>
                                     <div>
                                         <p className="text-[10px] font-black uppercase text-foreground">Patron Interest</p>
-                                        <p className="text-[9px] text-slate-400 uppercase mt-1 leading-relaxed">89 patrons saved your &quot;Live Jazz&quot; experience tonight.</p>
+                                        <p className="text-[9px] text-slate-400 uppercase mt-1 leading-relaxed">Saves and patron interest metrics are unavailable because they are not recorded for venues.</p>
                                     </div>
                                 </div>
                             </div>

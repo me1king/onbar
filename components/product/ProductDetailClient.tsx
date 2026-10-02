@@ -52,7 +52,7 @@ const Product3DViewer = dynamic(() => import('./Product3DViewer'), {
 export default function ProductDetailClient({
   product,
   relatedProducts,
-  reviewStats = { count: 26, rating: 4.9 }
+  reviewStats = { count: 0, rating: 0 }
 }: {
   product: Product,
   relatedProducts: Product[],
@@ -77,10 +77,6 @@ export default function ProductDetailClient({
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [boughtTogether, setBoughtTogether] = useState<number[]>([product.id]);
   const [bundleProducts, setBundleProducts] = useState<Product[]>([]);
-
-  const fallbackDNA: SensoryDNA = {
-      sweetness: 50, body: 50, oak: 30, smoke: 20, intensity: 60, acidity: 40, tannin: 30, bitterness: 20
-  };
 
   useEffect(() => {
     async function initData() {
@@ -374,14 +370,12 @@ export default function ProductDetailClient({
                         <Utensils size={14} className="text-brand-red" /> Pairs Well With
                     </p>
                     <div className="flex flex-wrap gap-3">
-                        {(Array.isArray(product.pairing_suggestions) && product.pairing_suggestions.length > 0
-                            ? product.pairing_suggestions
-                            : (typeof product.pairing_suggestions === 'string' && (product.pairing_suggestions as string).trim().length > 0)
-                                ? (product.pairing_suggestions as string).split(',').map(s => s.trim())
-                                : ['Nyama choma', 'BBQ ribs', 'Smoked brisket', 'Burgers', 'Dark chocolate']
-                        ).map(chip => (
+                        {(product.pairing_suggestions || []).map(chip => (
                             <span key={chip} className="px-5 py-2.5 bg-white border border-slate-100 rounded-full text-[11px] font-black text-slate-600 uppercase shadow-sm hover:border-brand-red transition-colors cursor-default">{chip}</span>
                         ))}
+                        {(!product.pairing_suggestions || product.pairing_suggestions.length === 0) && (
+                            <p className="text-xs font-medium text-slate-400">Pairing suggestions are unavailable for this product.</p>
+                        )}
                     </div>
                 </div>
             </div>
@@ -395,13 +389,19 @@ export default function ProductDetailClient({
                     <h1 className="text-4xl sm:text-5xl font-black text-foreground tracking-tighter leading-[1] uppercase italic break-words">{product.name}</h1>
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="flex text-amber-400 text-sm tracking-tighter shrink-0 gap-0.5">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                                <Star key={i} size={14} className={cn(i < Math.round(reviewStats.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-100")} />
-                            ))}
+                            {reviewStats.count > 0 ? (
+                                <>
+                                    {Array.from({ length: 5 }).map((_, i) => (
+                                        <Star key={i} size={14} className={cn(i < Math.round(reviewStats.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-100")} />
+                                    ))}
+                                </>
+                            ) : <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">No verified reviews</span>}
                         </div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                            {reviewStats.rating} ({reviewStats.count} verified reviews)
-                        </span>
+                        {reviewStats.count > 0 && (
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                {reviewStats.rating} ({reviewStats.count} verified reviews)
+                            </span>
+                        )}
                     </div>
                 </div>
 
@@ -604,19 +604,24 @@ export default function ProductDetailClient({
 
       <div className="max-w-6xl w-full grid lg:grid-cols-12 gap-10 items-stretch px-4">
             <div className="lg:col-span-4 h-full flex flex-col gap-10">
-                <ProductDNACard
-                    dna={dossier?.sensory_dna || fallbackDNA}
-                    origin={dossier?.country_of_origin || 'Imported'}
-                    style={product.category || 'Premium Spirit'}
-                    abv={dossier?.abv_actual || product.abv_label || '40%'}
-                    verification={dossier?.source_verification || { sensory_dna: 'TECHNICAL' }}
-                />
+                {dossier?.sensory_dna ? (
+                    <ProductDNACard
+                        dna={dossier.sensory_dna}
+                        origin={dossier.country_of_origin || 'Unavailable'}
+                        style={product.category || 'Unavailable'}
+                        abv={dossier.abv_actual || product.abv_label || 'Unavailable'}
+                        verification={dossier.source_verification || {}}
+                    />
+                ) : (
+                    <Card className="p-8 rounded-[3rem] bg-amber-50 border border-amber-200 shadow-sm text-left">
+                        <h3 className="text-lg font-black uppercase tracking-tight text-amber-950">Sensory profile unavailable</h3>
+                        <p className="mt-2 text-xs font-medium leading-relaxed text-amber-900">No verified sensory dossier is recorded for this product.</p>
+                    </Card>
+                )}
                 <AuthenticitySentinel
-                    productId={product.id}
                     productName={product.name}
-                    batchNo={product.id.toString().padStart(6, '0')}
-                    origin={product.origin || product.beverage_specs?.origin || dossier?.country_of_origin || 'Imported'}
-                    abv={product.abv_label || product.beverage_specs?.abv || dossier?.abv_actual || '40%'}
+                    origin={product.origin || product.beverage_specs?.origin || dossier?.country_of_origin || 'Unavailable'}
+                    abv={product.abv_label || product.beverage_specs?.abv || dossier?.abv_actual || 'Unavailable'}
                 />
             </div>
             <div className="lg:col-span-8 flex flex-col gap-10">

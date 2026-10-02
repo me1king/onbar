@@ -4,16 +4,13 @@ import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
     Link2,
-    Link2Off,
     RefreshCcw,
     Camera as Instagram,
     MessageCircle,
     Music,
-    CheckCircle2,
-    Loader2,
-    Globe
+    Globe,
+    AlertCircle
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -28,14 +25,20 @@ interface SocialAccount {
 export default function ChannelConnector() {
     const [accounts, setAccounts] = React.useState<SocialAccount[]>([]);
     const [loading, setLoading] = React.useState(true);
-    const [connecting, setConnecting] = React.useState<string | null>(null);
+    const [error, setError] = React.useState<string | null>(null);
 
     const fetchAccounts = React.useCallback(async () => {
-        if (!supabase) return;
         setLoading(true);
+        setError(null);
         try {
-            const { data } = await supabase.from('social_accounts').select('*').order('platform');
-            if (data) setAccounts(data as SocialAccount[]);
+            if (!supabase) throw new Error('Supabase is not configured. Saved channel details are unavailable.');
+            const { data, error: queryError } = await supabase.from('social_accounts').select('*').order('platform');
+            if (queryError) throw queryError;
+            setAccounts((data || []) as SocialAccount[]);
+        } catch (err) {
+            console.error('Unable to load saved channel details:', err);
+            setAccounts([]);
+            setError(err instanceof Error ? err.message : 'Saved channel details could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -44,23 +47,6 @@ export default function ChannelConnector() {
     React.useEffect(() => {
         fetchAccounts();
     }, [fetchAccounts]);
-
-    const handleConnect = (platform: string) => {
-        setConnecting(platform);
-        // Neural Simulation: OAuth Sequence
-        setTimeout(async () => {
-            if (!supabase) return;
-            try {
-                await supabase.from('social_accounts').upsert({
-                    platform,
-                    account_name: `Online Bar ${platform.charAt(0) + platform.slice(1).toLowerCase()} Node`,
-                    status: 'CONNECTED',
-                    connected_at: new Date().toISOString()
-                }, { onConflict: 'platform, account_name' });
-                fetchAccounts();
-            } finally { setConnecting(null); }
-        }, 2000);
-    };
 
     const platforms = [
         { id: 'INSTAGRAM', label: 'Instagram', icon: Instagram, color: 'text-rose-500', bg: 'bg-rose-50' },
@@ -81,6 +67,16 @@ export default function ChannelConnector() {
                 </button>
             </header>
 
+            <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-900">
+                Social OAuth and publishing adapters are not configured. Saved account rows are not proof of a verified connection, and this screen cannot connect or publish to a platform.
+            </div>
+            {error && (
+                <div role="alert" className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-700">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>{error}</span>
+                </div>
+            )}
+
             <div className="grid gap-4">
                 {platforms.map(p => {
                     const connected = accounts.find(a => a.platform === p.id);
@@ -96,28 +92,14 @@ export default function ChannelConnector() {
                                 <div className="text-left">
                                     <p className="text-[11px] font-black uppercase text-foreground leading-none">{p.label}</p>
                                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                        {connected ? `Verified: ${connected.account_name}` : 'Awaiting Connection'}
+                                        {connected ? `Saved, not verified: ${connected.account_name}` : 'Not connected'}
                                     </p>
                                 </div>
                             </div>
 
-                            {connected ? (
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-1.5 text-emerald-500">
-                                        <CheckCircle2 size={12} />
-                                        <span className="text-[9px] font-black uppercase">Active</span>
-                                    </div>
-                                    <button className="h-8 w-8 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Link2Off size={14} /></button>
-                                </div>
-                            ) : (
-                                <Button
-                                    onClick={() => handleConnect(p.id)}
-                                    disabled={!!connecting}
-                                    className="h-9 px-4 rounded-xl bg-primary text-white font-black uppercase text-[8px] tracking-widest shadow-lg shadow-primary/20 active:scale-95 transition-all"
-                                >
-                                    {connecting === p.id ? <Loader2 size={14} className="animate-spin" /> : 'Connect'}
-                                </Button>
-                            )}
+                            <span className="shrink-0 text-[9px] font-black uppercase text-slate-400">
+                                {loading ? 'Loading' : connected ? 'Unverified' : 'Unavailable'}
+                            </span>
                         </div>
                     );
                 })}

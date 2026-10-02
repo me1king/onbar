@@ -51,7 +51,7 @@ export default async function Page({ params }: Props) {
 
   let product: Product | null = null;
   let related: Product[] = [];
-  let reviewStats = { count: 0, rating: 5.0 };
+  let reviewStats = { count: 0, rating: 0 };
 
   if (supabase) {
     // 1. Fetch main product from DB

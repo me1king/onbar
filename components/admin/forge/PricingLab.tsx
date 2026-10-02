@@ -5,7 +5,6 @@ import {
     DollarSign,
     Clock,
     AlertTriangle,
-    CheckCircle2,
     History,
     Target
 } from 'lucide-react';
@@ -23,10 +22,11 @@ interface PricingLabProps {
 export default function PricingLab({ basePrice, costPrice, onPriceChange }: PricingLabProps) {
     const [simulatePrice, setSimulatePrice] = React.useState(basePrice);
     const [volume, setVolume] = React.useState(100);
+    const [operatingOverhead, setOperatingOverhead] = React.useState(0);
 
     const profit = simulatePrice - costPrice;
     const margin = simulatePrice > 0 ? (profit / simulatePrice) * 100 : 0;
-    const breakEven = profit > 0 ? Math.ceil(10000 / profit) : '∞'; // Simulated fixed overhead of 10k
+    const breakEven = operatingOverhead > 0 && profit > 0 ? Math.ceil(operatingOverhead / profit) : null;
 
     return (
         <div className="grid lg:grid-cols-12 gap-10">
@@ -37,11 +37,11 @@ export default function PricingLab({ basePrice, costPrice, onPriceChange }: Pric
                     <div className="flex items-center justify-between border-l-4 border-primary pl-6">
                         <div>
                             <h2 className="text-2xl font-black uppercase tracking-tight text-foreground leading-none">Economics Node</h2>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Margin & Profit Simulator</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Scenario estimate — not actual performance</p>
                         </div>
                         <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-100">
                             <History size={14} className="text-slate-300" />
-                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Audit Trail Active</span>
+                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Scenario Only</span>
                         </div>
                     </div>
 
@@ -80,15 +80,27 @@ export default function PricingLab({ basePrice, costPrice, onPriceChange }: Pric
                             </h3>
                         </div>
                         <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col justify-center">
-                            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-2">Net Margin</p>
+                            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-2">Gross Margin</p>
                             <h3 className={cn("text-2xl font-black tracking-tight", margin > 25 ? "text-emerald-500" : margin > 15 ? "text-primary" : "text-rose-500")}>
                                 {margin.toFixed(1)}%
                             </h3>
                         </div>
                         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col justify-center">
                             <p className="text-[9px] font-black uppercase text-primary tracking-widest mb-2">Break-Even (Qty)</p>
-                            <h3 className="text-2xl font-black text-foreground tracking-tight">{breakEven} Units</h3>
+                            <h3 className="text-2xl font-black text-foreground tracking-tight">{breakEven === null ? 'Unavailable' : `${breakEven.toLocaleString()} Units`}</h3>
                         </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Operating Overhead for Break-Even Scenario (Ksh)</label>
+                        <Input
+                            type="number"
+                            min="0"
+                            value={operatingOverhead}
+                            onChange={e => setOperatingOverhead(Math.max(0, Number(e.target.value) || 0))}
+                            className="h-12 rounded-xl border-slate-100 bg-slate-50 font-bold"
+                        />
+                        <p className="text-[9px] font-medium text-slate-400">Enter a real or planned overhead value. Break-even is not calculated until one is provided.</p>
                     </div>
 
                     <div className="pt-8 border-t border-slate-50 flex gap-4">
@@ -116,15 +128,15 @@ export default function PricingLab({ basePrice, costPrice, onPriceChange }: Pric
                             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-1">
                                 <p className="text-[8px] font-black uppercase opacity-60">Status</p>
                                 <div className="flex items-center gap-2">
-                                    <CheckCircle2 size={12} className="text-emerald-400" />
-                                    <span className="text-[10px] font-black uppercase">Start Node Valid</span>
+                                    <AlertTriangle size={12} className="text-amber-300" />
+                                    <span className="text-[10px] font-black uppercase">Promotion setup unavailable</span>
                                 </div>
                             </div>
                             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-1">
                                 <p className="text-[8px] font-black uppercase opacity-60">Price Integrity</p>
                                 <div className="flex items-center gap-2">
-                                    <CheckCircle2 size={12} className="text-emerald-400" />
-                                    <span className="text-[10px] font-black uppercase">No Fake Scarcity</span>
+                                    <AlertTriangle size={12} className="text-amber-300" />
+                                    <span className="text-[10px] font-black uppercase">No campaign data connected</span>
                                 </div>
                             </div>
                         </div>
@@ -144,8 +156,8 @@ export default function PricingLab({ basePrice, costPrice, onPriceChange }: Pric
                     <div className="space-y-8 flex-1">
                         <div className="space-y-4">
                             <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-black uppercase text-slate-400">Projected Volume</label>
-                                <span className="text-[10px] font-black text-primary">{volume} Orders</span>
+                                <label className="text-[10px] font-black uppercase text-slate-400">Scenario Volume</label>
+                                <span className="text-[10px] font-black text-primary">{volume} Assumed Orders</span>
                             </div>
                             <input
                                 type="range" min="10" max="1000" step="10"
@@ -156,11 +168,11 @@ export default function PricingLab({ basePrice, costPrice, onPriceChange }: Pric
 
                         <div className="space-y-6">
                             <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-2">
-                                <p className="text-[10px] font-black uppercase text-slate-400">Total Revenue</p>
+                                <p className="text-[10px] font-black uppercase text-slate-400">Scenario Revenue</p>
                                 <h4 className="text-3xl font-black text-foreground tracking-tighter italic">{formatPrice(simulatePrice * volume)}</h4>
                             </div>
                             <div className="p-6 rounded-3xl bg-emerald-50 border border-emerald-100 space-y-2">
-                                <p className="text-[10px] font-black uppercase text-emerald-600">Net Contribution</p>
+                                <p className="text-[10px] font-black uppercase text-emerald-600">Gross Contribution Before Overhead</p>
                                 <h4 className="text-3xl font-black text-emerald-700 tracking-tighter italic">{formatPrice(profit * volume)}</h4>
                             </div>
                         </div>
@@ -170,7 +182,7 @@ export default function PricingLab({ basePrice, costPrice, onPriceChange }: Pric
                         <div className="flex items-start gap-4 p-5 rounded-2xl bg-amber-50 border border-amber-100 text-amber-700">
                             <AlertTriangle size={20} className="shrink-0 mt-1" />
                             <p className="text-[9px] font-bold uppercase leading-relaxed tracking-tight">
-                                Margin is below 20%. Recommended strategy: Bundle with high-margin snacks to protect net contribution.
+                                Estimates use the entered sell price, product cost, and scenario volume only. Fees, tax, delivery, and other operating costs are excluded.
                             </p>
                         </div>
                     </div>

@@ -2,101 +2,84 @@
 
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import {
-    TrendingUp,
-    Smartphone,
-    MousePointer2
-} from 'lucide-react';
+import { Smartphone, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { formatPrice } from '@/lib/utils';
 
-interface WidgetStat {
+interface MobileWidget {
+    id: number;
     title: string;
-    impressions: number;
-    clicks: number;
-    ctr: number;
-    revenue: number;
 }
 
 export default function MobileWidgetStats() {
-    const [stats, setStats] = React.useState<WidgetStat[]>([]);
+    const [widgets, setWidgets] = React.useState<MobileWidget[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
-        async function fetchStats() {
-            if (!supabase) return;
-            try {
-                // In a real system, this would be an aggregation query or a RPC
-                const { data } = await supabase.from('mobile_app_widgets').select('id, title');
+        async function fetchWidgets() {
+            if (!supabase) {
+                setError('Supabase is not configured. Mobile widget data is unavailable.');
+                setLoading(false);
+                return;
+            }
 
-                if (data) {
-                    const realStats = data.map((w, idx) => {
-                        const imp = 1200 + (idx * 450);
-                        const clk = 180 + (idx * 35);
-                        return {
-                            title: w.title,
-                            impressions: imp,
-                            clicks: clk,
-                            ctr: (clk / imp) * 100,
-                            revenue: clk * 250
-                        };
-                    });
-
-                    setStats(realStats);
-                }
-            } catch (err) { console.error(err); }
-            finally { setLoading(false); }
+            const { data, error: queryError } = await supabase
+                .from('mobile_app_widgets')
+                .select('id, title')
+                .order('title');
+            if (queryError) {
+                console.error('Unable to load mobile widget configuration:', queryError);
+                setError('Mobile widget configuration could not be loaded.');
+            } else {
+                setWidgets(data || []);
+            }
+            setLoading(false);
         }
-        fetchStats();
+
+        fetchWidgets();
     }, []);
 
     if (loading) return <div className="h-64 bg-slate-50 rounded-[3rem] animate-pulse" />;
 
     return (
         <Card className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-8 text-left">
-            <header className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-                        <Smartphone size={20} />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none">Widget ROI</h2>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Home Screen Performance</p>
-                    </div>
+            <header className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                    <Smartphone size={20} />
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100 text-emerald-600">
-                    <TrendingUp size={12} />
-                    <span className="text-[9px] font-black uppercase tracking-widest">+14.2%</span>
+                <div>
+                    <h2 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none">Widget Analytics</h2>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Performance event tracking</p>
                 </div>
             </header>
 
-            <div className="space-y-6">
-                {stats.map((s) => (
-                    <div key={s.title} className="space-y-3 group cursor-default">
-                        <div className="flex justify-between items-end px-1">
-                            <div className="min-w-0">
-                                <p className="text-xs font-black uppercase tracking-tight text-foreground truncate">{s.title}</p>
-                                <p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5 tracking-widest">{s.impressions.toLocaleString()} Impressions</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-sm font-black text-primary leading-none">{s.ctr.toFixed(1)}% CTR</p>
-                                <p className="text-[9px] font-bold text-emerald-600 uppercase mt-1">{formatPrice(s.revenue)}</p>
-                            </div>
-                        </div>
-                        <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100 p-0.5 relative">
-                            <div
-                                className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(99,102,241,0.3)]"
-                                style={{ width: `${Math.min(100, s.ctr * 10)}%` }}
-                            />
-                        </div>
-                    </div>
-                ))}
+            {error && (
+                <div role="alert" className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-700">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>{error}</span>
+                </div>
+            )}
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-900">
+                Impressions, clicks, conversion rate, and attributed revenue are unavailable because widget interaction tracking is not configured.
             </div>
 
-            <div className="pt-6 border-t border-slate-50 flex items-center justify-between text-[8px] font-black uppercase text-slate-400">
-                <p className="flex items-center gap-1.5"><MousePointer2 size={10} className="text-primary" /> Tracking {stats.length} active nodes</p>
-                <button className="text-primary hover:underline underline-offset-4">Full Audit Log &rarr;</button>
-            </div>
+            {widgets.length === 0 && !error ? (
+                <p className="py-6 text-center text-sm font-semibold text-slate-500">No mobile widgets are configured.</p>
+            ) : (
+                <div className="space-y-3">
+                    {widgets.map(widget => (
+                        <div key={widget.id} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                            <p className="truncate text-xs font-black uppercase text-foreground">{widget.title}</p>
+                            <span className="shrink-0 text-[9px] font-black uppercase text-slate-400">Analytics unavailable</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            <p className="border-t border-slate-100 pt-5 text-[9px] font-black uppercase text-slate-400">
+                {widgets.length.toLocaleString()} configured widgets
+            </p>
         </Card>
     );
 }

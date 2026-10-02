@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { verifyBottle } from '@/lib/engines/trustService';
+import { supabase } from '@/lib/supabaseClient';
 import {
     ShieldCheck,
     ShieldAlert,
@@ -44,11 +45,13 @@ export default function BottleVerificationPage() {
     useEffect(() => {
         async function runVerification() {
             if (!id) return;
-            // Simulated metadata (In prod, fetch from browser/session)
+            const { data: { session } } = supabase
+                ? await supabase.auth.getSession()
+                : { data: { session: null } };
             const meta = {
-                ip: '197.248.31.2',
-                city: 'Nairobi',
-                deviceInfo: 'Authorized Terminal'
+                userId: session?.user.id,
+                city: 'Unknown',
+                deviceInfo: typeof navigator === 'undefined' ? 'Unknown' : navigator.userAgent
             };
             const res = await verifyBottle(id as string, meta);
             setResult(res);

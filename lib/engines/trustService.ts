@@ -20,70 +20,31 @@ export interface BottlePassport {
 /**
  * Verifies a bottle ID and checks for scan anomalies.
  */
-export async function verifyBottle(bottleId: string, metadata: { userId?: string, ip: string, city: string, deviceInfo: string }) {
+export async function verifyBottle(bottleId: string, metadata: { userId?: string, ip?: string, city?: string, deviceInfo?: string }) {
     if (!supabase) return { valid: false, error: 'System Offline' };
 
     try {
         // 1. Fetch Passport
-        const { data: passport } = await supabase
+        const { data: passport, error: passportError } = await supabase
             .from('bottle_passports')
             .select('*, products(name)')
             .eq('id', bottleId)
             .single();
 
+        if (passportError && passportError.code !== 'PGRST116') throw passportError;
+
         if (!passport) {
-            // Failover to product master registry (e.g. numeric ID "38" or "OB-38")
-            const numericId = parseInt(bottleId.replace(/\D/g, ''), 10);
-            let productMatch = null;
-
-            if (!isNaN(numericId)) {
-                const { data: prod } = await supabase
-                    .from('products')
-                    .select('*')
-                    .eq('id', numericId)
-                    .single();
-                if (prod) productMatch = prod;
-            }
-
-            if (!productMatch) {
-                const { data: prodSku } = await supabase
-                    .from('products')
-                    .select('*')
-                    .or(`sku.eq.${bottleId},name.ilike.%${bottleId}%`)
-                    .limit(1);
-                if (prodSku && prodSku.length > 0) productMatch = prodSku[0];
-            }
-
-            if (productMatch) {
-                return {
-                    valid: true,
-                    isAnomaly: false,
-                    passport: {
-                        id: `OB-PASSPORT-${productMatch.id}`,
-                        product_name: productMatch.name,
-                        batch_number: `OB-GRID-${productMatch.id.toString().padStart(6, '0')}`,
-                        origin_manufacturer: productMatch.manufacturer || productMatch.brand || productMatch.origin || 'Authorized Global Importer',
-                        authorized_distributor: 'Online Bar Nairobi Dispatch Node'
-                    },
-                    history: [
-                        { event_type: 'MANUFACTURED', timestamp: new Date(Date.now() - 86400000 * 30).toISOString(), actor_label: 'Factory Node' },
-                        { event_type: 'DISTRIBUTED', timestamp: new Date(Date.now() - 86400000 * 15).toISOString(), actor_label: 'Authorized Importer' },
-                        { event_type: 'INGESTED', timestamp: new Date(Date.now() - 86400000 * 5).toISOString(), actor_label: 'Cellar Hub Vault' },
-                        { event_type: 'DISPATCH_VERIFIED', timestamp: new Date().toISOString(), actor_label: 'Active Anti-Counterfeit Sentinel' }
-                    ]
-                };
-            }
-
             return { valid: false, error: 'Identifier could not be verified in the Online Bar registry.' };
         }
 
         // 2. Check for Anomaly (Simultaneous scans in different cities)
-        const { data: recentScans } = await supabase
+        const { data: recentScans, error: scansError } = await supabase
             .from('verification_scans')
             .select('city_coarse, timestamp')
             .eq('bottle_id', bottleId)
             .order('timestamp', { ascending: false })
             .limit(1);
+        if (scansError) throw scansError;
 
         let isAnomaly = false;
         let anomalyReason = '';
@@ -92,45 +53,49 @@ export async function verifyBottle(bottleId: string, metadata: { userId?: string
             const lastScan = recentScans[0];
             const timeDiffMin = (Date.now() - new Date(lastScan.timestamp).getTime()) / 60000;
 
-            if (lastScan.city_coarse !== metadata.city && timeDiffMin < 60) {
+            if (metadata.city && metadata.city !== 'Unknown' && lastScan.city_coarse &&
+                lastScan.city_coarse !== 'Unknown' && lastScan.city_coarse !== metadata.city && timeDiffMin < 60) {
                 isAnomaly = true;
                 anomalyReason = `Detected scan in ${metadata.city} only ${Math.round(timeDiffMin)}m after scan in ${lastScan.city_coarse}. Physical duplication suspected.`;
             }
         }
 
         // 3. Log Scan
-        await supabase.from('verification_scans').insert([{
+        const { error: scanInsertError } = await supabase.from('verification_scans').insert([{
             bottle_id: bottleId,
             user_id: metadata.userId,
             ip_address: metadata.ip,
-            city_coarse: metadata.city,
-            device_info: metadata.deviceInfo || 'Authorized Terminal',
+            city_coarse: metadata.city || 'Unknown',
+            device_info: metadata.deviceInfo || 'Unknown',
             is_anomaly: isAnomaly,
             anomaly_reason: anomalyReason
         }]);
+        if (scanInsertError) throw scanInsertError;
 
         // 4. Create Alert if Anomaly
         if (isAnomaly) {
-            await supabase.from('trust_alerts').insert([{
+            const { error: alertError } = await supabase.from('trust_alerts').insert([{
                 bottle_id: bottleId,
                 severity: 'Critical',
                 description: anomalyReason
             }]);
+            if (alertError) throw alertError;
         }
 
         // 5. Fetch Full History
-        const { data: events } = await supabase
+        const { data: events, error: eventsError } = await supabase
             .from('bottle_events')
             .select('*')
             .eq('bottle_id', bottleId)
             .order('timestamp', { ascending: true });
+        if (eventsError) throw eventsError;
 
         return {
             valid: true,
             isAnomaly,
             passport: {
                 ...passport,
-                product_name: passport.products.name
+                product_name: passport.products?.name || 'Product name unavailable'
             },
             history: events || []
         };
@@ -145,7 +110,7 @@ export async function verifyBottle(bottleId: string, metadata: { userId?: string
  * Initializes a new bottle passport in the registry.
  */
 export async function registerBottle(productId: number, batch: string, manufacturer: string, distributor: string) {
-    if (!supabase) return null;
+    if (!supabase) throw new Error('Supabase is not configured. Bottle passport was not registered.');
 
     const bottleId = `OB-KE-${uuidv4().substring(0, 8).toUpperCase()}`;
 
@@ -161,12 +126,13 @@ export async function registerBottle(productId: number, batch: string, manufactu
     if (error) throw error;
 
     // Log Initial Event
-    await supabase.from('bottle_events').insert([{
+    const { error: eventError } = await supabase.from('bottle_events').insert([{
         bottle_id: bottleId,
-        event_type: 'MANUFACTURED',
-        location_label: manufacturer,
-        actor_label: 'Factory Node'
+        event_type: 'REGISTERED',
+        location_label: 'Online Bar registry',
+        actor_label: 'Passport registration'
     }]);
+    if (eventError) throw eventError;
 
     return data;
 }

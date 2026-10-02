@@ -1,131 +1,102 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ShoppingBag, X } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
 interface Sale {
-    name: string;
     item: string;
     time: string;
 }
 
 export default function SalesPopup() {
-    const [sales, setSales] = useState<Sale[]>([]);
     const [currentSale, setCurrentSale] = useState<Sale | null>(null);
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
-        async function fetchRealSales() {
-            if (!supabase) return;
-            try {
-                // Fetch the latest 15 successful orders for rotation
-                const { data } = await supabase
-                    .from('orders')
-                    .select('id, customer_name, note, created_at, product_id')
-                    .or('status.eq.Paid,status.eq.Delivered,status.eq.Dispatched')
-                    .order('created_at', { ascending: false })
-                    .limit(15);
+        if (!supabase) return;
+        const client = supabase;
 
-                if (data && data.length > 0) {
-                    processSalesData(data);
-                }
-            } catch (err) {
-                console.error("Sales popup fetch error:", err);
+        let showTimer: ReturnType<typeof setTimeout> | undefined;
+        let hideTimer: ReturnType<typeof setTimeout> | undefined;
+
+        const showSale = (sale: Sale, delay = 0) => {
+            if (showTimer) clearTimeout(showTimer);
+            if (hideTimer) clearTimeout(hideTimer);
+            showTimer = setTimeout(() => {
+                setCurrentSale(sale);
+                setIsVisible(true);
+                hideTimer = setTimeout(() => setIsVisible(false), 6000);
+            }, delay);
+        };
+
+        const loadSale = async (order: { product_id: number | null; created_at: string }) => {
+            if (order.product_id === null) return;
+            const { data: product, error } = await client
+                .from('products')
+                .select('name')
+                .eq('id', order.product_id)
+                .maybeSingle();
+            if (error) {
+                console.error('Unable to load product for paid-order popup:', error);
+                return;
             }
-        }
-
-        async function processSalesData(data: { product_id: number; customer_name: string; note: string; created_at: string }[]) {
-            const prodIds = data.map(o => o.product_id);
-            if (!supabase) return;
-            const { data: prods } = await supabase.from('products').select('id, name').in('id', prodIds);
-
-            const enriched: Sale[] = data.map(order => {
-                const product = prods?.find((p: { id: number; name: string }) => p.id === order.product_id);
-                const firstName = (order?.customer_name || 'Someone').split(' ')[0];
-                const regionMatch = order.note?.match(/Region: ([^|]+)/);
-                const location = regionMatch ? regionMatch[1].trim() : "Kenya";
-
-                return {
-                    name: `${firstName} from ${location}`,
-                    item: product?.name || "Premium Drink",
-                    time: getTimeAgo(order.created_at)
-                };
+            if (!product?.name) return;
+            showSale({
+                item: product.name,
+                time: getTimeAgo(order.created_at)
             });
-            setSales(enriched);
-        }
+        };
 
-        fetchRealSales();
+        const fetchLatestPaidOrder = async () => {
+            const recentCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const { data, error } = await client
+                .from('orders')
+                .select('product_id, created_at')
+                .in('status', ['Paid', 'Delivered'])
+                .gte('created_at', recentCutoff)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) {
+                console.error('Unable to load recent paid orders for popup:', error);
+                return;
+            }
+            if (data) await loadSale(data);
+        };
 
-        // Real-time Pulse Listener with unique channel name
-        const channelId = `realtime-sales-pulse-${Math.random().toString(36).substring(7)}`;
-        const channel = supabase
-            ?.channel(channelId)
-            .on(
-                'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'orders' },
-                async (payload: { new: { product_id: number; customer_name: string; note: string } }) => {
-                    if (!supabase) return;
-                    // Enrich new order data
-                    const { data: prod } = await supabase
-                        .from('products')
-                        .select('name')
-                        .eq('id', payload.new.product_id)
-                        .limit(1)
-                        .maybeSingle();
-
-                    const firstName = (payload?.new?.customer_name || 'Someone').split(' ')[0];
-                    const regionMatch = payload.new.note?.match(/Region: ([^|]+)/);
-                    const location = regionMatch ? regionMatch[1].trim() : "Kenya";
-
-                    const newSale: Sale = {
-                        name: `${firstName} from ${location}`,
-                        item: prod?.name || "Premium Drink",
-                        time: "Just now 🔥"
-                    };
-
-                    setCurrentSale(newSale);
-                    setIsVisible(true);
-                    setTimeout(() => setIsVisible(false), 7000);
+        const channel = client
+            .channel('realtime-paid-sales-popup')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
+                const order = payload.new as { product_id?: number | null; created_at?: string; status?: string };
+                if (
+                    (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') &&
+                    order.product_id !== undefined &&
+                    order.created_at &&
+                    ['paid', 'delivered'].includes((order.status || '').toLowerCase())
+                ) {
+                    loadSale({ product_id: order.product_id, created_at: order.created_at });
                 }
-            )
+            })
             .subscribe();
 
+        fetchLatestPaidOrder();
+
         return () => {
-            if (supabase && channel) supabase.removeChannel(channel);
+            if (showTimer) clearTimeout(showTimer);
+            if (hideTimer) clearTimeout(hideTimer);
+            client.removeChannel(channel);
         };
     }, []);
 
     const getTimeAgo = (dateStr: string) => {
-        const diff = Date.now() - new Date(dateStr).getTime();
+        const diff = Math.max(0, Date.now() - new Date(dateStr).getTime());
         const mins = Math.floor(diff / 60000);
         if (mins < 60) return `${mins} mins ago`;
         const hours = Math.floor(mins / 60);
         if (hours < 24) return `${hours} hours ago`;
         return `${Math.floor(hours / 24)} days ago`;
     };
-
-    useEffect(() => {
-        if (sales.length === 0) return;
-
-        const showNextSale = () => {
-            const randomSale = sales[Math.floor(Math.random() * sales.length)];
-            setCurrentSale(randomSale);
-            setIsVisible(true);
-
-            setTimeout(() => {
-                setIsVisible(false);
-            }, 6000);
-        };
-
-        const initialDelay = setTimeout(showNextSale, 8000);
-        const interval = setInterval(showNextSale, 45000);
-
-        return () => {
-            clearTimeout(initialDelay);
-            clearInterval(interval);
-        };
-    }, [sales]);
 
     if (!currentSale) return null;
 
@@ -141,15 +112,16 @@ export default function SalesPopup() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-black text-foreground uppercase tracking-tight leading-none mb-1">Live Feed</p>
+                    <p className="text-[11px] font-black text-foreground uppercase tracking-tight leading-none mb-1">Recent paid order</p>
                     <p className="text-[10px] text-slate-500 font-medium leading-tight">
-                        <span className="font-bold text-slate-700">{currentSale.name}</span> bought <span className="text-primary font-black uppercase italic">{currentSale.item}</span>
+                        A customer bought <span className="text-primary font-black uppercase italic">{currentSale.item}</span>
                     </p>
                     <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-1.5">{currentSale.time}</p>
                 </div>
 
                 <button
                     onClick={() => setIsVisible(false)}
+                    aria-label="Dismiss recent order notification"
                     className="absolute top-2 right-2 text-slate-200 hover:text-slate-400 transition-colors"
                 >
                     <X className="h-3 w-3" />
