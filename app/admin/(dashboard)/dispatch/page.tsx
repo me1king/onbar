@@ -102,42 +102,53 @@ export default function AdminDispatchPage() {
     const [selectedWarehouse, setSelectedWarehouse] = useState('all');
 
     const fetchData = async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setMessage({ type: 'error', text: 'Supabase is not configured. Dispatch data is unavailable.' });
+            setLoading(false);
+            return;
+        }
         setLoading(true);
+        setMessage(null);
         try {
-            // Fetch Riders with Wallet info
-            const { data: ridersData } = await supabase.from('rider_status').select(`
-                *,
-                wallet:rider_wallets(balance, total_earned)
-            `).order('rider_name', { ascending: true });
-
-            const { data: ordersData } = await supabase.from('orders').select('*').neq('status', 'Delivered');
-
-            const { data: visitorsData } = await supabase
-                .from('active_visitors')
-                .select('latitude, longitude')
-                .not('latitude', 'is', null);
+            const [ridersRes, ordersRes, locationsRes] = await Promise.all([
+                supabase.from('rider_status').select(`
+                    *,
+                    wallet:rider_wallets(balance, total_earned)
+                `).order('rider_name', { ascending: true }),
+                supabase.from('orders').select('*').neq('status', 'Delivered'),
+                supabase.rpc('get_order_delivery_demand_zones')
+            ]);
+            if (ridersRes.error) throw ridersRes.error;
+            if (ordersRes.error) throw ordersRes.error;
+            if (locationsRes.error) throw locationsRes.error;
 
             // Handle wallet array from Supabase join and align with Rider interface
-            const processedRiders = (ridersData || []).map((r) => {
-                const rider = r as Rider & { wallet?: { balance: number; total_earned: number } | { balance: number; total_earned: number }[] };
+            const processedRiders = ((ridersRes.data || []) as (Rider & {
+                wallet?: { balance: number; total_earned: number } | { balance: number; total_earned: number }[];
+            })[]).map((rider) => {
                 return {
                     ...rider,
                     wallet: Array.isArray(rider.wallet) ? rider.wallet[0] : rider.wallet
                 };
             });
 
-            // Cluster Visitors into Demand Zones (Simple implementation)
-            const zones: Record<string, { lat: number, lng: number, intensity: number }> = {};
-            visitorsData?.forEach(v => {
-                const key = `${v.latitude.toFixed(3)},${v.longitude.toFixed(3)}`;
-                if (!zones[key]) zones[key] = { lat: v.latitude, lng: v.longitude, intensity: 0 };
-                zones[key].intensity += 1;
+            // The SQL function groups completed order pins into approximate map zones.
+            const zones = ((locationsRes.data || []) as {
+                latitude: number | string;
+                longitude: number | string;
+                order_count: number | string;
+            }[]).flatMap(zone => {
+                const latitude = Number(zone.latitude);
+                const longitude = Number(zone.longitude);
+                const intensity = Number(zone.order_count);
+                return Number.isFinite(latitude) && Number.isFinite(longitude) && Number.isFinite(intensity)
+                    ? [{ lat: latitude, lng: longitude, intensity }]
+                    : [];
             });
 
-            setRiders(processedRiders as Rider[]);
-            setOrders(ordersData || []);
-            setDemandZones(Object.values(zones));
+            setRiders(processedRiders);
+            setOrders(ordersRes.data || []);
+            setDemandZones(zones);
 
             // Fetch Neural Batches (Phase 11)
             const { DispatchControl } = await import('@/lib/engines/dispatchEngine');
@@ -145,6 +156,7 @@ export default function AdminDispatchPage() {
             setBatches(batchOpts);
         } catch (err) {
             console.error("Pipeline link unstable.", err);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Dispatch data could not be refreshed.' });
         } finally {
             setLoading(false);
         }
@@ -372,10 +384,14 @@ export default function AdminDispatchPage() {
 
             <div className="grid lg:grid-cols-12 gap-10">
                 <div className="lg:col-span-8 space-y-10">
-                    <div className="h-[650px] w-full relative">
+                    <p className="text-xs text-muted-foreground">
+                        Demand is grouped from paid/delivered orders with saved delivery pins, not live visitor tracking. Each cluster is approximate.
+                    </p>
+                    <div className="h-[55vh] min-h-[320px] max-h-[650px] w-full relative">
                         <LiveDispatchMap
                             riders={riders}
                             demandZones={demandZones}
+                            showDemand={showHeatmap}
                             onSelectRider={(r) => setSelectedRider(r as Rider)}
                         />
                     </div>

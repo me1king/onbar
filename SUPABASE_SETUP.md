@@ -10,6 +10,22 @@ Use this guide to configure the Supabase database and the external services used
 
 For an existing database, run the `ALTER TABLE public.orders` migration block in the script's **Operations & Logistics** section to add gift-card details to existing orders. Do not re-run the entire setup script on a live database just to apply that migration.
 
+For the current delivery, audience, and analytics features on an already configured database, run [`supabase/OPERATIONAL_FEATURES_MIGRATION.sql`](./supabase/OPERATIONAL_FEATURES_MIGRATION.sql) in the SQL Editor. It adds the souvenir fields and reporting functions used by the admin screens without re-running the full setup script.
+
+### Delivery coverage and customer location
+
+- In **Admin → Settings → Operations**, draw and save named free-delivery areas. Each boundary needs at least three points.
+- Checkout asks for device location only after the customer chooses to use it. Customers can set the pin manually instead; coverage is determined from the saved area boundaries.
+- Customer-demand clusters in Admin use approximate, rounded pins from paid and delivered orders; they are not live visitor tracking.
+
+### Souvenir image uploads
+
+Create a public Supabase Storage bucket named `apexstores-assets` with an 8 MB upload limit. Allow public image reads and restrict uploads/deletes to authenticated admins using your existing admin storage policies. Do not enable unrestricted anonymous uploads.
+
+### Campaigns and marketing data
+
+Campaigns are stored as drafts and are not sent to external platforms. Delivery, open-rate, attribution, and A/B experiment figures remain unavailable until a publishing provider and the corresponding tracking are connected. Audience reach is calculated from customer profiles and paid/delivered orders.
+
 ### Paystack Checkout
 
 Set `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` to your Paystack public key in the deployment environment. Online checkout requires the customer to provide a valid email address; the app no longer substitutes a demo email or an embedded payment key. Cash on Delivery does not require an email address.

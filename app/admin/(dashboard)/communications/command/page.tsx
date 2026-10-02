@@ -3,183 +3,111 @@
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
-    MessageSquare,
-    Send,
     Plus,
-    Zap,
-    ShieldCheck,
-    Power,
-    CheckCircle2,
     Users,
-    BarChart3,
-    Smartphone,
     Globe,
-    Target
+    FileText,
+    ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { cn, formatPrice } from '@/lib/utils';
 import Link from 'next/link';
 import AudienceBuilder from '@/components/admin/growth/AudienceBuilder';
-import { logAuditAction } from '@/lib/auditService';
-import { useAdmin } from '@/context/AdminContext';
 
 export default function MessageCommandCenter() {
-    const { email } = useAdmin();
-    const [killSwitch, setKillSwitch] = React.useState(false);
-    const [stats, setStats] = React.useState({ sent: 0, open_rate: 0, revenue: 0 });
-    const [segments, setSegments] = React.useState<Array<{ id: string, name: string }>>([]);
+    const [stats, setStats] = React.useState<{ drafts: number | null; audiences: number | null }>({ drafts: null, audiences: null });
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
 
     const fetchStats = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setError('Supabase is not configured. Campaign and audience totals are unavailable.');
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        setError(null);
         try {
-            const [segRes, campRes] = await Promise.all([
-                supabase.from('audience_segments').select('*'),
-                supabase.from('message_campaigns').select('*')
+            const [audiencesRes, draftsRes] = await Promise.all([
+                supabase.from('audience_segments').select('id', { count: 'exact', head: true }),
+                supabase.from('marketing_campaigns').select('id', { count: 'exact', head: true }).eq('status', 'Draft')
             ]);
-
-            if (segRes.data) setSegments(segRes.data);
-            if (campRes.data) {
-                const totalRev = campRes.data.reduce((s, c) => s + Number(c.attributed_revenue || 0), 0);
-                const totalSent = campRes.data.reduce((s, c) => s + (c.sent_count || 0), 0);
-                const totalOpen = campRes.data.reduce((s, c) => s + (c.open_count || 0), 0);
-
-                setStats({
-                    sent: totalSent,
-                    open_rate: totalSent > 0 ? (totalOpen / totalSent) * 100 : 0,
-                    revenue: totalRev
-                });
-            }
-        } catch (err) { console.error(err); }
+            if (audiencesRes.error) throw audiencesRes.error;
+            if (draftsRes.error) throw draftsRes.error;
+            setStats({ drafts: draftsRes.count, audiences: audiencesRes.count });
+        } catch (err) {
+            console.error('Campaign dashboard totals failed to load:', err);
+            setError(err instanceof Error ? err.message : 'Campaign dashboard totals are unavailable.');
+            setStats({ drafts: null, audiences: null });
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     React.useEffect(() => {
-        fetchStats();
+        void fetchStats();
     }, [fetchStats]);
 
-    const handleKillSwitch = async () => {
-        const next = !killSwitch;
-        if (next && !confirm("CRITICAL: Expel all active marketing journeys immediately?")) return;
-
-        setKillSwitch(next);
-        await logAuditAction(email, 'TOGGLE_MARKETING_KILL_SWITCH', { active: next });
-        alert(next ? "Global Marketing Kill Switch: ACTIVE. All non-transactional nodes suspended." : "Marketing Protocol Restored.");
-    };
-
     return (
-        <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left selection:bg-primary/20 pb-40">
+        <div className="space-y-8 bg-slate-50 min-h-screen p-4 sm:p-8 text-left selection:bg-primary/20 pb-40">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
-                        <MessageSquare className="h-4 w-4 text-primary" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Communication Fortress</span>
+                        <Globe className="h-4 w-4 text-primary" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Campaign workspace</span>
                     </div>
-                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Message Command</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Orchestrate high-fidelity messaging across all patron terminals.</p>
+                    <h1 className="text-3xl sm:text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Campaign workspace</h1>
+                    <p className="text-muted-foreground text-sm font-medium mt-2">Review saved campaign drafts and customer audiences.</p>
                 </div>
 
-                <div className="flex gap-4">
-                    <button
-                        onClick={handleKillSwitch}
-                        className={cn(
-                            "px-6 h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border-2",
-                            killSwitch ? "bg-rose-600 border-rose-600 text-white shadow-xl shadow-rose-500/20" : "bg-white border-slate-200 text-rose-500 hover:border-rose-100"
-                        )}
-                    >
-                        <Power size={16} /> {killSwitch ? 'MARKETING: SUSPENDED' : 'Global Kill Switch'}
-                    </button>
-                    <Link href="/admin/broadcast">
-                        <Button className="rounded-xl h-12 px-8 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
-                            <Plus className="h-4 w-4 mr-2" /> New Broadcast
-                        </Button>
-                    </Link>
+                <div className="flex w-full sm:w-auto">
+                    <Button asChild className="w-full sm:w-auto rounded-xl h-12 px-6 sm:px-8 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20">
+                        <Link href="/admin/marketing/create">
+                            <Plus className="h-4 w-4 mr-2" /> New Campaign Draft
+                        </Link>
+                    </Button>
                 </div>
             </header>
 
-            {/* THE WAR ROOM HUD */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</p>}
+
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-6">
                 {[
-                    { label: 'Messages Sent', val: stats.sent.toLocaleString(), icon: Send, color: 'primary' },
-                    { label: 'Avg. Open Rate', val: `${stats.open_rate.toFixed(1)}%`, icon: Globe, color: 'indigo' },
-                    { label: 'Attributed Rev', val: formatPrice(stats.revenue), icon: Target, color: 'emerald' },
-                    { label: 'Active Segments', val: segments.length, icon: Users, color: 'rose' },
+                    { label: 'Saved Campaign Drafts', val: loading ? 'Loading' : stats.drafts?.toLocaleString() ?? 'Unavailable', icon: FileText },
+                    { label: 'Customer Audiences', val: loading ? 'Loading' : stats.audiences?.toLocaleString() ?? 'Unavailable', icon: Users },
+                    { label: 'External Messages Sent', val: 'Not connected', icon: Globe },
+                    { label: 'Attributed Campaign Revenue', val: 'Unavailable', icon: ExternalLink },
                 ].map((node) => (
-                    <Card key={node.label} className="p-8 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm group hover:shadow-xl transition-all relative overflow-hidden text-center flex flex-col items-center justify-center gap-4">
-                        <div className={cn(
-                            "h-14 w-14 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 shadow-inner",
-                            node.color === 'primary' ? "bg-primary/10 text-primary" :
-                            node.color === 'indigo' ? "bg-indigo-50 text-indigo-500" :
-                            node.color === 'emerald' ? "bg-emerald-50 text-emerald-500" :
-                            "bg-rose-50 text-rose-500"
-                        )}>
-                            <node.icon size={28} />
+                    <Card key={node.label} className="min-w-0 p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-slate-200 shadow-sm flex flex-col items-start gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                            <node.icon className="h-5 w-5" />
                         </div>
-                        <div className="space-y-1">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{node.label}</p>
-                            <h3 className="text-2xl font-black text-foreground tracking-tighter uppercase leading-none">{node.val}</h3>
+                        <div className="min-w-0">
+                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{node.label}</p>
+                            <h3 className="mt-1 break-words text-lg sm:text-xl font-black text-foreground">{node.val}</h3>
                         </div>
                     </Card>
                 ))}
             </div>
 
-            <div className="grid lg:grid-cols-12 gap-10">
-                <div className="lg:col-span-7">
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">
+                Campaign creation currently saves drafts only. No email, SMS, WhatsApp, or social publishing provider is connected, so this page does not send messages or report delivery/open rates.
+            </p>
+
+            <div className="grid lg:grid-cols-2 gap-6">
+                <div>
                     <AudienceBuilder />
                 </div>
 
-                <div className="lg:col-span-5 space-y-8">
-                    <Card className="p-10 rounded-[3.5rem] bg-slate-50 border border-slate-100 shadow-sm space-y-8 relative overflow-hidden group">
-                        <div className="relative z-10 space-y-6 text-left">
-                            <ShieldCheck className="h-10 w-10 text-primary" />
-                            <h3 className="text-2xl font-black uppercase tracking-tighter leading-none text-foreground">Compliance Protocol</h3>
-                            <p className="text-sm font-medium text-slate-400 italic leading-relaxed">
-                                &quot;All marketing communications must include the Mandatory Disclosure node. Automated block triggers are active for prohibited promotional mechanics.&quot;
-                            </p>
-                            <div className="pt-6 border-t border-slate-100 flex justify-between items-center">
-                                <span className="text-[9px] font-black uppercase tracking-widest text-primary">NACADA 2025 Sync</span>
-                                <span className="text-xs font-black uppercase text-emerald-500 flex items-center gap-2"><CheckCircle2 size={14} /> Established</span>
-                            </div>
-
-                            <Link href="/admin/analytics/intelligence">
-                                <Button className="w-full h-16 rounded-[2rem] bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
-                                    Open Intelligence Command
-                                </Button>
-                            </Link>
-                        </div>
-                        <Zap className="absolute -bottom-10 -right-10 h-48 w-48 text-primary/5 rotate-12" />
-                    </Card>
-
-                    <div className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left group">
-                        <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-inner group-hover:rotate-6 transition-transform">
-                            <Smartphone size={20} />
-                        </div>
-                        <h4 className="text-lg font-black uppercase text-foreground leading-none tracking-tighter">Attribution Integrity</h4>
-                        <p className="text-[10px] text-muted-foreground font-medium italic leading-relaxed">
-                            &quot;Every message link is wrapped with a unique attribution ID, ensuring 100% mathematical accuracy for revenue extraction.&quot;
-                        </p>
-                    </div>
-
-                    <Card className="p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left">
-                        <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.3em] flex items-center gap-2">
-                            <BarChart3 size={14} className="text-primary" /> Reach Efficiency
-                        </h3>
-                        <div className="space-y-4">
-                            {[
-                                { label: 'In-App Notifications', reach: '2.4k', eff: '92%' },
-                                { label: 'WhatsApp Status', reach: '1.8k', eff: '84%' },
-                                { label: 'Push Terminals', reach: '1.2k', eff: '78%' },
-                            ].map(channel => (
-                                <div key={channel.label} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
-                                    <span className="text-[10px] font-black uppercase text-foreground">{channel.label}</span>
-                                    <div className="text-right">
-                                        <p className="text-[10px] font-black text-primary leading-none">{channel.eff}</p>
-                                        <p className="text-[7px] font-bold text-slate-300 uppercase mt-1">{channel.reach} Active</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </Card>
-                </div>
+                <Card className="space-y-4 p-5 sm:p-8">
+                    <h2 className="text-lg font-black uppercase text-foreground">Publishing status</h2>
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                        Campaign records remain drafts until a delivery provider is configured and connected. Delivery status, opens, and campaign-attributed sales are not available from the current integrations.
+                    </p>
+                    <Button variant="outline" onClick={() => void fetchStats()} disabled={loading}>
+                        Refresh draft and audience totals
+                    </Button>
+                </Card>
             </div>
         </div>
     );

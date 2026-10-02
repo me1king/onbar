@@ -89,7 +89,7 @@ export default function MarketingOverview() {
                     </Link>
                     <Link href="/admin/marketing/ab-testing">
                         <Button variant="outline" className="rounded-2xl h-12 px-6 border-indigo-200 bg-indigo-50 text-indigo-700 font-black uppercase text-[10px] tracking-widest hover:bg-indigo-600 hover:text-white transition-all">
-                            <Zap className="h-4 w-4 mr-2" /> A/B Testing Platform
+                            <Zap className="h-4 w-4 mr-2" /> Experiment Tracking
                         </Button>
                     </Link>
                 </div>

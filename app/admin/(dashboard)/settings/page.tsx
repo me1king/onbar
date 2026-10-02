@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { useAdmin } from '@/context/AdminContext';
@@ -42,6 +43,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+
+const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAreaManager'), { ssr: false });
 
 const DEFAULTS = {
     contact: { whatsapp: "254769345599", email: "support@onlinebar.co.ke", address: "Nairobi, Kenya" },
@@ -844,6 +847,10 @@ export default function AdminSettingsPage() {
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+
+                            <div className="mt-8">
+                                <DeliveryAreaManager />
                             </div>
 
                             <Card className="rounded-[3rem] border border-border p-10 bg-card shadow-sm space-y-8 mt-8 text-left">

@@ -49,11 +49,10 @@ export default function CreateCampaign() {
         audience_id: 'all'
     });
 
-    const [products, setProducts] = React.useState<{ id: number; name: string; image_url: string; price: number; stock: number; category?: string }[]>([]);
-    const [selectedProduct, setSelectedProduct] = React.useState<{ id: number; name: string; image_url: string; price: number; stock: number; category?: string } | null>(null);
-    const [segments, setSegments] = React.useState<{ id: string; name: string; estimated_reach: number }[]>([
-        { id: 'all', name: 'Everyone', estimated_reach: 2481 }
-    ]);
+    const [products, setProducts] = React.useState<{ id: number; name: string; image_url: string; price: number; stock: number; category?: string; description?: string }[]>([]);
+    const [selectedProduct, setSelectedProduct] = React.useState<{ id: number; name: string; image_url: string; price: number; stock: number; category?: string; description?: string } | null>(null);
+    const [segments, setSegments] = React.useState<{ id: string; name: string; estimated_reach: number | null }[]>([]);
+    const [audienceError, setAudienceError] = React.useState<string | null>(null);
 
     // Channel Content State
     const [channels, setChannels] = React.useState({
@@ -64,17 +63,43 @@ export default function CreateCampaign() {
 
     React.useEffect(() => {
         async function fetchData() {
-            if (!supabase) return;
-            const [prodRes, segRes] = await Promise.all([
-                supabase.from('products').select('*').order('name'),
-                supabase.from('customer_segments').select('*').order('name')
-            ]);
-            if (prodRes.data) setProducts(prodRes.data);
-            if (segRes.data && segRes.data.length > 0) {
-                setSegments(segRes.data);
+            const client = supabase;
+            if (!client) {
+                setAudienceError('Supabase is not configured. Products and audience data are unavailable.');
+                setLoading(false);
+                return;
+            }
+            try {
+                const [prodRes, segRes, profilesRes] = await Promise.all([
+                    client.from('products').select('id, name, image_url, price, stock, category, description').eq('status', 'Live').gt('stock', 0).order('name'),
+                    client.from('audience_segments').select('id, name, rules').order('name'),
+                    client.from('profiles').select('id', { count: 'exact', head: true })
+                ]);
+                const queryError = prodRes.error || segRes.error || profilesRes.error;
+                if (queryError) throw queryError;
+                setProducts(prodRes.data || []);
+                const reachableSegments = await Promise.all((segRes.data || []).map(async segment => {
+                    const rules = (segment.rules || {}) as Record<string, unknown>;
+                    const { data, error: reachError } = await client.rpc('count_matching_audience_members', {
+                        p_spend_min: Number(rules.spend_min) || 0,
+                        p_orders_min: Number(rules.orders_min) || 0,
+                        p_last_order_days: Number(rules.last_order_days) || 0
+                    });
+                    if (reachError) {
+                        console.error(`Audience reach unavailable for ${segment.name}:`, reachError);
+                    }
+                    return { id: segment.id, name: segment.name, estimated_reach: reachError ? null : Number(data) };
+                }));
+                setSegments([
+                    { id: 'all', name: 'All registered members', estimated_reach: profilesRes.count },
+                    ...reachableSegments
+                ]);
+            } catch (fetchError) {
+                console.error('Campaign setup data load failed:', fetchError);
+                setAudienceError(fetchError instanceof Error ? fetchError.message : 'Unable to load campaign setup data.');
             }
         }
-        fetchData();
+        void fetchData();
     }, []);
 
     const handleProductSelect = (id: string) => {
@@ -86,34 +111,44 @@ export default function CreateCampaign() {
     const generateContent = async () => {
         if (!selectedProduct) return;
         setIsGenerating(true);
-        // Simulated AI Generation
-        setTimeout(() => {
-            const content = {
-                en: {
-                    ig: `🚀 NEW ARRIVAL: ${selectedProduct.name} has landed! \n\nElevate your experience with our latest ${selectedProduct.category} selection. Curated for premium quality. \n\nPrice: ${formatPrice(selectedProduct.price)} \nShop now at the link in bio! 🔗`,
-                    wa: `*Tactical Alert* 🚨\n\nYo bro! The new *${selectedProduct.name}* is officially live. \n\nLimited stock available for our premium members. \n\n🛒 *Price:* ${formatPrice(selectedProduct.price)}\n📍 Nairobi Fast Dispatch Active\n\nLink: onlinebar-os.onrender.com/product/${selectedProduct.id}`
-                },
-                sw: {
-                    ig: `🚀 MZIGO MPYA: ${selectedProduct.name} imefika! \n\nUpgrade bar yako na hii ${selectedProduct.category} kali. Imechaguliwa kwa quality na ladha fiti. \n\nBei: ${formatPrice(selectedProduct.price)} \nNunua sasa kupitia link kwa bio! 🔗`,
-                    wa: `*Tactical Alert* 🚨\n\nMambo vipi bro! Ile *${selectedProduct.name}* mpya sasa iko live. \n\nMzigo ni mchache, chukua yako mapema. \n\n🛒 *Bei:* ${formatPrice(selectedProduct.price)}\n📍 Nairobi Fast Dispatch Iko Active\n\nLink: onlinebar-os.onrender.com/product/${selectedProduct.id}`
-                }
-            };
-
-            const lang = isLocalized ? 'sw' : 'en';
-
+        setMessage(null);
+        try {
+            const response = await fetch('/api/admin/generate-description', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: selectedProduct.name,
+                    category: selectedProduct.category,
+                    description: selectedProduct.description,
+                    locale: isLocalized ? 'sw' : 'en'
+                })
+            });
+            const data = await response.json() as { description?: string; error?: string };
+            if (!response.ok || !data.description) throw new Error(data.error || 'AI content generation is unavailable.');
+            const productUrl = `${window.location.origin}/product/${selectedProduct.id}`;
+            const generatedDescription = data.description.trim();
             setChannels(prev => ({
                 ...prev,
-                instagram: { ...prev.instagram, caption: content[lang].ig, generated: true },
-                whatsapp: { ...prev.whatsapp, body: content[lang].wa, generated: true },
-                email: { ...prev.email, subject: `Tactical Drop: ${selectedProduct.name} is Live 🚀`, body: `Hello Premium member,\n\nThe next evolution in beverages has arrived. Discover the ${selectedProduct.name}.`, generated: true }
+                instagram: { ...prev.instagram, caption: `${selectedProduct.name}\n\n${generatedDescription}\n\nPrice: ${formatPrice(selectedProduct.price)}\n${productUrl}`, generated: true },
+                whatsapp: { ...prev.whatsapp, body: `${selectedProduct.name}\n\n${generatedDescription}\n\nPrice: ${formatPrice(selectedProduct.price)}\n${productUrl}`, generated: true },
+                email: { ...prev.email, subject: selectedProduct.name, body: `${generatedDescription}\n\nPrice: ${formatPrice(selectedProduct.price)}\n${productUrl}`, generated: true }
             }));
-            setIsGenerating(false);
+            setIsLocalized(false);
             setStep('content');
-        }, 1500);
+        } catch (generationError) {
+            console.error('Campaign copy generation failed:', generationError);
+            setMessage({ type: 'error', text: generationError instanceof Error ? generationError.message : 'Unable to generate campaign copy.' });
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const launchCampaign = async () => {
-        if (!supabase) return;
+        const client = supabase;
+        if (!client) {
+            setMessage({ type: 'error', text: 'Supabase is not configured. The campaign draft was not saved.' });
+            return;
+        }
 
         // Final Validation
         if (!campaign.name || !campaign.product_id) {
@@ -131,15 +166,15 @@ export default function CreateCampaign() {
         setLoading(true);
         setMessage(null);
         try {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('marketing_campaigns')
                 .insert([{
                     name: campaign.name,
                     type: campaign.type,
                     product_id: Number(campaign.product_id),
-                    status: campaign.scheduled_at ? 'Scheduled' : 'Published',
+                    status: 'Draft',
                     scheduled_at: campaign.scheduled_at || null,
-                    created_by: email
+                    audience_segment_id: campaign.audience_id === 'all' ? null : campaign.audience_id
                 }])
                 .select()
                 .single();
@@ -153,28 +188,35 @@ export default function CreateCampaign() {
                 { campaign_id: data.id, channel: 'Email', content: { subject: channels.email.subject, body: channels.email.body } }
             ];
 
-            await supabase.from('campaign_channels').insert(channelData);
+            const { error: channelError } = await client.from('campaign_channels').insert(channelData);
+            if (channelError) {
+                const { error: cleanupError } = await client.from('marketing_campaigns').delete().eq('id', data.id);
+                if (cleanupError) console.error('Unable to remove incomplete campaign draft:', cleanupError);
+                throw channelError;
+            }
 
             // Log Audit
             if (email) {
                 const { logAuditAction } = await import('@/lib/auditService');
-                await logAuditAction(email, 'INITIATE_CAMPAIGN', { name: campaign.name, type: campaign.type });
+                await logAuditAction(email, 'SAVE_CAMPAIGN_DRAFT', { name: campaign.name, type: campaign.type });
             }
 
-            setMessage({ type: 'success', text: "Mission initiated successfully! Redirecting..." });
-            setTimeout(() => {
-                window.location.href = '/admin/marketing/list';
-            }, 2000);
+            setMessage({
+                type: 'success',
+                text: campaign.scheduled_at
+                    ? 'Campaign draft saved with the requested schedule time. It has not been sent or scheduled with an external platform.'
+                    : 'Campaign draft saved. It has not been published or sent to external platforms.'
+            });
         } catch (err: unknown) {
             const error = err as Error;
-            setMessage({ type: 'error', text: error.message || "Failed to launch campaign." });
+            setMessage({ type: 'error', text: error.message || "Failed to save the campaign draft." });
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="p-8 space-y-10 bg-background min-h-screen text-left pb-40">
+        <div className="p-4 sm:p-8 space-y-8 sm:space-y-10 bg-background min-h-screen text-left pb-40">
             {/* Wizard Header */}
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-border pb-8">
                 <div className="space-y-4">
@@ -195,6 +237,8 @@ export default function CreateCampaign() {
                 </div>
             </header>
 
+            {audienceError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{audienceError}</p>}
+
             {message && (
                 <div className={cn(
                     "p-6 rounded-[2.5rem] border-2 flex items-center gap-4 animate-in slide-in-from-top-4",
@@ -210,7 +254,7 @@ export default function CreateCampaign() {
 
                     {/* STEP 1: CONTEXT */}
                     {step === 'context' && (
-                        <Card className="rounded-[3rem] border border-border p-10 bg-card shadow-sm space-y-10 animate-in fade-in slide-in-from-left-4">
+                        <Card className="rounded-2xl sm:rounded-[3rem] border border-border p-4 sm:p-10 bg-card shadow-sm space-y-6 sm:space-y-10 animate-in fade-in slide-in-from-left-4">
                             <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Package size={18} /></div>
                                 <h2 className="text-xl font-black uppercase text-foreground">Mission Context</h2>
@@ -455,7 +499,7 @@ export default function CreateCampaign() {
                                                     >
                                                         <div>
                                                             <p className={cn("text-sm font-black uppercase tracking-tight", campaign.audience_id === s.id ? "text-primary" : "text-foreground")}>{s.name}</p>
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">{s.estimated_reach.toLocaleString()} Shoppers</p>
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">{s.estimated_reach?.toLocaleString() ?? 'Reach unavailable'} registered members</p>
                                                         </div>
                                                         <div className={cn(
                                                             "h-6 w-6 rounded-full border-2 flex items-center justify-center transition-all",
@@ -483,7 +527,7 @@ export default function CreateCampaign() {
                                                     onChange={e => setCampaign({...campaign, scheduled_at: e.target.value})}
                                                     className="h-14 rounded-2xl bg-white border-border font-black text-xs uppercase"
                                                 />
-                                                <p className="text-[8px] font-medium text-slate-400 italic">Leave empty for instant tactical dispatch across all selected channels.</p>
+                                                <p className="text-[8px] font-medium text-slate-400 italic">A scheduled time is saved on this draft; external publishing is not connected.</p>
                                             </div>
                                         </div>
 
@@ -491,9 +535,9 @@ export default function CreateCampaign() {
                                             <div className="relative z-10 space-y-4 text-left">
                                                 <div className="flex items-center gap-2">
                                                     <Rocket size={16} className="text-primary animate-pulse" />
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-foreground">Ready for Launch</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-foreground">Draft Preview</p>
                                                 </div>
-                                                <p className="text-xs font-medium leading-relaxed italic text-slate-500">Once you initiate the campaign, our AI and channel routers will begin the multi-platform synchronization.</p>
+                                                <p className="text-xs font-medium leading-relaxed text-slate-500">Saving creates a campaign draft and stores channel copy. External publishing is not connected, so nothing is sent automatically.</p>
                                             </div>
                                         </Card>
                                     </div>
@@ -506,7 +550,7 @@ export default function CreateCampaign() {
                                         disabled={loading}
                                         className="h-14 px-12 rounded-2xl bg-primary text-white font-black uppercase text-sm tracking-[0.2em] shadow-xl shadow-primary/20 hover:scale-105 transition-all"
                                     >
-                                        {loading ? <><Loader2 size={18} className="animate-spin mr-3" /> Engaging...</> : <><Rocket size={18} className="mr-3" /> Initiate Launch</>}
+                                        {loading ? <><Loader2 size={18} className="animate-spin mr-3" /> Saving Draft…</> : <><Rocket size={18} className="mr-3" /> Save Campaign Draft</>}
                                     </Button>
                                 </div>
                             </Card>
@@ -552,8 +596,11 @@ export default function CreateCampaign() {
                     <div className="p-8 rounded-[3rem] bg-white border border-border shadow-sm space-y-4 text-left">
                         <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Users size={18} /></div>
                         <h4 className="text-lg font-black uppercase text-foreground leading-none">Audience Drill</h4>
-                        <p className="text-[10px] text-muted-foreground font-medium italic">
-                            &quot;Selecting the VIP segment for this launch will target 184 high-value shoppers with a 42% average conversion rate.&quot;
+                        <p className="text-[10px] text-muted-foreground font-medium">
+                            {campaign.audience_id === 'all'
+                                ? `${segments.find(segment => segment.id === 'all')?.estimated_reach?.toLocaleString() ?? 'Unavailable'} registered-member profiles match the selected audience.`
+                                : `${segments.find(segment => segment.id === campaign.audience_id)?.estimated_reach?.toLocaleString() ?? 'Unavailable'} registered-member profiles match the selected segment.`}
+                            {' '}Reach is an estimate from saved customer/order data, not an external platform audience count.
                         </p>
                     </div>
                 </div>

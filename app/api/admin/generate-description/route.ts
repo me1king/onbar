@@ -3,11 +3,18 @@ import { supabase } from "@/lib/supabaseClient";
 
 export async function POST(request: Request) {
     try {
-        const { name, category } = await request.json();
+        const { name, category, description, locale } = await request.json();
 
-        if (!name) {
+        if (typeof name !== 'string' || !name.trim()) {
             return NextResponse.json({ error: "Name is required" }, { status: 400 });
         }
+        const outputLanguage = locale === 'sw' ? 'Kenyan Swahili' : 'English';
+        const productFacts = [
+            `Product name: ${name.trim()}`,
+            typeof category === 'string' && category.trim() ? `Category: ${category.trim()}` : null,
+            typeof description === 'string' && description.trim() ? `Existing product description: ${description.trim()}` : null
+        ].filter(Boolean).join('\n');
+        let providerFailure = false;
 
         // 1. Resolve Active Gemini / OpenAI API Key (Environment variable or Admin Panel Settings)
         let activeGeminiKey = process.env.GOOGLE_GEMINI_API_KEY;
@@ -40,12 +47,7 @@ export async function POST(request: Request) {
                     body: JSON.stringify({
                         contents: [{
                             parts: [{
-                                text: `Write a professional, persuasive, and high-converting marketing description for a beverage or snack product.
-                                Product Name: ${name}
-                                Category: ${category}
-                                Target Market: Kenya
-                                Style: Premium, appetizing, focus on flavor profiles and occasion.
-                                Max 60 words.`
+                                text: `Write concise marketing copy in ${outputLanguage} using only the verified product facts below. Do not invent flavor, ingredients, origin, alcohol percentage, stock, delivery coverage, scarcity, discounts, awards, or availability claims. If the facts are limited, keep the copy general and factual. Maximum 60 words.\n\n${productFacts}`
                             }]
                         }]
                     })
@@ -54,10 +56,16 @@ export async function POST(request: Request) {
                 const data = await response.json();
                 const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-                if (aiText) {
+                if (!response.ok) {
+                    providerFailure = true;
+                    console.error('Gemini description request failed with status:', response.status);
+                } else if (typeof aiText === 'string' && aiText.trim()) {
                     return NextResponse.json({ description: aiText.trim() });
+                } else {
+                    providerFailure = true;
                 }
             } catch (err) {
+                providerFailure = true;
                 console.error("Gemini API Error:", err);
             }
         }
@@ -75,7 +83,7 @@ export async function POST(request: Request) {
                         model: 'gpt-4o-mini',
                         messages: [
                             { role: 'system', content: 'You are a master mixology copywriter for Online Bar Nairobi.' },
-                            { role: 'user', content: `Write a 50-word sales description for ${name} (${category}).` }
+                            { role: 'user', content: `Write concise marketing copy in ${outputLanguage} using only the verified product facts below. Do not invent flavor, ingredients, origin, alcohol percentage, stock, delivery coverage, scarcity, discounts, awards, or availability claims. If the facts are limited, keep the copy general and factual. Maximum 60 words.\n\n${productFacts}` }
                         ],
                         max_tokens: 100
                     })
@@ -83,20 +91,31 @@ export async function POST(request: Request) {
 
                 const data = await response.json();
                 const aiText = data.choices?.[0]?.message?.content;
-                if (aiText) {
+                if (!response.ok) {
+                    providerFailure = true;
+                    console.error('OpenAI description request failed with status:', response.status);
+                } else if (typeof aiText === 'string' && aiText.trim()) {
                     return NextResponse.json({ description: aiText.trim() });
+                } else {
+                    providerFailure = true;
                 }
             } catch (err) {
+                providerFailure = true;
                 console.error("OpenAI API Error:", err);
             }
         }
 
         return NextResponse.json(
-            { error: "AI description generation is unavailable. Configure a provider key and try again." },
-            { status: 503 }
+            {
+                error: providerFailure
+                    ? "AI description generation failed. Check the configured provider and try again."
+                    : "AI description generation is unavailable. Configure a provider key and try again."
+            },
+            { status: providerFailure ? 502 : 503 }
         );
 
-    } catch {
+    } catch (error) {
+        console.error('Description generation request failed:', error);
         return NextResponse.json({ error: "Failed to generate description" }, { status: 500 });
     }
 }

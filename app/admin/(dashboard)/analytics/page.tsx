@@ -18,12 +18,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn, formatPrice } from '@/lib/utils';
-import { useAdmin } from '@/context/AdminContext';
 
 type AnalyticsTabId = 'overview' | 'roi' | 'performance' | 'ab_testing' | 'dispatch' | 'kitchen' | 'stock' | 'support' | 'ux_heatmaps' | 'ai_insights';
 
 export default function AdminAnalyticsPage() {
-    const { email: adminEmail } = useAdmin();
     const [activeTab, setActiveTab] = React.useState<AnalyticsTabId>('overview');
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -59,27 +57,25 @@ export default function AdminAnalyticsPage() {
             setLoading(true);
             try {
                 if (supabase) {
-                    const [ordersRes, profilesRes, productsRes, ridersRes, eventsRes] = await Promise.all([
-                        supabase.from('orders').select('id, total_price, status'),
+                    const [ordersRes, preparingRes, profilesRes, inventoryRes, ridersRes, eventsRes, ticketsRes] = await Promise.all([
+                        supabase.rpc('get_completed_order_summary'),
+                        supabase.from('orders').select('id', { count: 'exact', head: true }).in('status', ['Pending', 'Preparing']),
                         supabase.from('profiles').select('id', { count: 'exact', head: true }),
-                        supabase.from('products').select('price, stock'),
+                        supabase.rpc('get_listed_price_stock_value'),
                         supabase.from('rider_status').select('id', { count: 'exact', head: true }).neq('status', 'Offline'),
-                        supabase.from('analytics_events').select('id', { count: 'exact', head: true })
+                        supabase.from('analytics_events').select('id', { count: 'exact', head: true }),
+                        supabase.from('support_tickets').select('id', { count: 'exact', head: true })
                     ]);
 
-                    const queryError = ordersRes.error || profilesRes.error || productsRes.error || ridersRes.error || eventsRes.error;
+                    const queryError = ordersRes.error || preparingRes.error || profilesRes.error || inventoryRes.error || ridersRes.error || eventsRes.error || ticketsRes.error;
                     if (queryError) throw queryError;
 
-                    const orders = ordersRes.error ? null : ordersRes.data || [];
-                    const rev = orders ? orders.reduce((acc, o) => acc + (Number(o.total_price) || 0), 0) : null;
-                    const orderCount = orders?.length ?? null;
-                    const users = profilesRes.error ? null : profilesRes.count || 0;
-                    const aov = orderCount === 0 ? 0 : orderCount !== null && rev !== null ? Math.round(rev / orderCount) : null;
-
-                    const products = productsRes.error ? null : productsRes.data || [];
-                    const invVal = products?.reduce((acc, p) => acc + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0) ?? null;
-
-                    const preparingCount = orders?.filter(o => o.status === 'Pending' || o.status === 'Preparing').length ?? null;
+                    const orderSummary = Array.isArray(ordersRes.data) ? ordersRes.data[0] : null;
+                    const rev = orderSummary ? Number(orderSummary.total_revenue) : null;
+                    const orderCount = orderSummary ? Number(orderSummary.order_count) : null;
+                    const users = profilesRes.count;
+                    const aov = orderCount !== null && orderCount > 0 && rev !== null ? Math.round(rev / orderCount) : orderCount === 0 ? 0 : null;
+                    const invVal = inventoryRes.data === null ? null : Number(inventoryRes.data);
 
                     setLiveStats({
                         totalRevenue: rev,
@@ -87,13 +83,13 @@ export default function AdminAnalyticsPage() {
                         conversionRate: null,
                         avgOrderValue: aov,
                         inventoryValue: invVal,
-                        supportTickets: null
+                        supportTickets: ticketsRes.count
                     });
 
                     setKdsStats({
-                        activeRunners: ridersRes.error ? null : ridersRes.count || 0,
-                        preparingOrders: preparingCount,
-                        totalSignals: eventsRes.error ? null : eventsRes.count || 0
+                        activeRunners: ridersRes.count,
+                        preparingOrders: preparingRes.count,
+                        totalSignals: eventsRes.count
                     });
                 } else {
                     setError('Supabase is not configured. Analytics are unavailable.');
@@ -120,14 +116,16 @@ export default function AdminAnalyticsPage() {
     const handleDownloadReport = () => {
         const headers = ['Metric', 'Value'];
         const rows = [
-            ['Total Revenue', liveStats.totalRevenue],
+            ['Completed Order Revenue (All Time)', liveStats.totalRevenue],
             ['Registered Members', liveStats.activeUsers],
             ['Conversion Rate', liveStats.conversionRate],
             ['Average Order Value', liveStats.avgOrderValue],
-            ['Inventory Value', liveStats.inventoryValue],
+            ['Listed-Price Stock Value', liveStats.inventoryValue],
             ['Support Tickets', liveStats.supportTickets]
         ];
-        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
+        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows]
+            .map(row => row.map(value => value == null ? 'Unavailable' : String(value)).join(","))
+            .join("\n");
         const link = document.createElement("a");
         link.setAttribute("href", encodeURI(csvContent));
         link.setAttribute("download", `BAR_OS_Analytics_Report_${new Date().toISOString().split('T')[0]}.csv`);
@@ -144,7 +142,7 @@ export default function AdminAnalyticsPage() {
     );
 
     return (
-        <div className="p-4 sm:p-8 space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20">
+        <div className="p-4 sm:p-8 space-y-8 sm:space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20">
             {/* Header */}
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
                 <div>
@@ -152,8 +150,8 @@ export default function AdminAnalyticsPage() {
                         <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Store Analytics</span>
                     </div>
-                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">Unified Analytics Command</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Real-time revenue, marketing ROAS, A/B testing, dispatch routes, kitchen SLA, stock radar, and UX heatmaps.</p>
+                    <h1 className="text-3xl sm:text-4xl font-black text-foreground uppercase tracking-tighter">Unified Analytics Command</h1>
+                    <p className="text-muted-foreground text-sm font-medium mt-1">Store totals use completed orders; unavailable metrics are labeled rather than estimated.</p>
                 </div>
                 <div className="flex gap-2">
                     <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm text-[9px] font-black uppercase text-slate-500">
@@ -175,15 +173,15 @@ export default function AdminAnalyticsPage() {
             <div className="flex gap-2 p-1.5 bg-white rounded-2xl border border-slate-200/80 shadow-md overflow-x-auto no-scrollbar max-w-full">
                 {[
                     { id: 'overview', label: '1. Executive Overview', icon: Sparkles },
-                    { id: 'roi', label: '2. Marketing ROI', icon: DollarSign },
-                    { id: 'performance', label: '3. Channel Mix', icon: BarChart3 },
-                    { id: 'ab_testing', label: '4. A/B Testing', icon: Zap },
+                    { id: 'roi', label: '2. Completed Sales', icon: DollarSign },
+                    { id: 'performance', label: '3. Channel Attribution', icon: BarChart3 },
+                    { id: 'ab_testing', label: '4. Experiment Tracking', icon: Zap },
                     { id: 'dispatch', label: '5. Dispatch Fleet', icon: Truck },
                     { id: 'kitchen', label: '6. Kitchen KDS', icon: Flame },
                     { id: 'stock', label: '7. Stock Radar', icon: BarChart3 },
                     { id: 'support', label: '8. Support Tickets', icon: MessageSquare },
-                    { id: 'ux_heatmaps', label: '9. UX Heatmaps', icon: MousePointer2 },
-                    { id: 'ai_insights', label: '10. AI Morning Brief', icon: Bot },
+                    { id: 'ux_heatmaps', label: '9. UX Events', icon: MousePointer2 },
+                    { id: 'ai_insights', label: '10. Store Summary', icon: Bot },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -202,55 +200,55 @@ export default function AdminAnalyticsPage() {
             {/* TAB 1: EXECUTIVE OVERVIEW */}
             {activeTab === 'overview' && (
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                        <Card className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
-                            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Total Revenue</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+                        <Card className="min-w-0 p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
+                            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Completed Revenue · All Time</p>
                             <p className="text-3xl font-black text-foreground">{displayPrice(liveStats.totalRevenue)}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                ↗ Live Order Volume
+                                Paid and delivered orders
                             </span>
                         </Card>
-                        <Card className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
+                        <Card className="min-w-0 p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
                             <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Registered Members</p>
                             <p className="text-3xl font-black text-foreground">{displayCount(liveStats.activeUsers)}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                ↗ Verified Customer Accounts
+                                Registered customer profiles
                             </span>
                         </Card>
-                        <Card className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
+                        <Card className="min-w-0 p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
                             <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Conversion Rate</p>
                             <p className="text-3xl font-black text-foreground">{liveStats.conversionRate ?? 'Unavailable'}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                ↗ Live Storefront Yield
+                                Requires session conversion data
                             </span>
                         </Card>
-                        <Card className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
+                        <Card className="min-w-0 p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
                             <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Avg Order Value</p>
                             <p className="text-3xl font-black text-foreground">{displayPrice(liveStats.avgOrderValue)}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                ↗ Live Cart Average
+                                Paid and delivered orders
                             </span>
                         </Card>
                     </div>
 
-                    <Card className="p-8 rounded-[3.5rem] bg-slate-950 text-white shadow-2xl space-y-4 relative overflow-hidden">
-                        <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+                    <Card className="p-5 sm:p-8 rounded-2xl sm:rounded-[3.5rem] bg-white text-foreground border border-slate-200 shadow-sm space-y-4 relative overflow-hidden">
+                        <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-200 pb-4">
                             <div className="flex items-center gap-3">
-                                <Sparkles className="h-6 w-6 text-amber-400 animate-bounce" />
+                                <Sparkles className="h-6 w-6 text-primary" />
                                 <div>
-                                    <h3 className="text-xl font-black uppercase tracking-tight">Anomaly Detection Node</h3>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Automated First-Party Spike Analysis</p>
+                                    <h3 className="text-xl font-black uppercase tracking-tight">Analytics availability</h3>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Recorded store metrics</p>
                                 </div>
                             </div>
-                            <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                Analysis unavailable
+                            <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                                Anomaly detection not configured
                             </span>
                         </div>
 
-                        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                            <h4 className="text-sm font-black uppercase text-amber-400">Telemetry Snapshot</h4>
-                            <p className="text-xs font-medium text-slate-300 italic leading-relaxed">
-                                Conversion: {liveStats.conversionRate ?? 'Unavailable'}; registered accounts: {displayCount(liveStats.activeUsers)}; inventory value: {displayPrice(liveStats.inventoryValue)}.
+                        <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                            <h4 className="text-sm font-black uppercase text-foreground">Current snapshot</h4>
+                            <p className="text-xs font-medium text-slate-600 leading-relaxed">
+                                Completed-order revenue: {displayPrice(liveStats.totalRevenue)}; registered profiles: {displayCount(liveStats.activeUsers)}; listed-price stock value: {displayPrice(liveStats.inventoryValue)}. Conversion rate is unavailable because session conversion tracking is not configured.
                             </p>
                         </div>
                     </Card>
@@ -277,7 +275,7 @@ export default function AdminAnalyticsPage() {
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Live DB</span>
                         </Card>
                         <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-md space-y-1">
-                            <p className="text-[9px] font-black uppercase text-slate-400">Total Revenue</p>
+                            <p className="text-[9px] font-black uppercase text-slate-400">Completed Revenue · All Time</p>
                             <p className="text-3xl font-black text-primary">{displayPrice(liveStats.totalRevenue)}</p>
                             <span className="text-[8px] font-black uppercase text-primary bg-amber-50 px-2 py-0.5 rounded border border-amber-100">Live Orders</span>
                         </Card>
@@ -323,24 +321,11 @@ export default function AdminAnalyticsPage() {
             {/* TAB 4: A/B TESTING */}
             {activeTab === 'ab_testing' && (
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
-                    <Card className="p-8 rounded-[3.5rem] bg-slate-950 text-white shadow-2xl space-y-6">
-                        <div className="border-b border-slate-800 pb-4">
-                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-indigo-400">A/B TESTING & EXPERIMENTATION PLATFORM</span>
-                            <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Product Page Pricing Optimization</h3>
-                        </div>
-                        <div className="grid grid-cols-3 gap-6 text-center">
-                            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                                <p className="text-[9px] font-black uppercase text-slate-400">Conversion Rate</p>
-                                <p className="text-3xl font-black text-emerald-400">{liveStats.conversionRate ?? 'Unavailable'}</p>
-                            </div>
-                            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                                <p className="text-[9px] font-black uppercase text-slate-400">Avg Order Value</p>
-                                <p className="text-3xl font-black text-indigo-400">{displayPrice(liveStats.avgOrderValue)}</p>
-                            </div>
-                            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                                <p className="text-[9px] font-black uppercase text-slate-400">Registered Members</p>
-                                <p className="text-3xl font-black text-amber-400">{displayCount(liveStats.activeUsers)}</p>
-                            </div>
+                    <Card className="p-5 sm:p-8 rounded-2xl sm:rounded-[3.5rem] bg-white text-foreground border border-slate-200 shadow-sm space-y-6">
+                        <div className="border-b border-slate-200 pb-4">
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary">Experiment tracking</span>
+                            <h3 className="text-2xl font-black uppercase tracking-tight text-foreground mt-1">A/B testing unavailable</h3>
+                            <p className="mt-2 text-sm text-muted-foreground">The store does not currently record experiment assignments or variant conversions.</p>
                         </div>
                     </Card>
                 </div>
@@ -417,7 +402,7 @@ export default function AdminAnalyticsPage() {
                     <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
                         <div className="flex justify-between items-center border-b border-slate-100 pb-4">
                             <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Stock Intelligence & Warehouse Radar</h3>
-                            <span className="text-2xl font-black text-emerald-600">{displayPrice(liveStats.inventoryValue)} Total Inventory Value</span>
+                            <span className="text-2xl font-black text-emerald-600">{displayPrice(liveStats.inventoryValue)} Listed-Price Stock Value</span>
                         </div>
                     </Card>
                 </div>
@@ -438,14 +423,14 @@ export default function AdminAnalyticsPage() {
             {/* TAB 9: UX HEATMAPS */}
             {activeTab === 'ux_heatmaps' && (
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
-                    <Card className="p-8 rounded-[3.5rem] bg-slate-950 text-white shadow-2xl space-y-6">
-                        <div className="border-b border-slate-800 pb-4">
-                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-indigo-400">CLICK DENSITY HEATMAP OVERLAY</span>
-                            <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Product & Checkout Interaction Hotspots</h3>
+                    <Card className="p-5 sm:p-8 rounded-2xl sm:rounded-[3.5rem] bg-white text-foreground border border-slate-200 shadow-sm space-y-6">
+                        <div className="border-b border-slate-200 pb-4">
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary">UX event collection</span>
+                            <h3 className="text-2xl font-black uppercase tracking-tight text-foreground mt-1">Recorded storefront events</h3>
                         </div>
-                        <div className="p-8 rounded-3xl bg-slate-900 border border-slate-800 text-center space-y-4">
-                            <p className="text-xs font-mono text-slate-400">Analytics events recorded: {displayCount(kdsStats.totalSignals)}</p>
-                            <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono text-xs">
+                        <div className="p-5 sm:p-8 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-4">
+                            <p className="text-sm font-semibold text-slate-600">Analytics events recorded: {displayCount(kdsStats.totalSignals)}</p>
+                            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm">
                                 Coordinate-level heatmaps are unavailable because the application does not record interaction coordinates.
                             </div>
                         </div>
@@ -456,19 +441,20 @@ export default function AdminAnalyticsPage() {
             {/* TAB 10: AI MORNING BRIEF */}
             {activeTab === 'ai_insights' && (
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
-                    <Card className="p-8 rounded-[3.5rem] bg-slate-950 text-white shadow-2xl space-y-6">
-                        <div className="border-b border-slate-800 pb-4">
-                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-amber-400">BAR OS AUTONOMOUS INTELLIGENCE REPORT</span>
-                            <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Executive AI Brief</h3>
+                    <Card className="p-5 sm:p-8 rounded-2xl sm:rounded-[3.5rem] bg-white text-foreground border border-slate-200 shadow-sm space-y-6">
+                        <div className="border-b border-slate-200 pb-4">
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary">Store data summary</span>
+                            <h3 className="text-2xl font-black uppercase tracking-tight text-foreground mt-1">Executive Summary</h3>
                         </div>
 
-                        <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-3 font-mono text-xs text-slate-300">
-                            <p className="text-amber-400 font-black uppercase text-sm mb-4">Good Evening {adminEmail ? adminEmail.split('@')[0].toUpperCase() : 'Admin'},</p>
+                        <div className="p-4 sm:p-6 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-sm text-slate-700">
+                            <p className="text-primary font-black uppercase text-sm mb-4">All-time recorded totals</p>
                             <ul className="space-y-2 leading-relaxed">
-                                <li>&bull; Gross revenue: {displayPrice(liveStats.totalRevenue)} across {displayCount(liveStats.activeUsers)} registered accounts.</li>
-                                <li>&bull; Average order value: {displayPrice(liveStats.avgOrderValue)}; conversion rate: {liveStats.conversionRate ?? 'Unavailable'}.</li>
-                                <li>&bull; Inventory value: {displayPrice(liveStats.inventoryValue)}.</li>
-                                <li>&bull; Support tickets: {displayCount(liveStats.supportTickets)}.</li>
+                                <li>Completed-order revenue (paid or delivered): {displayPrice(liveStats.totalRevenue)}.</li>
+                                <li>Registered member profiles: {displayCount(liveStats.activeUsers)}.</li>
+                                <li>Average completed-order value: {displayPrice(liveStats.avgOrderValue)}; conversion rate: {liveStats.conversionRate ?? 'Unavailable'}.</li>
+                                <li>Listed-price stock value (not cost valuation): {displayPrice(liveStats.inventoryValue)}.</li>
+                                <li>Support tickets recorded: {displayCount(liveStats.supportTickets)}.</li>
                             </ul>
                         </div>
                     </Card>

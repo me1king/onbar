@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
     Users,
@@ -28,7 +28,7 @@ interface Segment {
     id: string;
     name: string;
     rules: Record<string, unknown>;
-    estimated_reach: number;
+    estimated_reach: number | null;
     created_at: string;
 }
 
@@ -36,6 +36,7 @@ export default function AudiencesPage() {
     useAdmin();
     const [segments, setSegments] = useState<Segment[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isDefining, setIsDefining] = useState(false);
 
@@ -48,16 +49,78 @@ export default function AudiencesPage() {
         reach: null as number | null
     });
 
+    const getReach = useCallback(async (rules: Record<string, unknown>) => {
+        if (!supabase) throw new Error('Supabase is not configured; audience reach is unavailable.');
+        const { data, error: reachError } = await supabase.rpc('count_matching_audience_members', {
+            p_spend_min: Number(rules.spend_min) || 0,
+            p_orders_min: Number(rules.orders_min) || 0,
+            p_last_order_days: Number(rules.last_order_days) || 0
+        });
+        if (reachError) throw reachError;
+        return Number(data);
+    }, []);
+
+    const refreshSegments = useCallback(async () => {
+        if (!supabase) {
+            setError('Supabase is not configured. Audience data is unavailable.');
+            setSegments([]);
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        try {
+            const { data, error: segmentsError } = await supabase
+                .from('audience_segments')
+                .select('id, name, rules, created_at')
+                .order('created_at', { ascending: false });
+            if (segmentsError) throw segmentsError;
+
+            const results = await Promise.all((data || []).map(async segment => {
+                try {
+                    const rules = (segment.rules || {}) as Record<string, unknown>;
+                    const reach = await getReach(rules);
+                    return { ...segment, rules, estimated_reach: reach };
+                } catch (reachError) {
+                    console.error(`Audience reach unavailable for ${segment.name}:`, reachError);
+                    return { ...segment, rules: (segment.rules || {}) as Record<string, unknown>, estimated_reach: null };
+                }
+            }));
+            setSegments(results);
+        } catch (fetchError) {
+            console.error('Audience segment fetch failed:', fetchError);
+            setSegments([]);
+            setError(fetchError instanceof Error ? fetchError.message : 'Unable to load audience segments.');
+        } finally {
+            setLoading(false);
+        }
+    }, [getReach]);
+
+    useEffect(() => {
+        void refreshSegments();
+    }, [refreshSegments]);
+
     const calculateReach = async () => {
-        setNewSegment(prev => ({ ...prev, reach: null }));
-        alert('Audience reach calculation is unavailable because no backend calculator is configured.');
+        setError(null);
+        try {
+            const reach = await getReach({
+                spend_min: newSegment.spend_min,
+                orders_min: newSegment.orders_min,
+                last_order_days: newSegment.last_order_days
+            });
+            setNewSegment(prev => ({ ...prev, reach }));
+        } catch (reachError) {
+            console.error('Audience reach calculation failed:', reachError);
+            setError(reachError instanceof Error ? reachError.message : 'Unable to calculate audience reach.');
+        }
     };
 
     const handleCreateSegment = async () => {
         if (!supabase || !newSegment.name) return;
         setLoading(true);
+        setError(null);
         try {
-            const { error } = await supabase.from('customer_segments').insert([{
+            const { error: insertError } = await supabase.from('audience_segments').insert([{
                 name: newSegment.name,
                 rules: {
                     spend_min: Number(newSegment.spend_min),
@@ -65,14 +128,13 @@ export default function AudiencesPage() {
                     last_order_days: Number(newSegment.last_order_days)
                 }
             }]);
-            if (error) throw error;
+            if (insertError) throw insertError;
             setIsDefining(false);
             setNewSegment({ name: '', spend_min: '0', orders_min: '0', last_order_days: '90', reach: null });
-            // Refresh list
-            const { data } = await supabase.from('customer_segments').select('*').order('created_at', { ascending: false });
-            setSegments(data || []);
-        } catch (err) {
-            console.error(err);
+            await refreshSegments();
+        } catch (createError) {
+            console.error('Audience segment save failed:', createError);
+            setError(createError instanceof Error ? createError.message : 'Unable to save the audience segment.');
         } finally {
             setLoading(false);
         }
@@ -85,17 +147,17 @@ export default function AudiencesPage() {
     const handleDeleteSegment = async (id: string, name: string) => {
         if (!supabase || !confirm(`Permanently expunge audience segment "${name}"?`)) return;
         try {
-            const { error } = await supabase.from('customer_segments').delete().eq('id', id);
-            if (error) throw error;
+            const { error: deleteError } = await supabase.from('audience_segments').delete().eq('id', id);
+            if (deleteError) throw deleteError;
             setSegments(prev => prev.filter(s => s.id !== id));
         } catch (err) {
             console.error(err);
-            alert("Uplink Failure: Could not expunge segment.");
+            setError(err instanceof Error ? err.message : 'Could not delete the audience segment.');
         }
     };
 
     return (
-        <div className="p-8 space-y-10 bg-background min-h-screen text-left">
+        <div className="p-4 sm:p-8 space-y-8 sm:space-y-10 bg-background min-h-screen text-left">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-border pb-8">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
@@ -112,6 +174,8 @@ export default function AudiencesPage() {
                     <Plus size={16} className="mr-2" /> Define Segment
                 </Button>
             </header>
+
+            {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</p>}
 
             {isDefining && (
                 <div className="fixed inset-0 z-[150] flex items-center justify-center bg-background/20 backdrop-blur-md p-6">
@@ -230,7 +294,7 @@ export default function AudiencesPage() {
                                 <div className="pt-4 border-t border-border flex justify-between items-center mt-auto">
                                     <div>
                                         <p className="text-[8px] font-black uppercase text-muted-foreground mb-1">Reach</p>
-                                        <p className="text-2xl font-black text-primary">{seg.estimated_reach.toLocaleString()}</p>
+                                        <p className="text-2xl font-black text-primary">{seg.estimated_reach?.toLocaleString() ?? 'Unavailable'}</p>
                                     </div>
                                     <Link href="/admin/marketing/create" className="flex">
                                         <Button size="sm" variant="ghost" className="text-[9px] font-black uppercase tracking-widest text-primary hover:bg-primary/5">

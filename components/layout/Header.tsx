@@ -414,7 +414,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
             </Link>
 
             <nav
-              className="hidden xl:flex items-center space-x-0.5 min-w-0"
+              className="hidden 2xl:flex items-center space-x-0.5 min-w-0"
               role="navigation"
               aria-label="Main navigation"
             >
@@ -544,7 +544,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
           <div className="flex items-center space-x-2 sm:space-x-4">
             <button
               onClick={() => setIsMobileOpen(!isMobileOpen)}
-              className="md:hidden p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
+              className="2xl:hidden p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
               aria-label="Toggle Menu"
             >
               {isMobileOpen ? <X className="h-5 w-5 text-slate-600" /> : <Menu className="h-5 w-5 text-slate-600" />}
@@ -552,7 +552,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
             <button
               onClick={() => setIsSearchOpen(!isSearchOpen)}
-              className="lg:hidden p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
+              className="hidden sm:block lg:hidden p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
               aria-label="Search"
             >
               <Search className="h-5 w-5 text-slate-600" />
@@ -560,7 +560,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
             <Link
               href="/wishlist"
-              className="relative p-2 rounded-full hover:bg-slate-50 transition-all duration-200 group active:scale-95"
+              className="relative hidden sm:block p-2 rounded-full hover:bg-slate-50 transition-all duration-200 group active:scale-95"
               aria-label="Wishlist"
             >
               <Heart className={`h-6 w-6 text-slate-600 transition-colors ${wishlistCount > 0 ? 'fill-rose-500 text-rose-500' : 'group-hover:text-rose-500'}`} />
@@ -634,7 +634,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
               )}
             </Link>
 
-            <div className="flex items-center border-l border-slate-100 pl-2 sm:pl-4">
+            <div className="hidden sm:flex items-center border-l border-slate-100 pl-2 sm:pl-4">
               <UserMenu />
             </div>
           </div>
@@ -685,7 +685,21 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
         )}
 
         {isMobileOpen && (
-          <nav className="md:hidden mt-4 bg-slate-50 rounded-3xl p-4 sm:p-6 animate-in zoom-in-95 duration-200 shadow-xl border border-slate-100 pb-safe" role="navigation">
+          <nav className="2xl:hidden mt-4 bg-slate-50 rounded-3xl p-4 sm:p-6 animate-in zoom-in-95 duration-200 shadow-xl border border-slate-100 pb-safe" role="navigation">
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  setIsSearchOpen(true);
+                  setIsMobileOpen(false);
+                }}
+                className="flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-3 text-[10px] font-black uppercase tracking-wide text-slate-600"
+              >
+                <Search className="h-4 w-4" /> Search
+              </button>
+              <Link href="/wishlist" onClick={() => setIsMobileOpen(false)} className="flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-3 text-[10px] font-black uppercase tracking-wide text-slate-600">
+                <Heart className="h-4 w-4" /> Wishlist
+              </Link>
+            </div>
             <div className="flex flex-col space-y-1.5">
               {navItems.map(({ href, label }) => (
                 <Link

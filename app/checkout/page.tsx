@@ -20,6 +20,7 @@ import dynamic from "next/dynamic";
 import { OB_OS } from "@/lib/onlineBarOS";
 import { v4 as uuidv4 } from 'uuid';
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
+import { DeliveryArea, findDeliveryArea, parseDeliveryAreas } from "@/lib/deliveryAreas";
 
 const LocationPicker = dynamic(() => import("@/components/profile/LocationPicker"), {
     ssr: false,
@@ -73,6 +74,9 @@ function CheckoutContent() {
   const [customerEmail, setCustomerEmail] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"M-Pesa" | "COD">("M-Pesa");
   const [shippingRegionId, setShippingRegionId] = useState('nairobi-cbd');
+  const [freeDeliveryAreas, setFreeDeliveryAreas] = useState<DeliveryArea[]>([]);
+  const [deliveryAreasLoaded, setDeliveryAreasLoaded] = useState(false);
+  const [deliveryAreasError, setDeliveryAreasError] = useState<string | null>(null);
   const [couponCode, setCouponCode] = useState("");
   const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
@@ -85,6 +89,7 @@ function CheckoutContent() {
 
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [isPickingLocation, setIsPickingLocation] = useState(false);
+  const [locationSaveNotice, setLocationSaveNotice] = useState<string | null>(null);
   const [isGift, setIsGift] = useState(false);
   const [giftMessage, setGiftMessage] = useState("");
   const [giftRecipient, setGiftRecipient] = useState("");
@@ -96,6 +101,24 @@ function CheckoutContent() {
   });
   const [placedOrderId, setPlacedOrderId] = useState<number | null>(null);
   const [isSystemLockdown, setIsSystemLockdown] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ob_delivery_location');
+      if (!saved) return;
+      const parsed: unknown = JSON.parse(saved);
+      if (
+        typeof parsed === 'object' && parsed !== null &&
+        'lat' in parsed && 'lng' in parsed &&
+        typeof parsed.lat === 'number' && Number.isFinite(parsed.lat) && parsed.lat >= -90 && parsed.lat <= 90 &&
+        typeof parsed.lng === 'number' && Number.isFinite(parsed.lng) && parsed.lng >= -180 && parsed.lng <= 180
+      ) {
+        setCoords({ lat: parsed.lat, lng: parsed.lng });
+      }
+    } catch (error) {
+      console.warn('Could not restore the saved delivery pin:', error);
+    }
+  }, []);
 
   useEffect(() => {
     async function checkLockdown() {
@@ -126,6 +149,33 @@ function CheckoutContent() {
       console.warn("Gift note restore error:", err);
       setCheckoutStatus({ type: "error", message: "Gift details could not be restored. Please re-enter the message before ordering." });
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadFreeDeliveryAreas() {
+      if (!supabase) {
+        setDeliveryAreasError('Free-delivery coverage could not be checked because the store is not connected.');
+        setDeliveryAreasLoaded(true);
+        return;
+      }
+      const { data, error } = await supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle();
+      if (!active) return;
+      if (error) {
+        console.error('Free-delivery coverage lookup failed:', error);
+        setDeliveryAreasError('Free-delivery coverage is temporarily unavailable. Standard delivery fees apply.');
+      } else {
+        try {
+          setFreeDeliveryAreas(parseDeliveryAreas(data?.value ?? []));
+        } catch (areaError) {
+          console.error('Saved free-delivery area data is invalid:', areaError);
+          setDeliveryAreasError('Free-delivery coverage settings are invalid. Standard delivery fees apply.');
+        }
+      }
+      setDeliveryAreasLoaded(true);
+    }
+    loadFreeDeliveryAreas();
+    return () => { active = false; };
   }, []);
 
   const searchParams = useSearchParams();
@@ -181,7 +231,7 @@ function CheckoutContent() {
                 setCustomerPhone(profileData.phone_number || "");
                 setCustomerEmail(session.user.email || "");
                 // Sync GPS
-                if (profileData.latitude && profileData.longitude) {
+                if (profileData.latitude != null && profileData.longitude != null) {
                     setCoords({ lat: profileData.latitude, lng: profileData.longitude });
                 }
             }
@@ -203,12 +253,24 @@ function CheckoutContent() {
   ];
 
   const currentRegion = regions.find(r => r.id === shippingRegionId) || regions[0];
+  const matchedFreeDeliveryArea = coords.lat != null && coords.lng != null
+    ? findDeliveryArea(coords.lat, coords.lng, freeDeliveryAreas)
+    : null;
+  const deliveryFee = matchedFreeDeliveryArea
+    ? 0
+    : currentRegion.fee === 0
+      ? settings.shipping.nairobi_outskirts
+      : currentRegion.fee;
+  const deliveryLabel = matchedFreeDeliveryArea?.name
+    || (currentRegion.fee === 0
+      ? settings.shipping.nairobi_outskirts_label
+      : currentRegion.label);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const discount = activeCoupon ? (subtotal * activeCoupon.discount_percent) / 100 : 0;
   const pointsDiscount = usePoints ? Math.min(subtotal - discount, loyaltyPoints / 10) : 0;
   const totalSavings = discount + pointsDiscount;
-  const originalTotal = subtotal + currentRegion.fee;
+  const originalTotal = subtotal + deliveryFee;
   const total = originalTotal - totalSavings;
 
   // 1. Abandoned Cart Recovery Logic
@@ -465,20 +527,20 @@ function CheckoutContent() {
           customer_phone: customerPhone.trim(),
           customer_email: customerEmail.trim() || null,
           total_price: total,
-          delivery_cost: currentRegion.fee,
+          delivery_cost: deliveryFee,
           status: "Pending",
           payment_method: paymentMethod === 'M-Pesa' ? 'Paystack' : paymentMethod,
           checkout_request_id: requestId,
           referred_by_code: referralCode,
           attribution_id: typeof window !== 'undefined' ? sessionStorage.getItem('ob_attribution_id') : null,
           captured_by: 'system',
-          latitude: coords.lat || profile?.latitude || null,
-          longitude: coords.lng || profile?.longitude || null,
+          latitude: coords.lat ?? profile?.latitude ?? null,
+          longitude: coords.lng ?? profile?.longitude ?? null,
           is_gift: isGift,
           gift_message: giftMessage.trim() || null,
           gift_recipient: isGift ? giftRecipient || null : null,
           gift_occasion: isGift ? giftOccasion || null : null,
-          note: `Region: ${currentRegion.label}${activeCoupon ? ` | Coupon: ${activeCoupon.code}` : ''}${usePoints ? ` | Used ${pointsDiscount * 10} points` : ''}${referralCode ? ` | Referred by ${referralCode}` : ''}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`
+          note: `Region: ${currentRegion.label}${matchedFreeDeliveryArea ? ` | Free delivery area: ${matchedFreeDeliveryArea.name}` : ''}${activeCoupon ? ` | Coupon: ${activeCoupon.code}` : ''}${usePoints ? ` | Used ${pointsDiscount * 10} points` : ''}${referralCode ? ` | Referred by ${referralCode}` : ''}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`
       };
 
       const { data: headerData, error: headerError } = await client
@@ -679,10 +741,25 @@ function CheckoutContent() {
       <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
       {isPickingLocation && (
           <LocationPicker
-            initialLat={coords.lat || undefined}
-            initialLng={coords.lng || undefined}
-            onConfirm={(lat, lng) => {
+            initialLat={coords.lat ?? undefined}
+            initialLng={coords.lng ?? undefined}
+            onConfirm={async (lat, lng) => {
                 setCoords({ lat, lng });
+                try {
+                    localStorage.setItem('ob_delivery_location', JSON.stringify({ lat, lng }));
+                } catch (error) {
+                    console.warn('Could not save delivery pin on this device:', error);
+                }
+                setLocationSaveNotice(null);
+                if (user && supabase) {
+                    try {
+                        const { error } = await supabase.from('profiles').update({ latitude: lat, longitude: lng }).eq('id', user.id);
+                        if (error) throw error;
+                    } catch (error) {
+                        console.error('Could not save delivery pin to customer profile:', error);
+                        setLocationSaveNotice('This pin is saved on this device and will be attached to this order, but it could not be saved to your customer profile.');
+                    }
+                }
                 setIsPickingLocation(false);
                 OB_OS.track('UI_INTERACTION', { details: { id: 'checkout.location_locked', lat, lng } });
             }}
@@ -762,7 +839,7 @@ function CheckoutContent() {
                 onClick={() => setIsPickingLocation(true)}
                 className={cn(
                     "p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border-2 transition-all cursor-pointer group relative overflow-hidden",
-                    coords.lat ? "border-emerald-100 bg-emerald-50/30" : "border-slate-50 bg-slate-50/50 hover:border-primary/20"
+                    coords.lat !== null && coords.lng !== null ? "border-emerald-100 bg-emerald-50/30" : "border-slate-50 bg-slate-50/50 hover:border-primary/20"
                 )}
             >
                 <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6">
@@ -770,33 +847,47 @@ function CheckoutContent() {
                         <div className="flex items-center gap-3">
                             <div className={cn(
                                 "h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-sm transition-all duration-500",
-                                coords.lat ? "bg-emerald-500 text-white animate-bounce" : "bg-white text-slate-300 group-hover:text-primary"
+                                coords.lat !== null && coords.lng !== null ? "bg-emerald-500 text-white animate-bounce" : "bg-white text-slate-300 group-hover:text-primary"
                             )}>
                                 <MapPin className="h-5 w-5 sm:h-6 sm:w-6" />
                             </div>
                             <div>
                                 <h3 className="font-black uppercase text-foreground tracking-tight text-xs sm:text-base">
-                                    {coords.lat ? "Drop Point Locked" : "Pin Location"}
+                                    {coords.lat !== null && coords.lng !== null ? "Drop Point Locked" : "Pin Location"}
                                 </h3>
                                 <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                    {coords.lat ? `${coords.lat.toFixed(6)}, ${coords.lng?.toFixed(6)}` : "Click to open tactical map"}
+                                    {coords.lat !== null && coords.lng !== null ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : "Click to set delivery pin"}
                                 </p>
                             </div>
                         </div>
-                        <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 leading-relaxed italic max-w-xs">
-                            &quot;Initialize precision coordinates for zero-delay dispatch. Our rider will approach this exact pin.&quot;
+                        <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 leading-relaxed max-w-xs">
+                            Tap to set your delivery pin. We’ll check it against the free-delivery areas configured by the store.
                         </p>
                     </div>
                     <Button
                         type="button"
                         className={cn(
                             "w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl font-black uppercase text-[9px] sm:text-[10px] tracking-widest transition-all shadow-xl active:scale-95",
-                            coords.lat ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
+                            coords.lat !== null && coords.lng !== null ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
                         )}
                     >
-                        {coords.lat ? "Change Drop Point" : "Open Map Hub"}
+                        {coords.lat !== null && coords.lng !== null ? "Change Delivery Pin" : "Set Delivery Pin"}
                     </Button>
                 </div>
+                <p role="status" className="relative z-10 text-sm font-semibold">
+                    {deliveryAreasError
+                        ? deliveryAreasError
+                        : !deliveryAreasLoaded
+                            ? 'Checking free-delivery coverage settings…'
+                            : coords.lat === null || coords.lng === null
+                                ? 'Set your delivery pin to check whether this address is in a free-delivery area.'
+                                : !freeDeliveryAreas.length
+                                        ? `No free-delivery areas are configured. The ${deliveryLabel} delivery fee applies.`
+                                    : matchedFreeDeliveryArea
+                                        ? `${matchedFreeDeliveryArea.name}: free delivery applies to this pin.`
+                                            : `This pin is outside the configured free-delivery areas. The ${deliveryLabel} delivery fee applies.`}
+                </p>
+                {locationSaveNotice && <p role="status" className="relative z-10 text-xs text-amber-800">{locationSaveNotice}</p>}
                 {/* Decoration */}
                 <Zap className="absolute -bottom-6 -right-6 h-20 w-20 sm:h-24 sm:w-24 text-slate-100/50 rotate-12" />
             </Card>
@@ -962,8 +1053,8 @@ function CheckoutContent() {
                   <span className="text-foreground">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-xs font-black uppercase tracking-widest text-slate-500">
-                  <span>Delivery ({currentRegion.id})</span>
-                  <span className="text-primary">{currentRegion.fee === 0 ? 'FREE' : formatPrice(currentRegion.fee)}</span>
+                  <span>Delivery ({deliveryLabel})</span>
+                  <span className="text-primary">{deliveryFee === 0 ? 'FREE' : formatPrice(deliveryFee)}</span>
                 </div>
                 {activeCoupon && (
                     <div className="flex justify-between text-xs font-black uppercase tracking-widest text-rose-500 bg-rose-50 p-2 rounded-lg">

@@ -2,219 +2,173 @@
 
 import * as React from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import {
-    ShoppingBag,
-    Zap,
-    MessageCircle,
-    Mail,
-    TrendingUp,
-    Search,
-    ChevronRight,
-    RefreshCcw,
-    DollarSign,
-    Clock,
-    CheckCircle2,
-    AlertCircle
-} from 'lucide-react';
+import { Clock, RefreshCcw, Search, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { formatPrice, cn } from '@/lib/utils';
-import { useAdmin } from '@/context/AdminContext';
 
-interface AbandonedCart {
+interface CartSession {
     id: string;
-    customer_name: string;
-    customer_phone: string;
     cart_value: number;
     last_active_at: string;
-    items_count: number;
-    recovery_status: 'Pending' | 'Nudged' | 'Recovered' | 'Lost';
+    current_page: string | null;
 }
 
 export default function AbandonedCartEngine() {
-    useAdmin();
-    const [carts, setCarts] = React.useState<AbandonedCart[]>([]);
+    const [carts, setCarts] = React.useState<CartSession[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [searchQuery, setSearchQuery] = React.useState('');
-    const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [error, setError] = React.useState<string | null>(null);
 
     const fetchCarts = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setError('Supabase is not configured. Saved cart activity is unavailable.');
+            setCarts([]);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
+        setError(null);
         try {
-            const { data, error } = await supabase
-                .from('active_visitors')
-                .select('*')
+            const { data, error: queryError } = await supabase
+                .from('customer_sessions')
+                .select('id, cart_value, last_seen_at, current_page')
                 .gt('cart_value', 0)
-                .order('last_active_at', { ascending: false });
+                .order('last_seen_at', { ascending: false })
+                .limit(100);
 
-            if (error) throw error;
-
-            const enriched = (data || []).map(v => ({
-                id: v.session_id,
-                customer_name: v.customer_name || 'Anonymous Guest',
-                customer_phone: '---',
-                cart_value: v.cart_value,
-                last_active_at: v.last_active_at,
-                items_count: 1,
-                recovery_status: 'Pending'
-            } as AbandonedCart));
-
-            setCarts(enriched);
-        } catch (err) {
-            console.error(err);
+            if (queryError) throw queryError;
+            setCarts((data || []).flatMap(session => {
+                const cartValue = Number(session.cart_value);
+                if (
+                    typeof session.id !== 'string' ||
+                    typeof session.last_seen_at !== 'string' ||
+                    !Number.isFinite(Date.parse(session.last_seen_at)) ||
+                    !Number.isFinite(cartValue) ||
+                    cartValue <= 0
+                ) return [];
+                return [{
+                    id: session.id,
+                    cart_value: cartValue,
+                    last_active_at: session.last_seen_at,
+                    current_page: typeof session.current_page === 'string' ? session.current_page : null
+                }];
+            }));
+        } catch (fetchError) {
+            console.error('Saved cart activity could not be loaded:', fetchError);
+            setCarts([]);
+            setError(fetchError instanceof Error ? fetchError.message : 'Unable to load saved cart activity.');
         } finally {
             setLoading(false);
         }
     }, []);
 
     React.useEffect(() => {
-        fetchCarts();
+        void fetchCarts();
     }, [fetchCarts]);
 
-    const nudgeCustomer = (id: string, channel: 'WhatsApp' | 'Email') => {
-        setMessage({ type: 'success', text: `Tactical nudge dispatched via ${channel} for unit ${id.slice(0, 8)}. ⚡` });
-        setTimeout(() => setMessage(null), 5000);
-        setCarts(prev => prev.map(c => c.id === id ? { ...c, recovery_status: 'Nudged' } : c));
-    };
-
-    const totalPotential = carts.reduce((sum, c) => sum + c.cart_value, 0);
+    const displayedCarts = carts.filter(session =>
+        session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (session.current_page || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    const displayedCartValue = displayedCarts.reduce((total, session) => total + session.cart_value, 0);
+    const averageCartValue = displayedCarts.length ? displayedCartValue / displayedCarts.length : 0;
 
     return (
-        <div className="p-8 space-y-10 bg-background min-h-screen text-left">
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-border pb-8">
+        <div className="min-h-screen space-y-8 bg-background p-4 pb-40 text-left sm:p-8">
+            <header className="flex flex-col items-start justify-between gap-5 border-b border-border pb-6 sm:flex-row sm:items-end">
                 <div>
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="mb-2 flex items-center gap-3">
                         <ShoppingBag className="h-4 w-4 text-primary" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Conversion Optimizer</span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Saved cart activity</span>
                     </div>
-                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">Abandoned Carts</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Intercept and recover leaking revenue through tactical nudges.</p>
+                    <h1 className="text-3xl font-black uppercase tracking-tighter text-foreground sm:text-4xl">Cart sessions</h1>
+                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                        Shows up to 100 recent sessions with a saved cart value. These records do not confirm abandonment, list cart items, or include contact details.
+                    </p>
                 </div>
-                <div className="flex gap-2">
-                    <Button onClick={fetchCarts} variant="outline" className="rounded-xl h-12 px-6 border-border bg-card text-foreground font-black uppercase text-[10px] tracking-widest transition-all">
-                        <RefreshCcw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} /> Sync Active Carts
-                    </Button>
-                </div>
+                <Button onClick={() => void fetchCarts()} disabled={loading} variant="outline" className="w-full sm:w-auto">
+                    <RefreshCcw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} /> Refresh sessions
+                </Button>
             </header>
 
-            {message && (
-                <div className={cn(
-                    "p-6 rounded-[2.5rem] border-2 flex items-center gap-4 animate-in slide-in-from-top-4",
-                    message.type === 'success' ? "bg-emerald-50 border-emerald-100 text-emerald-600" : "bg-rose-50 border-rose-100 text-rose-600"
-                )}>
-                    {message.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-                    <p className="text-sm font-black uppercase tracking-widest">{message.text}</p>
-                </div>
-            )}
+            {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</p>}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-                {[
-                    { label: 'Rescue Potential', val: formatPrice(totalPotential), icon: DollarSign, color: 'primary' },
-                    { label: 'Avg. Cart Leak', val: formatPrice(totalPotential / (carts.length || 1)), icon: TrendingUp, color: 'indigo' },
-                    { label: 'Recovery Score', val: '12.4%', icon: Zap, color: 'emerald' },
-                ].map((item) => (
-                    <Card key={item.label} className="p-8 rounded-[3rem] border border-border bg-card shadow-sm flex flex-col justify-between group hover:shadow-xl transition-all relative overflow-hidden h-full">
-                        <div className="relative z-10 flex flex-col h-full justify-between">
-                            <div>
-                                <div className={cn(
-                                    "h-12 w-12 rounded-2xl flex items-center justify-center mb-6 transition-transform group-hover:scale-110",
-                                    item.color === 'indigo' ? "bg-indigo-50 text-indigo-500" :
-                                    item.color === 'emerald' ? "bg-emerald-50 text-emerald-500" :
-                                    "bg-primary/10 text-primary"
-                                )}>
-                                    <item.icon className="h-6 w-6" />
-                                </div>
-                                <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">{item.label}</p>
-                                <h3 className="text-3xl font-black text-foreground tracking-tighter uppercase">{item.val}</h3>
-                            </div>
-                        </div>
-                    </Card>
-                ))}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Card className="min-w-0 space-y-2 p-5 sm:p-6">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Loaded sessions (maximum 100)</p>
+                    <p className="text-2xl font-black text-foreground">{loading ? 'Loading' : carts.length.toLocaleString()}</p>
+                </Card>
+                <Card className="min-w-0 space-y-2 p-5 sm:p-6">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Cart value in loaded sessions</p>
+                    <p className="break-words text-2xl font-black text-foreground">{loading ? 'Loading' : formatPrice(displayedCartValue)}</p>
+                </Card>
+                <Card className="min-w-0 space-y-2 p-5 sm:p-6">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Contact / recovery messages</p>
+                    <p className="text-xl font-black text-foreground">Not connected</p>
+                </Card>
             </div>
 
-            <div className="bg-card rounded-[3.5rem] border border-border shadow-sm overflow-hidden text-left">
-                <div className="p-10 border-b border-border flex flex-col lg:flex-row lg:justify-between lg:items-center gap-6">
-                    <h2 className="text-2xl font-black text-foreground uppercase tracking-tighter flex items-center gap-3"><Zap className="h-6 w-6 text-primary fill-current" /> Active Leakage</h2>
-                    <div className="relative w-full lg:w-96">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Card className="overflow-hidden">
+                <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+                    <div>
+                        <h2 className="text-lg font-black uppercase tracking-tight text-foreground">Recorded cart values</h2>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Average value among the currently shown sessions: {formatPrice(averageCartValue)}.
+                        </p>
+                    </div>
+                    <div className="relative w-full sm:max-w-sm">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
                             value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            placeholder="Search by customer name..."
-                            className="h-14 rounded-2xl bg-secondary border-border pl-12 text-sm font-bold shadow-inner"
+                            onChange={event => setSearchQuery(event.target.value)}
+                            placeholder="Search session ID or page"
+                            aria-label="Search session ID or page"
+                            className="pl-10"
                         />
                     </div>
                 </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full min-w-[620px] text-left">
                         <thead>
-                            <tr className="bg-secondary text-muted-foreground font-black uppercase text-[9px] tracking-[0.2em]">
-                                <th className="px-10 py-6">Customer</th>
-                                <th className="px-10 py-6">Last Activity</th>
-                                <th className="px-10 py-6 text-center">Items</th>
-                                <th className="px-10 py-6 text-center">Value</th>
-                                <th className="px-10 py-6 text-right">Action</th>
+                            <tr className="bg-secondary text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                                <th className="px-5 py-4">Session</th>
+                                <th className="px-5 py-4">Last activity</th>
+                                <th className="px-5 py-4">Last page</th>
+                                <th className="px-5 py-4 text-right">Recorded cart value</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                            {carts.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="p-20 text-center text-slate-400 font-black uppercase tracking-widest italic">No carts currently in limbo.</td>
-                                </tr>
-                            ) : carts.map(cart => (
-                                <tr key={cart.id} className="hover:bg-primary/5 transition-all group">
-                                    <td className="px-10 py-8">
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-white font-black uppercase shadow-lg shadow-primary/10">
-                                                {cart.customer_name.substring(0, 2)}
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-black text-foreground uppercase">{cart.customer_name}</p>
-                                                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Limbo ID: {cart.id.slice(0, 8)}</p>
-                                            </div>
-                                        </div>
+                            {loading ? (
+                                <tr><td colSpan={4} className="p-12 text-center text-sm text-muted-foreground">Loading saved sessions…</td></tr>
+                            ) : displayedCarts.length === 0 ? (
+                                <tr><td colSpan={4} className="p-12 text-center text-sm text-muted-foreground">
+                                    {error ? 'Cart sessions could not be loaded.' : 'No saved cart sessions match this search.'}
+                                </td></tr>
+                            ) : displayedCarts.map(session => (
+                                <tr key={session.id} className="hover:bg-secondary/50">
+                                    <td className="px-5 py-4 font-mono text-xs text-foreground">{session.id}</td>
+                                    <td className="px-5 py-4 text-xs text-foreground">
+                                        <span className="inline-flex items-center gap-2">
+                                            <Clock className="h-3 w-3 text-muted-foreground" />
+                                            {new Date(session.last_active_at).toLocaleString()}
+                                        </span>
                                     </td>
-                                    <td className="px-10 py-8">
-                                        <div className="flex items-center gap-2">
-                                            <Clock className="h-3 w-3 text-slate-300" />
-                                            <span className="text-[10px] font-black uppercase text-foreground">{new Date(cart.last_active_at).toLocaleTimeString()}</span>
-                                        </div>
+                                    <td className="max-w-xs truncate px-5 py-4 text-xs text-muted-foreground" title={session.current_page || undefined}>
+                                        {session.current_page || 'Unavailable'}
                                     </td>
-                                    <td className="px-10 py-8 text-center font-black text-foreground text-xs">{cart.items_count} Units</td>
-                                    <td className="px-10 py-8 text-center">
-                                        <span className="text-sm font-black text-primary">{formatPrice(cart.cart_value)}</span>
-                                    </td>
-                                    <td className="px-10 py-8 text-right">
-                                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Button
-                                                onClick={() => nudgeCustomer(cart.id, 'WhatsApp')}
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-10 w-10 rounded-xl hover:text-emerald-500 hover:bg-white transition-all shadow-sm"
-                                            >
-                                                <MessageCircle className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                onClick={() => nudgeCustomer(cart.id, 'Email')}
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-10 w-10 rounded-xl hover:text-indigo-500 hover:bg-white transition-all shadow-sm"
-                                            >
-                                                <Mail className="h-4 w-4" />
-                                            </Button>
-                                            <Button size="icon" className="h-10 w-10 rounded-xl bg-primary text-white hover:scale-105 transition-all shadow-lg shadow-primary/20">
-                                                <ChevronRight className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </td>
+                                    <td className="px-5 py-4 text-right text-sm font-bold text-foreground">{formatPrice(session.cart_value)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Card>
+
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">
+                Recovery outreach is disabled because the saved session data has no cart item list or confirmed contact channel, and no messaging provider is connected.
+            </p>
         </div>
     );
 }

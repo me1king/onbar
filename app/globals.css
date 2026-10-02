@@ -163,3 +163,33 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+@media (max-width: 1023px) {
+  body:has([data-mobile-bottom-nav]) {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 640px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  :where(main, section, article, aside, header, footer) {
+    min-width: 0;
+  }
+
+  :where(img, video, canvas, iframe, input, select, textarea, button, pre) {
+    max-width: 100%;
+  }
+
+  :where(pre) {
+    overflow-x: auto;
+  }
+}

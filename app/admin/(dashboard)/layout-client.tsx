@@ -82,11 +82,12 @@ export default function AdminLayoutClient({
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   useEffect(() => {
-      const savedSidebar = localStorage.getItem('admin_sidebar_collapsed');
-
-      if (savedSidebar === 'true') {
-          setIsSidebarCollapsed(true);
-      }
+      const syncSidebarForViewport = () => {
+          const shouldCollapse = window.innerWidth >= 1024 && localStorage.getItem('admin_sidebar_collapsed') === 'true';
+          setIsSidebarCollapsed(shouldCollapse);
+      };
+      syncSidebarForViewport();
+      window.addEventListener('resize', syncSidebarForViewport);
 
       const handleKeyDown = (e: KeyboardEvent) => {
           if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -119,6 +120,7 @@ export default function AdminLayoutClient({
 
       return () => {
           window.removeEventListener('keydown', handleKeyDown);
+          window.removeEventListener('resize', syncSidebarForViewport);
           delete (barWindow as unknown as Record<string, unknown>).onTitanOfflineSync;
           delete (barWindow as unknown as Record<string, unknown>).onTitanSyncOrder;
       };
@@ -230,14 +232,14 @@ export default function AdminLayoutClient({
   return (
     <AdminProvider role={role} email={email} permissions={permissions} supplier_id={supplier_id}>
       <AdminErrorBoundary>
-          <div className="min-h-screen bg-background flex flex-col md:flex-row text-left">
+          <div className="min-h-screen bg-background flex flex-col lg:flex-row text-left">
 
           <GlobalCommandPalette isOpen={isSearchOpen} setIsOpen={setIsSearchOpen} />
           <LiveActivitySidebar isOpen={isActivityOpen} setIsOpen={setIsActivityOpen} />
           <NotificationCenter isOpen={isNotificationsOpen} setIsOpen={setIsNotificationsOpen} />
 
           {/* Mobile Header */}
-          <div className="md:hidden flex items-center justify-between px-4 py-4 bg-background border-b border-border sticky top-0 z-50 shadow-sm backdrop-blur-xl bg-background/80">
+          <div className="lg:hidden flex items-center justify-between px-4 py-4 bg-background border-b border-border sticky top-0 z-50 shadow-sm backdrop-blur-xl bg-background/80">
             <div className="flex items-center gap-2">
               <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
                 <Wine className="h-5 w-5 text-white" />
@@ -253,30 +255,26 @@ export default function AdminLayoutClient({
 
           {/* Sidebar */}
           <aside className={cn(
-            "fixed inset-y-0 left-0 z-50 transition-all duration-300 ease-in-out md:relative shadow-sm border-r border-border bg-background",
-            isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
-            isSidebarCollapsed ? "w-20" : "w-64"
+            "fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] transition-all duration-300 ease-in-out lg:relative lg:w-64 shadow-sm border-r border-border bg-background",
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+            isSidebarCollapsed && "lg:w-20"
           )}>
             <div className="h-full flex flex-col">
               {/* Sidebar Header */}
-                <div className={cn("p-8 border-b border-border flex items-center justify-between", isSidebarCollapsed && "p-6")}>
+                <div className={cn("p-4 sm:p-8 border-b border-border flex items-center justify-between", isSidebarCollapsed && "lg:p-6")}>
                 <div className="flex items-center gap-3">
                     <div className="h-10 w-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
                       <GlassWater className="h-6 w-6 text-white" />
                     </div>
                     {!isSidebarCollapsed && (
                         <div className="animate-in fade-in duration-500 text-left min-w-0 flex-1">
-                          <select className="font-black text-foreground uppercase tracking-tight text-sm bg-transparent border-none outline-none appearance-none cursor-pointer w-full truncate">
-                              <option>Online Bar Master</option>
-                              <option>Nairobi Branch</option>
-                              <option>VVIP Cellar</option>
-                          </select>
-                          <p className="text-[9px] font-black text-primary uppercase tracking-[0.2em] mt-1.5 truncate">Bar Command</p>
-                        </div>
+                              <p className="font-black text-foreground uppercase tracking-tight text-sm truncate">Online Bar</p>
+                              <p className="text-[9px] font-black text-primary uppercase tracking-[0.2em] mt-1.5 truncate">Admin dashboard</p>
+                    </div>
                     )}
                 </div>
                 {!isSidebarCollapsed && (
-                    <button onClick={toggleSidebarCollapse} className="text-muted-foreground hover:text-primary transition-colors hidden md:block">
+                    <button onClick={toggleSidebarCollapse} className="text-muted-foreground hover:text-primary transition-colors hidden lg:block">
                         <PanelLeftClose className="h-4 w-4" />
                     </button>
                 )}
@@ -352,15 +350,24 @@ export default function AdminLayoutClient({
             </div>
           </aside>
 
+          {isSidebarOpen && (
+            <button
+              type="button"
+              aria-label="Close admin navigation"
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 z-40 bg-slate-950/30 lg:hidden"
+            />
+          )}
+
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-slate-50/50">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 lg:h-screen lg:overflow-hidden bg-slate-50/50">
 
               {/* TOP NAVIGATION BAR */}
-              <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-6 shrink-0 z-40 hidden md:flex sticky top-0">
+              <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-6 shrink-0 z-40 hidden lg:flex sticky top-0">
                   <div className="flex items-center gap-4">
                       <button
                         onClick={() => setIsSearchOpen(true)}
-                        className="flex items-center gap-3 px-4 h-10 rounded-xl bg-secondary border border-border text-muted-foreground hover:border-primary/30 transition-all group min-w-[300px] lg:min-w-[400px]"
+                        className="flex items-center gap-3 px-4 h-10 rounded-xl bg-secondary border border-border text-muted-foreground hover:border-primary/30 transition-all group min-w-0 xl:min-w-[300px] 2xl:min-w-[400px]"
                       >
                           <Search className="h-3.5 w-3.5 group-hover:text-primary transition-colors shrink-0" />
                           <span className="text-[9px] font-black uppercase tracking-widest group-hover:text-foreground transition-colors">Search Protocol...</span>
@@ -390,7 +397,7 @@ export default function AdminLayoutClient({
                   </div>
               </header>
 
-              <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 no-scrollbar relative scroll-smooth">
+              <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8 no-scrollbar relative scroll-smooth">
                 <div className="container mx-auto w-full space-y-10">
                   {children}
                 </div>
