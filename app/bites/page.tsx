@@ -187,11 +187,11 @@ export default function BiteCommandPage() {
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                         {filteredBites.map((item) => (
-                            <Card key={item.id} className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md hover:shadow-xl transition-all group flex flex-col justify-between text-left relative overflow-hidden">
+                            <Card key={item.id} className="p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md hover:shadow-xl transition-all group flex flex-col justify-between text-left relative overflow-hidden">
                                 <div className="relative z-10 space-y-5">
                                     {/* Image Stage */}
-                                    <div className="aspect-[4/3] rounded-[2.5rem] bg-slate-50/80 border border-slate-100 relative overflow-hidden flex items-center justify-center p-6 shadow-inner group-hover:scale-105 transition-transform duration-700">
-                                        <Image src={normalizeImage(item.image_url)} alt={item.name} fill className="object-cover p-2 rounded-[2rem]" />
+                                    <div className="relative aspect-[4/3] w-full min-w-0 rounded-xl sm:rounded-[2.5rem] bg-slate-50/80 border border-slate-100 overflow-hidden flex items-center justify-center p-2 sm:p-6 shadow-inner group-hover:scale-105 transition-transform duration-700">
+                                        <Image src={normalizeImage(item.image_url)} alt={item.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover rounded-lg sm:rounded-[2rem]" />
 
                                         {/* Top Badges */}
                                         <div className="absolute top-4 left-4 flex gap-2">

@@ -541,10 +541,10 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
             )}
           </div>
 
-          <div className="flex items-center space-x-2 sm:space-x-4">
+          <div className="flex items-center space-x-1 sm:space-x-4">
             <button
               onClick={() => setIsMobileOpen(!isMobileOpen)}
-              className="2xl:hidden p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
+              className="2xl:hidden p-1.5 sm:p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
               aria-label="Toggle Menu"
             >
               {isMobileOpen ? <X className="h-5 w-5 text-slate-600" /> : <Menu className="h-5 w-5 text-slate-600" />}
@@ -571,12 +571,12 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
               )}
             </Link>
 
-            <div className="relative p-2 rounded-full hover:bg-slate-50 transition-all duration-200 group cursor-pointer active:scale-95" onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}>
-                <Bell className="h-6 w-6 text-slate-600 group-hover:text-primary" />
-                {unreadCount > 0 && <span className="absolute top-2 right-2 h-4 w-4 bg-primary text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">{unreadCount}</span>}
+            <div className="relative p-0 sm:p-2 rounded-full hover:bg-slate-50 transition-all duration-200 group cursor-pointer active:scale-95" onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}>
+                <Bell className="hidden sm:block h-6 w-6 text-slate-600 group-hover:text-primary" />
+                {unreadCount > 0 && <span className="hidden sm:flex absolute top-2 right-2 h-4 w-4 bg-primary text-white text-[8px] font-black rounded-full items-center justify-center border-2 border-white animate-bounce">{unreadCount}</span>}
 
                 {isNotificationsOpen && (
-                    <div className="absolute top-full right-0 mt-3 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 z-[70] p-4 text-left">
+                    <div className="fixed left-4 right-4 top-20 w-auto max-w-none sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-3 sm:w-[min(20rem,calc(100vw-2rem))] sm:max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 z-[70] p-4 text-left">
                         <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                             <h3 className="text-xs font-black uppercase tracking-widest text-foreground">Notifications Hub</h3>
                             {unreadCount > 0 ? (
@@ -623,7 +623,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
             <Link
               href="/cart"
-              className="relative p-2 rounded-full hover:bg-slate-50 transition-all duration-200 group active:scale-95"
+              className="relative p-1.5 sm:p-2 rounded-full hover:bg-slate-50 transition-all duration-200 group active:scale-95"
               aria-label="Shopping Cart"
             >
               <ShoppingCart className="h-6 w-6 text-slate-600 group-hover:text-primary transition-colors" />
@@ -699,6 +699,15 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
               <Link href="/wishlist" onClick={() => setIsMobileOpen(false)} className="flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-3 text-[10px] font-black uppercase tracking-wide text-slate-600">
                 <Heart className="h-4 w-4" /> Wishlist
               </Link>
+              <button
+                onClick={() => {
+                  setIsNotificationsOpen(true);
+                  setIsMobileOpen(false);
+                }}
+                className="flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-3 text-[10px] font-black uppercase tracking-wide text-slate-600"
+              >
+                <Bell className="h-4 w-4" /> Notifications
+              </button>
             </div>
             <div className="flex flex-col space-y-1.5">
               {navItems.map(({ href, label }) => (

@@ -120,9 +120,9 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
   return (
     <>
-      <Card className="group flex flex-col bg-white border border-slate-200/80 text-foreground shadow-md hover:shadow-xl transition-all duration-500 rounded-[3.5rem] overflow-hidden text-left relative min-h-[420px]">
+      <Card className="group flex w-full min-w-0 flex-col bg-white border border-slate-200/80 text-foreground shadow-md hover:shadow-xl transition-all duration-500 rounded-2xl sm:rounded-[3.5rem] overflow-hidden text-left relative min-h-[360px] sm:min-h-[420px]">
         {/* Visual Container */}
-        <div className="relative aspect-square bg-slate-50/80 rounded-[2.5rem] m-4 flex items-center justify-center p-6 overflow-hidden border border-slate-100">
+        <div className="relative aspect-square min-w-0 bg-slate-50/80 rounded-xl sm:rounded-[2.5rem] m-2 sm:m-4 flex items-center justify-center p-2 sm:p-6 overflow-hidden border border-slate-100">
 
             {/* Premium Locked Overlay */}
             {isLocked && (
@@ -194,7 +194,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
         </div>
 
         {/* Content Node */}
-        <CardContent className="p-6 pt-8 space-y-4 flex-1 flex flex-col min-w-0">
+        <CardContent className="p-3 pt-4 sm:p-6 sm:pt-8 space-y-4 flex-1 flex flex-col min-w-0">
             {/* Price Line */}
             <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

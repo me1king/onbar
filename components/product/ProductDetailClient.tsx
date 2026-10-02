@@ -220,24 +220,24 @@ export default function ProductDetailClient({
     <div className="bg-brand-cream/50 min-h-screen pt-4 sm:pt-10 pb-24 px-2 sm:px-6 flex flex-col items-center gap-12 text-left selection:bg-brand-red/10 animate-in fade-in duration-700 font-sans antialiased">
 
       {/* 🏛️ ELITE PRODUCT GRID STAGE (Oaks Style) */}
-      <Card className="max-w-6xl w-full bg-white rounded-[2rem] sm:rounded-[3rem] shadow-2xl overflow-hidden relative flex flex-col lg:flex-row min-h-[90dvh] border-none">
+      <Card className="max-w-6xl w-full min-w-0 bg-white rounded-[2rem] sm:rounded-[3rem] shadow-2xl overflow-hidden relative flex flex-col lg:flex-row min-h-[90dvh] border-none">
 
-        <div className="absolute top-8 left-10 z-50">
+        <div className="absolute top-4 left-4 sm:top-8 sm:left-10 z-50">
             <Link href="/" className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-brand-red transition-colors group">
                 <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Full Store ↗
             </Link>
         </div>
         <button
             onClick={() => router.back()}
-            className="absolute top-8 right-10 z-50 h-10 w-10 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-brand-red transition-all shadow-sm"
+            className="absolute top-4 right-4 sm:top-8 sm:right-10 z-50 h-10 w-10 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-brand-red transition-all shadow-sm"
         >
             <X size={20} />
         </button>
 
         {/* LEFT: VISUAL GALLERY HUB */}
-        <div className="lg:w-[58%] p-8 sm:p-20 border-r border-slate-50 relative bg-white">
+        <div className="w-full min-w-0 lg:w-[58%] p-4 pt-20 sm:p-8 sm:pt-24 lg:p-12 xl:p-20 border-r border-slate-50 relative bg-white">
             {isSale && (
-                <div className="absolute top-24 left-10 z-40 bg-brand-red text-white h-16 w-16 rounded-full flex items-center justify-center font-black text-sm shadow-xl shadow-brand-red/30 animate-bounce">
+                <div className="absolute top-24 left-4 sm:left-10 z-40 bg-brand-red text-white h-12 w-12 sm:h-16 sm:w-16 rounded-full flex items-center justify-center font-black text-sm shadow-xl shadow-brand-red/30 animate-bounce">
                     -{discountPercent}%
                 </div>
             )}
@@ -251,7 +251,7 @@ export default function ProductDetailClient({
                     />
                 </div>
             ) : (
-                <div className="relative aspect-square flex items-center justify-center transform hover:scale-105 transition-transform duration-700 ease-out overflow-hidden group">
+                <div className="relative aspect-square w-full min-w-0 flex items-center justify-center transform hover:scale-105 transition-transform duration-700 ease-out overflow-hidden group">
                     {product.beverage_specs?.model_3d_url && (
                         <div className="absolute top-6 right-6 z-20">
                             <Button
@@ -267,7 +267,7 @@ export default function ProductDetailClient({
                         src={allImages[activeImageIndex] || '/images/NoImage.jpg'}
                         alt={product.name}
                         fill
-                        className="object-contain p-10 cursor-zoom-in group-hover:scale-110 transition-transform duration-1000"
+                        className="object-contain p-2 sm:p-6 lg:p-10 cursor-zoom-in group-hover:scale-110 transition-transform duration-1000"
                         onClick={() => toggleLightbox(true)}
                         priority
                     />
@@ -388,7 +388,7 @@ export default function ProductDetailClient({
         </div>
 
         {/* RIGHT: STICKY PURCHASE TERMINAL */}
-        <div className="lg:w-[42%] bg-slate-50/50">
+        <div className="w-full min-w-0 lg:w-[42%] bg-slate-50/50">
             <div className="p-8 sm:p-14 space-y-12 sticky top-0">
                 <div className="space-y-4 min-w-0">
                     <p className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-red truncate">{product.category}</p>
@@ -666,14 +666,14 @@ export default function ProductDetailClient({
 
         {isLightboxOpen && (
             <div className="fixed inset-0 z-[5000] bg-white/95 backdrop-blur-2xl flex flex-col animate-in fade-in duration-300">
-                <div className="p-8 flex justify-between items-center border-b border-slate-100">
-                    <div>
-                        <h4 className="text-xl font-black uppercase text-foreground tracking-tighter">{product.name}</h4>
+                <div className="p-3 sm:p-8 flex justify-between items-center gap-3 border-b border-slate-100">
+                    <div className="min-w-0">
+                        <h4 className="text-base sm:text-xl font-black uppercase text-foreground tracking-tighter break-words">{product.name}</h4>
                         <p className="text-[10px] font-black text-brand-red uppercase tracking-[0.3em] mt-1">High-Resolution Payload View</p>
                     </div>
-                    <button onClick={() => toggleLightbox(false)} className="h-14 w-14 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-brand-red transition-all border border-slate-100 shadow-sm"><X size={24} /></button>
+                    <button onClick={() => toggleLightbox(false)} className="h-11 w-11 sm:h-14 sm:w-14 shrink-0 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-brand-red transition-all border border-slate-100 shadow-sm"><X size={24} /></button>
                 </div>
-                <div className="flex-1 relative flex items-center justify-center p-12">
+                <div className="flex-1 min-h-0 relative flex items-center justify-center p-3 sm:p-12">
                     <div className="relative w-full h-full max-w-5xl">
                         <Image
                             src={allImages[activeImageIndex] || '/images/NoImage.jpg'}
@@ -685,23 +685,23 @@ export default function ProductDetailClient({
                     </div>
 
                     {allImages.length > 1 && (
-                        <div className="absolute inset-x-12 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none">
+                        <div className="absolute inset-x-3 sm:inset-x-12 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none">
                             <button
                                 onClick={() => setActiveImageIndex(i => i === 0 ? allImages.length - 1 : i - 1)}
-                                className="h-16 w-16 rounded-full bg-white/50 backdrop-blur shadow-2xl flex items-center justify-center text-foreground hover:bg-white transition-all pointer-events-auto border border-white/20"
+                                className="h-11 w-11 sm:h-16 sm:w-16 rounded-full bg-white/50 backdrop-blur shadow-2xl flex items-center justify-center text-foreground hover:bg-white transition-all pointer-events-auto border border-white/20"
                             >
                                 <ChevronLeft size={32} />
                             </button>
                             <button
                                 onClick={() => setActiveImageIndex(i => i === allImages.length - 1 ? 0 : i + 1)}
-                                className="h-16 w-16 rounded-full bg-white/50 backdrop-blur shadow-2xl flex items-center justify-center text-foreground hover:bg-white transition-all pointer-events-auto border border-white/20"
+                                className="h-11 w-11 sm:h-16 sm:w-16 rounded-full bg-white/50 backdrop-blur shadow-2xl flex items-center justify-center text-foreground hover:bg-white transition-all pointer-events-auto border border-white/20"
                             >
                                 <ChevronRight size={32} />
                             </button>
                         </div>
                     )}
                 </div>
-                <div className="p-8 border-t border-slate-100 flex justify-center gap-4 bg-slate-50/30 overflow-x-auto no-scrollbar">
+                <div className="p-3 sm:p-8 border-t border-slate-100 flex justify-center gap-2 sm:gap-4 bg-slate-50/30 overflow-x-auto no-scrollbar">
                     {allImages.map((img, idx) => (
                         <button
                             key={idx}

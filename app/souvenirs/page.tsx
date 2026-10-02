@@ -214,11 +214,11 @@ export default function SouvenirPalacePage() {
                         {filteredSouvenirs.map((item) => {
                             const img = item.image_url || item.image || '';
                             return (
-                                <Card key={item.id} className="p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md hover:shadow-xl transition-all group flex flex-col justify-between text-left relative overflow-hidden">
+                                <Card key={item.id} className="p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md hover:shadow-xl transition-all group flex flex-col justify-between text-left relative overflow-hidden">
                                     <div className="relative z-10 space-y-5">
                                         {/* Image Stage */}
-                                        <div className="aspect-square rounded-[2.5rem] bg-slate-50/80 border border-slate-100 relative overflow-hidden flex items-center justify-center p-6 shadow-inner group-hover:scale-105 transition-transform duration-700">
-                                            <Image src={normalizeImage(img)} alt={item.name} fill className="object-contain p-4" />
+                                        <div className="relative aspect-square w-full min-w-0 rounded-xl sm:rounded-[2.5rem] bg-slate-50/80 border border-slate-100 overflow-hidden flex items-center justify-center p-2 sm:p-6 shadow-inner group-hover:scale-105 transition-transform duration-700">
+                                            <Image src={normalizeImage(img)} alt={item.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-contain p-2 sm:p-4" />
                                             {item.capacity_oz ? (
                                                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full border border-slate-200/80 shadow-sm text-[9px] font-black uppercase text-foreground">
                                                     {item.capacity_oz} oz
