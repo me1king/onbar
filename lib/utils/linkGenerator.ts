@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../supabaseClient';
+import { getPublicBaseUrl } from '../utils';
 
 /**
  * ONLINE BAR: LINK GENERATOR
@@ -23,7 +24,7 @@ export async function generatePartnerInvite(role: 'RIDER' | 'SUPPLIER' | 'AFFILI
 
     if (error) throw error;
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar.co.ke';
+    const baseUrl = getPublicBaseUrl();
     return `${baseUrl}/auth/partner?token=${token}`;
 }
 

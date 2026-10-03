@@ -11,7 +11,7 @@ import {
     Trash2,
     ChevronRight,
     Sparkles,
-    CheckCircle2,
+    AlertCircle,
     Calendar
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -253,14 +253,14 @@ export default function ContentCommandHub() {
                         <div className="relative z-10 space-y-6 text-left">
                             <div className="flex items-center gap-4">
                                 <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center backdrop-blur-md border border-white/20"><Sparkles size={24} className="text-primary" /></div>
-                                <h3 className="text-2xl font-black uppercase tracking-tighter leading-none">Neural Insights</h3>
+                                <h3 className="text-2xl font-black uppercase tracking-tighter leading-none">Performance Insights</h3>
                             </div>
                             <p className="text-sm font-medium text-slate-100 italic leading-relaxed">
-                                &quot;Video reels on Instagram are currently generating 42% higher conversion than static carousels. We recommend Establish Video protocol for your next mission.&quot;
+                                Channel conversion comparisons are unavailable because no verified attribution data source is connected.
                             </p>
                             <div className="pt-6 border-t border-white/10 flex justify-between items-center">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-primary">Strategic Advantage</span>
-                                <CheckCircle2 size={18} className="text-emerald-400" />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Attribution unavailable</span>
+                                <AlertCircle size={18} className="text-amber-300" />
                             </div>
                         </div>
                     </Card>

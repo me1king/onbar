@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Users,
     DollarSign,
@@ -55,6 +54,13 @@ interface AffiliateSummary {
     available_earnings: number;
     pending_earnings: number;
     last_conversion_at: string | null;
+    business_name: string;
+    bio: string;
+    audience_size: number;
+    primary_channels: string[];
+    preferred_payout_method: string;
+    payout_details: string;
+    created_at: string;
 }
 
 type TabId = 'pulse' | 'directory' | 'applications' | 'finance' | 'risk';
@@ -69,21 +75,15 @@ export default function AdminAffiliateCommandCenter() {
     const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const fetchAffiliateNetwork = React.useCallback(async () => {
-        if (!supabase) {
-            setLoading(false);
-            setAffiliates([]);
-            return;
-        }
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('affiliate_performance_summary')
-                .select('*');
-
-            if (error) throw error;
-            setAffiliates(data || []);
-        } catch {
-            setAffiliates([]);
+            const response = await fetch('/api/admin/affiliates', { cache: 'no-store' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not load affiliate applications.');
+            setAffiliates(result.affiliates || []);
+            setMessage(null);
+        } catch (error) {
+            setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load affiliate applications.' });
         } finally {
             setLoading(false);
         }
@@ -94,17 +94,17 @@ export default function AdminAffiliateCommandCenter() {
     }, [fetchAffiliateNetwork]);
 
     const handleUpdateStatus = async (id: string, status: string) => {
-        if (!supabase) return;
         try {
-            const { error } = await supabase
-                .from('affiliates')
-                .update({ verification_status: status })
-                .eq('id', id);
-
-            if (error) throw error;
+            const response = await fetch('/api/admin/affiliates', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ affiliateId: id, status })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not update affiliate status.');
             await logAuditAction(adminEmail, 'UPDATE_AFFILIATE_STATUS', { id, status });
             setMessage({ type: 'success', text: `Protocol set to ${status}.` });
-            fetchAffiliateNetwork();
+            await fetchAffiliateNetwork();
         } catch (err: unknown) {
             const error = err as Error;
             setMessage({ type: 'error', text: error.message });
@@ -401,11 +401,14 @@ export default function AdminAffiliateCommandCenter() {
                                     </div>
                                     <div className="space-y-2 text-left">
                                         <h3 className="text-2xl font-black text-foreground uppercase tracking-tighter leading-none">{aff.full_name}</h3>
-                                        <p className="text-xs font-bold text-slate-400">{aff.email} &bull; {new Date().toLocaleDateString()}</p>
-                                        <div className="flex gap-2">
-                                            <span className="px-2 py-0.5 rounded bg-slate-100 text-[8px] font-black uppercase text-slate-500">Instagram</span>
-                                            <span className="px-2 py-0.5 rounded bg-slate-100 text-[8px] font-black uppercase text-slate-500">TikTok</span>
+                                        <p className="text-xs font-bold text-slate-400">{aff.email} &bull; Applied {new Date(aff.created_at).toLocaleDateString()} &bull; Audience: {aff.audience_size.toLocaleString()}</p>
+                                        <p className="max-w-xl text-sm text-slate-600">{aff.bio}</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {aff.primary_channels.map(channel => (
+                                                <span key={channel} className="px-2 py-0.5 rounded bg-slate-100 text-[8px] font-black uppercase text-slate-500">{channel}</span>
+                                            ))}
                                         </div>
+                                        <p className="text-xs font-semibold text-slate-500">Payout: {aff.preferred_payout_method} · {aff.payout_details}</p>
                                     </div>
                                 </div>
                                 <div className="flex gap-4">

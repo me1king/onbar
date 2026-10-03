@@ -4,6 +4,22 @@ import { twMerge } from "tailwind-merge"
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
+
+const CANONICAL_PUBLIC_URL = 'https://onlinebar.onrender.com';
+
+export function getPublicBaseUrl() {
+    const configuredUrl = process.env.NEXT_PUBLIC_BASE_URL?.trim();
+    const currentUrl = configuredUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+    if (!currentUrl) return CANONICAL_PUBLIC_URL;
+
+    try {
+        const parsedUrl = new URL(currentUrl);
+        if (parsedUrl.hostname === 'onlinebar-os.onrender.com') return CANONICAL_PUBLIC_URL;
+        return parsedUrl.origin;
+    } catch {
+        return CANONICAL_PUBLIC_URL;
+    }
+}
 /**
  * Normalizes image URLs and provides robust fallbacks for missing or legacy assets.
  * Standardizes empty strings and objects to a valid fallback path.
@@ -52,7 +68,7 @@ export const formatPrice = (price: number | string | undefined | null) => {
 };
 
 export const getReferralLink = (code: string, path: string = '/shop') => {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://onlinebar-os.onrender.com');
+    const baseUrl = getPublicBaseUrl();
     const separator = path.includes('?') ? '&' : '?';
     return `${baseUrl}${path}${separator}ref=${code}`;
 };

@@ -33,7 +33,7 @@ export async function attributeAffiliateOrder(orderId: number, referralCode: str
         const { data: affStatus } = await supabase
             .from('affiliates')
             .select('verification_status, commission_rate_override')
-            .eq('id', affiliate.id)
+            .eq('user_id', affiliate.id)
             .single();
 
         if (!affStatus || affStatus.verification_status !== 'Verified') return;

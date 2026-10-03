@@ -21,7 +21,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { supabase } from '@/lib/supabaseClient';
 
 export default function CorporatePortal() {
     const [guestCount, setGuestCount] = React.useState(50);
@@ -54,19 +53,30 @@ export default function CorporatePortal() {
 
     const handleInquirySubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!supabase) return;
         setIsSubmitting(true);
 
         try {
-            const { error } = await supabase.from('messages').insert([{
-                name: form.contact_name,
-                email: form.email,
-                subject: 'CORPORATE_INQUIRY',
-                message: `Company: ${form.company}\nPhone: ${form.phone}\nGuests: ${guestCount}\nDuration: ${durationHours}h\nRequirements: ${form.requirements}`,
-                status: 'New'
-            }]);
-
-            if (error) throw error;
+            let token = localStorage.getItem('onlinebar_support_access_token');
+            if (!token) {
+                token = crypto.randomUUID();
+                localStorage.setItem('onlinebar_support_access_token', token);
+            }
+            const response = await fetch('/api/support/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-support-access-token': token
+                },
+                body: JSON.stringify({
+                    name: form.contact_name,
+                    email: form.email,
+                    subject: 'CORPORATE_INQUIRY',
+                    token,
+                    message: `Company: ${form.company}\nPhone: ${form.phone}\nGuests: ${guestCount}\nDuration: ${durationHours}h\nRequirements: ${form.requirements}`
+                })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Could not send the inquiry.');
             setSubmitted(true);
             setTimeout(() => {
                 setIsFormOpen(false);
@@ -75,7 +85,7 @@ export default function CorporatePortal() {
             }, 3000);
         } catch (err) {
             console.error(err);
-            alert("Uplink Failure. Please try again.");
+            alert(err instanceof Error ? err.message : "Uplink Failure. Please try again.");
         } finally {
             setIsSubmitting(false);
         }

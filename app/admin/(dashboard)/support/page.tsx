@@ -50,11 +50,24 @@ export default function SupportCaseManagement() {
         if (!supabase) return;
         setLoading(true);
         try {
-            const [ticketsRes, msgsRes, reviewsRes] = await Promise.all([
+            const [ticketsRes, messagesResponse, reviewsRes] = await Promise.all([
                 supabase.from('support_tickets').select('*').order('created_at', { ascending: false }),
-                supabase.from('messages').select('*').order('created_at', { ascending: false }),
+                fetch('/api/admin/messages', { cache: 'no-store' }),
                 supabase.from('reviews').select('*').order('created_at', { ascending: false })
             ]);
+            const messagesResult = await messagesResponse.json() as {
+                messages?: Array<{
+                    id: number;
+                    name: string;
+                    email: string;
+                    subject: string;
+                    message: string;
+                    status: string;
+                    created_at: string;
+                }>;
+                error?: string;
+            };
+            if (!messagesResponse.ok) throw new Error(messagesResult.error || 'Could not load customer messages.');
 
             const analyzeSentiment = (text: string): 'Positive' | 'Neutral' | 'Negative' => {
                 const lower = text.toLowerCase();
@@ -77,7 +90,7 @@ export default function SupportCaseManagement() {
                     sentiment: analyzeSentiment(t.description),
                     metadata: { sla: t.sla_hours, assigned_to: t.assigned_to }
                 })),
-                ...(msgsRes.data || []).map(m => ({
+                ...(messagesResult.messages || []).map(m => ({
                     id: `msg-${m.id}`,
                     type: 'Message' as const,
                     customer_name: m.name,
@@ -145,12 +158,21 @@ export default function SupportCaseManagement() {
 
             if (!supabase) throw new Error("Database offline");
 
-            const { error } = await supabase.from(tableMap[activeChat.type as keyof typeof tableMap]).update({
-                admin_response: replyText.trim(),
-                status: 'Resolved'
-            }).eq('id', id);
-
-            if (error) throw error;
+            if (activeChat.type === 'Message') {
+                const response = await fetch('/api/admin/messages', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'reply', id, response: replyText.trim() })
+                });
+                const result = await response.json() as { error?: string };
+                if (!response.ok) throw new Error(result.error || 'Could not send the reply.');
+            } else {
+                const { error } = await supabase.from(tableMap[activeChat.type]).update({
+                    admin_response: replyText.trim(),
+                    status: 'Resolved'
+                }).eq('id', id);
+                if (error) throw error;
+            }
 
             await logAuditAction(adminEmail, 'LIVE_CHAT_REPLY', { id: activeChat.id });
             setItems(prev => prev.map(i => i.id === activeChat.id ? { ...i, status: 'Resolved' } : i));
@@ -183,10 +205,24 @@ export default function SupportCaseManagement() {
         let updatePayload: Record<string, unknown> = { status: newStatus };
         if (item.type === 'Review') updatePayload = { admin_response: 'Internal status change' };
 
-        const { error } = await supabase.from(tableMap[item.type]).update(updatePayload).eq('id', id);
-        if (!error) {
+        let updateError: Error | null = null;
+        if (item.type === 'Message') {
+            const response = await fetch('/api/admin/messages', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'status', id, status: newStatus === 'Resolved' ? 'Replied' : 'Read' })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) updateError = new Error(result.error || 'Could not update message status.');
+        } else {
+            const { error } = await supabase.from(tableMap[item.type]).update(updatePayload).eq('id', id);
+            updateError = error;
+        }
+        if (!updateError) {
             setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: newStatus } : i));
             await logAuditAction(adminEmail, 'UNIVERSAL_STATUS_CHANGE', { id: item.id, status: newStatus });
+        } else {
+            console.error(updateError);
         }
     };
 

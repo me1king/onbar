@@ -1,15 +1,12 @@
 'use client';
 
-import * as React from 'react';
 import {
     Video,
     ShieldCheck,
     ArrowLeft,
     Users,
     Bot,
-    Zap,
     Sparkles,
-    Loader2,
     MessageSquare,
     PhoneCall
 } from 'lucide-react';
@@ -18,8 +15,6 @@ import { Card } from '@/components/ui/card';
 import Link from 'next/link';
 
 export default function VIPVideoRelay() {
-    const [isConnecting, setIsConnecting] = React.useState(false);
-
     return (
         <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
@@ -29,10 +24,10 @@ export default function VIPVideoRelay() {
                     </Link>
                     <div className="flex items-center gap-3 mb-2">
                         <div className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_10px_#5b5bff]"></div>
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600">VIP High-Touch Channel</span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-700">Integration not configured</span>
                     </div>
                     <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Video Support Relay</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Direct tasting guidance and cellar curation for VIP members.</p>
+                    <p className="text-muted-foreground text-sm font-medium mt-1">Video support is unavailable until a verified video provider is connected.</p>
                 </div>
             </header>
 
@@ -43,26 +38,20 @@ export default function VIPVideoRelay() {
                         <div className="text-center space-y-6 relative z-10 animate-in zoom-in-95 duration-700">
                             <div className="h-24 w-24 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 mx-auto shadow-inner relative group-hover:scale-105 transition-transform">
                                 <Video size={48} />
-                                <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
                             </div>
                             <div className="space-y-2">
-                                <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Waiting for Client Payload</h3>
-                                <p className="text-xs font-black uppercase text-slate-400 tracking-widest italic">Link status: Secure • Signal: 100%</p>
+                                <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Video Session Unavailable</h3>
+                                <p className="text-xs font-black uppercase text-slate-400 tracking-widest">No active customer session is connected.</p>
                             </div>
-                            <Button
-                                onClick={() => setIsConnecting(true)}
-                                disabled={isConnecting}
-                                className="h-16 px-12 rounded-2xl bg-indigo-600 text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95"
-                            >
-                                {isConnecting ? <Loader2 className="animate-spin mr-3" /> : <Zap className="mr-3" />}
-                                {isConnecting ? 'Establishing Core Hub Link...' : 'Initiate Relay'}
+                            <Button disabled className="h-16 px-12 rounded-2xl bg-slate-200 text-slate-600 font-black uppercase text-xs tracking-widest">
+                                Video provider unavailable
                             </Button>
                         </div>
 
                         <div className="absolute top-8 right-8 flex gap-3">
                             <div className="px-4 py-2 rounded-xl bg-slate-50 backdrop-blur-md border border-slate-100 flex items-center gap-2 shadow-sm">
                                 <Users size={12} className="text-indigo-500" />
-                                <span className="text-[10px] font-black uppercase text-foreground">VIP: David M.</span>
+                                <span className="text-[10px] font-black uppercase text-foreground">No customer selected</span>
                             </div>
                         </div>
 
@@ -73,20 +62,20 @@ export default function VIPVideoRelay() {
                         <Card className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left group hover:border-indigo-100 transition-all">
                             <div className="flex items-center gap-4">
                                 <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500 shadow-sm group-hover:scale-110 transition-transform"><Bot size={20} /></div>
-                                <h3 className="text-lg font-black uppercase text-foreground">AI Diagnostic AI</h3>
+                                <h3 className="text-lg font-black uppercase text-foreground">Video Analysis</h3>
                             </div>
                             <p className="text-[10px] text-slate-500 font-medium leading-relaxed italic">
-                                &quot;Our bot will automatically scan the video feed for bottle identifiers and log quality serial numbers for verification.&quot;
+                                No video-analysis provider is connected; customer video is not being processed.
                             </p>
                         </Card>
 
                         <Card className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left group hover:border-emerald-100 transition-all">
                             <div className="flex items-center gap-4">
                                 <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500 shadow-sm group-hover:scale-110 transition-transform"><ShieldCheck size={20} /></div>
-                                <h3 className="text-lg font-black uppercase text-foreground">Encrypted Stream</h3>
+                                <h3 className="text-lg font-black uppercase text-foreground">Transport Security</h3>
                             </div>
                             <p className="text-[10px] text-slate-500 font-medium leading-relaxed italic">
-                                &quot;All high-touch relay sessions are end-to-end encrypted under the Online Bar OS protocol. No recordings are stored without consent.&quot;
+                                Video transport security has not been verified because no video service is configured.
                             </p>
                         </Card>
                     </div>
@@ -98,13 +87,13 @@ export default function VIPVideoRelay() {
                         <div className="relative z-10 space-y-8">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-500">Relay Controls</h3>
                             <div className="space-y-4">
-                                <Button className="w-full h-14 rounded-2xl bg-slate-50 border border-slate-100 text-foreground font-black uppercase text-[10px] hover:bg-white hover:shadow-lg transition-all flex items-center gap-3">
+                                <Button disabled className="w-full h-14 rounded-2xl bg-slate-50 border border-slate-100 text-foreground font-black uppercase text-[10px] flex items-center gap-3">
                                     <MessageSquare size={16} className="text-indigo-500" /> Open Side Chat
                                 </Button>
-                                <Button className="w-full h-14 rounded-2xl bg-slate-50 border border-slate-100 text-foreground font-black uppercase text-[10px] hover:bg-white hover:shadow-lg transition-all flex items-center gap-3">
+                                <Button disabled className="w-full h-14 rounded-2xl bg-slate-50 border border-slate-100 text-foreground font-black uppercase text-[10px] flex items-center gap-3">
                                     <ShieldCheck size={16} className="text-emerald-500" /> Verify Patron Identity
                                 </Button>
-                                <Button className="w-full h-14 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 font-black uppercase text-[10px] hover:bg-rose-600 hover:text-white transition-all flex items-center gap-3 shadow-sm">
+                                <Button disabled className="w-full h-14 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 font-black uppercase text-[10px] flex items-center gap-3 shadow-sm">
                                     <PhoneCall size={16} /> Terminate Link
                                 </Button>
                             </div>
@@ -113,9 +102,9 @@ export default function VIPVideoRelay() {
 
                     <div className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left">
                         <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Sparkles size={20} /></div>
-                        <h4 className="text-lg font-black uppercase text-foreground leading-none">VIP Perk Active</h4>
+                        <h4 className="text-lg font-black uppercase text-foreground leading-none">VIP Video Support Unavailable</h4>
                         <p className="text-[10px] text-muted-foreground font-medium leading-relaxed italic">
-                            &quot;Video support is exclusive to Diamond and Legend rank members. This feature boosts customer trust by 94% on average.&quot;
+                            No customer session, eligibility status, or video-support provider is connected to this page.
                         </p>
                     </div>
                 </div>

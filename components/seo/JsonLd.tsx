@@ -1,11 +1,12 @@
 "use client";
 
 import { useSettings } from "@/lib/useSettings";
+import { getPublicBaseUrl } from "@/lib/utils";
 
 export default function JsonLd() {
   const { settings } = useSettings();
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com';
+  const baseUrl = getPublicBaseUrl();
 
   const organizationSchema = {
     "@context": "https://schema.org",

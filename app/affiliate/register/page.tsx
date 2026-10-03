@@ -28,7 +28,8 @@ export default function AffiliateRegistration() {
         audience_size: '',
         primary_channels: [] as string[],
         preferred_payout_method: 'M-Pesa',
-        payout_details: ''
+        payout_details: '',
+        marketing_agreement_accepted: false
     });
 
     const channels = [
@@ -54,22 +55,29 @@ export default function AffiliateRegistration() {
 
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            if (!session) throw new Error("Please sign in to the grid first.");
+            if (!session) {
+                window.location.assign('/auth?mode=signin&redirect=/affiliate/register');
+                return;
+            }
+            if (formData.primary_channels.length === 0) throw new Error('Select at least one promotional channel.');
+            if (!formData.marketing_agreement_accepted) throw new Error('Accept the affiliate marketing terms to continue.');
 
-            const { error } = await supabase
-                .from('affiliates')
-                .insert([{
-                    id: session.user.id,
+            const response = await fetch('/api/affiliate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({
                     ...formData,
-                    audience_size: parseInt(formData.audience_size) || 0,
-                    verification_status: 'Pending',
-                    marketing_agreement_accepted: true
-                }]);
-
-            if (error) throw error;
+                    audience_size: Number(formData.audience_size)
+                })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not submit your application.');
             setSuccess(true);
         } catch (err: unknown) {
-            alert((err as Error).message);
+            alert(err instanceof Error ? err.message : 'Could not submit your application.');
         } finally {
             setLoading(false);
         }
@@ -86,9 +94,9 @@ export default function AffiliateRegistration() {
                     Your partner application is being verified by the Online Bar Command. Access to tactical links will be granted upon authorization.
                 </p>
             </div>
-            <Link href="/affiliate/dashboard">
+            <Link href="/profile">
                 <Button className="h-16 px-10 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest active:scale-95 transition-all shadow-xl shadow-primary/20">
-                    Enter Dashboard
+                    Return to Profile
                 </Button>
             </Link>
         </div>
@@ -196,6 +204,16 @@ export default function AffiliateRegistration() {
                             <p className="relative z-10 text-[10px] text-slate-500 font-medium leading-relaxed italic">
                                 &quot;All applications undergo manual compliance review to ensure alignment with premium beverage marketing standards.&quot;
                             </p>
+                            <label className="relative z-10 flex items-start gap-3 text-xs font-medium text-slate-600">
+                                <input
+                                    type="checkbox"
+                                    required
+                                    checked={formData.marketing_agreement_accepted}
+                                    onChange={event => setFormData({ ...formData, marketing_agreement_accepted: event.target.checked })}
+                                    className="mt-0.5 h-4 w-4 accent-primary"
+                                />
+                                <span>I agree to promote Online Bar responsibly and understand applications and payout requests are reviewed manually.</span>
+                            </label>
                             <Rocket className="absolute -bottom-6 -right-6 h-32 w-32 text-primary/5 -rotate-12" />
                         </div>
                     </div>

@@ -26,11 +26,20 @@ interface DBBuzzPoint {
     status: string;
     start_at: string;
     venue_id: string;
+    category_id: string | null;
     trend_score: number;
     latitude: number | null;
     longitude: number | null;
-    buzz_venues: { name: string } | null;
-    buzz_categories: { label: string } | null;
+}
+
+interface BuzzVenue {
+    id: string;
+    name: string;
+}
+
+interface BuzzCategory {
+    id: string;
+    label: string;
 }
 
 // 🛡️ Fix for Leaflet default icon issues in Next.js
@@ -94,32 +103,46 @@ export default function TheBuzzMap() {
                 return;
             }
             try {
-                // High-fidelity fetch for Map Discovery
                 const { data, error: queryError } = await supabase
                     .from('buzz_posts')
-                    .select('id, title, status, start_at, venue_id, trend_score, latitude, longitude, buzz_venues(name), buzz_categories(label)')
+                    .select('id, title, status, start_at, venue_id, category_id, trend_score, latitude, longitude')
                     .in('status', ['LIVE', 'TRENDING', 'STARTING_SOON']);
 
                 if (queryError) throw queryError;
-                if (data) {
-                    setPoints((data as unknown as DBBuzzPoint[])
-                        .filter(p => p.latitude !== null && p.longitude !== null
-                            && Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude))
-                            && Number(p.latitude) >= -90 && Number(p.latitude) <= 90
-                            && Number(p.longitude) >= -180 && Number(p.longitude) <= 180)
-                        .map(p => ({
-                        id: p.id,
-                        title: p.title,
-                        venue_name: p.buzz_venues?.name || 'Venue not listed',
-                        latitude: Number(p.latitude),
-                        longitude: Number(p.longitude),
-                        status: p.status,
-                        buzz_level: p.trend_score || 0,
-                        category: p.buzz_categories?.label || 'Vibe'
-                    })));
-                }
+                const posts = (data || []) as DBBuzzPoint[];
+                const venueIds = [...new Set(posts.map(post => post.venue_id).filter(Boolean))];
+                const categoryIds = [...new Set(posts.map(post => post.category_id).filter((id): id is string => Boolean(id)))];
+                const [venuesResult, categoriesResult] = await Promise.all([
+                    venueIds.length
+                        ? supabase.from('buzz_venues').select('id, name').in('id', venueIds)
+                        : Promise.resolve({ data: [], error: null }),
+                    categoryIds.length
+                        ? supabase.from('buzz_categories').select('id, label').in('id', categoryIds)
+                        : Promise.resolve({ data: [], error: null })
+                ]);
+
+                if (venuesResult.error) throw venuesResult.error;
+                if (categoriesResult.error) throw categoriesResult.error;
+                const venues = new Map(((venuesResult.data || []) as BuzzVenue[]).map(venue => [venue.id, venue.name]));
+                const categories = new Map(((categoriesResult.data || []) as BuzzCategory[]).map(category => [category.id, category.label]));
+
+                setPoints(posts
+                    .filter(p => p.latitude !== null && p.longitude !== null
+                        && Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude))
+                        && Number(p.latitude) >= -90 && Number(p.latitude) <= 90
+                        && Number(p.longitude) >= -180 && Number(p.longitude) <= 180)
+                    .map(p => ({
+                    id: p.id,
+                    title: p.title,
+                    venue_name: venues.get(p.venue_id) || 'Venue not listed',
+                    latitude: Number(p.latitude),
+                    longitude: Number(p.longitude),
+                    status: p.status,
+                    buzz_level: p.trend_score || 0,
+                    category: categories.get(p.category_id || '') || 'Vibe'
+                })));
             } catch (err) {
-                console.error("Map Link Failure:", err);
+                console.error('[BuzzMap] Could not load published map events:', err);
                 setError(err instanceof Error ? err.message : 'Unable to load published events.');
             } finally {
                 setLoading(false);

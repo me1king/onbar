@@ -183,6 +183,7 @@ export default function ProfilePage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [purchasedItems, setPurchasedItems] = useState<PurchasedItem[]>([]);
   const [referralUrl, setReferralUrl] = useState('');
+  const [affiliateStatus, setAffiliateStatus] = useState<string | null>(null);
   const [abandonedBag, setAbandonedBag] = useState<AbandonedCart | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [isPickingLocation, setIsPickingLocation] = useState(false);
@@ -225,6 +226,18 @@ export default function ProfilePage() {
         }
 
         setUser(session.user);
+        try {
+            const response = await fetch('/api/affiliate', {
+                headers: { 'Authorization': `Bearer ${session.access_token}` },
+                cache: 'no-store'
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not load affiliate status.');
+            setAffiliateStatus(result.application?.verification_status || 'None');
+        } catch (error) {
+            console.error('[Profile] Could not load affiliate status:', error);
+            setAffiliateStatus('Unavailable');
+        }
 
         let profileData = null;
         try {
@@ -925,25 +938,15 @@ export default function ProfilePage() {
             <div className="lg:col-span-2 space-y-10">
 
                 {/* DELIVERY TRACKER & TIMELINE */}
-                {orders.length > 0 && orders[0].status !== 'Delivered' && (
+                {orders.length > 0 && !['delivered', 'completed'].includes(orders[0].status.toLowerCase()) && (
                     <section className="space-y-6">
-                        <h2 className="text-xl font-black uppercase tracking-tighter text-foreground">Latest Delivery</h2>
+                        <h2 className="text-xl font-black uppercase tracking-tighter text-foreground">Latest Order</h2>
                         <Card className="p-10 rounded-[3rem] bg-white border border-slate-100 shadow-xl relative overflow-hidden">
                             <div className="flex flex-col sm:flex-row justify-between items-center gap-8 text-center sm:text-left relative z-10">
                                 <div className="space-y-2">
-                                    <p className="text-[10px] font-black uppercase text-primary tracking-[0.4em]">En Route</p>
+                                    <p className="text-[10px] font-black uppercase text-primary tracking-[0.4em]">Recorded status: {orders[0].status || 'Unavailable'}</p>
                                     <h3 className="text-3xl font-black text-foreground uppercase tracking-tighter">Order #{orders[0].id}</h3>
-                                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Estimated Arrival: <span className="text-foreground">Chilled & Ready</span></p>
-                                </div>
-                                <div className="flex-1 w-full max-w-sm">
-                                    <div className="flex justify-between mb-4 text-[8px] font-black uppercase text-slate-400">
-                                        <span>Packed</span>
-                                        <span>Shipped</span>
-                                        <span className="text-primary">Dispatch</span>
-                                    </div>
-                                    <div className="h-3 w-full bg-slate-100 rounded-full p-0.5 border border-slate-50">
-                                        <div className="h-full bg-primary rounded-full animate-pulse shadow-[0_0_10px_#ff6b00]" style={{ width: '80%' }}></div>
-                                    </div>
+                                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Arrival estimate unavailable</p>
                                 </div>
                                 <Link href={`/track?id=${orders[0].id}`}>
                                     <Button size="icon" className="h-14 w-14 rounded-2xl bg-primary text-white shadow-xl shadow-primary/20 hover:scale-110 transition-transform">
@@ -1526,6 +1529,41 @@ export default function ProfilePage() {
 
                     <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 text-center">
                         <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Gold Reviewer Status</p>
+                    </div>
+                </Card>
+                <Card className="bg-white rounded-[3rem] border border-primary/10 p-8 shadow-sm text-left">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+                        <div className="space-y-2">
+                            <h3 className="text-lg font-black uppercase tracking-tight text-foreground">Affiliate program</h3>
+                            <p className="text-sm text-slate-500">
+                                {affiliateStatus === 'Verified'
+                                    ? 'Your affiliate account is approved. View your referral performance and payout requests.'
+                                    : affiliateStatus === 'Pending'
+                                        ? 'Your application is awaiting review. We will enable your dashboard once it is approved.'
+                                        : affiliateStatus === 'Rejected'
+                                            ? 'Your previous application was not approved. You can update your details and apply again.'
+                                            : affiliateStatus === 'Unavailable'
+                                                ? 'Affiliate status is currently unavailable. Please refresh or try again later.'
+                                                : 'Apply to earn commission on completed orders placed through your referral link.'}
+                            </p>
+                        </div>
+                        {affiliateStatus === 'Verified' ? (
+                            <Link href="/affiliate/dashboard">
+                                <Button className="rounded-xl bg-primary text-white font-black uppercase tracking-widest text-[10px]">
+                                    Affiliate dashboard <ChevronRight className="ml-2 h-4 w-4" />
+                                </Button>
+                            </Link>
+                        ) : affiliateStatus === 'Pending' || affiliateStatus === 'Unavailable' ? (
+                            <span className="rounded-xl bg-amber-50 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                                {affiliateStatus === 'Pending' ? 'Application pending' : 'Status unavailable'}
+                            </span>
+                        ) : (
+                            <Link href="/affiliate/register">
+                                <Button variant="outline" className="rounded-xl border-primary/20 font-black uppercase tracking-widest text-[10px]">
+                                    {affiliateStatus === 'Rejected' ? 'Reapply' : 'Apply now'} <ChevronRight className="ml-2 h-4 w-4" />
+                                </Button>
+                            </Link>
+                        )}
                     </div>
                 </Card>
                 {/* VIRAL SHARE (Cash-back Focused) */}

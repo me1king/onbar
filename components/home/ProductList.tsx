@@ -65,6 +65,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
     async function fetchInitialData() {
       try {
         if (!supabase) {
+          setError('The product catalog is unavailable because Supabase is not configured.');
           setProducts([]);
           setLoading(false);
           return;
@@ -84,8 +85,10 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
 
         if (prodRes.error) {
           console.error('Supabase fetch error:', prodRes.error.message);
+          setError(`The product catalog could not be loaded: ${prodRes.error.message}`);
           setProducts([]);
         } else {
+          setError(null);
           setProducts(prodRes.data as Product[] || []);
         }
 
@@ -239,7 +242,13 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 pb-24 text-left scroll-mt-32 pt-6" id="catalog-start">
+    <div className="max-w-7xl mx-auto px-4 pb-24 text-left scroll-mt-32 pt-6 sm:px-6" id="catalog-start">
+
+    <header className="mb-8 space-y-2 px-2 sm:mb-10">
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">Browse the live menu</p>
+      <h2 className="break-words text-3xl font-black uppercase leading-tight tracking-tight text-slate-950 sm:text-4xl">Pick your pour</h2>
+      <p className="max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">Explore available products, compare prices, and find something for your occasion.</p>
+    </header>
 
       {/* 1. Category Tabs & Quick Munchies */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 px-4">
@@ -386,13 +395,17 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
               </div>
               <div className="space-y-2 text-left sm:text-center px-6">
                   <h3 className="text-2xl font-black text-foreground uppercase tracking-tighter">
-                    Cellar Silent
+                    {error ? 'Menu unavailable' : searchQuery || activeCategory !== 'all' ? 'No matching products' : 'No products listed yet'}
                   </h3>
                   <p className="text-slate-400 text-sm font-medium italic max-w-xs mx-auto">
-                    &quot;We couldn&apos;t locate any beverages matching those parameters. Try resetting your radar.&quot;
+                    {error
+                      ? 'The catalog could not be loaded. Please try again later.'
+                      : searchQuery || activeCategory !== 'all'
+                        ? 'Try changing your search or clearing the filters.'
+                        : 'There are currently no products available to display.'}
                   </p>
               </div>
-              <button
+              {!error && (searchQuery || activeCategory !== 'all' || minPrice || maxPrice || inStockOnly || selectedBrand !== 'all') && <button
                 onClick={() => {
                     setActiveCategory('all');
                     setSearchQuery('');
@@ -404,7 +417,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
                 className="mt-8 px-10 py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95"
               >
                   Clear All Filters
-              </button>
+              </button>}
           </div>
           {/* Background Decorative Zap */}
           <Zap className="absolute -bottom-10 -right-10 h-64 w-64 text-slate-50/50 rotate-12 -z-0" />

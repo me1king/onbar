@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     DollarSign,
     RefreshCcw,
@@ -19,7 +18,7 @@ import { logAuditAction } from '@/lib/auditService';
 import Link from 'next/link';
 
 interface PayoutRequest {
-    id: number;
+    id: number | string;
     profile_id: string;
     amount: number;
     status: 'Pending' | 'Approved' | 'Paid' | 'Rejected';
@@ -44,20 +43,16 @@ export default function AdminPayoutsPage() {
     const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const fetchPayouts = React.useCallback(async () => {
-        if (!supabase) return;
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('affiliate_payouts')
-                .select('*, profiles(full_name, email, phone_number)')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            setPayouts(data || []);
+            const response = await fetch('/api/admin/affiliate-payouts', { cache: 'no-store' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not load payout requests.');
+            setPayouts(result.payouts || []);
+            setMessage(null);
         } catch (err: unknown) {
             const errorMsg = err instanceof Error ? err.message : String(err);
-            setMessage({ type: 'error', text: `Sync Failure: ${errorMsg}` });
-            setTimeout(() => setMessage(null), 5000);
+            setMessage({ type: 'error', text: `Could not load payout requests: ${errorMsg}` });
         } finally {
             setLoading(false);
         }
@@ -67,9 +62,7 @@ export default function AdminPayoutsPage() {
         fetchPayouts();
     }, [fetchPayouts]);
 
-    const updateStatus = async (id: number, status: 'Approved' | 'Paid' | 'Rejected') => {
-        if (!supabase) return;
-
+    const updateStatus = async (id: number | string, status: 'Approved' | 'Paid' | 'Rejected') => {
         let mpesaReceipt = '';
         if (status === 'Paid') {
             mpesaReceipt = prompt("Enter M-Pesa Transaction Receipt:") || '';
@@ -77,18 +70,19 @@ export default function AdminPayoutsPage() {
         }
 
         try {
-            const { error } = await supabase.from('affiliate_payouts').update({
-                status,
-                mpesa_receipt: mpesaReceipt || undefined,
-                processed_at: status === 'Paid' ? new Date().toISOString() : null
-            }).eq('id', id);
-            if (error) throw error;
+            const response = await fetch('/api/admin/affiliate-payouts', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, status, receipt: mpesaReceipt })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not update payout request.');
 
             await logAuditAction(adminEmail, 'UPDATE_PAYOUT_STATUS', { id, status, receipt: mpesaReceipt });
-            setPayouts(payouts.map(p => p.id === id ? { ...p, status, mpesa_receipt: mpesaReceipt } : p));
+            setPayouts(payouts.map(p => String(p.id) === String(id) ? { ...p, status, mpesa_receipt: mpesaReceipt } : p));
+            setMessage({ type: 'success', text: `Payout request marked ${status}.` });
         } catch (err: unknown) {
-            const errorMsg = err instanceof Error ? err.message : String(err);
-            console.error("Payout Authorization Failure:", errorMsg);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : String(err) });
         }
     };
 
@@ -195,7 +189,9 @@ export default function AdminPayoutsPage() {
                                             </div>
                                             <div>
                                                 <span className="font-black text-foreground uppercase text-xs tracking-tight block">{p.profiles?.full_name || 'Anonymous'}</span>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{p.profiles?.phone_number}</span>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                                    {p.payment_method}: {p.payment_details || p.profiles?.phone_number || 'No payment details'}
+                                                </span>
                                             </div>
                                         </div>
                                     </td>

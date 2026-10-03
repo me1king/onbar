@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
   Mail,
   Trash2,
@@ -46,18 +45,15 @@ export default function AdminMessagesPage() {
   const [toast, setStatus] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const fetchMessages = async () => {
-    if (!supabase) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setMessages(data || []);
+      const response = await fetch('/api/admin/messages', { cache: 'no-store' });
+      const result = await response.json() as { messages?: Message[]; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not load messages.');
+      setMessages(result.messages || []);
     } catch (err) {
       console.error(err);
+      setStatus({ type: 'error', text: err instanceof Error ? err.message : 'Could not load messages.' });
     } finally {
       setLoading(false);
     }
@@ -68,31 +64,34 @@ export default function AdminMessagesPage() {
   }, []);
 
   const updateStatus = async (id: number, status: 'Read' | 'Replied') => {
-    if (!supabase) return;
     try {
-        const { error } = await supabase.from('messages').update({ status }).eq('id', id);
-        if (error) throw error;
+        const response = await fetch('/api/admin/messages', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'status', id, status })
+        });
+        const result = await response.json() as { error?: string };
+        if (!response.ok) throw new Error(result.error || 'Could not update message status.');
 
         await logAuditAction(adminEmail, 'UPDATE_MESSAGE_STATUS', { id, status });
         setMessages(messages.map(m => m.id === id ? { ...m, status } : m));
     } catch (err) {
         console.error(err);
+        setStatus({ type: 'error', text: err instanceof Error ? err.message : 'Could not update message status.' });
     }
   };
 
   const handleSaveReply = async (id: number) => {
-    if (!supabase || !replyText.trim()) return;
+    if (!replyText.trim()) return;
     setIsSavingResponse(true);
     try {
-        const { error } = await supabase
-            .from('messages')
-            .update({
-                admin_response: replyText.trim(),
-                status: 'Replied'
-            })
-            .eq('id', id);
-
-        if (error) throw error;
+        const response = await fetch('/api/admin/messages', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reply', id, response: replyText.trim() })
+        });
+        const result = await response.json() as { error?: string };
+        if (!response.ok) throw new Error(result.error || 'Could not save the reply.');
 
         await logAuditAction(adminEmail, 'REPLY_TO_SUPPORT_TICKET', { id });
         setMessages(messages.map(m => m.id === id ? { ...m, admin_response: replyText.trim(), status: 'Replied' } : m));
@@ -101,22 +100,23 @@ export default function AdminMessagesPage() {
         setStatus({ type: 'success', text: "Official Response Transmitted. ✅" });
         setTimeout(() => setStatus(null), 3000);
     } catch (err: unknown) {
-        setStatus({ type: 'error', text: (err as Error).message });
+        setStatus({ type: 'error', text: err instanceof Error ? err.message : 'Could not save the reply.' });
     } finally {
         setIsSavingResponse(false);
     }
   };
 
   const deleteMessage = async (id: number) => {
-      if (!supabase) return;
       try {
-          const { error } = await supabase.from('messages').delete().eq('id', id);
-          if (error) throw error;
+          const response = await fetch(`/api/admin/messages?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Could not delete message.');
 
           await logAuditAction(adminEmail, 'DELETE_MESSAGE', { id });
           setMessages(messages.filter(m => m.id !== id));
       } catch (err) {
           console.error(err);
+          setStatus({ type: 'error', text: err instanceof Error ? err.message : 'Could not delete message.' });
       }
   };
 

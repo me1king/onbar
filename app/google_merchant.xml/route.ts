@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { NextResponse } from 'next/server';
+import { getPublicBaseUrl } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +14,18 @@ interface Product {
   brand?: string | null;
 }
 
+function escapeXml(value: string | number): string {
+  return String(value)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 export async function GET() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar.co.ke';
+  const baseUrl = getPublicBaseUrl();
 
   let products: Product[] = [];
   if (supabase) {
@@ -28,19 +39,19 @@ export async function GET() {
 <rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
   <channel>
     <title>Online Bar | Premium Drinks Nairobi</title>
-    <link>${baseUrl}</link>
+    <link>${escapeXml(baseUrl)}</link>
     <description>Authentic wine, spirits, and late-night snacks delivered chilled in Nairobi.</description>
     ${products?.map(product => `
     <item>
-      <g:id>${product.id}</g:id>
-      <g:title>${product.name}</g:title>
-      <g:description>${product.description?.replace(/<[^>]*>?/gm, '') || 'Premium beverage essential'}</g:description>
-      <g:link>${baseUrl}/product/${product.id}</g:link>
-      <g:image_link>${product.image_url}</g:image_link>
+      <g:id>${escapeXml(product.id)}</g:id>
+      <g:title>${escapeXml(product.name)}</g:title>
+      <g:description>${escapeXml(product.description?.replace(/<[^>]*>?/gm, '') || 'Premium beverage essential')}</g:description>
+      <g:link>${escapeXml(`${baseUrl}/product/${product.id}`)}</g:link>
+      <g:image_link>${escapeXml(product.image_url)}</g:image_link>
       <g:condition>new</g:condition>
       <g:availability>${product.stock > 0 ? 'in_stock' : 'out_of_stock'}</g:availability>
-      <g:price>${product.price} KES</g:price>
-      <g:brand>${product.brand || 'Online Bar'}</g:brand>
+      <g:price>${escapeXml(`${product.price} KES`)}</g:price>
+      <g:brand>${escapeXml(product.brand || 'Online Bar')}</g:brand>
       <g:google_product_category>Food, Beverages &amp; Tobacco &gt; Beverages &gt; Alcoholic Beverages</g:google_product_category>
     </item>`).join('')}
   </channel>

@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabaseClient';
 import ProductDetailClient from '@/components/product/ProductDetailClient';
 import { Metadata } from 'next';
 import { Product } from '@/types/product';
-import { normalizeImage } from '@/lib/utils';
+import { getPublicBaseUrl, normalizeImage } from '@/lib/utils';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function Page({ params }: Props) {
   const { id } = await params;
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com';
+  const baseUrl = getPublicBaseUrl();
 
   let product: Product | null = null;
   let related: Product[] = [];

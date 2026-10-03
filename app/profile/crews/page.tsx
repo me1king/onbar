@@ -21,23 +21,40 @@ export default function CrewsPage() {
     const [crews, setCrews] = useState<Crew[]>([]);
     const [myCrew, setMyCrew] = useState<Crew | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
 
     useEffect(() => {
         async function loadCrews() {
-            if (!supabase) return;
+            if (!supabase) {
+                setLoadError('Supabase is not configured. Crew records are unavailable.');
+                setLoading(false);
+                return;
+            }
+            try {
+                const [{ data: sessionResult }, allCrews] = await Promise.all([
+                    supabase.auth.getSession(),
+                    supabase.from('crews').select('*').order('total_xp', { ascending: false })
+                ]);
+                if (allCrews.error) throw allCrews.error;
 
-            const [allCrews, memberRes] = await Promise.all([
-                supabase.from('crews').select('*').order('total_xp', { ascending: false }),
-                supabase.auth.getSession().then(({data}) =>
-                    (data.session && supabase) ? supabase.from('crew_members').select('crews(*)').eq('user_id', data.session.user.id).maybeSingle() : null
-                )
-            ]);
+                const memberRes = sessionResult.session
+                    ? await supabase.from('crew_members').select('crews(*)').eq('user_id', sessionResult.session.user.id).maybeSingle()
+                    : null;
+                if (memberRes?.error) throw memberRes.error;
 
-            if (allCrews.data) setCrews(allCrews.data);
-            if (memberRes?.data) setMyCrew(memberRes.data.crews as unknown as Crew);
-
-            setLoading(false);
+                setCrews(allCrews.data || []);
+                const crew = memberRes?.data?.crews;
+                if (crew) setMyCrew((Array.isArray(crew) ? crew[0] : crew) as Crew);
+                setLoadError(null);
+            } catch (error) {
+                console.error('Could not load crew records:', error);
+                setCrews([]);
+                setMyCrew(null);
+                setLoadError(error instanceof Error ? error.message : 'Crew records could not be loaded.');
+            } finally {
+                setLoading(false);
+            }
         }
         loadCrews();
     }, []);
@@ -81,7 +98,7 @@ export default function CrewsPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <h3 className="text-3xl font-black uppercase tracking-tighter">{myCrew.name}</h3>
-                                        <p className="text-sm font-medium italic opacity-70">&quot;{myCrew.motto || 'Conquering the Nairobi night.'}&quot;</p>
+                                        <p className="text-sm font-medium italic opacity-70">&quot;{myCrew.motto || 'No motto set.'}&quot;</p>
                                         <div className="flex items-center gap-4 pt-2">
                                             <span className="text-[10px] font-black uppercase tracking-widest bg-white/20 px-3 py-1 rounded-full">Rank #{myCrew.rank_nairobi || '---'}</span>
                                             <span className="text-[10px] font-black uppercase tracking-widest bg-white/20 px-3 py-1 rounded-full">{myCrew.member_count} Members</span>
@@ -91,12 +108,10 @@ export default function CrewsPage() {
                                 <div className="space-y-6">
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-end">
-                                            <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Season XP Progress</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Recorded crew XP</p>
                                             <p className="text-lg font-black">{myCrew.total_xp.toLocaleString()} XP</p>
                                         </div>
-                                        <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
-                                            <div className="h-full bg-primary" style={{ width: '64%' }} />
-                                        </div>
+                                        <p className="text-xs opacity-70">No season XP target is configured.</p>
                                     </div>
                                     <Link href={`/profile/crews/${myCrew.id}`}>
                                         <Button className="w-full h-14 rounded-2xl bg-white text-indigo-600 font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all shadow-lg">
@@ -108,12 +123,16 @@ export default function CrewsPage() {
                             <Users className="absolute -bottom-10 -right-10 h-64 w-64 text-white/5 rotate-12 -z-0" />
                         </Card>
                     </section>
+                ) : loadError ? (
+                    <Card role="alert" className="p-12 rounded-[3.5rem] bg-rose-50 border border-rose-200 text-center text-sm font-semibold text-rose-700">
+                        Crew data unavailable: {loadError}
+                    </Card>
                 ) : (
                     <Card className="p-12 rounded-[3.5rem] bg-slate-50 border border-slate-100 text-center space-y-6 shadow-inner">
                         <Users className="h-16 w-16 text-slate-200 mx-auto" />
                         <div className="space-y-2">
                             <h3 className="text-2xl font-black uppercase tracking-tighter">No Active Crew Found</h3>
-                            <p className="text-slate-400 font-medium italic text-sm">Patrons with crews earn 20% more XP through contribution multipliers.</p>
+                            <p className="text-slate-400 font-medium italic text-sm">No crew-specific XP bonus or reward terms are configured.</p>
                         </div>
                         <div className="flex justify-center gap-4">
                             <Button variant="outline" className="h-12 rounded-xl border-slate-200 font-black uppercase text-[10px]">Browse Discovery</Button>

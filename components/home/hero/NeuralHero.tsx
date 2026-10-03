@@ -1,175 +1,149 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import {
-    Zap,
-    ArrowRight,
-    Sparkles,
-    Wine,
-    Heart,
-    ShoppingBag,
-    Trophy
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import Image from 'next/image';
 import Link from 'next/link';
+import { ArrowDown, ArrowRight, Gift, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { formatPrice, normalizeImage } from '@/lib/utils';
+import { supabase } from '@/lib/supabaseClient';
 
-interface NeuralPersona {
-    interest?: string;
-    vibe?: string;
-    tier?: string;
+interface FeaturedProduct {
+    id: number;
+    name: string;
+    price: number;
+    image_url: string | null;
+    category: string | null;
 }
 
+const categories = [
+    { label: 'Spirits', href: '/shop/category/spirits', color: 'from-amber-200 to-orange-100' },
+    { label: 'Wine', href: '/shop/category/wine', color: 'from-rose-200 to-pink-100' },
+    { label: 'Beer', href: '/shop/category/beer', color: 'from-yellow-200 to-amber-100' },
+    { label: 'Snacks', href: '/bites', color: 'from-lime-200 to-emerald-100' },
+];
+
 export default function NeuralHero() {
-    const [persona, setPersona] = React.useState<NeuralPersona | null>(null);
-    const [loading, setLoading] = React.useState(true);
+    const [featured, setFeatured] = React.useState<FeaturedProduct | null>(null);
+    const [imageFailed, setImageFailed] = React.useState(false);
 
     React.useEffect(() => {
-        async function detectPersona() {
+        let active = true;
+        async function loadFeaturedProduct() {
             if (!supabase) return;
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                const { data: prof } = await supabase.from('profiles').select('interests, preferred_vibe, membership_tier').eq('id', session.user.id).single();
-                if (prof) {
-                    setPersona({
-                        interest: prof.interests?.[0],
-                        vibe: prof.preferred_vibe,
-                        tier: prof.membership_tier
-                    });
-                }
+            const { data, error } = await supabase
+                .from('products')
+                .select('id, name, price, image_url, category')
+                .gt('stock', 0)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) {
+                console.error('Could not load the homepage product feature:', error);
+                return;
             }
-            setLoading(false);
+            if (active && data) setFeatured(data as FeaturedProduct);
         }
-        detectPersona();
+        void loadFeaturedProduct();
+        return () => { active = false; };
     }, []);
 
-    const config = React.useMemo(() => {
-        if (!persona) return {
-            badge: 'Premium Bar Protocol',
-            title: 'Nairobi\'s Elite. Cellar.',
-            subtitle: 'Experience authentic spirits and chilled pairings delivered to your terminal.',
-            cta: 'Explore Menu',
-            href: '/shop',
-            icon: Wine
-        };
-
-        if (persona.interest === 'whiskey') return {
-            badge: 'The Whiskey Legend',
-            title: 'Cask Strength. Excellence.',
-            subtitle: 'Curated for the refined palate. Discover the latest limited drops.',
-            cta: 'Secure Bottle',
-            href: '/shop/category/whiskey',
-            icon: Trophy
-        };
-
-        if (persona.interest === 'wine') return {
-            badge: 'The Vintages Club',
-            title: 'Estate Bottled. Premium.',
-            subtitle: 'Discover Nairobi\'s most exquisite private cellar collection.',
-            cta: 'Browse Vintages',
-            href: '/shop/category/wine',
-            icon: Heart
-        };
-
-        return {
-            badge: `${persona.tier || 'Elite'} Discovery`,
-            title: 'Your Grid. Your Way.',
-            subtitle: 'Ready for your tonight? We\'ve synchronized the cellar to your vibe.',
-            cta: 'Continue Journey',
-            href: '/shop',
-            icon: Sparkles
-        };
-    }, [persona]);
-
-    if (loading) return <div className="h-[70vh] bg-slate-50 animate-pulse rounded-[4rem] m-6" />;
+    const imageUrl = featured?.image_url ? normalizeImage(featured.image_url) : '';
 
     return (
-        <section className={cn(
-            "relative min-h-[85vh] flex items-center overflow-hidden px-6 sm:px-12 lg:px-20 py-20 transition-colors duration-1000",
-            persona?.vibe === 'ELITE' ? "bg-slate-50 text-foreground" : "bg-white text-foreground"
-        )}>
-            {/* Neural Background Noise (Fallback) */}
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-slate-900/5" />
-            <div className={cn(
-                "absolute top-0 right-0 w-2/3 h-full rounded-l-[20rem] blur-3xl -z-10 animate-pulse opacity-40",
-                persona?.vibe === 'LIVELY' ? "bg-rose-500/20" : "bg-primary/10"
-            )} />
+        <div className="overflow-hidden">
+            <section className="relative isolate overflow-hidden bg-[#fff8ec] px-4 py-10 sm:px-8 sm:py-14 lg:px-12 lg:py-16">
+                <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-24 -z-10 h-80 w-80 rounded-full bg-amber-300/40 blur-3xl sm:h-[32rem] sm:w-[32rem]" />
+                <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 left-0 -z-10 h-72 w-72 rounded-full bg-rose-200/50 blur-3xl" />
 
-            <div className="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-20 items-center relative z-10">
-
-                <div className="space-y-10 animate-in fade-in slide-in-from-left-10 duration-1000">
-                    <div className={cn(
-                        "inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border shadow-2xl",
-                        persona?.vibe === 'ELITE' ? "bg-white text-primary border-slate-100" : "bg-primary/10 text-primary border-primary/20"
-                    )}>
-                        <Zap className="h-4 w-4 fill-current animate-bounce" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em]">{config.badge}</span>
-                    </div>
-
-                    <h1 className={cn(
-                        "text-5xl sm:text-6xl lg:text-8xl font-black tracking-tighter uppercase leading-[0.85] text-balance break-words",
-                        persona?.vibe === 'ELITE' ? "text-white" : "text-foreground"
-                    )}>
-                        {config.title.split('.').map((part, i) => (
-                            <span key={i} className={cn(i === 1 && "text-primary italic block")}>
-                                {part}{i === 0 && '.'}
-                            </span>
-                        ))}
-                    </h1>
-
-                    <p className={cn(
-                        "text-xl font-medium max-w-lg leading-relaxed italic",
-                        persona?.vibe === 'ELITE' ? "text-slate-500" : "text-slate-500"
-                    )}>
-                        &quot;{config.subtitle}&quot;
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <Link href={config.href}>
-                            <Button className="h-20 px-12 rounded-[2rem] bg-primary text-white font-black uppercase tracking-[0.2em] text-xs shadow-2xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all group">
-                                {config.cta} <ArrowRight className="ml-3 h-5 w-5 group-hover:translate-x-2 transition-transform" />
-                            </Button>
-                        </Link>
-                        <Link href="/gifting">
-                            <Button variant="outline" className={cn(
-                                "h-20 px-10 rounded-[2rem] border-2 font-black uppercase tracking-widest text-[10px] transition-all active:scale-95",
-                                persona?.vibe === 'ELITE' ? "border-slate-200 bg-white text-slate-400 hover:bg-slate-50" : "border-slate-100 bg-white text-slate-400 hover:bg-slate-50"
-                            )}>
-                                <ShoppingBag className="mr-2 h-4 w-4" /> Send as Gift
-                            </Button>
-                        </Link>
-                    </div>
-                </div>
-
-                <div className="relative animate-in zoom-in-95 duration-1000 delay-300">
-                    <div className={cn(
-                        "aspect-square rounded-[5rem] border flex items-center justify-center p-16 shadow-inner relative group overflow-hidden",
-                        persona?.vibe === 'ELITE' ? "bg-white border-slate-100" : "bg-slate-50 border-slate-100"
-                    )}>
-                        <div className="relative z-10 w-full h-full flex items-center justify-center opacity-10">
-                             <config.icon size={200} className="text-primary animate-pulse" />
+                <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
+                    <div className="min-w-0 space-y-7 sm:space-y-9">
+                        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-amber-300/70 bg-white/80 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-800 shadow-sm sm:text-xs sm:tracking-[0.22em]">
+                            <Sparkles aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-500" />
+                            Nairobi drinks, snacks & gifting
                         </div>
 
-                        {/* Floating Interaction Node */}
-                        <Card className={cn(
-                            "absolute bottom-12 right-12 p-8 rounded-[2.5rem] shadow-2xl border-none animate-in slide-in-from-bottom-4 duration-700 delay-1000",
-                            persona?.vibe === 'ELITE' ? "bg-white text-foreground" : "bg-white text-foreground"
-                        )}>
-                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 text-left">Sector Status</p>
-                            <h4 className="text-xl font-black text-foreground uppercase tracking-tight text-left">Trending Tonight</h4>
-                            <div className="mt-4 flex items-center gap-3">
-                                <div className="h-1.5 w-32 bg-slate-100/10 rounded-full overflow-hidden">
-                                    <div className="h-full bg-primary w-[84%] animate-in slide-in-from-left duration-1000" />
+                        <div className="max-w-3xl">
+                            <h1 className="text-pretty break-words text-5xl font-black uppercase leading-[0.94] tracking-[-0.055em] text-slate-950 sm:text-6xl md:text-7xl xl:text-8xl">
+                                Make tonight
+                                <span className="mt-1 block text-primary">a good one.</span>
+                            </h1>
+                            <p className="mt-6 max-w-xl text-pretty text-base font-medium leading-relaxed text-slate-600 sm:text-lg md:text-xl">
+                                Find something for the table, the celebration, or a gift worth sending. Browse the live menu and choose what suits your night.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                            <Link href="/shop" className="w-full sm:w-auto">
+                                <Button className="h-14 w-full rounded-2xl bg-slate-950 px-7 text-sm font-black uppercase tracking-wider text-white hover:bg-primary sm:h-16 sm:px-9">
+                                    Explore the menu <ArrowRight className="ml-3 h-5 w-5" />
+                                </Button>
+                            </Link>
+                            <Link href="/gifting" className="w-full sm:w-auto">
+                                <Button variant="outline" className="h-14 w-full rounded-2xl border-slate-300 bg-white/80 px-7 text-sm font-black uppercase tracking-wider text-slate-800 hover:border-primary hover:text-primary sm:h-16 sm:px-8">
+                                    <Gift className="mr-2 h-4 w-4" /> Send a gift
+                                </Button>
+                            </Link>
+                        </div>
+
+                        <a href="#home-categories" className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 transition hover:text-primary">
+                            Find your kind of night <ArrowDown aria-hidden="true" className="h-4 w-4" />
+                        </a>
+                    </div>
+
+                    <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
+                        <div className="relative min-h-[19rem] overflow-hidden rounded-[2rem] border border-white/80 bg-gradient-to-br from-amber-200 via-orange-100 to-rose-200 p-5 shadow-[0_30px_80px_-36px_rgba(124,45,18,0.45)] sm:min-h-[27rem] sm:rounded-[2.75rem] sm:p-8">
+                            <div aria-hidden="true" className="absolute -right-10 -top-10 h-48 w-48 rounded-full border-[28px] border-white/30 sm:h-64 sm:w-64" />
+                            <div aria-hidden="true" className="absolute -bottom-20 -left-16 h-56 w-56 rounded-full bg-rose-400/20 blur-2xl sm:h-72 sm:w-72" />
+
+                            {imageUrl && !imageFailed ? (
+                                <Image
+                                    src={imageUrl}
+                                    alt={featured?.name || 'Featured menu item'}
+                                    fill
+                                    unoptimized
+                                    sizes="(max-width: 1024px) 100vw, 50vw"
+                                    onError={() => setImageFailed(true)}
+                                    className="object-contain p-8 drop-shadow-[0_28px_28px_rgba(60,30,10,0.22)] sm:p-12"
+                                    priority
+                                />
+                            ) : (
+                                <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
+                                    <div className="h-40 w-40 rounded-full border border-white/70 bg-white/35 shadow-[0_20px_70px_-20px_rgba(120,53,15,0.3)] backdrop-blur-sm sm:h-60 sm:w-60" />
+                                    <div className="absolute h-28 w-20 rounded-[1.25rem] border border-white/80 bg-gradient-to-br from-white/80 to-amber-100/80 shadow-xl rotate-[-8deg] sm:h-40 sm:w-28 sm:rounded-[1.75rem]" />
+                                    <Sparkles aria-hidden="true" className="absolute right-[17%] top-[17%] h-8 w-8 text-white sm:h-12 sm:w-12" />
                                 </div>
-                                <span className="text-[10px] font-black text-primary">84%</span>
+                            )}
+
+                            <div className="absolute inset-x-4 bottom-4 z-10 flex min-w-0 items-end justify-between gap-3 rounded-2xl border border-white/60 bg-white/90 p-4 shadow-xl backdrop-blur-md sm:inset-x-6 sm:bottom-6 sm:p-5">
+                                <div className="min-w-0">
+                                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-primary sm:text-[10px] sm:tracking-[0.22em]">
+                                        {featured?.category || 'From the live menu'}
+                                    </p>
+                                    <h2 className="mt-1 truncate text-base font-black leading-tight text-slate-900 sm:text-xl">
+                                        {featured?.name || 'Explore the menu'}
+                                    </h2>
+                                    {featured && <p className="mt-1 text-sm font-bold text-slate-600">{formatPrice(featured.price)}</p>}
+                                </div>
+                                <Link href={featured ? `/shop/${featured.id}` : '/shop'} aria-label={featured ? `View ${featured.name}` : 'Browse the menu'} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white transition hover:bg-primary">
+                                    <ArrowRight aria-hidden="true" className="h-5 w-5" />
+                                </Link>
                             </div>
-                        </Card>
+                        </div>
                     </div>
                 </div>
+            </section>
 
-            </div>
-        </section>
+            <nav id="home-categories" aria-label="Shop by category" className="mx-auto grid max-w-7xl grid-cols-2 gap-3 px-4 py-7 sm:gap-4 sm:px-8 sm:py-10 lg:grid-cols-4 lg:px-12">
+                {categories.map(category => (
+                    <Link key={category.label} href={category.href} className={`group flex min-h-24 min-w-0 items-center justify-between gap-3 overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br ${category.color} p-4 transition hover:-translate-y-1 hover:shadow-lg sm:min-h-28 sm:rounded-3xl sm:p-6`}>
+                        <span className="break-words text-lg font-black uppercase leading-tight tracking-tight text-slate-900 sm:text-xl">{category.label}</span>
+                        <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/75 text-slate-700 transition group-hover:bg-slate-950 group-hover:text-white">
+                            <ArrowRight className="h-4 w-4" />
+                        </span>
+                    </Link>
+                ))}
+            </nav>
+        </div>
     );
 }

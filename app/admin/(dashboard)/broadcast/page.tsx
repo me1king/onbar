@@ -11,46 +11,41 @@ import {
   Loader2,
   Phone,
   Users,
-  Target,
-  Clock,
   BarChart3,
   Calendar,
-  Sparkles
+  MessageSquare
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn, formatPrice, getPublicBaseUrl } from '@/lib/utils';
 
 export default function AdminBroadcastPage() {
     const [subscribers, setSubscribers] = React.useState<{ id: string | number; email: string; created_at: string }[]>([]);
     const [campaignOrders, setCampaignOrders] = React.useState<{ total_price: number }[]>([]);
     const [sending, setSending] = React.useState(false);
-    const [channel, setChannel] = React.useState<'email' | 'whatsapp'>('email');
-    const [audience, setAudience] = React.useState<'all' | 'new' | 'vip' | 'inactive'>('all');
-    const [schedule, setSchedule] = React.useState<'now' | 'later'>('now');
+    const [channel, setChannel] = React.useState<'email' | 'whatsapp' | 'in_app'>('in_app');
+    const audience = 'all';
+    const schedule = 'now' as const;
     const [subject, setSubject] = React.useState('');
     const [message, setMessage] = React.useState('');
     const [status, setStatus] = React.useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [resendActive, setResendActive] = React.useState<boolean | null>(null);
 
     const CAMPAIGN_TEMPLATES = [
-        { id: 'flash', label: 'Flash Sale', content: `🚨 ALERT: Premium Flash Sale active now! Get 20% OFF all premium vintages for the next 4 hours only. Secure yours: ${process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com'}/shop` },
-        { id: 'weekend', label: 'Weekend Drop', content: `Hello! Our Weekend Drop is live. Restocked premium selections are ready for chilled dispatch. Nairobi fast dispatch active until 6 PM. Shop: ${process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com'}` },
-        { id: 'loyalty', label: 'Reward Boost', content: `Sparkle your bar! ✨ VIP rewards just boosted. Complete your profile to unlock a KSh 500 voucher instantly. Link: ${process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com'}/profile` },
+        { id: 'flash', label: 'Flash Sale', content: `🚨 ALERT: Premium Flash Sale active now! Get 20% OFF all premium vintages for the next 4 hours only. Secure yours: ${getPublicBaseUrl()}/shop` },
+        { id: 'weekend', label: 'Weekend Drop', content: `Hello! Our Weekend Drop is live. Restocked premium selections are ready for chilled dispatch. Nairobi fast dispatch active until 6 PM. Shop: ${getPublicBaseUrl()}` },
+        { id: 'loyalty', label: 'Reward Boost', content: `Sparkle your bar! ✨ VIP rewards just boosted. Complete your profile to unlock a KSh 500 voucher instantly. Link: ${getPublicBaseUrl()}/profile` },
     ];
 
     const AUDIENCES = [
         { id: 'all', label: 'Everyone', icon: Users },
-        { id: 'new', label: 'New Customers', icon: Sparkles },
-        { id: 'vip', label: 'Premium (VIP)', icon: Target },
-        { id: 'inactive', label: 'Inactive 30d', icon: Clock },
     ];
 
     const applyTemplate = (content: string) => {
         setMessage(content);
-        if (channel === 'email') setSubject("Online Bar Nairobi Protocol 🚀");
+        if (channel !== 'whatsapp') setSubject("Online Bar Nairobi Update");
     };
 
     React.useEffect(() => {
@@ -107,7 +102,12 @@ export default function AdminBroadcastPage() {
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || "Failed to initiate campaign.");
 
-            setStatus({ type: 'success', text: `Campaign "${audience.toUpperCase()}" deployed via ${channel.toUpperCase()}!` });
+            setStatus({
+                type: 'success',
+                text: channel === 'in_app'
+                    ? 'Announcement is now live on the customer storefront.'
+                    : `Email campaign delivered to ${data.count} subscribers.`
+            });
             setMessage('');
             setSubject('');
         } catch (err: unknown) {
@@ -160,10 +160,11 @@ export default function AdminBroadcastPage() {
                                     {AUDIENCES.map(a => (
                                         <button
                                             key={a.id}
-                                        onClick={() => setAudience(a.id as 'all' | 'new' | 'vip' | 'inactive')}
+                                        type="button"
+                                        disabled
                                             className={cn(
                                                 "p-4 rounded-2xl border transition-all text-left flex flex-col gap-2",
-                                                audience === a.id ? "bg-primary/5 border-primary text-primary" : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300"
+                                                "bg-primary/5 border-primary text-primary"
                                             )}
                                         >
                                             <a.icon size={16} />
@@ -178,15 +179,16 @@ export default function AdminBroadcastPage() {
                                 <div className="space-y-4">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Dispatch Channel</label>
                                     <div className="flex p-1 bg-slate-50 rounded-2xl border border-slate-200">
+                                        <button onClick={() => setChannel('in_app')} className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", channel === 'in_app' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><MessageSquare size={14} /> Store</button>
                                         <button onClick={() => setChannel('email')} className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", channel === 'email' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><Mail size={14} /> Email</button>
-                                        <button onClick={() => setChannel('whatsapp')} className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", channel === 'whatsapp' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><Phone size={14} /> WhatsApp</button>
+                                        <button type="button" disabled title="WhatsApp delivery is not configured" className="flex-1 cursor-not-allowed rounded-xl py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-300 opacity-60"><Phone size={14} /> WhatsApp unavailable</button>
                                     </div>
                                 </div>
                                 <div className="space-y-4">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Schedule Timing</label>
                                     <div className="flex p-1 bg-slate-50 rounded-2xl border border-slate-200">
-                                        <button onClick={() => setSchedule('now')} className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", schedule === 'now' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><Zap size={14} /> Instant</button>
-                                        <button onClick={() => setSchedule('later')} className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", schedule === 'later' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><Calendar size={14} /> Scheduled</button>
+                                        <button type="button" disabled className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", schedule === 'now' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><Zap size={14} /> Instant</button>
+                                        <button type="button" disabled title="Scheduled campaigns are not available yet" className="flex-1 cursor-not-allowed rounded-xl py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-300 opacity-60"><Calendar size={14} /> Scheduled unavailable</button>
                                     </div>
                                 </div>
                             </div>
@@ -194,10 +196,10 @@ export default function AdminBroadcastPage() {
 
                         {/* 3. Composer */}
                         <form onSubmit={handleSend} className="space-y-6 pt-6 border-t border-border">
-                            {channel === 'email' && (
+                            {channel !== 'whatsapp' && (
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Tactical Subject</label>
-                                    <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Flash Sale: 20% OFF Everything!" className="h-14 rounded-2xl bg-slate-50 border-slate-200 text-sm font-bold text-foreground" />
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">{channel === 'in_app' ? 'Announcement Title' : 'Email Subject'}</label>
+                                    <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder={channel === 'in_app' ? 'Store announcement' : 'Flash Sale: 20% OFF Everything!'} className="h-14 rounded-2xl bg-slate-50 border-slate-200 text-sm font-bold text-foreground" />
                                 </div>
                             )}
 
@@ -206,8 +208,8 @@ export default function AdminBroadcastPage() {
                                 <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Write your announcement here..." rows={8} className="rounded-[2rem] bg-slate-50 border-slate-200 text-sm font-medium resize-none p-8 text-foreground" />
                             </div>
 
-                            <Button disabled={sending || subscribers.length === 0 || (channel === 'email' && resendActive === false)} className="w-full h-20 rounded-[1.5rem] bg-primary text-white font-black uppercase text-sm tracking-[0.3em] shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
-                                {sending ? <><Loader2 className="h-5 w-5 animate-spin mr-3" /> Engaging...</> : <><Send className="h-5 w-5 mr-3" /> Launch Campaign</>}
+                            <Button disabled={sending || !message.trim() || (channel === 'email' && (subscribers.length === 0 || resendActive === false)) || channel === 'whatsapp'} className="w-full h-20 rounded-[1.5rem] bg-primary text-white font-black uppercase text-sm tracking-[0.3em] shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                                {sending ? <><Loader2 className="h-5 w-5 animate-spin mr-3" /> Engaging...</> : <><Send className="h-5 w-5 mr-3" /> {channel === 'in_app' ? 'Publish to Store' : 'Launch Campaign'}</>}
                             </Button>
                         </form>
 

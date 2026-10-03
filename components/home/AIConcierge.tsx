@@ -57,6 +57,20 @@ export default function AIConcierge() {
     }, [isOpen]);
 
     React.useEffect(() => {
+        if (!isOpen) return;
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setIsOpen(false);
+        };
+        window.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [isOpen]);
+
+    React.useEffect(() => {
         const handleModalActive = (e: Event) => {
             if ((e as CustomEvent).detail?.active) setIsOpen(false);
         };
@@ -122,6 +136,12 @@ export default function AIConcierge() {
             }
 
             setMessages(prev => [...prev, { role: 'assistant', text: reply, suggestions }]);
+        } catch (error) {
+            console.error('[AIConcierge] Could not prepare recommendations:', error);
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                text: 'I could not reach the live product catalog right now. Please try again shortly.'
+            }]);
         } finally {
             setIsLoading(false);
         }
@@ -141,30 +161,46 @@ export default function AIConcierge() {
     };
 
     return (
-        <div className="fixed bottom-32 lg:bottom-10 left-6 sm:left-10 z-[2100]">
+        <>
             {!isOpen ? (
-                <button
-                    onClick={() => setIsOpen(true)}
-                    className="h-16 w-16 rounded-full bg-primary text-white shadow-2xl shadow-primary/40 hover:scale-110 active:scale-95 transition-all flex items-center justify-center group border-4 border-white"
-                >
-                    <Bot className="h-8 w-8 group-hover:rotate-12 transition-transform" />
-                    <div className="absolute -top-1 -right-1 h-5 w-5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />
-                </button>
+                <div className="fixed right-6 sm:right-8 bottom-[calc(13rem+env(safe-area-inset-bottom))] lg:bottom-28 z-[2100]">
+                    <button
+                        onClick={() => setIsOpen(true)}
+                        aria-label="Open AI Concierge"
+                        className="relative h-16 w-16 rounded-full bg-primary text-white shadow-2xl shadow-primary/40 hover:scale-110 active:scale-95 transition-all flex items-center justify-center group border-4 border-white"
+                    >
+                        <Bot className="h-8 w-8 group-hover:rotate-12 transition-transform" />
+                        <div className="absolute -top-1 -right-1 h-5 w-5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />
+                    </button>
+                </div>
             ) : (
-                <Card className="w-[calc(100vw-32px)] sm:w-[400px] h-[600px] sm:h-[650px] rounded-[3rem] sm:rounded-[3.5rem] bg-white border border-slate-100 shadow-[0_30px_100px_-15px_rgba(0,0,0,0.2)] flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-500 text-left">
-                    <div className="p-8 bg-primary text-white relative overflow-hidden flex justify-between items-center shadow-lg">
+                <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/45 p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-sm sm:p-6">
+                    <button
+                        type="button"
+                        aria-label="Close AI Concierge"
+                        onClick={() => setIsOpen(false)}
+                        className="absolute inset-0 h-full w-full cursor-default"
+                    />
+                    <Card
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="ai-concierge-title"
+                        onClick={event => event.stopPropagation()}
+                        className="relative z-10 flex h-[min(650px,calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom)))] max-h-full w-full max-w-[400px] flex-col overflow-hidden rounded-[2rem] border border-slate-100 bg-white text-left shadow-[0_30px_100px_-15px_rgba(0,0,0,0.35)] animate-in zoom-in-95 duration-200 sm:rounded-[2.5rem]"
+                    >
+                    <div className="shrink-0 p-5 sm:p-6 bg-primary text-white relative overflow-hidden flex justify-between items-center shadow-lg">
                         <div className="relative z-10 flex items-center gap-4">
                             <div className="h-12 w-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/20"><Bot size={24} /></div>
                             <div>
-                                <h3 className="text-xl font-black uppercase tracking-tighter">AI Concierge</h3>
+                                <h3 id="ai-concierge-title" className="text-xl font-black uppercase tracking-tighter">AI Concierge</h3>
                                 <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Premium Shopping Agent</p>
                             </div>
                         </div>
-                        <button onClick={() => setIsOpen(false)} className="h-10 w-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors relative z-10"><X size={24} /></button>
+                        <button onClick={() => setIsOpen(false)} aria-label="Close AI Concierge" className="h-10 w-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors relative z-10"><X size={24} /></button>
                         <Sparkles className="absolute -bottom-10 -right-10 h-48 w-48 text-white/5 -rotate-12" />
                     </div>
 
-                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar bg-slate-50/50">
+                    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
                         {messages.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-center space-y-10 py-10">
                                 <div className="h-24 w-24 rounded-[3rem] bg-white flex items-center justify-center shadow-inner animate-pulse"><Sparkles className="h-10 w-10 text-primary" /></div>
@@ -216,7 +252,7 @@ export default function AIConcierge() {
                         {isLoading && <div className="flex justify-start"><div className="bg-white p-5 rounded-[2rem] rounded-bl-sm border border-slate-100 shadow-sm"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div></div>}
                     </div>
 
-                    <form onSubmit={handleAsk} className="p-6 bg-white border-t border-slate-50">
+                    <form onSubmit={handleAsk} className="shrink-0 p-4 sm:p-5 bg-white border-t border-slate-50">
                         <div className="relative">
                             <Input
                                 value={query}
@@ -233,8 +269,9 @@ export default function AIConcierge() {
                             </Button>
                         </div>
                     </form>
-                </Card>
+                    </Card>
+                </div>
             )}
-        </div>
+        </>
     );
 }

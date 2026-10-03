@@ -93,6 +93,7 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
     {
       title: "Partners",
       links: [
+        { href: "/affiliate/register", label: "Become an Affiliate" },
         { href: "/merchant/onboarding", label: "Become a Merchant" },
         { href: "/rider/onboarding", label: "Become a Runner" },
         { href: "/supplier", label: "Supplier Login" },

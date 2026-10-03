@@ -14,25 +14,23 @@ interface CommandStats {
     users: number;
     riders: number;
     shops: number;
-    automation: number;
-    demand_hotspot?: string;
+    automation: number | null;
+    demand_hotspot: string | null;
 }
 
 export default function OperatingBrainHUD() {
     const router = useRouter();
-    const [stats, setStats] = React.useState<CommandStats>({
-        revenue: 0,
-        orders: 0,
-        users: 0,
-        riders: 0,
-        shops: 0,
-        automation: 0,
-        demand_hotspot: 'Neutral'
-    });
+    const [stats, setStats] = React.useState<CommandStats | null>(null);
+    const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         async function fetchCommandData() {
-            if (!supabase) return;
+            if (!supabase) {
+                setLoadError('Supabase is not configured. Dashboard metrics are unavailable.');
+                setLoading(false);
+                return;
+            }
             try {
                 const [ordersRes, usersRes, ridersRes, shopsRes, revenueRes] = await Promise.all([
                     supabase.from('orders').select('id', { count: 'exact' }),
@@ -41,30 +39,44 @@ export default function OperatingBrainHUD() {
                     supabase.from('suppliers').select('id', { count: 'exact' }).eq('is_active', true),
                     supabase.from('financial_ledger').select('amount').eq('entry_type', 'REVENUE')
                 ]);
+                for (const result of [ordersRes, usersRes, ridersRes, shopsRes, revenueRes]) {
+                    if (result.error) throw result.error;
+                }
 
-                const totalRev = revenueRes.data?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+                const [autoRes, buzzRes] = await Promise.all([
+                    supabase.from('system_autonomous_state').select('is_autonomous'),
+                    supabase.from('buzz_posts').select('area_zone').in('status', ['LIVE', 'TRENDING'])
+                ]);
+                if (autoRes.error) throw autoRes.error;
+                if (buzzRes.error) throw buzzRes.error;
 
-                // 2. Fetch Automation Status
-                const { data: autoStates } = await supabase.from('system_autonomous_state').select('is_autonomous');
-                const autoRate = autoStates && autoStates.length > 0
-                    ? (autoStates.filter(s => s.is_autonomous).length / autoStates.length) * 100
-                    : 0;
+                const autoStates = autoRes.data || [];
+                const automation = autoStates.length > 0
+                    ? Number(((autoStates.filter(state => state.is_autonomous).length / autoStates.length) * 100).toFixed(1))
+                    : null;
+                const postsByArea = new Map<string, number>();
+                for (const post of buzzRes.data || []) {
+                    const area = post.area_zone?.trim();
+                    if (area) postsByArea.set(area, (postsByArea.get(area) || 0) + 1);
+                }
+                const demandHotspot = [...postsByArea.entries()].sort((first, second) => second[1] - first[1])[0]?.[0] || null;
 
-                // Online Bar Brain: Determine Hotspot
-                const { data: buzz } = await supabase.from('buzz_metrics').select('zone_name').order('buzz_score', { ascending: false }).limit(1).single();
-
-                setStats(prev => ({
-                    ...prev,
-                    revenue: totalRev,
-                    orders: ordersRes.count || 0,
-                    users: usersRes.count || 0,
-                    riders: ridersRes.count || 0,
-                    shops: shopsRes.count || 0,
-                    automation: Number(autoRate.toFixed(1)),
-                    demand_hotspot: buzz?.zone_name || 'Neutral'
-                }));
-            } catch {
-                console.error("Brain HUD Link unstable.");
+                setStats({
+                    revenue: (revenueRes.data || []).reduce((sum, entry) => sum + Number(entry.amount), 0),
+                    orders: ordersRes.count ?? 0,
+                    users: usersRes.count ?? 0,
+                    riders: ridersRes.count ?? 0,
+                    shops: shopsRes.count ?? 0,
+                    automation,
+                    demand_hotspot: demandHotspot
+                });
+                setLoadError(null);
+            } catch (error) {
+                console.error('Could not load operating dashboard metrics:', error);
+                setStats(null);
+                setLoadError(error instanceof Error ? error.message : 'Dashboard metrics could not be loaded.');
+            } finally {
+                setLoading(false);
             }
         }
 
@@ -87,12 +99,12 @@ export default function OperatingBrainHUD() {
     }, []);
 
     const nodes = [
-        { label: 'Revenue', val: stats.revenue > 999 ? `KSh ${(stats.revenue / 1000).toFixed(1)}K` : `KSh ${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'primary', href: '/admin/finance' },
-        { label: 'Demand Radar', val: stats.demand_hotspot || 'Establishing...', icon: Zap, color: 'rose', href: '/admin/buzz' },
-        { label: 'Patrons', val: stats.users, icon: Users, color: 'emerald', href: '/admin/customers' },
-        { label: 'Runners', val: stats.riders, icon: Truck, color: 'amber', href: '/admin/dispatch' },
-        { label: 'Active Shops', val: stats.shops, icon: Wine, color: 'rose', href: '/admin/operations/vendors' },
-        { label: 'Automation', val: `${stats.automation}%`, icon: Bot, color: 'indigo', href: '/admin/marketing/automation' }
+        { label: 'Revenue', val: stats ? (stats.revenue > 999 ? `KSh ${(stats.revenue / 1000).toFixed(1)}K` : `KSh ${stats.revenue.toLocaleString()}`) : '—', icon: DollarSign, color: 'primary', href: '/admin/finance' },
+        { label: 'Top Buzz Area', val: stats?.demand_hotspot || 'No recorded posts', icon: Zap, color: 'rose', href: '/admin/buzz' },
+        { label: 'Patrons', val: stats?.users ?? '—', icon: Users, color: 'emerald', href: '/admin/customers' },
+        { label: 'Runners', val: stats?.riders ?? '—', icon: Truck, color: 'amber', href: '/admin/dispatch' },
+        { label: 'Active Suppliers', val: stats?.shops ?? '—', icon: Wine, color: 'rose', href: '/admin/operations/vendors' },
+        { label: 'Automation', val: stats?.automation === null || !stats ? '—' : `${stats.automation}%`, icon: Bot, color: 'indigo', href: '/admin/marketing/automation' }
     ];
 
     return (
@@ -104,9 +116,13 @@ export default function OperatingBrainHUD() {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                     <Zap size={10} className="text-primary animate-pulse" />
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground hidden sm:inline">Network Synchronized</span>
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground hidden sm:inline">
+                        {loading ? 'Loading records' : loadError ? 'Data unavailable' : 'Connected records'}
+                    </span>
                 </div>
             </div>
+
+            {loadError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{loadError}</p>}
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 lg:gap-10">
                 {nodes.map((node) => (

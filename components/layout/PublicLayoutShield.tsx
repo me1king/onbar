@@ -9,6 +9,7 @@ import { useEffect, Suspense, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useSettings, type StoreSettings } from '@/lib/useSettings';
 import { Loader2 } from 'lucide-react';
+import CustomerAnnouncementHost from './CustomerAnnouncementHost';
 
 // Lazy Load Non-Critical Components
 const LiveTicker = dynamic(() => import('./LiveTicker'), { ssr: false });
@@ -144,6 +145,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
 
     return (
         <>
+            <CustomerAnnouncementHost />
             <CookieConsentBanner />
             <LevelUpCelebration />
             <AgeVerification />

@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatPrice } from './utils';
+import { formatPrice, getPublicBaseUrl } from './utils';
 
 interface Order {
     id: string | number;
@@ -89,7 +89,7 @@ export async function generateReceiptPDF(order: Order) {
  * Creates a WhatsApp share link for a receipt
  */
 export function getWhatsAppReceiptLink(order: Order) {
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://onlinebar.co.ke';
+    const baseUrl = getPublicBaseUrl();
     const message = `Hello ${order.customer_name}! Thank you for shopping at *Online Bar*.\n\n*Order ID:* #${order.id}\n*Total:* ${formatPrice(order.total_price)}\n*Status:* ${order.status}\n\nYour order is ready. View tracking here: ${baseUrl}/track?id=${order.id}`;
     return `https://wa.me/${order.customer_phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
 }

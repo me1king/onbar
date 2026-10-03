@@ -6,20 +6,15 @@ import {
     Building2,
     Package,
     RefreshCcw,
-    CheckCircle2,
-    Wallet,
-    FileDown,
     Search,
     Loader2,
     Wine,
-    Activity,
-    Trophy,
-    Target
+    ShieldAlert
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { cn, formatPrice } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 
 interface Supplier {
@@ -87,17 +82,12 @@ export default function SupplierDashboard() {
                         <div>
                             <div className="flex items-center gap-3 mb-1">
                                 <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase border border-emerald-100">Authorized Hub</span>
-                                <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em]">Supply Network Node</p>
+                                <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em]">Supplier Portal</p>
                             </div>
                             <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">{supplier?.name || 'Supplier Dashboard'}</h1>
                         </div>
                     </div>
 
-                    <div className="flex gap-2 relative z-10">
-                        <Button variant="outline" className="h-12 px-6 rounded-xl border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 transition-all shadow-sm">
-                            <FileDown className="mr-2 h-4 w-4" /> Export Ledger
-                        </Button>
-                    </div>
                     <Building2 className="absolute -bottom-10 -right-10 h-64 w-64 text-primary/5 rotate-12 -z-0" />
                 </header>
 
@@ -105,9 +95,9 @@ export default function SupplierDashboard() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                     {[
                         { label: 'Active SKUs', val: myInventory.length, icon: Package, color: 'indigo' },
-                        { label: 'Pending POs', val: 7, icon: Activity, color: 'primary' },
-                        { label: 'Fulfillment Rate', val: '97%', icon: Target, color: 'emerald' },
-                        { label: 'Settlement Bal', val: formatPrice(182000), icon: Wallet, color: 'primary' },
+                        { label: 'Purchase Orders', val: 'Not connected', icon: Package, color: 'primary' },
+                        { label: 'Fill Rate', val: 'Not connected', icon: Package, color: 'emerald' },
+                        { label: 'Settlement Balance', val: 'Not connected', icon: Package, color: 'primary' },
                     ].map((item) => (
                         <Card key={item.label} className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm flex flex-col justify-center gap-4 group hover:shadow-xl transition-all">
                             <div className={cn(
@@ -187,41 +177,24 @@ export default function SupplierDashboard() {
                     <div className="lg:col-span-4 space-y-8 text-left">
                         <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-8">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-xl font-black text-foreground uppercase tracking-tighter">Unit Scorecard</h3>
-                                <Trophy size={18} className="text-amber-500" />
+                                <h3 className="text-xl font-black text-foreground uppercase tracking-tighter">Performance Data</h3>
+                                <ShieldAlert size={18} className="text-slate-400" />
                             </div>
-                            <div className="space-y-6">
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-400">
-                                        <span>Order Fill Rate</span>
-                                        <span className="text-emerald-500">97%</span>
-                                    </div>
-                                    <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                                        <div className="h-full bg-emerald-500" style={{ width: '97%' }} />
-                                    </div>
-                                </div>
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-400">
-                                        <span>Dispatch Speed</span>
-                                        <span className="text-primary">94%</span>
-                                    </div>
-                                    <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                                        <div className="h-full bg-primary" style={{ width: '94%' }} />
-                                    </div>
-                                </div>
-                            </div>
+                            <p className="text-sm text-slate-500">
+                                Purchase-order, fulfillment, settlement, and dispatch metrics are not connected to a verified supplier data source.
+                            </p>
                         </Card>
 
                         <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-xl space-y-6 relative overflow-hidden group">
                             <div className="relative z-10 space-y-6">
-                                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner group-hover:scale-110 transition-transform"><CheckCircle2 size={24} /></div>
+                                <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500"><ShieldAlert size={24} /></div>
                                 <div>
-                                    <h3 className="text-2xl font-black uppercase tracking-tighter leading-none mb-2 text-foreground">Legal <br/> <span className="text-primary italic">Document Vault</span></h3>
-                                    <p className="text-[10px] text-slate-500 font-medium italic leading-relaxed">&quot;All compliance artifacts are encrypted and verified. Maintain your status by keeping your license and permits updated.&quot;</p>
+                                    <h3 className="text-2xl font-black uppercase tracking-tighter leading-none mb-2 text-foreground">Compliance Documents</h3>
+                                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed">Document storage and verification are not connected. No compliance status is available here.</p>
                                 </div>
-                                <Button className="w-full h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 transition-all active:scale-95">Open Secure Vault</Button>
+                                <Button disabled variant="outline" className="w-full h-14 rounded-2xl font-black uppercase text-[10px] tracking-widest">Document vault unavailable</Button>
                             </div>
-                            <Activity className="absolute -bottom-10 -left-10 h-48 w-48 text-primary/5 rotate-45 -z-0" />
+                            <Building2 className="absolute -bottom-10 -left-10 h-48 w-48 text-primary/5 rotate-45 -z-0" />
                         </Card>
                     </div>
 

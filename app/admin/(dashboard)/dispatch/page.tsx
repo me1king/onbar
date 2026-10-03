@@ -28,7 +28,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { formatPrice, cn } from '@/lib/utils';
+import { formatPrice, cn, getPublicBaseUrl } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { useSettings } from '@/lib/useSettings';
 import Link from 'next/link';
@@ -728,7 +728,7 @@ export default function AdminDispatchPage() {
                             <div className="pt-8 border-t border-border flex flex-col gap-4">
                                 <Button
                                     onClick={() => {
-                                        const baseUrl = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_BASE_URL || window.location.origin) : 'https://onlinebar.co.ke';
+                                        const baseUrl = getPublicBaseUrl();
                                         const link = `${baseUrl}/rider/dashboard?phone=${selectedRider.rider_phone}`;
                                         navigator.clipboard.writeText(link);
                                         setMessage({ type: 'success', text: "Magic Link Copied! 🔗" });

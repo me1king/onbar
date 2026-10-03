@@ -1,10 +1,11 @@
 import { supabase } from '@/lib/supabaseClient';
 import { NextResponse } from 'next/server';
+import { getPublicBaseUrl } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar.co.ke';
+  const baseUrl = getPublicBaseUrl();
 
   // 1. Static Routes
   const staticRoutes = [

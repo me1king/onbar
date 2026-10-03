@@ -75,7 +75,7 @@ interface OrderRecord {
   product_id: number;
   quantity: number;
   payment_method: string;
-  order_items?: { unit_cost: number; quantity: number }[];
+  order_items?: { product_id: number; unit_cost: number; quantity: number }[];
 }
 
 interface ProductRecord {
@@ -136,7 +136,7 @@ export default function AdminDashboard() {
             .select('*, order_items(*)')
             .gte('created_at', dateLimit)
             .order('created_at', { ascending: false }),
-          supabase.from('products').select('id, stock, name, price, image_url, cost_price, warehouse_location'),
+          supabase.from('products').select('id, stock, name, price, image_url, cost_price, category, warehouse_location'),
           supabase.from('financial_ledger').select('*').gte('created_at', dateLimit),
           supabase.from('rider_status').select('id, rider_name, status, battery_level').neq('status', 'Offline'),
           fetch('/api/admin/audit-logs', { cache: 'no-store' })
@@ -153,12 +153,18 @@ export default function AdminDashboard() {
             });
             setPeakHours(Object.entries(hours).map(([hour, count]) => ({ hour, count })).sort((a,b) => parseInt(a.hour) - parseInt(b.hour)));
 
-            const cats: Record<string, number> = {};
-            ordersRes.data.forEach(o => {
-                const cat = o.order_items?.[0]?.product_id ? 'Spirits' : 'Other';
-                cats[cat] = (cats[cat] || 0) + 1;
+            const productCategories = new Map<number, string | undefined>(
+                (productsRes.data || []).map((product: ProductRecord) => [product.id, product.category?.trim()])
+            );
+            const categories: Record<string, number> = {};
+            (ordersRes.data as OrderRecord[]).forEach(order => {
+                order.order_items?.forEach((item: NonNullable<OrderRecord['order_items']>[number]) => {
+                    const category = productCategories.get(item.product_id);
+                    if (!category) return;
+                    categories[category] = (categories[category] || 0) + Number(item.quantity || 0);
+                });
             });
-            setCategoryBreakdown(Object.entries(cats).map(([name, value]) => ({ name, value })));
+            setCategoryBreakdown(Object.entries(categories).map(([name, value]) => ({ name, value })));
         }
         if (productsRes.data) setProducts(productsRes.data as ProductRecord[]);
         if (auditResponse.ok) {

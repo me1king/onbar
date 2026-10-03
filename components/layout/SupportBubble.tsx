@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MessageCircle, X, Zap, ChevronRight, Package, ArrowLeft, Search, Loader2, CheckCircle, Send } from 'lucide-react';
+import { MessageCircle, X, Zap, ChevronRight, Package, ArrowLeft, Search, Loader2, CheckCircle, Send, Inbox } from 'lucide-react';
 import { useSettings } from '@/lib/useSettings';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -13,12 +13,36 @@ interface UserProfile {
     full_name: string;
 }
 
+interface CustomerSupportMessage {
+    id: string | number;
+    subject: string;
+    message: string;
+    admin_response: string | null;
+    status: string;
+    created_at: string;
+}
+
+const SUPPORT_TOKEN_KEY = 'onlinebar_support_access_token';
+
+async function getSupportHeaders(token: string, json = false) {
+    const headers: Record<string, string> = { 'x-support-access-token': token };
+    if (json) headers['Content-Type'] = 'application/json';
+    if (supabase) {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (data.session?.access_token) {
+            headers.Authorization = `Bearer ${data.session.access_token}`;
+        }
+    }
+    return headers;
+}
+
 export default function SupportBubble() {
     const { settings } = useSettings();
     const pathname = usePathname();
     const [showLabel, setShowLabel] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
-    const [mode, setMode] = useState<'menu' | 'track' | 'message' | 'ai'>('menu');
+    const [mode, setMode] = useState<'menu' | 'track' | 'message' | 'ai' | 'inbox'>('menu');
     const [trackId, setTrackId] = useState('');
     const [trackResult, setTrackResult] = useState<{ id: string; status: string } | null>(null);
     const [isSearching, setIsSearching] = useState(false);
@@ -33,6 +57,53 @@ export default function SupportBubble() {
     const [isSending, setIsSending] = useState(false);
     const [sent, setSent] = useState(false);
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+    const [supportToken, setSupportToken] = useState('');
+    const [supportMessages, setSupportMessages] = useState<CustomerSupportMessage[]>([]);
+    const [supportError, setSupportError] = useState('');
+
+    useEffect(() => {
+        try {
+            let token = localStorage.getItem(SUPPORT_TOKEN_KEY);
+            if (!token) {
+                token = crypto.randomUUID();
+                localStorage.setItem(SUPPORT_TOKEN_KEY, token);
+            }
+            setSupportToken(token);
+        } catch (error) {
+            console.error('[CustomerSupport] Could not initialize secure support session:', error);
+            setSupportError('This browser could not create a private support session.');
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!supportToken) return;
+        let active = true;
+        const refreshMessages = async () => {
+            try {
+                const response = await fetch('/api/support/messages', {
+                    headers: await getSupportHeaders(supportToken),
+                    cache: 'no-store'
+                });
+                const result = await response.json() as {
+                    messages?: CustomerSupportMessage[];
+                    error?: string;
+                };
+                if (!response.ok) throw new Error(result.error || 'Could not load support messages.');
+                if (active) {
+                    setSupportMessages(result.messages || []);
+                    setSupportError('');
+                }
+            } catch (error) {
+                if (active) setSupportError(error instanceof Error ? error.message : 'Could not load support messages.');
+            }
+        };
+        void refreshMessages();
+        const interval = window.setInterval(refreshMessages, 20_000);
+        return () => {
+            active = false;
+            window.clearInterval(interval);
+        };
+    }, [supportToken]);
 
     useEffect(() => {
         const handleOverlay = (e: Event) => {
@@ -128,26 +199,43 @@ export default function SupportBubble() {
 
     const handleSubmitMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!supabase || !msgForm.name || !msgForm.email || !msgForm.body) return;
+        if (!msgForm.name || !msgForm.email || !msgForm.body || !supportToken) return;
 
         setIsSending(true);
-        const { error } = await supabase.from('messages').insert([{
-            name: msgForm.name.trim(),
-            email: msgForm.email.trim(),
-            subject: 'In-App Support Ticket',
-            message: msgForm.body.trim(),
-            status: 'New'
-        }]);
-
-        if (!error) {
+        try {
+            const response = await fetch('/api/support/messages', {
+                method: 'POST',
+                headers: await getSupportHeaders(supportToken, true),
+                body: JSON.stringify({
+                    name: msgForm.name.trim(),
+                    email: msgForm.email.trim(),
+                    message: msgForm.body.trim(),
+                    token: supportToken
+                })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Could not send your support message.');
             setSent(true);
             setMsgForm({ name: '', email: '', body: '' });
+            setSupportError('');
+            window.setTimeout(async () => {
+                fetch('/api/support/messages', {
+                    headers: await getSupportHeaders(supportToken),
+                    cache: 'no-store'
+                }).then(async inboxResponse => {
+                    const inbox = await inboxResponse.json() as { messages?: CustomerSupportMessage[] };
+                    if (inboxResponse.ok) setSupportMessages(inbox.messages || []);
+                }).catch(error => console.error('[CustomerSupport] Could not refresh sent message:', error));
+            }, 0);
             setTimeout(() => {
                 setSent(false);
                 setMode('menu');
             }, 3000);
+        } catch (error) {
+            setSupportError(error instanceof Error ? error.message : 'Could not send your support message.');
+        } finally {
+            setIsSending(false);
         }
-        setIsSending(false);
     };
 
     return (
@@ -200,6 +288,13 @@ export default function SupportBubble() {
                                     <div className="flex items-center gap-3">
                                         <div className="h-8 w-8 rounded-xl bg-white flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors shadow-sm"><Package className="h-4 w-4" /></div>
                                         <span className="text-[10px] font-black uppercase text-foreground">Track My Order</span>
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 text-slate-300" />
+                                </button>
+                                <button onClick={() => setMode('inbox')} className="w-full p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-100 transition-all text-left flex items-center justify-between group">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-8 w-8 rounded-xl bg-white flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors shadow-sm"><Inbox className="h-4 w-4" /></div>
+                                        <span className="text-[10px] font-black uppercase text-foreground">Support Replies {supportMessages.some(item => item.admin_response) ? `(${supportMessages.filter(item => item.admin_response).length})` : ''}</span>
                                     </div>
                                     <ChevronRight className="h-4 w-4 text-slate-300" />
                                 </button>
@@ -258,6 +353,31 @@ export default function SupportBubble() {
                                     </button>
                                 </form>
                             </div>
+                        ) : mode === 'inbox' ? (
+                            <div className="space-y-4 animate-in fade-in duration-300">
+                                <button onClick={() => setMode('menu')} className="text-[9px] font-black uppercase text-slate-400 hover:text-primary flex items-center gap-1 transition-colors">
+                                    <ArrowLeft className="h-3 w-3" /> Back
+                                </button>
+                                <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                                    {supportError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-[10px] font-bold text-rose-700">{supportError}</p>}
+                                    {supportMessages.length === 0 ? (
+                                        <div className="rounded-2xl bg-slate-50 p-6 text-center text-[10px] font-bold text-slate-500">
+                                            No support messages on this device yet. Send a message and replies will appear here.
+                                        </div>
+                                    ) : supportMessages.map(item => (
+                                        <article key={item.id} className="space-y-2 rounded-2xl border border-slate-100 bg-white p-4">
+                                            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">{item.subject} · {new Date(item.created_at).toLocaleString()}</p>
+                                            <p className="whitespace-pre-wrap break-words text-[10px] font-medium leading-relaxed text-slate-600">{item.message}</p>
+                                            {item.admin_response && (
+                                                <div className="rounded-xl border-l-2 border-primary bg-primary/5 p-3">
+                                                    <p className="mb-1 text-[8px] font-black uppercase text-primary">Online Bar Support</p>
+                                                    <p className="whitespace-pre-wrap break-words text-[10px] font-semibold leading-relaxed text-foreground">{item.admin_response}</p>
+                                                </div>
+                                            )}
+                                        </article>
+                                    ))}
+                                </div>
+                            </div>
                         ) : mode === 'track' ? (
                             <div className="space-y-4 animate-in fade-in duration-300">
                                 <button onClick={() => { setMode('menu'); setTrackResult(null); }} className="text-[9px] font-black uppercase text-slate-400 hover:text-primary flex items-center gap-1 transition-colors">
@@ -302,6 +422,7 @@ export default function SupportBubble() {
                                     </div>
                                 ) : (
                                     <form onSubmit={handleSubmitMessage} className="space-y-3">
+                                        {supportError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-[10px] font-bold text-rose-700">{supportError}</p>}
                                         <input
                                             required
                                             value={msgForm.name}
@@ -342,10 +463,16 @@ export default function SupportBubble() {
             {/* Bubble Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="h-16 w-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group relative border-4 border-white"
+                aria-label={isOpen ? 'Close customer support' : 'Open customer support'}
+                className="relative h-16 w-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group border-4 border-white"
             >
                 {isOpen ? <X className="h-7 w-7" /> : <MessageCircle className="h-7 w-7 group-hover:rotate-12 transition-transform" />}
                 {!isOpen && <span className="absolute top-0 right-0 h-4 w-4 bg-primary rounded-full border-2 border-white animate-pulse"></span>}
+                {!isOpen && supportMessages.some(item => item.admin_response) && (
+                    <span className="absolute -top-1 -left-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1 text-[9px] font-black text-white">
+                        {supportMessages.filter(item => item.admin_response).length}
+                    </span>
+                )}
             </button>
         </div>
     );

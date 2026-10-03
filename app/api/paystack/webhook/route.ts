@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { NextResponse } from "next/server";
 import { createHmac } from "crypto";
+import { getPublicBaseUrl } from "@/lib/utils";
 
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
 
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
                 // Post-Success Fulfillment Logic
                 if (orderItems && orderItems.length > 0) {
                     const firstItem = orderItems[0];
-                    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com';
+                    const baseUrl = getPublicBaseUrl();
 
                     // 1. Deduct Stock for each item in the order
                     for (const item of orderItems) {

@@ -3,6 +3,7 @@ import { Resend } from 'resend';
 
 import { verifySessionCookie } from "@/lib/adminAuth";
 import { cookies } from "next/headers";
+import { getPublicBaseUrl } from "@/lib/utils";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
                 <div style="font-family: sans-serif; padding: 20px; color: #333;">
                     <h1 style="color: #ff6b00;">${headline}</h1>
                     <p>${body}</p>
-                    <p>Track your order anytime here: <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com'}/track">Track Order</a></p>
+                    <p>Track your order anytime here: <a href="${getPublicBaseUrl()}/track">Track Order</a></p>
                     <hr style="border: 1px solid #eee; margin: 20px 0;" />
                     <p style="font-size: 12px; color: #999;">Online Bar Nairobi</p>
                 </div>

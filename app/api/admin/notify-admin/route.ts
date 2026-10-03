@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 import { verifySessionCookie } from "@/lib/adminAuth";
 import { cookies } from "next/headers";
+import { getPublicBaseUrl } from "@/lib/utils";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
                         <p><b>Payment:</b> ${details.paymentMethod}</p>
                         <hr />
                         <p>Check the dashboard to manage dispatch.</p>
-                        <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com'}/admin/orders" style="background: #000; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">VIEW ORDERS</a>
+                        <a href="${getPublicBaseUrl()}/admin/orders" style="background: #000; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">VIEW ORDERS</a>
                     </div>
                 `;
                 break;
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
                         <p><b>Remaining:</b> <span style="color: #e11d48; font-weight: bold;">${details.currentStock} units</span></p>
                         <hr />
                         <p>Restock soon to avoid losing sales!</p>
-                        <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com'}/admin/upload" style="background: #000; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">MANAGE INVENTORY</a>
+                        <a href="${getPublicBaseUrl()}/admin/upload" style="background: #000; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">MANAGE INVENTORY</a>
                     </div>
                 `;
                 break;

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Resend } from 'resend';
 import { verifySessionCookie } from "@/lib/adminAuth";
 import { cookies } from "next/headers";
+import { getPublicBaseUrl } from "@/lib/utils";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -13,7 +14,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 export async function GET() {
     // SECURITY: Only allow manual trigger by authorized admin
     const cookieStore = await cookies();
-    const session = verifySessionCookie(cookieStore.get('admin_session')?.value);
+    const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
 
     if (!session) {
         return NextResponse.json({ error: "Unauthorized Access Detected 🛡️" }, { status: 401 });
@@ -86,7 +87,7 @@ export async function GET() {
                             <h2 style="color:#ff6b00;">Wait, ${cart.customer_name.split(' ')[0] || ownerName}!</h2>
                             <p>You left <b>${itemsList}</b> in your bag.</p>
                             <p>Finish your order in the next 6 hours to secure priority dispatch.</p>
-                            <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar-os.onrender.com'}/cart" style="background:#111;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;">RETURN TO BAG</a>
+                            <a href="${getPublicBaseUrl()}/cart" style="background:#111;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;">RETURN TO BAG</a>
                         </div>`
                     });
                 } catch {

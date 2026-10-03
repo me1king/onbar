@@ -29,23 +29,48 @@ interface WidgetNode {
     config: Record<string, unknown>;
 }
 
+const DEFAULT_HOME_WIDGETS: WidgetNode[] = [
+    { id: 'default-home-hero', widget_key: 'HERO_WIDGET', rank: 1, config: {} },
+    { id: 'default-home-catalog', widget_key: 'TRENDING_WIDGET', rank: 2, config: {} },
+];
+
 export default function WidgetRegistry({ pageRoute = '/' }: { pageRoute?: string }) {
     const [widgets, setWidgets] = React.useState<WidgetNode[]>([]);
     const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
         async function fetchRegistry() {
-            if (!supabase) return;
+            if (!supabase) {
+                setWidgets(pageRoute === '/' ? DEFAULT_HOME_WIDGETS : []);
+                setLoading(false);
+                return;
+            }
             try {
-                const { data } = await supabase
+                const { data, error } = await supabase
                     .from('system_widgets')
                     .select('*')
                     .eq('page_route', pageRoute)
                     .order('rank', { ascending: true });
 
-                if (data) setWidgets(data as WidgetNode[]);
+                if (error) throw error;
+                const activeWidgets = (data || []).filter(widget => widget.status === 'ACTIVE') as WidgetNode[];
+                if (pageRoute !== '/') {
+                    setWidgets(activeWidgets);
+                } else if (activeWidgets.length === 0) {
+                    setWidgets(DEFAULT_HOME_WIDGETS);
+                } else {
+                    const homepageWidgets = [...activeWidgets];
+                    if (!homepageWidgets.some(widget => widget.widget_key === 'HERO_WIDGET')) {
+                        homepageWidgets.unshift(DEFAULT_HOME_WIDGETS[0]);
+                    }
+                    if (!homepageWidgets.some(widget => widget.widget_key === 'TRENDING_WIDGET')) {
+                        homepageWidgets.push(DEFAULT_HOME_WIDGETS[1]);
+                    }
+                    setWidgets(homepageWidgets);
+                }
             } catch (err) {
-                console.error("Widget Registry Link Failure:", err);
+                console.error('Could not load the widget registry:', err);
+                setWidgets(pageRoute === '/' ? DEFAULT_HOME_WIDGETS : []);
             } finally {
                 setLoading(false);
             }
