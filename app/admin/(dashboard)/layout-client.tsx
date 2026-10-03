@@ -136,7 +136,8 @@ export default function AdminLayoutClient({
     setIsLoggingOut(true);
     try {
       await logAuditAction(email, 'OS_SESSION_END', { duration: 'calculated-on-server' });
-      document.cookie = 'admin_session=; path=/; max-age=0';
+      const response = await fetch('/api/admin/logout', { method: 'POST' });
+      if (!response.ok) throw new Error('Could not end the admin session.');
       router.push('/admin/login');
     } catch (error) {
       console.error('Logout failed:', error);
@@ -205,7 +206,7 @@ export default function AdminLayoutClient({
     ]},
     { group: 'ENTERPRISE', items: [
       { name: 'Staff Control', href: '/admin/staff', icon: ShieldCheck, minRole: 'owner' },
-      { name: 'Audit Logs', href: '/admin/audit', icon: HistoryIcon, permission: 'can_view_revenue' },
+      { name: 'Audit Logs', href: '/admin/audit', icon: HistoryIcon, permission: 'can_view_audit_logs' },
       { name: 'Security Hub', href: '/admin/security', icon: SecurityIcon, permission: 'can_manage_settings' },
       { name: 'Bar Settings', href: '/admin/settings', icon: Settings, permission: 'can_manage_settings' },
     ]},

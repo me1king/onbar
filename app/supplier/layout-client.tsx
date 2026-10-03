@@ -41,8 +41,14 @@ export default function SupplierLayoutClient({
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
-    document.cookie = 'admin_session=; path=/; max-age=0';
-    router.push('/admin/login');
+    try {
+      const response = await fetch('/api/admin/logout', { method: 'POST' });
+      if (!response.ok) throw new Error('Could not end the supplier session.');
+      router.push('/admin/login');
+    } catch (error) {
+      console.error('Supplier logout failed:', error);
+      setIsLoggingOut(false);
+    }
   };
 
   const navItems = [

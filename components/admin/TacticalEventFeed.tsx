@@ -48,10 +48,19 @@ export default function TacticalEventFeed({
         if (!supabase) return;
 
         try {
-            const [auditRes, ordersRes] = await Promise.all([
-                supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(10),
+            const [auditResponse, ordersRes] = await Promise.all([
+                fetch('/api/admin/audit-logs', { cache: 'no-store' }),
                 supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(5)
             ]);
+            const auditRes = auditResponse.ok
+                ? await auditResponse.json() as { logs?: Array<{
+                    id: string;
+                    action: string;
+                    details: Record<string, unknown> | null;
+                    created_at: string;
+                    staff_email: string | null;
+                }> }
+                : { logs: [] };
 
             const realEvts: TacticalEvent[] = [];
 
@@ -70,8 +79,8 @@ export default function TacticalEventFeed({
                 });
             }
 
-            if (auditRes.data) {
-                auditRes.data.forEach(log => {
+            if (auditRes.logs) {
+                auditRes.logs.forEach(log => {
                     const action = log.action || 'SYSTEM_EVENT';
                     let channel: 'CELLAR' | 'GROWTH' | 'DISPATCH' | 'KITCHEN' | 'AI' | 'SYSTEM' = 'SYSTEM';
                     let url = '/admin';
@@ -122,17 +131,21 @@ export default function TacticalEventFeed({
     React.useEffect(() => {
         fetchRealEvents();
 
-        let intervalId: NodeJS.Timeout;
+        let intervalId: ReturnType<typeof setInterval> | undefined;
+        let refreshInterval: ReturnType<typeof setInterval> | undefined;
 
         if (isLive) {
-            // Heartbeat update without mock generation
             intervalId = setInterval(() => {
                 const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 setLastBeatTime(nowStr);
             }, 5000);
+            refreshInterval = setInterval(fetchRealEvents, 15000);
         }
 
-        if (!supabase) return () => clearInterval(intervalId);
+        if (!supabase) return () => {
+            if (intervalId) clearInterval(intervalId);
+            if (refreshInterval) clearInterval(refreshInterval);
+        };
 
         // Real-time Database Event Listeners on audit_logs and orders
         const channel = supabase.channel('realtime-tactical-telemetry')
@@ -145,7 +158,8 @@ export default function TacticalEventFeed({
             .subscribe();
 
         return () => {
-            clearInterval(intervalId);
+            if (intervalId) clearInterval(intervalId);
+            if (refreshInterval) clearInterval(refreshInterval);
             if (supabase) supabase.removeChannel(channel);
         };
     }, [isLive, fetchRealEvents]);

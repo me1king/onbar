@@ -31,15 +31,21 @@ async function getAuditClient(ownerOnly = false) {
     };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
     const result = await getAuditClient();
     if ('response' in result) return result.response;
 
-    const { data, error } = await result.client
+    const actorId = new URL(request.url).searchParams.get('actorId');
+    if (actorId && !/^[0-9a-f-]{36}$/i.test(actorId)) {
+        return NextResponse.json({ error: 'A valid staff actor ID is required.' }, { status: 400 });
+    }
+    let query = result.client
         .from('audit_logs')
         .select('id, staff_email, actor_id, action, details, resource_type, resource_id, old_value, new_value, correlation_id, request_id, ip_address, device_info, created_at')
         .order('created_at', { ascending: false })
         .limit(200);
+    if (actorId) query = query.eq('actor_id', actorId);
+    const { data, error } = await query;
 
     if (error) {
         console.error('[AdminAudit] Could not load audit logs:', error);
@@ -48,18 +54,96 @@ export async function GET() {
     return NextResponse.json({ logs: data || [] });
 }
 
-export async function POST() {
-    const result = await getAuditClient();
-    if ('response' in result) return result.response;
+export async function POST(request: Request) {
+    const cookieStore = await cookies();
+    const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
+    if (!session) return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
 
-    const { error, count } = await result.client
-        .from('audit_logs')
-        .select('id', { count: 'exact', head: true });
-    if (error) {
-        console.error('[AdminAudit] Audit health check failed:', error);
-        return NextResponse.json({ error: `Audit log health check failed: ${error.message}` }, { status: 500 });
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !serviceKey) {
+        return NextResponse.json({ error: 'Admin database access is not configured.' }, { status: 503 });
     }
-    return NextResponse.json({ healthy: true, count: count ?? 0 });
+    const client = createClient(url, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    let rawBody = '';
+    try {
+        rawBody = await request.text();
+    } catch {
+        return NextResponse.json({ error: 'Could not read audit request.' }, { status: 400 });
+    }
+
+    if (!rawBody) {
+        if (
+            session.role !== 'owner'
+            && session.permissions?.can_view_audit_logs !== true
+        ) return NextResponse.json({ error: 'Audit log access required.' }, { status: 403 });
+
+        const { error, count } = await client
+            .from('audit_logs')
+            .select('id', { count: 'exact', head: true });
+        if (error) {
+            console.error('[AdminAudit] Audit health check failed:', error);
+            return NextResponse.json({ error: `Audit log health check failed: ${error.message}` }, { status: 500 });
+        }
+        return NextResponse.json({ healthy: true, count: count ?? 0 });
+    }
+    if (rawBody.length > 16_384) {
+        return NextResponse.json({ error: 'Audit event is too large.' }, { status: 413 });
+    }
+
+    let body: {
+        action?: unknown;
+        details?: unknown;
+        resource?: { type?: unknown; id?: unknown };
+        diff?: { old?: unknown; new?: unknown };
+    };
+    try {
+        body = JSON.parse(rawBody);
+    } catch {
+        return NextResponse.json({ error: 'A valid audit event is required.' }, { status: 400 });
+    }
+    if (
+        typeof body.action !== 'string'
+        || !/^[A-Z0-9_]{1,100}$/i.test(body.action)
+        || (body.details !== undefined && (
+            typeof body.details !== 'object' || body.details === null || Array.isArray(body.details)
+        ))
+    ) {
+        return NextResponse.json({ error: 'A valid audit action and details are required.' }, { status: 400 });
+    }
+
+    const email = session.email || (session.role === 'owner' ? 'Owner (PIN)' : 'Admin');
+    let actorId: string | null = null;
+    if (email !== 'Owner (PIN)' && email !== 'Admin') {
+        const { data: staff } = await client.from('staff').select('id').eq('email', email).maybeSingle();
+        actorId = staff?.id || null;
+    }
+    const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        || request.headers.get('x-real-ip')?.trim()
+        || 'unknown';
+    const { error } = await client.from('audit_logs').insert({
+        staff_email: email,
+        actor_id: actorId,
+        action: body.action,
+        details: body.details ?? {},
+        resource_type: typeof body.resource?.type === 'string' ? body.resource.type.slice(0, 100) : null,
+        resource_id: typeof body.resource?.id === 'string' ? body.resource.id.slice(0, 200) : null,
+        old_value: body.diff?.old ?? null,
+        new_value: body.diff?.new ?? null,
+        correlation_id: crypto.randomUUID(),
+        request_id: crypto.randomUUID(),
+        ip_address: ipAddress.slice(0, 100),
+        device_info: request.headers.get('user-agent')?.slice(0, 512) || 'Unknown',
+        created_at: new Date().toISOString()
+    });
+    if (error) {
+        console.error('[AdminAudit] Could not record audit event:', error);
+        return NextResponse.json({ error: `Could not record audit event: ${error.message}` }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
 }
 
 export async function DELETE() {

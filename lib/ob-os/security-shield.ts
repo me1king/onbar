@@ -2,11 +2,12 @@ import { supabase } from '../supabaseClient';
 
 export interface ThreatReport {
     id: string;
-    type: 'Velocity' | 'Phone_Anomaly' | 'Geofence_Violation' | 'Bot_Pattern';
-    severity: 'Medium' | 'High' | 'Critical';
+    type: string;
+    severity: string;
     description: string;
     metadata: Record<string, string | number | boolean | null>;
-    status: 'Flagged' | 'Cleared' | 'Blocked';
+    status: string;
+    ip_address?: string | null;
     created_at: string;
 }
 
@@ -69,8 +70,8 @@ export async function runSecurityScan() {
                     threats.push({
                         type: 'Phone_Anomaly',
                         severity: 'Critical',
-                        description: `Phone ${phone} has ${count} failed payment attempts. Potential brute force.`,
-                        metadata: { phone, count },
+                        description: `Phone ending ${phone.slice(-4)} has ${count} failed payment attempts. Potential payment abuse.`,
+                        metadata: { phone_suffix: phone.slice(-4), count },
                         status: 'Flagged'
                     });
                 }
@@ -79,7 +80,13 @@ export async function runSecurityScan() {
 
         // Commit Threats to DB for Admin View
         if (threats.length > 0) {
-            await supabase.from('security_threats').upsert(threats);
+            const response = await fetch('/api/admin/security-logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'report', threats })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Could not save security scan results.');
         }
 
     } catch (err) {

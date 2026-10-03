@@ -64,10 +64,17 @@ async function signToken(token: string) {
 export async function createSessionCookie(
     role: string = 'owner',
     permissions: Record<string, boolean | string[]> = {},
-    supplier_id: string | null = null
+    supplier_id: string | null = null,
+    email = ''
 ) {
   const token = crypto.randomUUID();
-  const payload = JSON.stringify({ role, permissions, supplier_id });
+  const payload = JSON.stringify({
+    role,
+    permissions,
+    supplier_id,
+    email,
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000
+  });
 
   const base64Payload = toBase64(payload);
 
@@ -82,6 +89,7 @@ export async function verifySessionCookie(value?: string): Promise<{
     role: string;
     permissions: Record<string, boolean | string[]>;
     supplier_id?: string | null;
+    email?: string;
 } | null> {
   if (!value || !getSessionSecret()) return null;
 
@@ -91,17 +99,52 @@ export async function verifySessionCookie(value?: string): Promise<{
 
     const [signature, token, base64Payload] = parts;
 
-    const expectedSignature = await signToken(`${token}.${base64Payload}`);
-
-    // Standard equality check
-    const isSignatureValid = (signature === expectedSignature);
-
-    if (!isSignatureValid) {
+    if (!/^[a-f0-9]{64}$/i.test(signature)) {
       return null;
     }
 
-    const payload = JSON.parse(fromBase64(base64Payload));
-    return payload;
+    const sessionSecret = getSessionSecret();
+    if (!sessionSecret) return null;
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(sessionSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+    const signatureBytes = new Uint8Array(signature.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
+    const isSignatureValid = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      signatureBytes,
+      new TextEncoder().encode(`${token}.${base64Payload}`)
+    );
+    if (!isSignatureValid) return null;
+
+    const payload: unknown = JSON.parse(fromBase64(base64Payload));
+    if (typeof payload !== 'object' || payload === null) return null;
+    const session = payload as {
+      role?: unknown;
+      permissions?: unknown;
+      supplier_id?: unknown;
+      email?: unknown;
+      expiresAt?: unknown;
+    };
+    if (
+      typeof session.role !== 'string'
+      || typeof session.permissions !== 'object'
+      || session.permissions === null
+      || (session.expiresAt !== undefined && (
+        typeof session.expiresAt !== 'number' || session.expiresAt <= Date.now()
+      ))
+    ) return null;
+
+    return {
+        role: session.role,
+        permissions: session.permissions as Record<string, boolean | string[]>,
+        supplier_id: typeof session.supplier_id === 'string' ? session.supplier_id : null,
+        email: typeof session.email === 'string' ? session.email : undefined
+    };
   } catch (err) {
     console.error("Auth Verification Error:", err);
     return null;

@@ -20,6 +20,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { scanForExceptions, OBException } from '@/lib/ob-os/intelligence';
 import { ThreatReport } from '@/lib/ob-os/security-shield';
+import { useAdmin } from '@/context/AdminContext';
 
 interface AutomationRun {
     id: string;
@@ -33,24 +34,53 @@ interface AutomationRun {
 }
 
 export default function ExceptionCenter() {
+    const { role } = useAdmin();
     const [exceptions, setExceptions] = React.useState<OBException[]>([]);
     const [threats, setThreats] = React.useState<ThreatReport[]>([]);
     const [automationReviews, setAutomationReviews] = React.useState<AutomationRun[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [securityError, setSecurityError] = React.useState('');
 
     const runScan = React.useCallback(async () => {
-        if (!supabase) return;
-
-        const [results, threatRes, automationRes] = await Promise.all([
-            scanForExceptions(),
-            supabase.from('security_threats').select('*').eq('status', 'Flagged').limit(5),
-            supabase.from('automation_runs').select('*, automation_rules(name)').eq('status', 'PENDING_APPROVAL').limit(5)
-        ]);
-        setExceptions(results);
-        setThreats(threatRes.data || []);
-        setAutomationReviews((automationRes.data as unknown as AutomationRun[]) || []);
-        setLoading(false);
+        setLoading(true);
+        try {
+            if (!supabase) throw new Error('Admin database is not configured.');
+            const [results, threatResponse, automationRes] = await Promise.all([
+                scanForExceptions(),
+                fetch('/api/admin/security-logs', { cache: 'no-store' }),
+                supabase.from('automation_runs').select('*, automation_rules(name)').eq('status', 'PENDING_APPROVAL').limit(5)
+            ]);
+            const threatData = await threatResponse.json() as { threats?: ThreatReport[]; error?: string };
+            if (!threatResponse.ok) throw new Error(threatData.error || 'Could not load security threats.');
+            setExceptions(results);
+            setThreats((threatData.threats || []).filter(threat => threat.status === 'OPEN'));
+            setAutomationReviews((automationRes.data as unknown as AutomationRun[]) || []);
+            setSecurityError('');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not load exception data.';
+            setSecurityError(message);
+            console.error('[ExceptionCenter] Could not load live exception data:', error);
+        } finally {
+            setLoading(false);
+        }
     }, []);
+
+    const updateThreat = React.useCallback(async (threatId: string, action: 'block' | 'ignore') => {
+        try {
+            const response = await fetch('/api/admin/security-logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ threatId, action })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Could not update the threat.');
+            await runScan();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not update the threat.';
+            setSecurityError(message);
+            console.error('[ExceptionCenter] Security action failed:', error);
+        }
+    }, [runScan]);
 
     React.useEffect(() => {
         runScan();
@@ -65,7 +95,7 @@ export default function ExceptionCenter() {
         </div>
     );
 
-    if (exceptions.length === 0 && threats.length === 0) return (
+    if (exceptions.length === 0 && threats.length === 0 && !securityError) return (
         <section className="bg-white rounded-[3rem] border border-slate-100 p-12 text-center relative overflow-hidden group">
             <div className="relative z-10 flex flex-col items-center gap-4">
                 <div className="h-16 w-16 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500 shadow-inner">
@@ -91,6 +121,7 @@ export default function ExceptionCenter() {
     return (
         <section className="bg-white rounded-[3rem] border border-rose-100 p-10 relative overflow-hidden shadow-sm animate-in fade-in duration-1000">
             <div className="relative z-10 space-y-10 text-left">
+                {securityError && <p role="alert" className="text-sm font-bold text-rose-700">{securityError}</p>}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div className="h-12 w-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-500 shadow-sm animate-pulse border border-rose-100">
@@ -145,10 +176,20 @@ export default function ExceptionCenter() {
                                         <p className="text-[9px] font-black text-slate-400 uppercase">{t.type} &bull; {new Date(t.created_at).toLocaleTimeString()}</p>
                                     </div>
                                     <h4 className="text-sm font-black text-rose-700 uppercase tracking-tight">{t.description}</h4>
-                                    <div className="flex gap-2 mt-4">
-                                        <Button size="sm" className="h-8 rounded-lg bg-rose-600 text-white text-[8px] font-black uppercase">Blacklist IP</Button>
-                                        <Button size="sm" variant="outline" className="h-8 rounded-lg border-rose-200 text-rose-600 text-[8px] font-black uppercase">Clear Alert</Button>
-                                    </div>
+                                    {role === 'owner' && <div className="flex gap-2 mt-4">
+                                        <Button
+                                            size="sm"
+                                            disabled={!t.ip_address || t.ip_address === 'unknown'}
+                                            onClick={() => updateThreat(t.id, 'block')}
+                                            className="h-8 rounded-lg bg-rose-600 text-white text-[8px] font-black uppercase"
+                                        >Blacklist IP</Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => updateThreat(t.id, 'ignore')}
+                                            variant="outline"
+                                            className="h-8 rounded-lg border-rose-200 text-rose-600 text-[8px] font-black uppercase"
+                                        >Clear Alert</Button>
+                                    </div>}
                                 </div>
                             </div>
                         </Card>

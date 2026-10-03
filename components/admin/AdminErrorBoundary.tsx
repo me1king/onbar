@@ -27,10 +27,14 @@ export default class AdminErrorBoundary extends Component<Props, State> {
     console.error('Admin Hub Crash:', error, errorInfo);
   }
 
-  private handleReset = () => {
-    // Clear potentially corrupted session cookies
-    document.cookie = 'admin_session=; path=/; max-age=0';
-    window.location.href = '/admin/login';
+  private handleReset = async () => {
+    try {
+      const response = await fetch('/api/admin/logout', { method: 'POST' });
+      if (!response.ok) throw new Error('Could not clear the admin session cookie.');
+      window.location.href = '/admin/login';
+    } catch (error) {
+      console.error('Could not clear the admin session cookie:', error);
+    }
   };
 
   public render() {

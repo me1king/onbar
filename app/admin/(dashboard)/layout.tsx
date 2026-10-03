@@ -1,7 +1,5 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-
 import { verifySessionCookie } from '@/lib/adminAuth';
 import AdminLayoutClient from './layout-client';
 import { Permissions } from '@/context/AdminContext';
@@ -31,14 +29,7 @@ export default async function AdminLayout({
     redirect('/admin/login');
   }
 
-  // Fetch the current user session (Server-side)
-  let userEmail = 'Master Admin';
-  if (supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
-          userEmail = user.email;
-      }
-  }
+  const userEmail = sessionData.email || (sessionData.role === 'owner' ? 'Owner (PIN)' : 'Admin');
 
   return (
     <AdminLayoutClient

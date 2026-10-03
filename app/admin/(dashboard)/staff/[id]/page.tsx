@@ -72,13 +72,15 @@ export default function StaffProfilePage() {
 
             if (staffError) throw staffError;
 
-            const [logsRes, ordersRes] = await Promise.all([
-                supabase.from('audit_logs').select('*').eq('actor_id', id).order('created_at', { ascending: false }).limit(20),
+            const [logsResponse, ordersRes] = await Promise.all([
+                fetch(`/api/admin/audit-logs?actorId=${encodeURIComponent(id)}`, { cache: 'no-store' }),
                 supabase.from('orders').select('id, total_price, created_at, status').eq('captured_by', staffData.email).order('created_at', { ascending: false })
             ]);
+            const logsResult = await logsResponse.json() as { logs?: AuditLog[]; error?: string };
+            if (!logsResponse.ok) throw new Error(logsResult.error || 'Could not load staff audit history.');
 
             setStaff(staffData as StaffProfile);
-            setLogs(logsRes.data || []);
+            setLogs(logsResult.logs || []);
             setOrders(ordersRes.data || []);
         } catch (err) {
             console.error(err);

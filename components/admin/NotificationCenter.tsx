@@ -23,15 +23,14 @@ export default function NotificationCenter({ isOpen, setIsOpen }: { isOpen: bool
     const fetchNotifications = React.useCallback(async () => {
         if (!supabase) return;
         try {
-            // Fetch real system alerts from event_log (V33 Architecture)
-            const { data } = await supabase
-                .from('audit_logs')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(10);
+            const response = await fetch('/api/admin/audit-logs', { cache: 'no-store' });
+            if (!response.ok) throw new Error('Audit notifications are not available to this admin role.');
+            const result = await response.json() as {
+                logs?: Array<{ id: string; action: string; staff_email: string | null; created_at: string }>;
+            };
 
-            if (data) {
-                setNotifications(data.map(log => ({
+            if (result.logs) {
+                setNotifications(result.logs.slice(0, 10).map(log => ({
                     id: String(log.id),
                     type: log.action.includes('CRITICAL') ? 'critical' : log.action.includes('UPDATE') ? 'info' : 'info',
                     label: log.action.replace(/_/g, ' '),

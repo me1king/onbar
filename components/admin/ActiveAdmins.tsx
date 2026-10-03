@@ -30,14 +30,13 @@ export default function ActiveAdmins() {
                 .order('last_active_at', { ascending: false });
 
             // Enhance with latest audit log
-            const { data: logs } = await supabase
-                .from('audit_logs')
-                .select('staff_email, action, created_at')
-                .order('created_at', { ascending: false })
-                .limit(20);
+            const logsResponse = await fetch('/api/admin/audit-logs', { cache: 'no-store' });
+            const logsResult = logsResponse.ok
+                ? await logsResponse.json() as { logs?: Array<{ staff_email: string; action: string }> }
+                : { logs: [] };
 
             const enhanced = (visitors || []).map(v => {
-                const latestLog = logs?.find(l => l.staff_email === v.customer_name);
+                const latestLog = logsResult.logs?.find(l => l.staff_email === v.customer_name);
                 return {
                     ...v,
                     latest_action: latestLog?.action || 'Active Session'
