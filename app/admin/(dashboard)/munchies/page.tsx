@@ -146,7 +146,7 @@ function MunchieContent() {
     setIsSubmitting(true);
     try {
       let imageUrl = '';
-      const BUCKET = 'apexstores-assets';
+      const BUCKET = 'onlinebar-assets';
 
       if (selectedFiles.length > 0) {
           const file = selectedFiles[0];

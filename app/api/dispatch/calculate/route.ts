@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { DispatchControl } from "@/lib/engines/dispatchEngine";
 
 /**
- * APEX OS: DISPATCH CALCULATION API
+ * DISPATCH CALCULATION API
  * Triggers the neural search for the best candidate for a specific order unit.
  */
 export async function POST(req: NextRequest) {

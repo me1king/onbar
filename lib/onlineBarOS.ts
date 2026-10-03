@@ -162,11 +162,11 @@ class OnlineBarOS {
         if (!this.sessionId || !supabase) return;
 
         const now = Date.now();
-        const activeMs = now - this.lastInteractionTime < 30000 ? 30000 : 0; // If interaction in last 30s
         const isVisible = document.visibilityState === 'visible';
+        const activeMs = isVisible && now - this.lastInteractionTime < 30000 ? 30000 : 0;
 
         // Use RPC to update presence in one shot
-        await supabase.rpc('handle_presence_heartbeat', {
+        const { error } = await supabase.rpc('handle_presence_heartbeat', {
             p_session_id: this.sessionId,
             p_page: window.location.pathname,
             p_product_id: this.getCurrentProductId(),
@@ -174,6 +174,7 @@ class OnlineBarOS {
             p_visible: isVisible,
             p_cart_value: this.getCartValue()
         });
+        if (error) console.warn('[OB_OS] Session engagement heartbeat failed:', error.message);
 
         this.track('HEARTBEAT');
     }
@@ -233,6 +234,9 @@ class OnlineBarOS {
         if (!supabase) return;
 
         try {
+            if (eventType !== 'HEARTBEAT' && eventType !== 'SESSION_START') {
+                this.lastInteractionTime = Date.now();
+            }
             const corrId = this.correlationId || generateCorrelationId();
             const reqId = generateRequestId();
             const sessId = this.sessionId || undefined;

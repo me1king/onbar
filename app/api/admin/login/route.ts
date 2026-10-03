@@ -3,6 +3,10 @@ import { createSessionCookie } from '@/lib/adminAuth';
 import { supabase } from '@/lib/supabaseClient';
 
 export async function POST(request: Request) {
+  if (!process.env.ADMIN_SESSION_SECRET?.trim() && !process.env.ADMIN_PASSWORD?.trim()) {
+    return NextResponse.json({ error: 'Admin login is not configured on the server.' }, { status: 500 });
+  }
+
   const rawBody = await request.text().catch(() => '');
   let parsedBody: { password?: string, email?: string, mode?: 'pin' | 'email' | 'staff_pin' | 'rider', phone?: string } = {};
 
@@ -21,7 +25,10 @@ export async function POST(request: Request) {
 
   // 1. PIN Login Mode (Master Admin / Owner)
   if (mode === 'pin') {
-    const configuredPassword = process.env.ADMIN_PASSWORD?.trim() || 'apexstores';
+    const configuredPassword = process.env.ADMIN_PASSWORD?.trim();
+    if (!configuredPassword) {
+      return NextResponse.json({ error: 'Admin PIN login is not configured on the server.' }, { status: 500 });
+    }
 
     if (!supabase) {
         return NextResponse.json({ error: 'Database connection failed.' }, { status: 500 });

@@ -13,7 +13,7 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     // Log the error to your analytics engine
-    console.error("[APEX_OS] Global Node Failure:", error);
+    console.error("[ONLINE_BAR] Global application failure:", error);
   }, [error]);
 
   const handleNuclearReset = () => {

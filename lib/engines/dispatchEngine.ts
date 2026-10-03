@@ -1,9 +1,9 @@
 import { supabase } from '../supabaseClient';
-import { ApexLatLng, ApexRouter } from './routingEngine';
-import { ApexFuel } from './fuelEngine';
+import { GeoPoint, routingEngine } from './routingEngine';
+import { fuelEngine } from './fuelEngine';
 
 /**
- * APEX OS: DISPATCH ENGINE
+ * DISPATCH ENGINE
  * The central brain for automated rider selection and mission orchestration.
  */
 
@@ -35,7 +35,7 @@ class DispatchEngine {
     /**
      * Orchestrates the high-speed search for the best rider node.
      */
-    public async findOptimalRider(orderId: number, destination: ApexLatLng): Promise<DispatchCandidate | null> {
+    public async findOptimalRider(orderId: number, destination: GeoPoint): Promise<DispatchCandidate | null> {
         if (!supabase) return null;
 
         // 0. Fetch Order Context (Hub Source)
@@ -43,7 +43,7 @@ class DispatchEngine {
         const hubId = order?.hub_id;
 
         // 1. Fetch Hub Location
-        let hubLoc: ApexLatLng = { latitude: -1.2841, longitude: 36.8155 }; // Default Nairobi
+        let hubLoc: GeoPoint = { latitude: -1.2841, longitude: 36.8155 }; // Default Nairobi
         if (hubId) {
             const { data: hub } = await supabase.from('hubs').select('latitude, longitude').eq('id', hubId).single();
             if (hub) hubLoc = { latitude: Number(hub.latitude), longitude: Number(hub.longitude) };
@@ -70,7 +70,7 @@ class DispatchEngine {
             order_id: orderId,
             candidates: candidates,
             selected_rider_phone: winner.riderPhone,
-            selection_reason: `Best Apex Score: ${winner.score?.toFixed(2)}`
+            selection_reason: `Best dispatch score: ${winner.score?.toFixed(2)}`
         }]);
 
         return winner;
@@ -145,25 +145,25 @@ class DispatchEngine {
         rating: number,
         acceptance_rate: number,
         rider_vehicles: Array<{ avg_km_per_l: number, traffic_factor: number, load_factor: number, fuel_price_l: number }>
-    }>, destination: ApexLatLng, hubLoc: ApexLatLng): Promise<DispatchCandidate[]> {
+    }>, destination: GeoPoint, hubLoc: GeoPoint): Promise<DispatchCandidate[]> {
         const results: DispatchCandidate[] = [];
 
         for (const rider of riders) {
             try {
                 // 1. Calculate Rider -> Hub (Pickup leg)
-                const pickupRoute = await ApexRouter.computeFastestRoute(
+                const pickupRoute = await routingEngine.computeFastestRoute(
                     { latitude: rider.lat || -1.2841, longitude: rider.lng || 36.8155 },
                     hubLoc
                 );
 
                 // 2. Calculate Hub -> Customer (Delivery leg)
-                const deliveryRoute = await ApexRouter.computeFastestRoute(hubLoc, destination);
+                const deliveryRoute = await routingEngine.computeFastestRoute(hubLoc, destination);
 
                 const totalDistKm = pickupRoute.distanceKm + deliveryRoute.distanceKm;
                 const totalDurationMin = pickupRoute.durationMinutes + deliveryRoute.durationMinutes;
 
                 const vehicle = rider.rider_vehicles?.[0] || { avg_km_per_l: 40, traffic_factor: 1.15, load_factor: 1.05, fuel_price_l: 190 };
-                const fuel = ApexFuel.calculateEstimate({
+                const fuel = fuelEngine.calculateEstimate({
                     distanceKm: totalDistKm,
                     baseKmPerLitre: vehicle.avg_km_per_l,
                     trafficFactor: vehicle.traffic_factor,
@@ -183,7 +183,7 @@ class DispatchEngine {
                     estimatedFuelCost: fuel.costKsh
                 };
 
-                candidate.score = this.calculateApexScore(candidate);
+                candidate.score = this.calculateDispatchScore(candidate);
                 results.push(candidate);
 
             } catch (err) {
@@ -195,10 +195,10 @@ class DispatchEngine {
     }
 
     /**
-     * The Proprietary Apex Dispatch Algorithm
+     * Dispatch suitability scoring algorithm.
      * Lower score = Higher Suitability
      */
-    private calculateApexScore(r: DispatchCandidate): number {
+    private calculateDispatchScore(r: DispatchCandidate): number {
         let score = 0;
 
         score += r.etaMinutes * 5;      // ⚡ ETA is highest priority

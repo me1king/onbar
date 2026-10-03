@@ -418,7 +418,7 @@ function UploadContent() {
 
     try {
       let imageUrls = [...existingImages];
-      const BUCKET = 'apexstores-assets';
+      const BUCKET = 'onlinebar-assets';
 
       if (selectedFiles.length > 0) {
           const uploads = selectedFiles.map(async f => {

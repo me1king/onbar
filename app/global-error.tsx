@@ -44,7 +44,7 @@ export default function GlobalError({
           </Button>
 
           <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest animate-pulse">
-              Apex Emergency Node Active • Online Bar Nairobi
+              Online Bar service recovery active • Nairobi
           </p>
 
         </div>

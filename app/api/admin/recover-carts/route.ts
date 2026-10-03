@@ -79,7 +79,7 @@ export async function GET() {
             if (resend && cart.customer_email) {
                 try {
                     await resend.emails.send({
-                        from: 'Apexstores <onboarding@resend.dev>',
+                        from: 'Online Bar <onboarding@resend.dev>',
                         to: cart.customer_email,
                         subject: "Your bag is expiring! ⏳",
                         html: `<div style="font-family:sans-serif;padding:20px;">

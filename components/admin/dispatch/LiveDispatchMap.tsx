@@ -114,7 +114,7 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
             />
         ))}
 
-        {/* 🛣️ Live Tactical Routes (Apex Nodes) */}
+        {/* Live delivery routes */}
         {activeRoutes.map((route) => (
             <Polyline
                 key={route.id}

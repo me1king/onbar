@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { formatPrice } from './utils';
 
 interface Order {
@@ -19,7 +19,7 @@ interface Order {
  * Generates a professional PDF receipt for an order
  */
 export async function generateReceiptPDF(order: Order) {
-    const doc = new jsPDF() as jsPDF & { autoTable: (options: object) => void; lastAutoTable: { finalY: number } };
+    const doc = new jsPDF();
 
     // Header
     doc.setFontSize(22);
@@ -60,7 +60,7 @@ export async function generateReceiptPDF(order: Order) {
         ]
     ];
 
-    doc.autoTable({
+    autoTable(doc, {
         startY: 75,
         head: [tableData[0]],
         body: [tableData[1]],
@@ -70,7 +70,7 @@ export async function generateReceiptPDF(order: Order) {
     });
 
     // Summary
-    const finalY = doc.lastAutoTable.finalY + 10;
+    const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 75;
     doc.setFontSize(12);
     doc.text('TOTAL:', 140, finalY + 10);
     doc.setFontSize(16);

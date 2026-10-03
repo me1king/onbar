@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient';
 import { emitEvent } from './eventEngine';
 
 /**
- * APEX OS: LOYALTY & TIERING ENGINE
+ * LOYALTY & TIERING ENGINE
  * Manages XP progression, elite ranks, and milestone rewards.
  */
 
@@ -94,4 +94,4 @@ class LoyaltyEngine {
     }
 }
 
-export const ApexLoyalty = LoyaltyEngine.getInstance();
+export const loyaltyEngine = LoyaltyEngine.getInstance();

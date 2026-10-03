@@ -140,13 +140,9 @@ export default function AnalyticsTracker() {
                             ua: ua,
                             res: screenRes,
                             lang: lang
-                        },
-                        total_active_time_sec: 0,
-                        pages_viewed: 0
+                        }
                     }, { onConflict: 'id' });
 
-                    // Increment page count
-                    await supabase.rpc('increment_session_metric', { sess_id: activeSessId, metric_name: 'pages_viewed', inc_val: 1 });
                 }
 
                 // 1. Basic Page View
@@ -179,30 +175,7 @@ export default function AnalyticsTracker() {
             }
         }
 
-        const heartbeat = setInterval(async () => {
-            if (!supabase) return;
-            const { data: { session } } = await supabase.auth.getSession();
-            const activeSessId = OB_OS.getSessionId();
-
-            if (activeSessId) {
-                // Update dwell time & active time on every heartbeat
-                await supabase.rpc('increment_session_active_time', {
-                    sess_id: activeSessId,
-                    inc_active_ms: activeTimeRef.current,
-                    inc_dwell_ms: 30000
-                });
-                // Reset active time for this chunk
-                activeTimeRef.current = 0;
-            }
-
-            OB_OS.track('HEARTBEAT', {
-                userId: session?.user?.id,
-                details: { path: pathname }
-            });
-        }, 30000); // Reduce frequency to 30s
-
         return () => {
-            clearInterval(heartbeat);
             const dwellTime = Date.now() - startTimeRef.current;
             if (dwellTime > 1000) {
                 OB_OS.track('TIME_ON_PAGE', {
@@ -241,8 +214,7 @@ export default function AnalyticsTracker() {
                     }
                 });
 
-                // Specific Action Tracking
-                if (elementId?.includes('add_to_cart')) OB_OS.track('ADD_TO_CART');
+                // Commerce events are tracked by the cart action itself to avoid click-level duplicates.
                 if (elementId?.includes('checkout')) OB_OS.track('CHECKOUT_START');
             } else {
                 OB_OS.track('DEAD_CLICK', { details: { x: e.clientX, y: e.clientY } });

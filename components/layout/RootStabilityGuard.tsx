@@ -6,7 +6,7 @@ import { OB_OS } from '@/lib/onlineBarOS';
 import { Button } from '@/components/ui/button';
 
 /**
- * APEX OS: ROOT STABILITY GUARD
+ * ROOT STABILITY GUARD
  * Ensures the hydration handshake is complete before rendering complex nodes.
  * This permanently prevents "White Screen" issues caused by hydration mismatches.
  */
@@ -19,7 +19,7 @@ export default function RootStabilityGuard({ children }: { children: React.React
         try {
             OB_OS.init();
         } catch (e) {
-            console.error("[APEX_OS] Kernel Initialization Failure:", e);
+            console.error("[ONLINE_BAR] Initialization failure:", e);
         }
 
         // 2. Set Hydration Milestone
@@ -28,7 +28,7 @@ export default function RootStabilityGuard({ children }: { children: React.React
         // 3. Global Error Recovery Listener
         const handleGlobalError = (event: ErrorEvent) => {
             if (event.error) {
-                console.error("[APEX_OS] Panic Signal Captured:", event.error);
+                console.error("[ONLINE_BAR] Unhandled browser error:", event.error);
             }
             // We let the ErrorBoundary handle it if possible, but log it here.
         };

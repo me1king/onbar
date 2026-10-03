@@ -24,7 +24,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("[APEX_OS] Sub-Node Exception:", error, errorInfo);
+    console.error("[ONLINE_BAR] Component error:", error, errorInfo);
   }
 
   public render() {

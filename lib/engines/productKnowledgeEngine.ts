@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient';
 
 /**
- * APEX OS: PRODUCT KNOWLEDGE ENGINE v2
+ * PRODUCT KNOWLEDGE ENGINE v2
  * Central orchestrator for the Kenya Master Beverage Catalogue.
  * Handles hierarchy, dossiers, and multi-source research data.
  */
@@ -138,4 +138,4 @@ class ProductKnowledgeEngine {
     }
 }
 
-export const ApexKnowledge = ProductKnowledgeEngine.getInstance();
+export const productKnowledgeEngine = ProductKnowledgeEngine.getInstance();

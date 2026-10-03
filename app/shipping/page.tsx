@@ -94,7 +94,7 @@ export default function ShippingInfoPage() {
         {/* Footer Section */}
 <div className="border-t mt-10 pt-6 text-center">
   <p className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
-    © {new Date().getFullYear()} Apexstores. All Rights Reserved.
+    © {new Date().getFullYear()} Online Bar. All Rights Reserved.
   </p>
 </div>
       </div>

@@ -147,7 +147,7 @@ export default function CompareModal({
                         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                             <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-white flex items-center justify-center text-brand-red shadow-sm border border-brand-red/10"><Trophy className="h-5 w-5 sm:h-6 sm:w-6" /></div>
                             <div className="min-w-0">
-                                <p className="font-black text-foreground uppercase text-xs">Apex Recommendation</p>
+                                <p className="font-black text-foreground uppercase text-xs">Recommended for you</p>
                                 <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest italic">Best choice for your selection</p>
                             </div>
                         </div>

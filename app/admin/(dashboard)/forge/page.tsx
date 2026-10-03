@@ -100,7 +100,7 @@ export default function ProductForgeDashboard() {
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary italic text-left">Catalogue Intelligence Node</span>
                     </div>
                     <h1 className="text-4xl lg:text-5xl font-black text-foreground uppercase tracking-tighter leading-none italic">
-                        Apex Product <span className="text-primary">Forge.</span>
+                        Product <span className="text-primary">Studio.</span>
                     </h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1">Transform raw inventory into high-conversion digital assets.</p>
                 </div>

@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient';
 import { triggerNotificationByEvent } from './notificationService';
 
 /**
- * APEX OS: PREDICTIVE INTELLIGENCE ENGINE
+ * PREDICTIVE INTELLIGENCE ENGINE
  * Analyzes behavioral patterns to anticipate patron needs and secure recurring revenue.
  */
 
@@ -77,4 +77,4 @@ class PredictiveEngine {
     }
 }
 
-export const ApexMind = PredictiveEngine.getInstance();
+export const predictiveEngine = PredictiveEngine.getInstance();

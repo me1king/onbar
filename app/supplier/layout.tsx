@@ -8,7 +8,7 @@ import SupplierLayoutClient from './layout-client';
 
 export const metadata = {
   robots: 'noindex, nofollow',
-  title: 'Apexstores | Supplier Portal',
+  title: 'Online Bar | Supplier Portal',
 };
 
 export const dynamic = 'force-dynamic';

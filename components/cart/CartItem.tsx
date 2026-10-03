@@ -12,8 +12,11 @@ interface CartItemProps {
     id: number;
     name: string;
     price: number;
+    base_price?: number;
     image: string;
     quantity: number;
+    cart_key?: string;
+    addons?: Array<{ id: string; name: string; price: number }>;
   };
   isLast: boolean;
 }
@@ -43,12 +46,17 @@ export default function CartItem({ item, isLast }: CartItemProps) {
               <p className="text-sm text-muted-foreground mt-1">
                 {formatPrice(item.price)} each
               </p>
+              {item.addons && item.addons.length > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Extras: {item.addons.map(addon => addon.name).join(', ')}
+                </p>
+              )}
             </div>
 
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => removeFromCart(item.id)}
+              onClick={() => removeFromCart(item.id, item.cart_key)}
               className="text-muted-foreground hover:text-destructive h-8 w-8 shrink-0"
             >
               <Trash2 className="h-4 w-4" />
@@ -61,7 +69,7 @@ export default function CartItem({ item, isLast }: CartItemProps) {
                 variant="ghost"
                 size="icon"
                 onClick={() =>
-                  updateQuantity(item.id, Math.max(1, item.quantity - 1))
+                  updateQuantity(item.id, Math.max(1, item.quantity - 1), item.cart_key)
                 }
                 disabled={item.quantity <= 1}
                 className="h-8 w-8 rounded-r-none"
@@ -74,7 +82,7 @@ export default function CartItem({ item, isLast }: CartItemProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                onClick={() => updateQuantity(item.id, item.quantity + 1, item.cart_key)}
                 className="h-8 w-8 rounded-l-none"
               >
                 <Plus className="h-3 w-3" />

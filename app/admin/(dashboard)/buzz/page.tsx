@@ -10,7 +10,6 @@ import {
     Camera,
     Plus,
     TrendingUp,
-    CheckCircle2,
     Trash2,
     Activity,
     Navigation,
@@ -31,44 +30,58 @@ interface BuzzPost {
     title: string;
     status: string;
     trend_score: number;
-    area_zone: string;
+    area_zone: string | null;
     start_at: string;
-    category_label?: string;
-    confidence?: number;
 }
 
 export default function BuzzCommandTower() {
     const [activeTab, setActiveTab] = React.useState<'happenings' | 'venues'>('happenings');
     const [posts, setPosts] = React.useState<BuzzPost[]>([]);
-    const [areas, setAreas] = React.useState<Array<{ is_active: boolean }>>([]);
+    const [areas, setAreas] = React.useState<Array<{ zone_name: string; is_active: boolean }>>([]);
+    const [venueCounts, setVenueCounts] = React.useState<{ verified: number; pending: number } | null>(null);
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState<string | null>(null);
     const [studioOpen, setStudioOpen] = React.useState(false);
     const [editingPostId, setEditingPostId] = React.useState<string | null>(null);
 
     const fetchBuzz = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setLoadError('Supabase is not configured. Buzz data is unavailable.');
+            setLoading(false);
+            return;
+        }
         setLoading(true);
+        setLoadError(null);
         try {
-            const [postsRes, areasRes] = await Promise.all([
-                supabase.from('buzz_posts').select('*, buzz_categories(label)').order('created_at', { ascending: false }),
-                supabase.from('pulse_areas').select('*')
+            const [postsRes, areasRes, venuesRes] = await Promise.all([
+                supabase.from('buzz_posts')
+                    .select('id, title, status, trend_score, area_zone, start_at')
+                    .order('created_at', { ascending: false }),
+                supabase.from('pulse_areas').select('zone_name, is_active'),
+                supabase.from('buzz_venues').select('id, is_verified')
             ]);
 
+            if (postsRes.error) throw new Error(`Could not load buzz posts: ${postsRes.error.message}`);
+            if (areasRes.error) throw new Error(`Could not load registered areas: ${areasRes.error.message}`);
+            if (venuesRes.error) throw new Error(`Could not load venue verification data: ${venuesRes.error.message}`);
+
             if (postsRes.data) {
-                setPosts((postsRes.data as { id: string, title: string, status: string, trend_score: number, area_zone: string, start_at: string, buzz_categories: { label: string } | null }[]).map((d) => ({
-                    id: d.id,
-                    title: d.title,
-                    status: d.status,
-                    trend_score: d.trend_score,
-                    area_zone: d.area_zone,
-                    start_at: d.start_at,
-                    category_label: d.buzz_categories?.label || 'General'
-                })));
+                setPosts(postsRes.data as BuzzPost[]);
             }
 
             if (areasRes.data) setAreas(areasRes.data);
+            setVenueCounts({
+                verified: (venuesRes.data || []).filter(venue => venue.is_verified).length,
+                pending: (venuesRes.data || []).filter(venue => !venue.is_verified).length
+            });
 
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error('[BuzzCommand] Could not load dashboard data:', err);
+            setLoadError(err instanceof Error ? err.message : 'Could not load Buzz dashboard data.');
+            setPosts([]);
+            setAreas([]);
+            setVenueCounts(null);
+        }
         finally { setLoading(false); }
     }, []);
 
@@ -116,6 +129,15 @@ export default function BuzzCommandTower() {
                 </div>
             </header>
 
+            {loadError && (
+                <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700">
+                    <p>{loadError}</p>
+                    <Button onClick={fetchBuzz} variant="outline" className="mt-3 rounded-xl border-rose-200 bg-white text-rose-700">
+                        Retry loading Buzz data
+                    </Button>
+                </div>
+            )}
+
             {activeTab === 'happenings' ? (
                 <>
                 {/* 📡 GLOBAL PULSE (LIGHT THEME) */}
@@ -138,7 +160,9 @@ export default function BuzzCommandTower() {
                         </div>
                         <div className="space-y-1">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{node.label}</p>
-                            <h3 className="text-2xl font-black text-foreground tracking-tighter uppercase leading-none">{node.val}</h3>
+                            <h3 className="text-2xl font-black text-foreground tracking-tighter uppercase leading-none">
+                                {loading ? '…' : loadError ? '—' : node.val}
+                            </h3>
                         </div>
                     </Card>
                 ))}
@@ -161,6 +185,12 @@ export default function BuzzCommandTower() {
                                 <Loader2 className="h-10 w-10 text-primary animate-spin" />
                                 <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-300">Synchronizing City Signal...</p>
                             </div>
+                        ) : posts.length === 0 ? (
+                            <div className="py-16 rounded-[3rem] border border-slate-100 bg-white text-center">
+                                <p className="text-sm font-bold text-slate-500">
+                                    {loadError ? 'Buzz posts are unavailable until the data connection is restored.' : 'No buzz posts are currently recorded.'}
+                                </p>
+                            </div>
                         ) : posts.map(post => (
                             <Card key={post.id} className={cn(
                                 "p-8 rounded-[3.5rem] bg-white border transition-all hover:shadow-2xl relative overflow-hidden group",
@@ -176,14 +206,9 @@ export default function BuzzCommandTower() {
                                         </div>
                                         <div className="space-y-1 min-w-0">
                                             <div className="flex items-center gap-3">
-                                                <span className="text-[9px] font-black uppercase text-primary tracking-widest">{post.category_label}</span>
-                                                <div className="h-1 w-1 rounded-full bg-slate-200" />
-                                                <span className="text-[8px] font-black uppercase text-slate-400">{post.area_zone}</span>
+                                                <span className="text-[8px] font-black uppercase text-slate-400">{post.area_zone || 'Area not recorded'}</span>
                                             </div>
                                             <h3 className="text-2xl font-black text-foreground uppercase tracking-tight truncate leading-none">{post.title}</h3>
-                                            <div className="flex items-center gap-4 text-[9px] font-black text-slate-300 uppercase tracking-widest mt-3">
-                                                <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-50 text-emerald-600 border border-emerald-100"><CheckCircle2 size={10} /> {post.confidence}% Confident</span>
-                                            </div>
                                         </div>
                                     </div>
 
@@ -233,26 +258,28 @@ export default function BuzzCommandTower() {
                             </div>
 
                             <p className="text-sm font-medium text-slate-500 italic leading-relaxed">
-                                &quot;Monitoring aggregated sector-level traffic and search demand to identify emerging city hotspots.&quot;
+                                Counts are based on live and trending posts currently saved for each registered area.
                             </p>
 
                             <div className="space-y-6">
-                                {[
-                                    { label: 'Westlands Grid', val: 94, color: 'bg-primary' },
-                                    { label: 'Kilimani Node', val: 81, color: 'bg-emerald-500' },
-                                    { label: 'Lavington Area', val: 42, color: 'bg-amber-500' },
-                                    { label: 'CBD Central', val: 19, color: 'bg-slate-200' },
-                                ].map(sector => (
-                                    <div key={sector.label} className="space-y-2">
-                                        <div className="flex justify-between items-end">
-                                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{sector.label}</span>
-                                            <span className="text-sm font-black text-foreground">{sector.val}%</span>
+                                {areas.length === 0 ? (
+                                    <p className="text-sm font-semibold text-slate-400">No registered areas are available.</p>
+                                ) : areas.map((area) => {
+                                    const count = posts.filter(post =>
+                                        post.area_zone?.toLowerCase() === area.zone_name.toLowerCase()
+                                        && ['LIVE', 'TRENDING'].includes(post.status)
+                                    ).length;
+                                    return (
+                                        <div key={area.zone_name} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3 last:border-0">
+                                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                                                {area.zone_name}
+                                            </span>
+                                            <span className="text-sm font-black text-foreground">
+                                                {count} {count === 1 ? 'post' : 'posts'}
+                                            </span>
                                         </div>
-                                        <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                                            <div className={cn("h-full rounded-full transition-all duration-1000", sector.color)} style={{ width: `${sector.val}%` }} />
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     </Card>
@@ -264,16 +291,20 @@ export default function BuzzCommandTower() {
                                 <h3 className="text-2xl font-black uppercase tracking-tighter text-foreground leading-none">Trust Sentinel</h3>
                             </div>
                             <p className="text-sm font-medium text-slate-400 leading-relaxed italic">
-                                &quot;All city nodes must be verified within a 12-hour window to maintain high confidence status.&quot;
+                                Venue counts reflect the current verification state stored in the venue registry.
                             </p>
                             <div className="space-y-4">
                                 <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
                                     <Clock size={16} className="text-primary" />
-                                    <span className="text-[9px] font-black uppercase text-slate-500">14 Expiry Alerts</span>
+                                    <span className="text-[9px] font-black uppercase text-slate-500">
+                                        {venueCounts === null ? 'Venue verification data unavailable' : `${venueCounts.pending} venues pending verification`}
+                                    </span>
                                 </div>
                                 <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
                                     <Star size={16} className="text-amber-500" />
-                                    <span className="text-[9px] font-black uppercase text-slate-500">8 New Venue Claims</span>
+                                    <span className="text-[9px] font-black uppercase text-slate-500">
+                                        {venueCounts === null ? 'Venue verification data unavailable' : `${venueCounts.verified} verified venues`}
+                                    </span>
                                 </div>
                             </div>
                         </div>

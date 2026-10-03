@@ -255,15 +255,15 @@ export default function AdminCustomersPage() {
   }
 
   return (
-    <div className="p-4 sm:p-8 space-y-8">
+    <div className="min-w-0 space-y-8 p-4 sm:p-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 border-b border-slate-200 pb-10">
-        <div>
-          <h1 className="text-4xl font-black tracking-tight text-foreground uppercase tracking-tighter leading-none">Customer Directory</h1>
+      <div className="flex min-w-0 flex-col items-start justify-between gap-6 border-b border-slate-200 pb-10 sm:flex-row sm:items-center">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-black uppercase leading-tight tracking-tighter text-foreground sm:text-4xl">Customer Directory</h1>
           <p className="text-slate-500 text-sm font-medium mt-1">Track your most loyal shoppers and their purchase history.</p>
         </div>
-        <div className="flex gap-2">
-            <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex overflow-x-auto no-scrollbar max-w-sm sm:max-w-none">
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row">
+            <div className="flex w-full min-w-0 overflow-x-auto rounded-2xl border border-slate-100 bg-white p-1 shadow-sm no-scrollbar sm:w-auto sm:max-w-none">
                 {['all', 'VIP Premium', 'Repeat Buyer', 'Partner'].map(f => (
                     <button
                         key={f}
@@ -277,7 +277,7 @@ export default function AdminCustomersPage() {
                     </button>
                 ))}
             </div>
-            <div className="relative w-full sm:w-64">
+            <div className="relative w-full min-w-0 sm:w-64">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                     placeholder="Search Grid..."
@@ -296,12 +296,12 @@ export default function AdminCustomersPage() {
       />
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 sm:gap-6">
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-6">
           <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
             <Users className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total Shoppers</p>
             <h3 className="text-2xl font-black text-foreground mt-2 uppercase tracking-tighter">{customers.length}</h3>
           </div>
@@ -310,7 +310,7 @@ export default function AdminCustomersPage() {
           <div className="h-12 w-12 rounded-xl bg-primary/5 flex items-center justify-center text-primary">
             <DollarSign className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Customer LTV</p>
             <h3 className="text-2xl font-black text-foreground mt-2 uppercase tracking-tighter">
               {formatPrice(customers.length > 0 ? customers.reduce((s, c) => s + c.totalSpend, 0) / customers.length : 0)}
@@ -321,7 +321,7 @@ export default function AdminCustomersPage() {
           <div className="h-12 w-12 rounded-xl bg-primary/5 flex items-center justify-center text-primary">
             <Crown className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Premium VIPs</p>
             <h3 className="text-2xl font-black text-foreground mt-2 uppercase tracking-tighter">
               {customers.filter(c => c.isVIP).length}
@@ -332,7 +332,7 @@ export default function AdminCustomersPage() {
           <div className="h-12 w-12 rounded-xl bg-primary/5 flex items-center justify-center text-primary">
             <Zap className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Viral Impact</p>
             <h3 className="text-2xl font-black text-foreground mt-2 uppercase tracking-tighter">
               {customers.reduce((s, c) => s + c.referredCount, 0)} Refs

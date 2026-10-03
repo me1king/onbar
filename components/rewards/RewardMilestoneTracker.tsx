@@ -8,7 +8,7 @@ import {
     Sparkles
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { ApexLoyalty, TierInfo } from '@/lib/engines/loyaltyEngine';
+import { loyaltyEngine, TierInfo } from '@/lib/engines/loyaltyEngine';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function RewardMilestoneTracker() {
@@ -20,7 +20,7 @@ export default function RewardMilestoneTracker() {
             if (!supabase) return;
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
-                const info = await ApexLoyalty.getPatronStanding(session.user.id);
+                const info = await loyaltyEngine.getPatronStanding(session.user.id);
                 setTier(info);
             }
             setLoading(false);

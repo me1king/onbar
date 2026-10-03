@@ -1,42 +1,30 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Activity, Database, Globe, Truck, CheckCircle2, ShieldAlert, Power } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export default function SystemPulseWidget() {
     const [latency, setLatency] = React.useState<{ db: number | null; api: null; logistics: null }>({ db: null, api: null, logistics: null });
-    const [status, setStatus] = React.useState({ db: 'checking', api: 'not connected', logistics: 'not connected' });
+    const [status, setStatus] = React.useState({ db: 'checking', api: 'not monitored', logistics: 'not monitored' });
     const [killSwitchActive, setKillSwitchActive] = React.useState<boolean | null>(null);
     const [settingsError, setSettingsError] = React.useState<string | null>(null);
     const [savingLockdown, setSavingLockdown] = React.useState(false);
 
     React.useEffect(() => {
         async function checkLatency() {
-            if (!supabase) {
-                setStatus(prev => ({ ...prev, db: 'not configured' }));
-                setLatency(prev => ({ ...prev, db: null }));
-                setKillSwitchActive(null);
-                return;
-            }
             const start = performance.now();
             try {
-                const [{ error: pingError }, { data, error: settingsError }] = await Promise.all([
-                    supabase.from('settings').select('key').limit(1),
-                    supabase.from('settings').select('value').eq('key', 'system_lockdown').maybeSingle()
-                ]);
-                if (pingError) throw pingError;
-                if (settingsError) throw settingsError;
+                const response = await fetch('/api/admin/system-lockdown', { cache: 'no-store' });
+                const result = await response.json() as { active?: boolean; error?: string };
+                if (!response.ok) throw new Error(result.error || 'System status could not be loaded.');
+                if (typeof result.active !== 'boolean') throw new Error('System status response was invalid.');
                 const end = performance.now();
 
                 setLatency(prev => ({ ...prev, db: Math.round(end - start) }));
                 setStatus(prev => ({ ...prev, db: 'online' }));
-                const value = data?.value;
-                setKillSwitchActive(
-                    typeof value === 'object' && value !== null && 'active' in value && value.active === true
-                );
+                setKillSwitchActive(result.active);
             } catch (error) {
                 console.error('System status check failed:', error);
                 setStatus(prev => ({ ...prev, db: 'unavailable' }));
@@ -57,18 +45,26 @@ export default function SystemPulseWidget() {
     ];
 
     const toggleKillSwitch = async () => {
-        if (!supabase || killSwitchActive === null || savingLockdown) return;
+        if (killSwitchActive === null || savingLockdown) return;
         const next = !killSwitchActive;
+        const confirmed = window.confirm(
+            next
+                ? 'Initiate system lockdown? New checkout orders will be paused.'
+                : 'Deactivate system lockdown and resume checkout orders?'
+        );
+        if (!confirmed) return;
         setSavingLockdown(true);
         setSettingsError(null);
         try {
-            const { error } = await supabase.from('settings').upsert({
-                key: 'system_lockdown',
-                value: { active: next, timestamp: new Date().toISOString() },
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'key' });
-            if (error) throw error;
-            setKillSwitchActive(next);
+            const response = await fetch('/api/admin/system-lockdown', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: next })
+            });
+            const result = await response.json() as { active?: boolean; error?: string };
+            if (!response.ok) throw new Error(result.error || 'Could not save the lockdown setting.');
+            if (typeof result.active !== 'boolean') throw new Error('Lockdown update response was invalid.');
+            setKillSwitchActive(result.active);
         } catch (error) {
             console.error('Could not save the system lockdown setting:', error);
             setSettingsError(error instanceof Error ? error.message : 'Could not save the lockdown setting.');

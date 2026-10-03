@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { NextResponse } from "next/server";
 
 /**
- * Apex Autonomous Payout Worker
+ * Automated payout worker
  * Automates disbursements to Riders and Suppliers.
  */
 export async function POST(request: Request) {

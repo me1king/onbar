@@ -187,7 +187,7 @@ export default function AdminReviewHub() {
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
         <div>
           <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">Community Feedback</h1>
-          <p className="text-slate-500 text-sm font-medium mt-1">Moderate customer reviews and personally respond to the Apex community.</p>
+          <p className="text-slate-500 text-sm font-medium mt-1">Moderate customer reviews and personally respond to the Online Bar community.</p>
         </div>
         <div className="flex gap-2">
             <Button onClick={scrubPlaceholders} disabled={scrubbing} variant="outline" className="rounded-xl h-12 px-6 border-rose-100 bg-white text-rose-600 font-black uppercase text-[10px] tracking-widest hover:bg-rose-50 transition-all">

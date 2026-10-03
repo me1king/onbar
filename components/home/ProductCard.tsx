@@ -15,11 +15,11 @@ import {
     Utensils
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useState } from "react";
 import { useWishlist } from "@/context/WishlistContext";
 import { useSettings } from "@/lib/useSettings";
-import { OB_OS } from "@/lib/onlineBarOS";
 import { Product } from "@/types/product";
 
 const TIER_RANK: Record<string, number> = {
@@ -31,6 +31,7 @@ const TIER_RANK: Record<string, number> = {
 };
 
 export default function ProductCard({ product, userTier = 'Explorer' }: { product: Product, userTier?: string }) {
+  const router = useRouter();
   const [imageError, setImageError] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
@@ -74,16 +75,15 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
     e.preventDefault();
     e.stopPropagation();
     if (isLocked || !isBiteOpen) return;
+    if (product.is_bite || product.is_snack) {
+      router.push(`/shop/${product.id}`);
+      return;
+    }
 
     // Standardize variant selection for quick add
     const variant = (product.sizes && product.sizes.length > 0) ? product.sizes[0] : 'Standard';
 
     setIsAdding(true);
-    OB_OS.track('ADD_TO_CART', {
-        productId: product.id,
-        amount: product.price,
-        details: { name: product.name, category: product.category, size: variant }
-    });
     addToCart({
       id: product.id,
       name: product.name,

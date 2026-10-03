@@ -13,7 +13,8 @@ import {
     Loader2,
     Coffee,
     Sparkles,
-    Plus
+    Plus,
+    X
 } from 'lucide-react';
 import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
@@ -33,6 +34,12 @@ interface BiteItem {
     popular?: boolean;
 }
 
+interface FoodAddon {
+    id: string;
+    name: string;
+    price: number;
+}
+
 const CATEGORIES = ['All', 'Hot Right Now', 'Street Bites', 'Burgers & Wings', 'Drink Pairings'];
 
 export default function BiteCommandPage() {
@@ -42,10 +49,40 @@ export default function BiteCommandPage() {
     const [addError, setAddError] = useState<string | null>(null);
     const [activeCat, setActiveCat] = useState('All');
     const [addedId, setAddedId] = useState<number | string | null>(null);
+    const [selectedBite, setSelectedBite] = useState<BiteItem | null>(null);
+    const [addons, setAddons] = useState<FoodAddon[]>([]);
+    const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+    const [addonError, setAddonError] = useState<string | null>(null);
+    const [addonsLoading, setAddonsLoading] = useState(true);
 
     const { addToCart } = useCart();
 
     useEffect(() => {
+        async function fetchAddons() {
+            if (!supabase) {
+                setAddonsLoading(false);
+                return;
+            }
+            try {
+                const { data, error: addonsError } = await supabase
+                    .from('food_addons')
+                    .select('id, name, price')
+                    .eq('is_active', true)
+                    .order('name');
+                if (addonsError) {
+                    console.error('Unable to load meal extras:', addonsError);
+                    setAddonError('Meal extras are temporarily unavailable. You can still order the meal without extras.');
+                } else {
+                    setAddons((data || []) as FoodAddon[]);
+                }
+            } catch (error) {
+                console.error('Unable to load meal extras:', error);
+                setAddonError('Meal extras are temporarily unavailable. You can still order the meal without extras.');
+            } finally {
+                setAddonsLoading(false);
+            }
+        }
+
         async function fetchBites() {
             setLoading(true);
             setError(null);
@@ -73,6 +110,7 @@ export default function BiteCommandPage() {
             }
         }
         fetchBites();
+        fetchAddons();
 
         if (supabase) {
             const channel = supabase
@@ -94,20 +132,30 @@ export default function BiteCommandPage() {
             setAddError('This product has an invalid catalogue ID and cannot be added to your bag.');
             return;
         }
+        setSelectedAddonIds([]);
+        setSelectedBite(item);
+        setAddError(null);
+    };
 
+    const confirmAddBite = () => {
+        if (!selectedBite) return;
+        const productId = Number(selectedBite.id);
+        const selectedAddons = addons.filter(addon => selectedAddonIds.includes(addon.id));
         addToCart({
             id: productId,
-            name: item.name,
-            price: item.price,
-            base_price: item.price,
-            image: normalizeImage(item.image_url || ''),
+            name: selectedBite.name,
+            price: selectedBite.price + selectedAddons.reduce((sum, addon) => sum + Number(addon.price), 0),
+            base_price: selectedBite.price,
+            image: normalizeImage(selectedBite.image_url || ''),
             quantity: 1,
-            category: item.category
+            category: selectedBite.category,
+            addons: selectedAddons.map(addon => ({ ...addon, price: Number(addon.price) }))
         });
 
         setAddError(null);
-        setAddedId(item.id);
+        setAddedId(selectedBite.id);
         setTimeout(() => setAddedId(null), 2000);
+        setSelectedBite(null);
     };
 
     const filteredBites = bites.filter(b => {
@@ -117,6 +165,63 @@ export default function BiteCommandPage() {
 
     return (
         <div className="min-h-screen bg-slate-50 text-foreground text-left selection:bg-primary/20 pb-40">
+            {selectedBite && (
+                <div className="fixed inset-0 z-[3000] flex items-end sm:items-center justify-center bg-slate-900/60 p-2 sm:p-4 backdrop-blur-sm">
+                    <Card className="max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-3xl bg-white p-5 text-left shadow-2xl sm:p-8">
+                        <div className="mb-5 flex items-start justify-between gap-4">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Customize your meal</p>
+                                <h2 className="mt-1 text-2xl font-black uppercase tracking-tight">{selectedBite.name}</h2>
+                                <p className="mt-1 text-sm font-bold text-slate-500">Base price {formatPrice(selectedBite.price)}</p>
+                            </div>
+                            <button onClick={() => setSelectedBite(null)} className="rounded-full bg-slate-100 p-2 text-slate-600" aria-label="Close meal options"><X size={18} /></button>
+                        </div>
+                        <h3 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Add extras</h3>
+                        {addonError && <p role="status" className="mb-3 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">{addonError}</p>}
+                        {addonsLoading ? (
+                            <p className="rounded-xl border border-slate-100 p-4 text-sm text-slate-500">Loading meal extras…</p>
+                        ) : addons.length === 0 ? (
+                            <p className="rounded-xl border border-slate-100 p-4 text-sm text-slate-500">No meal extras are currently available.</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {addons.map(addon => {
+                                    const checked = selectedAddonIds.includes(addon.id);
+                                    return (
+                                        <button
+                                            key={addon.id}
+                                            type="button"
+                                            aria-pressed={checked}
+                                            onClick={() => setSelectedAddonIds(current => checked ? current.filter(id => id !== addon.id) : [...current, addon.id])}
+                                            className={cn(
+                                                'flex w-full items-center justify-between rounded-xl border p-4 text-left transition-colors',
+                                                checked ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white hover:bg-slate-50'
+                                            )}
+                                        >
+                                            <span className="flex items-center gap-3">
+                                                <span className={cn('flex h-5 w-5 items-center justify-center rounded border text-xs', checked ? 'border-primary bg-primary text-white' : 'border-slate-300')}>
+                                                    {checked ? '✓' : ''}
+                                                </span>
+                                                <span className="text-sm font-bold">{addon.name}</span>
+                                            </span>
+                                            <span className="text-sm font-black text-primary">+{formatPrice(Number(addon.price))}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-5">
+                            <div>
+                                <p className="text-[9px] font-bold uppercase text-slate-400">Total per meal</p>
+                                <p className="text-xl font-black">{formatPrice(selectedBite.price + addons.filter(addon => selectedAddonIds.includes(addon.id)).reduce((sum, addon) => sum + Number(addon.price), 0))}</p>
+                            </div>
+                            <Button onClick={confirmAddBite} disabled={addonsLoading} className="rounded-xl bg-primary px-6 font-black text-white">
+                                <Plus size={16} className="mr-2" /> Add to Bag
+                            </Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
             {/* HERO SECTION */}
             <header className="bg-white border-b border-slate-200/80 py-16 px-4 sm:px-6 lg:px-8 relative overflow-hidden shadow-sm">
                 <div className="max-w-7xl mx-auto relative z-10 space-y-6">
@@ -185,13 +290,13 @@ export default function BiteCommandPage() {
                         )}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
                         {filteredBites.map((item) => (
-                            <Card key={item.id} className="p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md hover:shadow-xl transition-all group flex flex-col justify-between text-left relative overflow-hidden">
+                            <Card key={item.id} className="min-w-0 p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md hover:shadow-xl transition-all group flex flex-col justify-between text-left relative overflow-hidden">
                                 <div className="relative z-10 space-y-5">
                                     {/* Image Stage */}
-                                    <div className="relative aspect-[4/3] w-full min-w-0 rounded-xl sm:rounded-[2.5rem] bg-slate-50/80 border border-slate-100 overflow-hidden flex items-center justify-center p-2 sm:p-6 shadow-inner group-hover:scale-105 transition-transform duration-700">
-                                        <Image src={normalizeImage(item.image_url)} alt={item.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover rounded-lg sm:rounded-[2rem]" />
+                                    <div className="relative aspect-[4/3] w-full min-w-0 rounded-xl sm:rounded-[2rem] bg-slate-50/80 border border-slate-100 overflow-hidden flex items-center justify-center shadow-inner">
+                                        <Image src={normalizeImage(item.image_url)} alt={item.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-contain p-2 sm:p-4" />
 
                                         {/* Top Badges */}
                                         <div className="absolute top-4 left-4 flex gap-2">

@@ -134,14 +134,17 @@ function CheckoutContent() {
 
   useEffect(() => {
     async function checkLockdown() {
-        if (!supabase) return;
-        const { data } = await supabase.from('settings').select('value').eq('key', 'system_lockdown').maybeSingle();
-        const val = data?.value as { active?: boolean };
-        if (val?.active) {
-            setIsSystemLockdown(true);
+        try {
+            const response = await fetch('/api/admin/system-lockdown', { cache: 'no-store' });
+            const result = await response.json() as { active?: boolean; error?: string };
+            if (!response.ok) throw new Error(result.error || 'System lockdown status could not be checked.');
+            if (typeof result.active !== 'boolean') throw new Error('System lockdown status response was invalid.');
+            setIsSystemLockdown(result.active);
+        } catch (error) {
+            console.error('Could not check the system lockdown status:', error);
         }
     }
-    checkLockdown();
+    void checkLockdown();
 
     // 🎁 Restores pre-filled gift note from Gifting Hub / Cart session
     try {
@@ -595,6 +598,7 @@ function CheckoutContent() {
               unit_price: item.price,
               unit_cost: dbProd?.cost_price || 0,
               size: item.size || 'Standard',
+              addons: item.addons || [],
               status: 'Pending'
           };
       });

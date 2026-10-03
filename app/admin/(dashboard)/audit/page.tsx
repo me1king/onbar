@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
   History,
   Search,
@@ -185,24 +184,12 @@ export default function AdminAuditPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchLogs = async () => {
-    if (!supabase) {
-        setLoading(false);
-        return;
-    }
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-          if (error.message.includes('not found') || error.message.includes('does not exist')) {
-              throw new Error("Audit Node Offline: The audit_logs table is missing. Run the establishment SQL in Supabase. 🛰️");
-          }
-          throw error;
-      }
-      setLogs(data || []);
+      const response = await fetch('/api/admin/audit-logs', { cache: 'no-store' });
+      const result = await response.json() as { logs?: AuditLog[]; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Audit logs could not be loaded.');
+      setLogs(result.logs || []);
     } catch (err: unknown) {
       const error = err as { message?: string, stack?: string };
       console.error("[OB_OS] Audit Fetch Failure:", error);
@@ -223,26 +210,28 @@ export default function AdminAuditPage() {
   }, []);
 
   const clearLogs = async () => {
-      if (!supabase || !confirm("Clear all audit history? This cannot be undone.")) return;
+      if (!confirm("Clear all audit history? This cannot be undone.")) return;
       try {
-          const { error } = await supabase.from('audit_logs').delete().neq('action', 'NUCLEAR_RESET');
-          if (error) throw error;
+          const response = await fetch('/api/admin/audit-logs', { method: 'DELETE' });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Could not clear audit history.');
           setLogs([]);
           alert("Audit Node Purged Successfully. 🛡️");
       } catch (err) {
-          console.error(err);
+          console.error('Could not clear audit logs:', err);
+          alert(err instanceof Error ? err.message : 'Could not clear audit history.');
       }
   };
 
   const runNuclearPing = async () => {
-      if (!supabase) return alert("Supabase Node not initialized.");
       try {
-          const { error } = await supabase.from('audit_logs').select('count', { count: 'exact', head: true }).limit(1);
-          if (error) throw error;
+          const response = await fetch('/api/admin/audit-logs', { method: 'POST' });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Audit log health check failed.');
           alert("🛰️ Grid Uplink: HEALTHY. Audit node is online.");
       } catch (err: unknown) {
-          const error = err as { message: string, code?: string };
-          alert(`🛑 Grid Uplink: FAILED.\nMessage: ${error.message}\nCode: ${error.code || 'UNKNOWN'}\n\nVerify the Supabase URL and public key configuration.`);
+          const message = err instanceof Error ? err.message : 'Unknown error.';
+          alert(`🛑 Grid Uplink: FAILED.\nMessage: ${message}`);
       }
   };
 

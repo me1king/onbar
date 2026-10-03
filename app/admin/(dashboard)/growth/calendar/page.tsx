@@ -47,6 +47,15 @@ const MISSION_COLORS: Record<string, { bg: string; text: string; dot: string; la
     souvenir: { bg: "bg-purple-50 border-purple-200", text: "text-purple-700", dot: "bg-purple-500", label: "Souvenir" }
 };
 
+function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'object' && error !== null && 'message' in error
+        && typeof error.message === 'string') {
+        return error.message;
+    }
+    return fallback;
+}
+
 export default function GrowthCalendar() {
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -79,25 +88,43 @@ export default function GrowthCalendar() {
         setLoading(true);
         setError(null);
         try {
-            const { data, error: queryError } = await supabase
+            const { data: queueRows, error: queryError } = await supabase
                 .from('publishing_queue')
-                .select(`*, content_master(title, base_description)`)
+                .select('*')
                 .order('scheduled_at', { ascending: true });
 
             if (queryError) throw queryError;
-            const formatted: ScheduledMission[] = (data || [])
+            const rows = queueRows || [];
+            const masterIds = [...new Set(rows
+                .map(item => item.master_id)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0))];
+            const contentById = new Map<string, { title: string | null; base_description: string | null }>();
+
+            if (masterIds.length > 0) {
+                const { data: contentRows, error: contentError } = await supabase
+                    .from('content_master')
+                    .select('id, title, base_description')
+                    .in('id', masterIds);
+                if (contentError) throw contentError;
+                for (const content of contentRows || []) {
+                    contentById.set(String(content.id), content);
+                }
+            }
+
+            const formatted: ScheduledMission[] = rows
                 .filter(item => item.scheduled_at && Number.isFinite(new Date(item.scheduled_at).getTime()))
                 .map(item => {
                     const scheduledAt = new Date(item.scheduled_at);
+                    const content = contentById.get(String(item.master_id));
                     return {
                         id: String(item.id),
-                        title: item.content_master?.title || item.title || 'Untitled schedule',
+                        title: content?.title || item.title || 'Untitled schedule',
                         time: scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                         day: scheduledAt.getDate(),
                         scheduledAt: scheduledAt.toISOString(),
                         type: (item.platform || 'other').toLowerCase() as ScheduledMission['type'],
                         status: (item.status || 'SCHEDULED') as ScheduledMission['status'],
-                        caption: item.content_master?.base_description || undefined,
+                        caption: content?.base_description || undefined,
                         image_url: item.image_url || undefined
                     };
                 });
@@ -105,7 +132,7 @@ export default function GrowthCalendar() {
         } catch (err) {
             console.error('Publishing queue fetch error:', err);
             setMissions([]);
-            setError(err instanceof Error ? err.message : 'Unable to load the publishing queue.');
+            setError(getErrorMessage(err, 'Unable to load the publishing queue.'));
         } finally {
             setLoading(false);
         }
@@ -169,7 +196,7 @@ export default function GrowthCalendar() {
             setNotice('Schedule saved to the internal queue. It will not publish until platform integrations are configured.');
         } catch (err) {
             console.error('Publishing queue save error:', err);
-            setError(err instanceof Error ? err.message : 'Unable to save the schedule.');
+            setError(getErrorMessage(err, 'Unable to save the schedule.'));
         }
     };
 

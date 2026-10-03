@@ -1,5 +1,6 @@
-const SESSION_SECRET =
-  process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_PASSWORD || 'apexstores';
+function getSessionSecret() {
+  return process.env.ADMIN_SESSION_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
+}
 
 /**
  * Universal Base64 Encoder (Safe for Unicode and Edge Runtime)
@@ -32,8 +33,13 @@ function fromBase64(str: string): string {
  * Portable signing function using Web Crypto API (Edge Runtime Compatible)
  */
 async function signToken(token: string) {
+  const sessionSecret = getSessionSecret();
+  if (!sessionSecret) {
+    throw new Error('Admin session signing is not configured.');
+  }
+
   const encoder = new TextEncoder();
-  const keyData = encoder.encode(SESSION_SECRET);
+  const keyData = encoder.encode(sessionSecret);
   const data = encoder.encode(token);
 
   const key = await crypto.subtle.importKey(
@@ -77,7 +83,7 @@ export async function verifySessionCookie(value?: string): Promise<{
     permissions: Record<string, boolean | string[]>;
     supplier_id?: string | null;
 } | null> {
-  if (!value) return null;
+  if (!value || !getSessionSecret()) return null;
 
   try {
     const parts = value.split('.');

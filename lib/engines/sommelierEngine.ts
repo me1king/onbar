@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient';
 
 /**
- * APEX OS: NEURAL SOMMELIER ENGINE
+ * SOMMELIER ENGINE
  * Generates intelligent product pairings based on Taste DNA and category archetypes.
  */
 

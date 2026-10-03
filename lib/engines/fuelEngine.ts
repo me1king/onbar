@@ -1,5 +1,5 @@
 /**
- * APEX OS: FUEL CONSUMPTION ENGINE
+ * FUEL CONSUMPTION ENGINE
  * Sophisticated model to estimate and audit vehicle operating costs.
  */
 
@@ -56,4 +56,4 @@ class FuelEngine {
     }
 }
 
-export const ApexFuel = FuelEngine.getInstance();
+export const fuelEngine = FuelEngine.getInstance();

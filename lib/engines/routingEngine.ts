@@ -1,16 +1,16 @@
 import { supabase } from '../supabaseClient';
 
 /**
- * APEX OS: ROUTING ENGINE
+ * ROUTING ENGINE
  * Orchestrates communication with professional routing providers (Google Routes API).
  */
 
-export interface ApexLatLng {
+export interface GeoPoint {
     latitude: number;
     longitude: number;
 }
 
-export interface ApexRoute {
+export interface ComputedRoute {
     provider: 'google' | 'mapbox';
     distanceMeters: number;
     distanceKm: number;
@@ -45,9 +45,9 @@ class RoutingEngine {
     /**
      * Computes the fastest motorcycle route between two points.
      */
-    public async computeFastestRoute(origin: ApexLatLng, destination: ApexLatLng): Promise<ApexRoute> {
+    public async computeFastestRoute(origin: GeoPoint, destination: GeoPoint): Promise<ComputedRoute> {
         if (!this.apiKey) {
-            throw new Error("APEX_OS_ROUTING: GOOGLE_MAPS_API_KEY is missing from environment.");
+            throw new Error("ROUTING: GOOGLE_MAPS_API_KEY is missing from environment.");
         }
 
         try {
@@ -93,7 +93,7 @@ class RoutingEngine {
         }
     }
 
-    private normalizeRoute(googleRoute: { distanceMeters: number, duration: string, polyline: { encodedPolyline: string } }): ApexRoute {
+    private normalizeRoute(googleRoute: { distanceMeters: number, duration: string, polyline: { encodedPolyline: string } }): ComputedRoute {
         const distanceMeters = googleRoute.distanceMeters ?? 0;
         const durationSeconds = parseInt(String(googleRoute.duration ?? "0s").replace("s", ""));
 
@@ -114,7 +114,7 @@ class RoutingEngine {
     /**
      * Persists a calculated route to the database for performance tracking.
      */
-    public async logRoute(orderId: number, riderPhone: string | null, route: ApexRoute) {
+    public async logRoute(orderId: number, riderPhone: string | null, route: ComputedRoute) {
         if (!supabase) return;
 
         await supabase.from('delivery_routes').insert([{
@@ -129,4 +129,4 @@ class RoutingEngine {
     }
 }
 
-export const ApexRouter = RoutingEngine.getInstance();
+export const routingEngine = RoutingEngine.getInstance();

@@ -1,18 +1,25 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * ONLINE BAR OS: MOBILE WIDGET API v2
  * Serves structured data for PWA Home Screen Widgets.
  */
 export async function GET(request: Request) {
-    if (!supabase) return NextResponse.json({ error: 'Database Offline' }, { status: 500 });
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !serviceKey) {
+        return NextResponse.json({ error: 'Mobile widget database access is not configured.' }, { status: 500 });
+    }
+    const database = createClient(url, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+    });
 
     try {
         const now = new Date().toISOString();
 
         // 1. Fetch highest priority published widget
-        const { data: widget, error } = await supabase
+        const { data: widget, error } = await database
             .from('mobile_app_widgets')
             .select('*')
             .eq('status', 'PUBLISHED')

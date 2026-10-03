@@ -91,7 +91,7 @@ export default function PwaInstallOverlay({
                     <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">✦ YOUR NATIVE APP IS READY</span>
                     <h2 className="text-3xl font-black uppercase tracking-tight text-foreground">You&apos;re All Set!</h2>
                     <p className="text-xs font-medium text-slate-500 max-w-xs mx-auto">
-                        Install APEX OS on your device home screen for lightning fast access and full-screen experience.
+                        Install Online Bar on your device home screen for quick access and a full-screen experience.
                     </p>
                 </div>
 

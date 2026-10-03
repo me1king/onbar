@@ -131,15 +131,15 @@ export default function AdminDashboard() {
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const dateLimit = thirtyDaysAgo.toISOString();
 
-        const [ordersRes, productsRes, auditRes, ledgerRes, ridersRes] = await Promise.all([
+        const [ordersRes, productsRes, ledgerRes, ridersRes, auditResponse] = await Promise.all([
           supabase.from('orders')
             .select('*, order_items(*)')
             .gte('created_at', dateLimit)
             .order('created_at', { ascending: false }),
           supabase.from('products').select('id, stock, name, price, image_url, cost_price, warehouse_location'),
-          supabase.from('audit_logs').select('id, action, staff_email, created_at').order('created_at', { ascending: false }).limit(2),
           supabase.from('financial_ledger').select('*').gte('created_at', dateLimit),
-          supabase.from('rider_status').select('id, rider_name, status, battery_level').neq('status', 'Offline')
+          supabase.from('rider_status').select('id, rider_name, status, battery_level').neq('status', 'Offline'),
+          fetch('/api/admin/audit-logs', { cache: 'no-store' })
         ]);
 
         if (ordersRes.data) {
@@ -161,7 +161,13 @@ export default function AdminDashboard() {
             setCategoryBreakdown(Object.entries(cats).map(([name, value]) => ({ name, value })));
         }
         if (productsRes.data) setProducts(productsRes.data as ProductRecord[]);
-        if (auditRes.data) setAuditLogs(auditRes.data);
+        if (auditResponse.ok) {
+            const result = await auditResponse.json() as { logs?: AuditLog[] };
+            setAuditLogs((result.logs || []).slice(0, 2));
+        } else {
+            const result = await auditResponse.json() as { error?: string };
+            console.error('Could not load dashboard audit logs:', result.error || auditResponse.statusText);
+        }
         if (ledgerRes.data) setLedger(ledgerRes.data as LedgerRecord[]);
         if (ridersRes.data) setRiders(ridersRes.data as { id: string; rider_name: string; status: string; battery_level: number }[]);
 

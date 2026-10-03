@@ -249,15 +249,15 @@ export default function SouvenirForgePage() {
                 const safeName = imageFile.name.replace(/[^a-zA-Z0-9._-]/g, '-');
                 uploadedPath = `souvenirs/${crypto.randomUUID()}-${safeName}`;
                 const { error: uploadError } = await supabase.storage
-                    .from('apexstores-assets')
+                    .from('onlinebar-assets')
                     .upload(uploadedPath, imageFile, { contentType: imageFile.type, upsert: false });
                 if (uploadError) {
                     if (uploadError.message.toLowerCase().includes('not found')) {
-                        throw new Error('The product image storage bucket is missing. Create the "apexstores-assets" bucket in Supabase Storage.');
+                        throw new Error('The product image storage bucket is missing. Run supabase/FOOD_ADDONS_MIGRATION.sql in Supabase.');
                     }
                     throw uploadError;
                 }
-                imageUrl = supabase.storage.from('apexstores-assets').getPublicUrl(uploadedPath).data.publicUrl;
+                imageUrl = supabase.storage.from('onlinebar-assets').getPublicUrl(uploadedPath).data.publicUrl;
             }
 
             const payload = {
@@ -294,7 +294,7 @@ export default function SouvenirForgePage() {
             console.error('Souvenir save error:', err);
             setLoadError(err instanceof Error ? err.message : 'Unable to save the souvenir.');
             if (uploadedPath) {
-                const { error: cleanupError } = await supabase.storage.from('apexstores-assets').remove([uploadedPath]);
+                const { error: cleanupError } = await supabase.storage.from('onlinebar-assets').remove([uploadedPath]);
                 if (cleanupError) console.error('Unable to remove unlinked souvenir image:', cleanupError);
             }
         } finally {

@@ -7,7 +7,6 @@ import {
     Play,
     RefreshCcw,
     Flame,
-    Truck,
     PackageCheck,
     Wine
 } from 'lucide-react';
@@ -19,19 +18,25 @@ interface KdsItem {
     name: string;
     quantity: number;
     spec?: string;
+    addons: Array<{ name: string; price: number }>;
 }
 
 interface KdsTicket {
     id: string;
     order_id: string;
-    customer_name: string;
-    stage: 'QUEUED' | 'PREPARING' | 'PACKED' | 'DISPATCHED';
+    stage: 'QUEUED' | 'PREPARING' | 'PACKED';
     items: KdsItem[];
-    customer_notes?: string;
-    payment_method: string;
+    kitchen_notes?: string;
     order_age_sec: number;
-    created_time: string;
-    assigned_rider?: string;
+}
+
+function getKitchenNotes(note: string | null) {
+    if (!note) return undefined;
+    const details = note.split('|')
+        .map(part => part.trim())
+        .filter(part => part && !/^(region|free delivery area|coupon|used \d+ points|referred by|paystack ref|payment verified|payment failed)\s*:/i.test(part)
+            && !/^🎁?\s*GIFT\s*:/i.test(part));
+    return details.length ? details.join(' | ') : undefined;
 }
 
 export default function KitchenCommandHUD() {
@@ -51,13 +56,13 @@ export default function KitchenCommandHUD() {
         try {
             const { data, error } = await supabase
                 .from('orders')
-                .select('id, customer_name, status, payment_method, created_at, note, rider_name, order_items(product_id, quantity, size, products(name))')
+                .select('id, status, created_at, note, order_items(product_id, quantity, size, addons, products(name))')
                 .order('created_at', { ascending: true });
             if (error) throw error;
 
             const now = Date.now();
             const dbTickets: KdsTicket[] = (data || [])
-                .filter(ord => !['delivered', 'cancelled'].includes(String(ord.status || '').toLowerCase()))
+                .filter(ord => ['pending', 'paid', 'created', 'preparing', 'packed'].includes(String(ord.status || '').toLowerCase()))
                 .map(ord => {
                     const rawItems = ord.order_items || [];
                     const parsedItems: KdsItem[] = rawItems.map(item => {
@@ -65,31 +70,31 @@ export default function KitchenCommandHUD() {
                         return {
                             name: product?.name || (item.product_id ? `Product #${item.product_id}` : 'Product details unavailable'),
                             quantity: Number(item.quantity || 0),
-                            spec: item.size || undefined
+                            spec: item.size || undefined,
+                            addons: Array.isArray(item.addons)
+                                ? item.addons.filter((addon): addon is { name: string; price: number } =>
+                                    typeof addon === 'object' && addon !== null
+                                    && 'name' in addon && typeof addon.name === 'string'
+                                    && 'price' in addon && typeof addon.price === 'number'
+                                )
+                                : []
                         };
                     });
                     const normalizedStatus = String(ord.status || '').toUpperCase();
                     const stage: KdsTicket['stage'] = normalizedStatus === 'PREPARING' ? 'PREPARING'
                         : normalizedStatus === 'PACKED' ? 'PACKED'
-                        : normalizedStatus === 'DISPATCHED' || normalizedStatus === 'OUT FOR DELIVERY' ? 'DISPATCHED'
                         : 'QUEUED';
                     const createdAt = ord.created_at ? new Date(ord.created_at) : null;
 
                     return {
                         id: String(ord.id),
                         order_id: `#${ord.id}`,
-                        customer_name: ord.customer_name || 'Customer name unavailable',
                         stage,
                         items: parsedItems,
-                        customer_notes: ord.note || undefined,
-                        payment_method: ord.payment_method || 'Payment method unavailable',
+                        kitchen_notes: getKitchenNotes(ord.note),
                         order_age_sec: createdAt && Number.isFinite(createdAt.getTime())
                             ? Math.max(0, Math.floor((now - createdAt.getTime()) / 1000))
-                            : 0,
-                        created_time: createdAt && Number.isFinite(createdAt.getTime())
-                            ? createdAt.toLocaleString()
-                            : 'Order time unavailable',
-                        assigned_rider: ord.rider_name || undefined
+                            : 0
                     };
                 });
             setTickets(dbTickets);
@@ -126,7 +131,8 @@ export default function KitchenCommandHUD() {
     }, []);
 
     const handleAdvanceStage = async (ticketId: string, currentStage: KdsTicket['stage']) => {
-        const nextStage: KdsTicket['stage'] = currentStage === 'QUEUED' ? 'PREPARING' : currentStage === 'PREPARING' ? 'PACKED' : 'DISPATCHED';
+        if (currentStage === 'PACKED') return;
+        const nextStage: KdsTicket['stage'] = currentStage === 'QUEUED' ? 'PREPARING' : 'PACKED';
 
         if (!supabase) return;
         const { error } = await supabase.from('orders').update({ status: nextStage }).eq('id', ticketId);
@@ -138,17 +144,14 @@ export default function KitchenCommandHUD() {
     };
 
     const formatTimer = (totalSeconds: number) => {
-        const mins = Math.floor(totalSeconds / 60);
-        const secs = totalSeconds % 60;
-        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        const hours = Math.floor(totalSeconds / 3600);
+        const days = Math.floor(hours / 24);
+        const remainingHours = hours % 24;
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        if (days > 0) return `${days}d ${remainingHours}h`;
+        if (hours > 0) return `${hours}h ${mins}m`;
+        return `${mins}m`;
     };
-
-    const riderAssignments = Array.from(tickets.reduce((assignments, ticket) => {
-        if (ticket.assigned_rider) {
-            assignments.set(ticket.assigned_rider, (assignments.get(ticket.assigned_rider) || 0) + 1);
-        }
-        return assignments;
-    }, new Map<string, number>()));
 
     return (
         <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20 animate-in fade-in duration-700">
@@ -167,10 +170,10 @@ export default function KitchenCommandHUD() {
                         </span>
                     </div>
                     <h1 className="text-4xl lg:text-6xl font-black text-foreground uppercase tracking-tighter leading-none italic">
-                        Bite <span className="text-rose-500 italic">Logistics.</span>
+                        Kitchen <span className="text-rose-500 italic">Queue.</span>
                     </h1>
                     <p className="text-slate-500 text-sm font-medium italic">
-                        Kitchen order queue from recorded customer orders.
+                        Preparation tickets from active customer orders.
                     </p>
                 </div>
 
@@ -229,7 +232,6 @@ export default function KitchenCommandHUD() {
                                             {t.stage}
                                         </span>
                                         <h3 className="text-3xl font-black text-foreground uppercase tracking-tight mt-3">{t.order_id}</h3>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.customer_name}</p>
                                     </div>
 
                                     {/* Elapsed order age from the recorded order timestamp */}
@@ -258,112 +260,45 @@ export default function KitchenCommandHUD() {
                                                     <Wine size={10} className="text-amber-500" /> {item.spec}
                                                 </p>
                                             )}
+                                            {item.addons.length > 0 && (
+                                                <p className="text-[10px] font-bold text-amber-800">
+                                                    Extras: {item.addons.map(addon => addon.name).join(', ')}
+                                                </p>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
 
-                                {/* Customer Special Request Notes */}
-                                {t.customer_notes && (
+                                {t.kitchen_notes && (
                                     <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 space-y-1">
-                                        <p className="text-[8px] font-black uppercase text-amber-800 tracking-widest">Special Request Note</p>
-                                        <p className="text-xs font-bold text-amber-950 uppercase italic">&quot;{t.customer_notes}&quot;</p>
+                                        <p className="text-[8px] font-black uppercase text-amber-800 tracking-widest">Preparation Note</p>
+                                        <p className="text-xs font-bold text-amber-950 italic">&quot;{t.kitchen_notes}&quot;</p>
                                     </div>
                                 )}
 
-                                {t.assigned_rider && (
-                                    <p className="text-[10px] font-bold text-indigo-700">Assigned rider: {t.assigned_rider}</p>
-                                )}
-
-                                <div className="pt-2 flex justify-between items-center text-[9px] font-black uppercase text-slate-400">
-                                    <span>{t.payment_method}</span>
-                                    <span>{t.created_time}</span>
-                                </div>
                             </div>
 
                             {/* Stage Advance Button */}
                             <div className="p-8 pt-0">
                                 <Button
                                     onClick={() => handleAdvanceStage(t.id, t.stage)}
-                                    disabled={t.stage === 'DISPATCHED'}
+                                    disabled={t.stage === 'PACKED'}
                                     className={cn(
                                         "w-full h-14 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-md transition-all",
                                         t.stage === 'QUEUED' ? "bg-amber-500 text-white hover:bg-amber-600" :
                                         t.stage === 'PREPARING' ? "bg-indigo-600 text-white hover:bg-indigo-700" :
-                                        "bg-emerald-500 text-white hover:bg-emerald-600"
+                                        "bg-emerald-500 text-white"
                                     )}
                                 >
-                                    {t.stage === 'DISPATCHED' ? 'Dispatched' :
+                                    {t.stage === 'PACKED' ? 'Ready for Dispatch' :
                                      t.stage === 'QUEUED' ? <><Play size={16} className="mr-2 fill-current" /> Start Preparation</> :
-                                     t.stage === 'PREPARING' ? <><PackageCheck size={16} className="mr-2" /> Mark Packed & Ready</> :
-                                     <><Truck size={16} className="mr-2" /> Dispatch to Rider</>}
+                                     <><PackageCheck size={16} className="mr-2" /> Mark Packed & Ready</>}
                                 </Button>
                             </div>
                         </Card>
                     );
                 })}
             </div>
-
-            {/* ASSIGNMENTS AND TRACKING AVAILABILITY */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6 text-left">
-                    <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                        <Truck className="h-6 w-6 text-primary" />
-                        <div>
-                            <h3 className="text-xl font-black uppercase tracking-tight text-foreground">Recorded Rider Assignments</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase">From active order records</p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        {loadError
-                            ? <p className="text-sm font-bold text-slate-500">Rider assignments are unavailable because orders could not be loaded.</p>
-                            : riderAssignments.length === 0
-                            ? <p className="text-sm font-bold text-slate-500">No rider assignments are recorded on active orders.</p>
-                            : riderAssignments.map(([name, count]) => (
-                                <div key={name} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-4">
-                                    <p className="text-xs font-black uppercase text-foreground">{name}</p>
-                                    <span className="text-[10px] font-bold text-slate-500">{count} active {count === 1 ? 'order' : 'orders'}</span>
-                                </div>
-                            ))}
-                    </div>
-                </Card>
-
-                <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6 text-left">
-                    <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                        <Flame className="h-6 w-6 text-slate-400" />
-                        <div>
-                            <h3 className="text-xl font-black uppercase tracking-tight text-foreground">Ingredient Inventory</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase">Not connected</p>
-                        </div>
-                    </div>
-                    <p className="text-sm font-medium text-slate-500">Ingredient quantities are unavailable: the database has no kitchen ingredient inventory table.</p>
-                </Card>
-            </div>
-
-            {/* CURRENT STATUS ONLY; ORDER STATUS HISTORY IS NOT STORED */}
-            <Card className="p-8 sm:p-10 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6 text-left">
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                    <RefreshCcw className="h-6 w-6 text-primary" />
-                    <div>
-                        <h3 className="text-xl font-black uppercase tracking-tight text-foreground">Current Order Status</h3>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Status history is not stored in the orders table</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {loadError
-                        ? <p className="col-span-full text-sm font-bold text-slate-500">Order statuses are unavailable because orders could not be loaded.</p>
-                        : tickets.length === 0
-                        ? <p className="col-span-full text-sm font-bold text-slate-500">No active order statuses to display.</p>
-                        : tickets.slice(0, 6).map(ticket => (
-                            <div key={ticket.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                                <span className="text-[9px] font-mono font-black text-primary bg-white px-2 py-0.5 rounded border border-slate-200">{ticket.created_time}</span>
-                                <p className="text-xs font-black uppercase text-foreground pt-1">{ticket.order_id} · {ticket.stage}</p>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase">{ticket.customer_name}</p>
-                            </div>
-                        ))}
-                </div>
-            </Card>
 
         </div>
     );

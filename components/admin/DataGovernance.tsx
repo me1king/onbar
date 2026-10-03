@@ -1,18 +1,24 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Card } from '@/components/ui/card';
-import { ShieldCheck, ShieldAlert, Database, Info } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Database, Info, RefreshCw } from 'lucide-react';
 
 interface DataQualityAlert {
     id: number;
     issue_type: string;
-    severity: string;
-    description: string;
-    affected_count: number;
-    status: string;
+    severity: string | null;
+    description: string | null;
+    affected_count: number | null;
+    status: string | null;
     created_at: string;
+}
+
+interface GovernanceResponse {
+    consentRecords: number;
+    profiles: number;
+    alerts: DataQualityAlert[];
+    error?: string;
 }
 
 export default function DataGovernance() {
@@ -25,23 +31,15 @@ export default function DataGovernance() {
     });
 
     const fetchGovernance = React.useCallback(async () => {
-        if (!supabase) {
-            setStats(prev => ({ ...prev, loading: false, error: 'Supabase is not configured. Governance data is unavailable.' }));
-            return;
-        }
+        setStats(prev => ({ ...prev, loading: true, error: null }));
         try {
-            const [alertsRes, consentRes, usersRes] = await Promise.all([
-                supabase.from('data_quality_alerts').select('*').eq('status', 'OPEN'),
-                supabase.from('user_consent').select('id', { count: 'exact', head: true }),
-                supabase.from('profiles').select('id', { count: 'exact', head: true })
-            ]);
-            if (alertsRes.error) throw alertsRes.error;
-            if (consentRes.error) throw consentRes.error;
-            if (usersRes.error) throw usersRes.error;
+            const response = await fetch('/api/admin/governance', { cache: 'no-store' });
+            const result = await response.json() as GovernanceResponse;
+            if (!response.ok) throw new Error(result.error || 'Governance data could not be loaded.');
             setStats({
-                consentRecords: consentRes.count,
-                profiles: usersRes.count,
-                alerts: alertsRes.data || [],
+                consentRecords: result.consentRecords,
+                profiles: result.profiles,
+                alerts: result.alerts,
                 loading: false,
                 error: null
             });
@@ -60,34 +58,41 @@ export default function DataGovernance() {
     }, [fetchGovernance]);
 
     return (
-        <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-10 text-left">
-            <div className="flex justify-between items-center px-2">
-                <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-sm">
+        <Card className="space-y-6 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm sm:space-y-8 sm:rounded-3xl sm:p-8">
+            <div className="flex min-w-0 flex-col gap-4 px-1 sm:flex-row sm:items-center sm:justify-between sm:px-2">
+                <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm sm:h-12 sm:w-12">
                         <Database size={24} />
                     </div>
-                    <div>
-                        <h3 className="text-xl font-black uppercase tracking-tighter text-foreground">Governance Center</h3>
+                    <div className="min-w-0">
+                        <h3 className="text-lg font-black uppercase tracking-tighter text-foreground sm:text-xl">Governance Center</h3>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Privacy & Data Integrity Node</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-slate-50 text-slate-600 rounded-full text-[9px] font-black uppercase border border-slate-100">
+                <div className="flex w-fit items-center gap-2 rounded-full border border-slate-100 bg-slate-50 px-3 py-1 text-[9px] font-black uppercase text-slate-600">
                     <Database size={12} /> {stats.error ? 'Data unavailable' : stats.loading ? 'Loading records' : 'Live records'}
                 </div>
             </div>
 
-            {stats.error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{stats.error}</p>}
+            {stats.error && (
+                <div role="alert" className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="break-words">{stats.error}</p>
+                    <button type="button" onClick={fetchGovernance} className="inline-flex shrink-0 items-center gap-2 font-bold hover:underline">
+                        <RefreshCw size={14} /> Retry
+                    </button>
+                </div>
+            )}
 
-            <div className="grid sm:grid-cols-3 gap-4">
-                <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 space-y-2">
+            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 sm:gap-4">
+                <div className="min-w-0 space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:rounded-[2rem] sm:p-6">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Consent Records</p>
-                    <p className="text-2xl font-black text-foreground">{stats.loading ? '…' : stats.consentRecords?.toLocaleString() ?? 'Unavailable'}</p>
+                    <p className="break-words text-xl font-black text-foreground sm:text-2xl">{stats.loading ? '…' : stats.consentRecords?.toLocaleString() ?? 'Unavailable'}</p>
                 </div>
-                <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 space-y-2">
+                <div className="min-w-0 space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:rounded-[2rem] sm:p-6">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Registered Profiles</p>
-                    <p className="text-2xl font-black text-foreground">{stats.loading ? '…' : stats.profiles?.toLocaleString() ?? 'Unavailable'}</p>
+                    <p className="break-words text-xl font-black text-foreground sm:text-2xl">{stats.loading ? '…' : stats.profiles?.toLocaleString() ?? 'Unavailable'}</p>
                 </div>
-                <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 space-y-2">
+                <div className="min-w-0 space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:rounded-[2rem] sm:p-6">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Retention Policy</p>
                     <p className="text-2xl font-black text-foreground">Not tracked</p>
                 </div>
@@ -107,14 +112,12 @@ export default function DataGovernance() {
                 ) : (
                     <div className="space-y-3">
                         {stats.alerts.map(alert => (
-                            <div key={alert.id} className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <ShieldAlert size={16} className="text-rose-500" />
-                                    <div>
-                                        <p className="text-[10px] font-black text-rose-700 uppercase">{alert.issue_type}</p>
-                                        <p className="text-[8px] font-medium text-rose-500 italic">{alert.description}</p>
+                            <div key={alert.id} className="flex min-w-0 items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4">
+                                    <ShieldAlert size={16} className="mt-0.5 shrink-0 text-rose-500" />
+                                    <div className="min-w-0">
+                                        <p className="break-words text-[10px] font-black uppercase text-rose-700">{alert.issue_type}</p>
+                                        <p className="break-words text-[8px] font-medium italic text-rose-500">{alert.description || 'No description provided.'}</p>
                                     </div>
-                                </div>
                             </div>
                         ))}
                     </div>

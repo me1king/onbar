@@ -16,6 +16,8 @@ export interface CartItem {
   size?: string;
   wholesale_price?: number;
   wholesale_min_qty?: number;
+  addons?: Array<{ id: string; name: string; price: number }>;
+  cart_key?: string;
 }
 
 interface CartContextProps {
@@ -24,9 +26,14 @@ interface CartContextProps {
   addToCart: (item: CartItem) => void;
   addBundleToCart: (items: CartItem[]) => void;
   toggleCompare: (item: Product) => void;
-  removeFromCart: (id: number) => void;
+  removeFromCart: (id: number, cartKey?: string) => void;
   clearCart: () => void;
-  updateQuantity: (id: number, quantity: number) => void;
+  updateQuantity: (id: number, quantity: number, cartKey?: string) => void;
+}
+
+function getCartKey(item: CartItem) {
+  const addonIds = (item.addons || []).map(addon => addon.id).sort().join(',');
+  return `${item.id}:${item.size || 'Standard'}:${addonIds}`;
 }
 
 const CartContext = createContext<CartContextProps | undefined>(undefined);
@@ -65,45 +72,46 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         });
     }
 
-    // 🚀 [MASTER_OS] Track Interaction
-    if (supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const anonId = localStorage.getItem('ob_anonymous_id');
-        await OB_OS.track('ADD_TO_CART', {
-            userId: session?.user?.id,
-            anonymousId: anonId || undefined,
-            productId: item.id,
-            amount: item.price,
-            details: { name: item.name, category: item.category, size: item.size }
-        });
-    }
+    const { data: { session } } = supabase
+      ? await supabase.auth.getSession()
+      : { data: { session: null } };
+    const anonId = localStorage.getItem('ob_anonymous_id');
+    void OB_OS.track('ADD_TO_CART', {
+      userId: session?.user?.id,
+      anonymousId: anonId || undefined,
+      productId: item.id,
+      amount: item.price,
+      details: { name: item.name, category: item.category, size: item.size, addons: item.addons?.map(addon => addon.name) || [] }
+    });
 
     setCart((prevCart) => {
-      const existingItem = prevCart.find((cartItem) => cartItem.id === item.id);
+      const cartKey = getCartKey(item);
+      const existingItem = prevCart.find((cartItem) => getCartKey(cartItem) === cartKey);
 
       if (existingItem) {
         return prevCart.map((cartItem) => {
-          if (cartItem.id === item.id) {
+          if (getCartKey(cartItem) === cartKey) {
               const newQty = cartItem.quantity + (item.quantity || 1);
-              let effectivePrice = cartItem.base_price;
+              let basePrice = cartItem.base_price;
 
               if (cartItem.wholesale_price && cartItem.wholesale_min_qty && newQty >= cartItem.wholesale_min_qty) {
-                  effectivePrice = cartItem.wholesale_price;
+                  basePrice = cartItem.wholesale_price;
               }
 
-              return { ...cartItem, quantity: newQty, price: effectivePrice };
+              const addonPrice = (cartItem.addons || []).reduce((sum, addon) => sum + addon.price, 0);
+              return { ...cartItem, cart_key: cartKey, quantity: newQty, price: basePrice + addonPrice };
           }
           return cartItem;
         });
       }
 
-      let initialPrice = item.base_price || item.price;
+      let initialPrice = (item.base_price || item.price) + (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
       const qty = item.quantity || 1;
       if (item.wholesale_price && item.wholesale_min_qty && qty >= item.wholesale_min_qty) {
-          initialPrice = item.wholesale_price;
+          initialPrice = item.wholesale_price + (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
       }
 
-      return [...prevCart, { ...item, base_price: item.base_price || item.price, price: initialPrice, quantity: qty }];
+      return [...prevCart, { ...item, cart_key: cartKey, base_price: item.base_price || item.price, price: initialPrice, quantity: qty }];
     });
   };
 
@@ -111,19 +119,20 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     setCart((prevCart) => {
       let newCart = [...prevCart];
       items.forEach(item => {
-          const existingItem = newCart.find(c => c.id === item.id);
+          const cartKey = getCartKey(item);
+          const existingItem = newCart.find(c => getCartKey(c) === cartKey);
           if (existingItem) {
-              newCart = newCart.map(c => c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c);
+              newCart = newCart.map(c => getCartKey(c) === cartKey ? { ...c, quantity: c.quantity + 1 } : c);
           } else {
-              newCart.push({ ...item, quantity: 1 });
+              newCart.push({ ...item, cart_key: cartKey, quantity: 1 });
           }
       });
       return newCart;
     });
   };
 
-  const removeFromCart = (id: number) => {
-    setCart((prevCart) => prevCart.filter((item) => item.id !== id));
+  const removeFromCart = (id: number, cartKey?: string) => {
+    setCart((prevCart) => prevCart.filter((item) => cartKey ? getCartKey(item) !== cartKey : item.id !== id));
   };
 
   const clearCart = () => {
@@ -131,18 +140,19 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.removeItem("cart");
   };
 
-  const updateQuantity = (id: number, quantity: number) => {
+  const updateQuantity = (id: number, quantity: number, cartKey?: string) => {
     setCart((prevCart) =>
       prevCart.map((item) => {
-        if (item.id === id) {
+        if (cartKey ? getCartKey(item) === cartKey : item.id === id) {
             const newQty = Math.max(1, quantity);
-            let effectivePrice = item.base_price;
+            let basePrice = item.base_price;
 
             if (item.wholesale_price && item.wholesale_min_qty && newQty >= item.wholesale_min_qty) {
-                effectivePrice = item.wholesale_price;
+                basePrice = item.wholesale_price;
             }
 
-            return { ...item, quantity: newQty, price: effectivePrice };
+            const addonPrice = (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
+            return { ...item, quantity: newQty, price: basePrice + addonPrice };
         }
         return item;
       })

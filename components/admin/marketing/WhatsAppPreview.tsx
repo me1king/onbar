@@ -16,7 +16,7 @@ export default function WhatsAppPreview({ imageUrl, body }: WhatsAppPreviewProps
             <div className="bg-[#075e54] p-6 pt-10 text-white flex items-center gap-3">
                 <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center font-black text-xs uppercase">AS</div>
                 <div>
-                    <p className="text-xs font-black uppercase tracking-tight">Apexstores Business</p>
+                    <p className="text-xs font-black uppercase tracking-tight">Online Bar Business</p>
                     <p className="text-[8px] font-medium opacity-70 italic">Online</p>
                 </div>
             </div>

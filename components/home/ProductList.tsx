@@ -124,7 +124,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
     }
 
     // 2. Listen for custom events (TOTAL FILTER RESET)
-    const handleApexSearch = (e: Event) => {
+    const handleProductSearch = (e: Event) => {
         const customEvent = e as CustomEvent<{ query?: string }>;
         const query = customEvent.detail?.query || '';
         setSearchQuery(query);
@@ -135,8 +135,8 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
         setInStockOnly(false);
     };
 
-    window.addEventListener('ob-search', handleApexSearch);
-    return () => window.removeEventListener('ob-search', handleApexSearch);
+    window.addEventListener('ob-search', handleProductSearch);
+    return () => window.removeEventListener('ob-search', handleProductSearch);
   }, []);
 
   const filteredProducts = useMemo(() => {

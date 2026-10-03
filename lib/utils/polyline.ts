@@ -1,5 +1,5 @@
 /**
- * APEX OS: POLYLINE DECODER
+ * POLYLINE DECODER
  * Decodes Google's encoded polyline format into LatLng arrays for mapping.
  */
 

@@ -15,7 +15,9 @@ interface BehaviorPulseProps {
         liveUsers: number;
         eventsToday: number;
         avgEngagedTime: string;
-        cartRate: number;
+        cartRate: number | null;
+        cartSessions: number;
+        visitorSessions: number;
     }
 }
 
@@ -68,7 +70,8 @@ export default function BehaviorPulse({ stats }: BehaviorPulseProps) {
                     </div>
                     <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Engaged Time</p>
-                        <h3 className="text-4xl font-black text-foreground uppercase tracking-tighter">{stats.avgEngagedTime}</h3>
+                        <h3 className="text-3xl font-black text-foreground uppercase tracking-tighter sm:text-4xl">{stats.avgEngagedTime}</h3>
+                        <p className="text-[9px] font-semibold text-slate-400">Average active time per session started today</p>
                     </div>
                 </div>
                 <Clock className="absolute -bottom-4 -right-4 h-24 w-24 text-amber-500/5 rotate-12 -z-0" />
@@ -82,7 +85,14 @@ export default function BehaviorPulse({ stats }: BehaviorPulseProps) {
                     </div>
                     <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Add to Bag Rate</p>
-                        <h3 className="text-4xl font-black text-foreground uppercase tracking-tighter">{stats.cartRate}%</h3>
+                        <h3 className="text-3xl font-black text-foreground uppercase tracking-tighter sm:text-4xl">
+                            {stats.cartRate === null ? 'No data' : `${stats.cartRate.toFixed(1)}%`}
+                        </h3>
+                        <p className="text-[9px] font-semibold text-slate-400">
+                            {stats.cartRate === null
+                                ? 'No visitor sessions recorded today'
+                                : `${stats.cartSessions} of ${stats.visitorSessions} visitor sessions added to bag today`}
+                        </p>
                     </div>
                 </div>
                 <Layout className="absolute -bottom-4 -right-4 h-24 w-24 text-slate-50 rotate-12 -z-0" />

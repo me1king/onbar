@@ -22,7 +22,7 @@ export default function InstagramPreview({ imageUrl, caption }: InstagramPreview
                             </div>
                         </div>
                     </div>
-                    <p className="text-[11px] font-black uppercase text-foreground tracking-tight">apexstores_kenya</p>
+                    <p className="text-[11px] font-black uppercase text-foreground tracking-tight">Your Instagram account</p>
                 </div>
                 <MoreHorizontal size={16} className="text-slate-400" />
             </div>

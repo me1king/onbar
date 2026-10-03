@@ -34,15 +34,39 @@ interface TopComponent {
     interaction_count: number;
 }
 
+interface BehaviorMetrics {
+    live_users: number;
+    events_today: number;
+    avg_active_sec: number | null;
+    cart_rate: number | null;
+    cart_sessions: number;
+    visitor_sessions: number;
+    rage_clicks_24h: number;
+    zero_results_24h: number;
+}
+
+function formatEngagedTime(seconds: number | null) {
+    if (seconds === null || !Number.isFinite(seconds)) return 'No data';
+    const totalSeconds = Math.max(0, Math.round(seconds));
+    const minutes = Math.floor(totalSeconds / 60);
+    const remainder = totalSeconds % 60;
+    if (minutes >= 60) {
+        return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+    }
+    return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+}
+
 export default function BehaviorOverview() {
     const [loading, setLoading] = React.useState(true);
     const [stats, setStats] = React.useState<{
         liveUsers: number;
         eventsToday: number;
         avgEngagedTime: string;
-        cartRate: number;
-        rage_clicks_24h: number | null;
-        zero_results_24h: number | null;
+        cartRate: number | null;
+        cartSessions: number;
+        visitorSessions: number;
+        rage_clicks_24h: number;
+        zero_results_24h: number;
     } | null>(null);
     const [topScreens, setTopScreens] = React.useState<TopScreen[]>([]);
     const [topComponents, setTopComponents] = React.useState<TopComponent[]>([]);
@@ -54,36 +78,28 @@ export default function BehaviorOverview() {
         }
         setLoading(true);
         try {
-            // 1. Fetch Behavioral Pulse (View / RPC)
-            const { data: pulse } = await supabase.from('behavioral_intelligence_pulse').select('*').single();
-
             // Top Screens and Component Interaction
-            const [screensRes, componentsRes] = await Promise.all([
+            const [metricsResponse, screensRes, componentsRes] = await Promise.all([
+                fetch('/api/admin/behavior-metrics', { cache: 'no-store' }),
                 supabase.rpc('get_top_pages', { limit_count: 5 }),
                 supabase.from('component_interaction_audit').select('*').limit(5)
             ]);
 
-            const pulseStats = pulse && [
-                pulse.live_users,
-                pulse.events_today,
-                pulse.avg_active_sec,
-                pulse.cart_rate
-            ].every(value => typeof value === 'number' && Number.isFinite(value));
-
-            if (pulseStats) {
-                const mins = Math.floor(pulse.avg_active_sec / 60);
-                const secs = Math.floor(pulse.avg_active_sec % 60);
-                setStats({
-                    liveUsers: pulse.live_users,
-                    eventsToday: pulse.events_today,
-                    avgEngagedTime: `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`,
-                    cartRate: pulse.cart_rate,
-                    rage_clicks_24h: typeof pulse.rage_clicks_24h === 'number' ? pulse.rage_clicks_24h : null,
-                    zero_results_24h: typeof pulse.zero_results_24h === 'number' ? pulse.zero_results_24h : null
-                });
-            } else {
-                setStats(null);
+            const metrics = await metricsResponse.json() as { metrics?: BehaviorMetrics; error?: string };
+            if (!metricsResponse.ok || !metrics.metrics) {
+                throw new Error(metrics.error || 'Behavior metrics could not be loaded.');
             }
+
+            setStats({
+                liveUsers: metrics.metrics.live_users,
+                eventsToday: metrics.metrics.events_today,
+                avgEngagedTime: formatEngagedTime(metrics.metrics.avg_active_sec),
+                cartRate: metrics.metrics.cart_rate,
+                cartSessions: metrics.metrics.cart_sessions,
+                visitorSessions: metrics.metrics.visitor_sessions,
+                rage_clicks_24h: metrics.metrics.rage_clicks_24h,
+                zero_results_24h: metrics.metrics.zero_results_24h
+            });
 
             setTopScreens(screensRes.data || []);
             setTopComponents(componentsRes.data || []);
@@ -115,7 +131,7 @@ export default function BehaviorOverview() {
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary italic text-left">Behavioral OS Terminal</span>
                     </div>
                     <h1 className="text-4xl lg:text-5xl font-black text-foreground uppercase tracking-tighter leading-none italic">
-                        Apex Behavior <span className="text-primary">Intelligence.</span>
+                        Behavior <span className="text-primary">Intelligence.</span>
                     </h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1 italic">Decrypting the first-party journey through high-fidelity forensics.</p>
                 </div>

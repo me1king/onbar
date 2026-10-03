@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Zap,
     Loader2,
@@ -47,51 +46,29 @@ export default function MobileWidgetCommand() {
     const [conversions, setConversions] = React.useState<Record<string, { orders: number; revenue: number }>>({});
     const [conversionError, setConversionError] = React.useState<string | null>(null);
     const [pinMessage, setPinMessage] = React.useState<string | null>(null);
+    const [actionError, setActionError] = React.useState<string | null>(null);
 
     const fetchWidgets = React.useCallback(async () => {
-        if (!supabase) {
-            setConversionError('Database is not connected.');
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         try {
-            const { data, error } = await supabase.from('mobile_app_widgets').select('*').order('priority', { ascending: false });
-            if (error) throw error;
-            const loadedWidgets = (data || []) as MobileWidget[];
-            setWidgets(loadedWidgets);
-
-            if (loadedWidgets.length) {
-                const { data: orderData, error: ordersError } = await supabase
-                    .from('orders')
-                    .select('attribution_id, total_price')
-                    .in('attribution_id', loadedWidgets.map(widget => widget.id))
-                    .in('status', ['Paid', 'Delivered', 'Completed']);
-                if (ordersError) {
-                    setConversionError(ordersError.message);
-                } else {
-                    const totals: Record<string, { orders: number; revenue: number }> = {};
-                    for (const order of orderData || []) {
-                        if (!order.attribution_id) continue;
-                        const total = totals[order.attribution_id] || { orders: 0, revenue: 0 };
-                        total.orders += 1;
-                        total.revenue += Number(order.total_price) || 0;
-                        totals[order.attribution_id] = total;
-                    }
-                    setConversions(totals);
-                    setConversionError(null);
-                }
-            } else {
-                setConversions({});
-                setConversionError(null);
-            }
-
-            const { data: prodData, error: productsError } = await supabase.from('products').select('id, name, image_url').limit(10);
-            if (productsError) throw productsError;
-            if (prodData) setProducts(prodData as Array<{ id: string, name: string, image_url: string }>);
+            const response = await fetch('/api/admin/mobile-widgets', { cache: 'no-store' });
+            const result = await response.json() as {
+                widgets?: MobileWidget[];
+                products?: Array<{ id: string | number; name: string; image_url: string }>;
+                conversions?: Record<string, { orders: number; revenue: number }>;
+                conversionError?: string | null;
+                error?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Unable to load mobile widget data.');
+            setWidgets(result.widgets || []);
+            setProducts((result.products || []).map(product => ({ ...product, id: String(product.id) })));
+            setConversions(result.conversions || {});
+            setConversionError(result.conversionError || null);
         } catch (err) {
             console.error('[MobileWidgetCommand] Unable to load widget data:', err);
             setConversionError(err instanceof Error ? err.message : 'Unable to load widget data.');
+            setWidgets([]);
+            setConversions({});
         } finally {
             setLoading(false);
         }
@@ -112,26 +89,42 @@ export default function MobileWidgetCommand() {
     };
 
     const handleSave = async () => {
-        if (!supabase || !editing) return;
+        if (!editing) return;
         setLoading(true);
+        setActionError(null);
         try {
             const payload = {
                 ...editing,
                 updated_at: new Date().toISOString()
             };
-            const { error } = await supabase.from('mobile_app_widgets').upsert([payload]);
-            if (error) throw error;
+            const response = await fetch('/api/admin/mobile-widgets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Unable to save the widget.');
             await logAuditAction(email, 'MOBILE_WIDGET_SAVE', { title: editing.title });
             setEditing(null);
-            fetchWidgets();
-        } catch (err) { console.error(err); }
-        finally { setLoading(false); }
+            await fetchWidgets();
+        } catch (err) {
+            console.error('[MobileWidgetCommand] Unable to save widget:', err);
+            setActionError(err instanceof Error ? err.message : 'Unable to save the widget.');
+        } finally { setLoading(false); }
     };
 
     const handleDelete = async (id: string) => {
-        if (!supabase || !confirm("Expel this widget from all terminals?")) return;
-        await supabase.from('mobile_app_widgets').delete().eq('id', id);
-        fetchWidgets();
+        if (!confirm("Delete this widget configuration?")) return;
+        setActionError(null);
+        try {
+            const response = await fetch(`/api/admin/mobile-widgets?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Unable to delete the widget.');
+            await fetchWidgets();
+        } catch (err) {
+            console.error('[MobileWidgetCommand] Unable to delete widget:', err);
+            setActionError(err instanceof Error ? err.message : 'Unable to delete the widget.');
+        }
     };
 
     return (
@@ -166,6 +159,8 @@ export default function MobileWidgetCommand() {
                 </div>
             </header>
             {pinMessage && <p role="status" className="rounded-xl bg-white p-4 text-sm text-slate-600">{pinMessage}</p>}
+            {actionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{actionError}</p>}
+            {conversionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{conversionError}</p>}
 
             <div className="grid lg:grid-cols-12 gap-10">
                 <div className="lg:col-span-8 space-y-6">
@@ -179,6 +174,10 @@ export default function MobileWidgetCommand() {
                             <div className="p-20 text-center bg-white rounded-[3rem] border border-slate-100 animate-pulse">
                                 <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto" />
                             </div>
+                        ) : widgets.length === 0 ? (
+                            <Card className="p-10 rounded-[2.5rem] border border-slate-100 bg-white text-center text-sm font-semibold text-slate-500">
+                                {conversionError ? 'Widget records are unavailable.' : 'No mobile widgets are configured yet.'}
+                            </Card>
                         ) : widgets.map((w) => (
                             <Card key={w.id} className={cn(
                                 "p-6 rounded-[2.5rem] border transition-all hover:shadow-xl relative overflow-hidden group",
@@ -297,7 +296,7 @@ export default function MobileWidgetCommand() {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Engagement Narrative</label>
                                     <Textarea
-                                        value={editing.description}
+                                        value={editing.description || ''}
                                         onChange={e => setEditing({...editing, description: e.target.value})}
                                         className="min-h-[100px] rounded-2xl bg-slate-50 border-slate-100 p-6 font-medium italic resize-none"
                                     />
@@ -352,7 +351,7 @@ export default function MobileWidgetCommand() {
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Asset URL (Remote Image)</label>
                                         <Input
-                                            value={editing.image_url}
+                                            value={editing.image_url || ''}
                                             onChange={e => setEditing({...editing, image_url: e.target.value})}
                                             placeholder="https://..."
                                             className="h-12 rounded-xl bg-slate-50 border-slate-100 text-xs font-mono"
@@ -361,7 +360,7 @@ export default function MobileWidgetCommand() {
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Deep Link Protocol</label>
                                         <Input
-                                            value={editing.deep_link}
+                                            value={editing.deep_link || ''}
                                             onChange={e => setEditing({...editing, deep_link: e.target.value})}
                                             placeholder="onbar://..."
                                             className="h-12 rounded-xl bg-slate-50 border-slate-100 text-xs font-mono"

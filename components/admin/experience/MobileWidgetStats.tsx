@@ -1,12 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Smartphone, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
 interface MobileWidget {
-    id: number;
+    id: string;
     title: string;
 }
 
@@ -17,21 +16,14 @@ export default function MobileWidgetStats() {
 
     React.useEffect(() => {
         async function fetchWidgets() {
-            if (!supabase) {
-                setError('Supabase is not configured. Mobile widget data is unavailable.');
-                setLoading(false);
-                return;
-            }
-
-            const { data, error: queryError } = await supabase
-                .from('mobile_app_widgets')
-                .select('id, title')
-                .order('title');
-            if (queryError) {
-                console.error('Unable to load mobile widget configuration:', queryError);
-                setError('Mobile widget configuration could not be loaded.');
-            } else {
-                setWidgets(data || []);
+            try {
+                const response = await fetch('/api/admin/mobile-widgets', { cache: 'no-store' });
+                const result = await response.json() as { widgets?: MobileWidget[]; error?: string };
+                if (!response.ok) throw new Error(result.error || 'Mobile widget configuration could not be loaded.');
+                setWidgets((result.widgets || []).map(widget => ({ id: widget.id, title: widget.title })));
+            } catch (err) {
+                console.error('Unable to load mobile widget configuration:', err);
+                setError(err instanceof Error ? err.message : 'Mobile widget configuration could not be loaded.');
             }
             setLoading(false);
         }

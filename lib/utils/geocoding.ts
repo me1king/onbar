@@ -1,11 +1,11 @@
 /**
- * APEX OS: GEOCODING UTILITY
+ * GEOCODING UTILITY
  * Converts physical addresses into precision GPS coordinates for dispatch.
  */
 
-import { ApexLatLng } from "../engines/routingEngine";
+import { GeoPoint } from "../engines/routingEngine";
 
-export async function geocodeAddress(address: string): Promise<ApexLatLng | null> {
+export async function geocodeAddress(address: string): Promise<GeoPoint | null> {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) return null;
 

@@ -32,7 +32,7 @@ import Image from 'next/image';
 import { OB_OS } from '@/lib/onlineBarOS';
 import { v4 as uuidv4 } from 'uuid';
 import { useInteractionTracking } from '@/lib/utils/useInteractionTracking';
-import { ApexKnowledge, ProductDossier, SensoryDNA } from '@/lib/engines/productKnowledgeEngine';
+import { productKnowledgeEngine, ProductDossier, SensoryDNA } from '@/lib/engines/productKnowledgeEngine';
 import { supabase } from '@/lib/supabaseClient';
 import { Product } from '@/types/product';
 
@@ -43,6 +43,12 @@ import ProductDNACard from './ProductDNACard';
 import PerfectServeCommerce from './PerfectServeCommerce';
 import DossierEditorialHub from './DossierEditorialHub';
 import AuthenticitySentinel from './AuthenticitySentinel';
+
+interface FoodAddon {
+    id: string;
+    name: string;
+    price: number;
+}
 
 const Product3DViewer = dynamic(() => import('./Product3DViewer'), {
     ssr: false,
@@ -77,12 +83,40 @@ export default function ProductDetailClient({
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [boughtTogether, setBoughtTogether] = useState<number[]>([product.id]);
   const [bundleProducts, setBundleProducts] = useState<Product[]>([]);
+  const [foodAddons, setFoodAddons] = useState<FoodAddon[]>([]);
+  const [selectedFoodAddonIds, setSelectedFoodAddonIds] = useState<string[]>([]);
+  const [foodAddonError, setFoodAddonError] = useState<string | null>(null);
+  const [foodAddonsLoading, setFoodAddonsLoading] = useState(false);
 
   useEffect(() => {
     async function initData() {
         if (!supabase) return;
         try {
-            const knowledge = await ApexKnowledge.getDossier(product.id);
+            if (product.is_bite || product.is_snack) {
+                setFoodAddonsLoading(true);
+                setFoodAddons([]);
+                setSelectedFoodAddonIds([]);
+                try {
+                    const { data: extras, error: extrasError } = await supabase
+                        .from('food_addons')
+                        .select('id, name, price')
+                        .eq('is_active', true)
+                        .order('name');
+                    if (extrasError) {
+                        console.error('Meal extras are unavailable:', extrasError);
+                        setFoodAddonError('Meal extras are temporarily unavailable. You can still order without extras.');
+                    } else {
+                        setFoodAddons((extras || []) as FoodAddon[]);
+                        setFoodAddonError(null);
+                    }
+                } catch (error) {
+                    console.error('Meal extras are unavailable:', error);
+                    setFoodAddonError('Meal extras are temporarily unavailable. You can still order without extras.');
+                } finally {
+                    setFoodAddonsLoading(false);
+                }
+            }
+            const knowledge = await productKnowledgeEngine.getDossier(product.id);
             if (knowledge) setDossier(knowledge);
 
             const { data: { session } } = await supabase.auth.getSession();
@@ -116,7 +150,7 @@ export default function ProductDetailClient({
         }
     }
     initData();
-  }, [product.id, product.name, product.price, product.category, product.bought_together_ids, relatedProducts]);
+  }, [product.id, product.name, product.price, product.category, product.bought_together_ids, product.is_bite, product.is_snack, relatedProducts]);
 
   const allImages = (product.images && product.images.length > 0)
     ? product.images.map(img => normalizeImage(img))
@@ -132,23 +166,20 @@ export default function ProductDetailClient({
 
   const handleAddToCart = () => {
     setIsAdding(true);
-    OB_OS.track('ADD_TO_CART', {
-        productId: product.id,
-        amount: product.price,
-        details: { name: product.name, category: product.category, size: selectedVariant }
-    });
-
+    const selectedAddons = foodAddons.filter(addon => selectedFoodAddonIds.includes(addon.id));
+    const addonTotal = selectedAddons.reduce((sum, addon) => sum + Number(addon.price), 0);
     addToCart({
       id: product.id,
       name: product.name,
-      price: product.price,
+      price: product.price + addonTotal,
       base_price: product.price,
       image: normalizeImage(product.image || product.image_url),
       quantity: quantity,
       category: product.category,
       size: selectedVariant,
       wholesale_price: product.wholesale_price,
-      wholesale_min_qty: product.wholesale_min_qty
+      wholesale_min_qty: product.wholesale_min_qty,
+      addons: selectedAddons.map(addon => ({ ...addon, price: Number(addon.price) }))
     });
 
     setTimeout(() => {
@@ -160,7 +191,10 @@ export default function ProductDetailClient({
 
   const handleWhatsAppOrder = () => {
     trackClick('whatsapp-order-btn', 'WhatsApp Order', { productId: product.id });
-    const message = `Hello Online Bar Nairobi! I want to order:\n\n*Product:* ${product.name}\n*Variant:* ${selectedVariant}\n*Quantity:* ${quantity}\n*Price:* ${formatPrice(product.price * quantity)}\n\nIs this available?`;
+    const selectedAddons = foodAddons.filter(addon => selectedFoodAddonIds.includes(addon.id));
+    const addonTotal = selectedAddons.reduce((sum, addon) => sum + Number(addon.price), 0);
+    const addonSummary = selectedAddons.length ? `\n*Extras:* ${selectedAddons.map(addon => addon.name).join(', ')}` : '';
+    const message = `Hello Online Bar Nairobi! I want to order:\n\n*Product:* ${product.name}\n*Variant:* ${selectedVariant}\n*Quantity:* ${quantity}${addonSummary}\n*Price:* ${formatPrice((product.price + addonTotal) * quantity)}\n\nIs this available?`;
     window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -465,6 +499,44 @@ export default function ProductDetailClient({
                     </div>
                 </div>
 
+                {(product.is_bite || product.is_snack) && (
+                    <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Add meal extras</label>
+                        {foodAddonError && <p role="status" className="rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">{foodAddonError}</p>}
+                        {foodAddonsLoading ? (
+                            <p className="text-sm text-slate-500">Loading meal extras…</p>
+                        ) : foodAddons.length === 0 ? (
+                            <p className="text-sm text-slate-500">No meal extras are currently available.</p>
+                        ) : (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                {foodAddons.map(addon => {
+                                    const selected = selectedFoodAddonIds.includes(addon.id);
+                                    return (
+                                        <button
+                                            key={addon.id}
+                                            type="button"
+                                            aria-pressed={selected}
+                                            onClick={() => setSelectedFoodAddonIds(current => selected ? current.filter(id => id !== addon.id) : [...current, addon.id])}
+                                            className={cn(
+                                                'flex items-center justify-between gap-3 rounded-2xl border-2 p-4 text-left transition-colors',
+                                                selected ? 'border-brand-red bg-rose-50' : 'border-slate-100 bg-white hover:border-slate-300'
+                                            )}
+                                        >
+                                            <span className="flex items-center gap-2 text-xs font-black uppercase">
+                                                <span className={cn('flex h-5 w-5 items-center justify-center rounded border text-[10px]', selected ? 'border-brand-red bg-brand-red text-white' : 'border-slate-300')}>
+                                                    {selected ? '✓' : ''}
+                                                </span>
+                                                {addon.name}
+                                            </span>
+                                            <span className="shrink-0 text-xs font-black text-primary">+{formatPrice(Number(addon.price))}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <div className="space-y-8">
                     <div className="flex items-center justify-between px-2">
                          <label className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400 italic">Quantity</label>
@@ -494,10 +566,10 @@ export default function ProductDetailClient({
                     <div className="flex gap-4">
                         <Button
                             onClick={handleAddToCart}
-                            disabled={isAdding || (product.stock !== undefined && product.stock === 0)}
+                            disabled={isAdding || ((product.is_bite || product.is_snack) && foodAddonsLoading) || (product.stock !== undefined && product.stock === 0)}
                             className="flex-1 h-24 rounded-[2.5rem] bg-primary text-white font-black uppercase tracking-[0.3em] text-sm shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all group border-none"
                         >
-                            {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? <><Check size={20} className="mr-2" /> In Bag</> : <>Add {quantity} &bull; {formatPrice(product.price * quantity)}</>}
+                            {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? <><Check size={20} className="mr-2" /> In Bag</> : <>Add {quantity} &bull; {formatPrice((product.price + foodAddons.filter(addon => selectedFoodAddonIds.includes(addon.id)).reduce((sum, addon) => sum + Number(addon.price), 0)) * quantity)}</>}
                         </Button>
                         <button
                             onClick={() => {

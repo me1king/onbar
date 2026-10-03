@@ -48,7 +48,7 @@ interface DBActiveVisitor {
     };
 }
 
-export default function ApexLiveRadar() {
+export default function LiveRadarPage() {
     const [visitors, setVisitors] = React.useState<ActiveVisitor[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [stats, setStats] = React.useState({
@@ -110,7 +110,7 @@ export default function ApexLiveRadar() {
                         <span className="text-[10px] font-black uppercase tracking-[0.4em] text-rose-500 italic">Live Grid Protocol</span>
                     </div>
                     <h1 className="text-4xl lg:text-5xl font-black text-foreground uppercase tracking-tighter leading-none italic">
-                        Apex <span className="text-primary">Live Radar.</span>
+                        <span className="text-primary">Live Radar.</span>
                     </h1>
                     <p className="text-muted-foreground text-sm font-medium">Real-time situational awareness of all patrons currently synchronized with the grid.</p>
                 </div>
