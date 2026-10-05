@@ -170,24 +170,24 @@ export default function LiveBehaviorCommandCenter() {
     ];
 
     return (
-        <div className="p-4 sm:p-8 space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20 animate-in fade-in duration-700">
+        <div className="min-h-screen space-y-6 bg-slate-50 p-3 pb-32 text-left selection:bg-primary/20 animate-in fade-in duration-700 sm:space-y-10 sm:p-6 sm:pb-40 lg:p-8">
 
             {/* HEADER & LIVE TELEMETRY STRIP */}
             <header className="space-y-6 border-b border-slate-200 pb-8">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => router.back()} className="h-12 w-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-primary transition-all shadow-sm">
+                    <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
+                        <button aria-label="Go back" onClick={() => router.back()} className="h-11 w-11 shrink-0 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-400 shadow-sm transition-all hover:text-primary sm:h-12 sm:w-12">
                             <ChevronLeft size={24} />
                         </button>
-                        <div>
-                            <div className="flex items-center gap-3 mb-1">
-                                <Flame className="h-5 w-5 text-rose-500 animate-pulse" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-rose-600 italic">REAL-TIME INTERACTION RADAR</span>
-                                                <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                                                    Recorded analytics
+                        <div className="min-w-0">
+                            <div className="mb-1 flex flex-wrap items-center gap-2 sm:gap-3">
+                                <Flame className="h-5 w-5 shrink-0 text-rose-500 animate-pulse" />
+                                <span className="text-[9px] font-black uppercase tracking-[0.18em] text-rose-600 italic sm:text-[10px] sm:tracking-[0.3em]">REAL-TIME INTERACTION RADAR</span>
+                                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[8px] font-black uppercase text-emerald-600">
+                                    Recorded analytics
                                 </span>
                             </div>
-                            <h1 className="text-4xl lg:text-5xl font-black text-foreground uppercase tracking-tighter leading-none italic">
+                            <h1 className="break-words text-3xl font-black uppercase leading-tight tracking-tighter text-foreground italic sm:text-4xl lg:text-5xl">
                                 Live <span className="text-rose-500 italic">Activity.</span>
                             </h1>
                         </div>
@@ -233,15 +233,15 @@ export default function LiveBehaviorCommandCenter() {
                 ))}
             </div>
 
-            <div className="grid xl:grid-cols-12 gap-8 text-left">
+            <div className="grid min-w-0 gap-5 text-left lg:grid-cols-12 lg:gap-8">
 
-                <div className="xl:col-span-7">
+                <div className="min-w-0 lg:col-span-7">
 
                     {/* 2. REAL-TIME INTERACTION STREAM */}
-                    <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                            <div>
-                                <h2 className="text-2xl font-black uppercase tracking-tight text-foreground italic">Real-Time Interaction Stream</h2>
+                    <Card className="min-w-0 space-y-5 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-md sm:space-y-6 sm:rounded-[2.5rem] sm:p-6 lg:rounded-[3.5rem] lg:p-8">
+                        <div className="flex min-w-0 flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <h2 className="break-words text-xl font-black uppercase tracking-tight text-foreground italic sm:text-2xl">Real-Time Interaction Stream</h2>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase">Live Signal Uplink</p>
                             </div>
                             <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-slate-50 text-slate-600 border border-slate-200">
@@ -257,19 +257,21 @@ export default function LiveBehaviorCommandCenter() {
                                 </p>
                             )}
                             {filteredEvents.map(evt => (
-                                <div key={evt.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-4 hover:bg-slate-100 transition-colors">
-                                    <div className="flex items-center gap-3 min-w-0">
+                                <div key={evt.id} className="flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 transition-colors hover:bg-slate-100 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-4">
+                                    <div className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 sm:flex sm:items-center sm:gap-3">
                                         <span className="text-[10px] font-mono font-black text-slate-400 shrink-0">{evt.timestamp}</span>
-                                        <span className="shrink-0 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[8px] font-black uppercase text-indigo-700">
+                                        <span className="w-fit shrink-0 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[8px] font-black uppercase text-indigo-700">
                                             {evt.action_type}
                                         </span>
-                                        <p className="text-xs font-bold text-foreground truncate">{evt.customer_code} &bull; {evt.description}</p>
+                                        <p title={`${evt.customer_code} · ${evt.description}`} className="col-span-2 min-w-0 break-all text-xs font-bold leading-relaxed text-foreground [overflow-wrap:anywhere] sm:line-clamp-2 sm:break-words">
+                                            <span className="text-slate-500">{evt.customer_code}</span> &bull; {evt.description}
+                                        </p>
                                     </div>
                                     <Button
                                         onClick={() => setSelectedTerminal(terminals.find(terminal => terminal.id === evt.session_id) || null)}
                                         disabled={!evt.session_id || !terminals.some(terminal => terminal.id === evt.session_id)}
                                         variant="outline"
-                                        className="h-8 px-3 rounded-xl border-slate-200 text-[8px] font-black uppercase hover:bg-primary hover:text-white shrink-0"
+                                        className="h-9 w-full shrink-0 rounded-xl border-slate-200 px-3 text-[8px] font-black uppercase hover:bg-primary hover:text-white sm:h-8 sm:w-auto"
                                     >
                                         View session
                                     </Button>
@@ -280,13 +282,13 @@ export default function LiveBehaviorCommandCenter() {
 
                 </div>
 
-                <div className="xl:col-span-5">
+                <div className="min-w-0 space-y-5 lg:col-span-5">
 
                     {/* 4. SESSION RADAR TERMINALS */}
-                    <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
-                        <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-                            <div>
-                                <h3 className="text-2xl font-black uppercase tracking-tight text-foreground italic">Session Radar Terminals</h3>
+                    <Card className="min-w-0 space-y-5 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-md sm:space-y-6 sm:rounded-[2.5rem] sm:p-6 lg:rounded-[3.5rem] lg:p-8">
+                        <div className="flex min-w-0 items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                            <div className="min-w-0">
+                                <h3 className="break-words text-xl font-black uppercase tracking-tight text-foreground italic sm:text-2xl">Session Radar Terminals</h3>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase">Stored customer sessions</p>
                             </div>
                             <Users size={20} className="text-primary animate-pulse" />
@@ -294,15 +296,15 @@ export default function LiveBehaviorCommandCenter() {
 
                         <div className="space-y-4 max-h-[500px] overflow-y-auto no-scrollbar pr-1">
                             {terminals.map(t => (
-                                <div key={t.id} className="p-5 rounded-3xl bg-slate-50 border border-slate-100 space-y-4 hover:bg-slate-100 transition-colors">
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center font-black text-primary">
+                                <div key={t.id} className="min-w-0 space-y-4 rounded-2xl border border-slate-100 bg-slate-50 p-3 transition-colors hover:bg-slate-100 sm:rounded-3xl sm:p-5">
+                                    <div className="flex min-w-0 items-start justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white font-black text-primary">
                                                 {t.device === 'Mobile' ? <Smartphone size={18} /> : <Monitor size={18} />}
                                             </div>
-                                            <div>
-                                                <h4 className="text-xs font-black uppercase text-foreground">{t.customer_name}</h4>
-                                                <p className="text-[9px] font-bold text-slate-400 uppercase">{t.location}</p>
+                                            <div className="min-w-0">
+                                                <h4 title={t.customer_name} className="truncate text-xs font-black uppercase text-foreground">{t.customer_name}</h4>
+                                                <p title={t.location} className="truncate text-[9px] font-bold uppercase text-slate-400">{t.location}</p>
                                             </div>
                                         </div>
                                         <span className={cn(
@@ -314,14 +316,14 @@ export default function LiveBehaviorCommandCenter() {
                                         </span>
                                     </div>
 
-                                    <div className="grid grid-cols-3 gap-2 text-center font-mono text-[9px]">
+                                    <div className="grid min-w-0 grid-cols-3 gap-1.5 text-center font-mono text-[9px] sm:gap-2">
                                         <div className="p-2 bg-white rounded-xl border border-slate-200">
                                             <p className="text-slate-400 uppercase text-[7px] font-sans">Active Time</p>
                                             <p className="font-bold text-foreground">{Math.floor(t.active_time_sec / 60)}m {t.active_time_sec % 60}s</p>
                                         </div>
                                         <div className="p-2 bg-white rounded-xl border border-slate-200">
                                             <p className="text-slate-400 uppercase text-[7px] font-sans">Last Activity</p>
-                                            <p className="font-bold text-foreground">{t.last_action}</p>
+                                            <p title={t.last_action} className="line-clamp-2 break-all font-bold text-foreground">{t.last_action}</p>
                                         </div>
                                         <div className="p-2 bg-white rounded-xl border border-slate-200">
                                             <p className="text-slate-400 uppercase text-[7px] font-sans">Cart Value</p>

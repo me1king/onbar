@@ -309,20 +309,21 @@ export default function AdminAuditPage() {
                   </div>
               </div>
           ) : (
-              <div className="overflow-x-auto">
-                  <table className="w-full text-left">
+              <>
+              <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-[980px] text-left">
                       <thead>
                           <tr className="bg-slate-50 text-slate-400 font-black uppercase text-[9px] tracking-[0.2em]">
-                              <th className="px-10 py-6">Admin</th>
-                              <th className="px-10 py-6">Action</th>
-                              <th className="px-10 py-6">Details</th>
-                              <th className="px-10 py-6 text-right">Time</th>
+                              <th className="whitespace-nowrap px-6 py-6">Admin</th>
+                              <th className="whitespace-nowrap px-6 py-6">Action</th>
+                              <th className="px-6 py-6">Details</th>
+                              <th className="whitespace-nowrap px-6 py-6 text-right">Time</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                           {filteredLogs.map(log => (
                               <tr key={log.id} className="hover:bg-slate-50/50 transition-colors group">
-                                  <td className="px-10 py-8">
+                                  <td className="whitespace-nowrap px-6 py-8">
                                       <div className="flex items-center gap-4">
                                           <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-white font-black text-[10px] shadow-lg shadow-primary/20 transition-transform group-hover:scale-110">
                                               {(log?.staff_email?.substring(0, 2) || 'AD').toUpperCase()}
@@ -335,17 +336,17 @@ export default function AdminAuditPage() {
                                           </div>
                                       </div>
                                   </td>
-                                  <td className="px-10 py-8">
+                                  <td className="whitespace-nowrap px-6 py-8">
                                       <span className="text-[10px] font-black text-primary uppercase bg-primary/5 px-4 py-2 rounded-xl border border-primary/10 whitespace-nowrap shadow-sm">
                                           {(log?.action || 'ACTIVITY').replace(/_/g, ' ')}
                                       </span>
                                   </td>
-                                  <td className="px-10 py-8 min-w-[300px]">
-                                      <div className="max-w-md">
+                                  <td className="px-6 py-8 min-w-[300px]">
+                                      <div className="max-w-md break-words">
                                           <DetailRenderer log={log} />
                                       </div>
                                   </td>
-                                  <td className="px-10 py-8 text-right">
+                                  <td className="whitespace-nowrap px-6 py-8 text-right">
                                       <p className="text-xs font-black text-foreground uppercase tracking-tighter">{log?.created_at ? new Date(log.created_at).toLocaleTimeString() : 'N/A'}</p>
                                       <p className="text-[9px] font-bold text-slate-400 uppercase">{log?.created_at ? new Date(log.created_at).toLocaleDateString() : 'N/A'}</p>
                                   </td>
@@ -354,6 +355,33 @@ export default function AdminAuditPage() {
                       </tbody>
                   </table>
               </div>
+              <div className="space-y-3 p-4 md:hidden">
+                  {filteredLogs.map(log => (
+                      <article key={log.id} className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                          <div className="flex min-w-0 items-start justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-3">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-[10px] font-black text-white">
+                                      {(log.staff_email?.substring(0, 2) || 'AD').toUpperCase()}
+                                  </div>
+                                  <p className="min-w-0 break-words text-xs font-black text-foreground">{log.staff_email || 'System'}</p>
+                              </div>
+                              <time className="shrink-0 text-right text-[10px] font-bold leading-relaxed text-slate-400">
+                                  {log.created_at ? new Date(log.created_at).toLocaleString() : 'N/A'}
+                              </time>
+                          </div>
+                          <p className="mt-3 inline-flex max-w-full rounded-lg border border-primary/10 bg-primary/5 px-3 py-1.5 text-[10px] font-black uppercase text-primary">
+                              {(log.action || 'ACTIVITY').replace(/_/g, ' ')}
+                          </p>
+                          <div className="mt-3 min-w-0 break-words">
+                              <DetailRenderer log={log} />
+                          </div>
+                          <p className="mt-3 break-words text-[9px] font-medium text-slate-400">
+                              {log.ip_address || '0.0.0.0'} · {log.device_info || 'Unknown'}
+                          </p>
+                      </article>
+                  ))}
+              </div>
+              </>
           )}
       </div>
     </div>

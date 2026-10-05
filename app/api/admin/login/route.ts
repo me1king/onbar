@@ -185,13 +185,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid login mode.' }, { status: 400 });
     }
 
-    const { data: blockedOrigin, error: blacklistError } = await database
+    const blacklistResult = await database
       .from('ip_blacklist')
       .select('ip_address')
       .eq('ip_address', ip)
       .eq('active', true)
       .maybeSingle();
-    if (blacklistError) throw new Error(`Could not check blocked origins: ${blacklistError.message}`);
+    let blockedOrigin = blacklistResult.data;
+    if (blacklistResult.error) {
+      const missingActiveColumn = blacklistResult.error.code === '42703'
+        && /ip_blacklist\.active/i.test(blacklistResult.error.message);
+      if (!missingActiveColumn) {
+        throw new Error(`Could not check blocked origins: ${blacklistResult.error.message}`);
+      }
+
+      console.warn('[AdminLogin] ip_blacklist.active is missing; treating existing entries as blocked until the auth migration is applied.');
+      const legacyBlacklistResult = await database
+        .from('ip_blacklist')
+        .select('ip_address')
+        .eq('ip_address', ip)
+        .maybeSingle();
+      if (legacyBlacklistResult.error) {
+        throw new Error(`Could not check blocked origins: ${legacyBlacklistResult.error.message}`);
+      }
+      blockedOrigin = legacyBlacklistResult.data;
+    }
     if (blockedOrigin) {
       return NextResponse.json({ error: 'This network origin is blocked from authentication.' }, { status: 403 });
     }

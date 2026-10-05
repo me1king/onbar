@@ -19,12 +19,13 @@ import {
     Plus,
     MessageSquare,
     Share2,
+    Copy,
     Star,
     Heart
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { formatPrice, cn, getReferralLink, normalizeImage } from '@/lib/utils';
+import { formatPrice, cn, normalizeImage } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { useSettings } from '@/lib/useSettings';
@@ -32,7 +33,7 @@ import Image from 'next/image';
 import { OB_OS } from '@/lib/onlineBarOS';
 import { v4 as uuidv4 } from 'uuid';
 import { useInteractionTracking } from '@/lib/utils/useInteractionTracking';
-import { productKnowledgeEngine, ProductDossier, SensoryDNA } from '@/lib/engines/productKnowledgeEngine';
+import { productKnowledgeEngine, ProductDossier } from '@/lib/engines/productKnowledgeEngine';
 import { supabase } from '@/lib/supabaseClient';
 import { Product } from '@/types/product';
 
@@ -87,6 +88,8 @@ export default function ProductDetailClient({
   const [selectedFoodAddonIds, setSelectedFoodAddonIds] = useState<string[]>([]);
   const [foodAddonError, setFoodAddonError] = useState<string | null>(null);
   const [foodAddonsLoading, setFoodAddonsLoading] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState('');
 
   useEffect(() => {
     async function initData() {
@@ -155,6 +158,16 @@ export default function ProductDetailClient({
   const allImages = (product.images && product.images.length > 0)
     ? product.images.map(img => normalizeImage(img))
     : [normalizeImage(product.image || product.image_url)];
+  const productDNA = product.sensory_metrics || {};
+  const beverageDNA = product.beverage_specs?.sensory_dna;
+  const sensoryDNA = {
+    body: dossier?.sensory_dna?.body ?? beverageDNA?.body ?? productDNA.body,
+    sweetness: dossier?.sensory_dna?.sweetness ?? beverageDNA?.sweetness ?? productDNA.sweetness ?? productDNA.sweet,
+    acidity: dossier?.sensory_dna?.acidity ?? productDNA.acidity,
+    oak: dossier?.sensory_dna?.oak ?? beverageDNA?.oak ?? productDNA.oak,
+    smoke: dossier?.sensory_dna?.smoke ?? beverageDNA?.smoke ?? productDNA.smoke,
+    intensity: dossier?.sensory_dna?.intensity ?? beverageDNA?.intensity ?? productDNA.intensity ?? productDNA.spice,
+  };
 
   const isSale = product.old_price && Number(product.old_price) > Number(product.price);
   const discountPercent = isSale ? Math.round((1 - (product.price / Number(product.old_price!))) * 100) : 0;
@@ -198,47 +211,86 @@ export default function ProductDetailClient({
     window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  const handleShare = async () => {
-    trackClick('share-btn', 'Share Product', { productId: product.id });
-    const url = referralCode ? getReferralLink(referralCode, `/shop/${product.id}`) : (typeof window !== 'undefined' ? window.location.href : '');
+  const getTrackedShareUrl = (source: string) => {
+    const url = new URL(`/shop/${product.id}`, window.location.origin);
+    const inboundReferral = new URLSearchParams(window.location.search).get('ref')
+      || sessionStorage.getItem('ob_referral_code');
+    const referral = referralCode || inboundReferral;
+    if (referral) url.searchParams.set('ref', referral);
+    url.searchParams.set('utm_source', source);
+    url.searchParams.set('utm_medium', 'social');
+    url.searchParams.set('utm_campaign', 'product-share');
+    url.searchParams.set('utm_content', `product-${product.id}`);
+    return url.toString();
+  };
 
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      try {
-        await navigator.share({
-          title: product.name,
-          url: url
-        });
-        return;
-      } catch {
-        // Fallback to copy if native share dismissed
-      }
-    }
-
+  const copyShareUrl = async (url: string) => {
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
-        alert('Product link copied!');
-        return;
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        const copied = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (!copied) throw new Error('The browser could not copy the link.');
       }
-    } catch {
-      // Fallback below
+      setShareFeedback('Tracked product link copied. Paste it into your post or story.');
+    } catch (error) {
+      console.error('Could not copy product share link:', error);
+      setShareFeedback('Copy was blocked by the browser. Select and copy the link below.');
+    }
+  };
+
+  const shareProduct = async (channel: 'native' | 'whatsapp' | 'facebook' | 'x' | 'instagram' | 'copy') => {
+    const url = getTrackedShareUrl(channel === 'native' ? 'share' : channel);
+    const text = `Check out ${product.name} at Online Bar`;
+    void trackClick('product-share-channel', 'Share Product', { productId: product.id, channel });
+    void OB_OS.track('CAMPAIGN_CLICKED', {
+      productId: product.id,
+      details: { campaign: 'product-share', source: channel, url }
+    });
+
+    if (channel === 'native' && navigator.share) {
+      try {
+        await navigator.share({ title: product.name, text, url });
+        setIsShareOpen(false);
+      } catch (error) {
+        if (error instanceof Error && error.name !== 'AbortError') {
+          console.error('Native product sharing failed:', error);
+          setShareFeedback('Native sharing is unavailable. Choose a destination below.');
+        }
+      }
+      return;
+    }
+    if (channel === 'native') {
+      setShareFeedback('Your browser does not support the system share menu. Choose a destination below.');
+      return;
+    }
+    if (channel === 'copy' || channel === 'instagram') {
+      await copyShareUrl(url);
+      return;
     }
 
-    // Fallback for non-HTTPS / Android WebView
-    try {
-      const textArea = document.createElement('textarea');
-      textArea.value = url;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      alert('Product link copied!');
-    } catch {
-      alert(`Product link: ${url}`);
-    }
+    const encodedUrl = encodeURIComponent(url);
+    const encodedText = encodeURIComponent(text);
+    const targets: Record<'whatsapp' | 'facebook' | 'x', string> = {
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      x: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
+    };
+    window.open(targets[channel], '_blank', 'noopener,noreferrer');
+    setIsShareOpen(false);
+  };
+
+  const handleShare = () => {
+    setShareFeedback('');
+    setIsShareOpen(true);
+    void trackClick('share-btn', 'Open Product Share Options', { productId: product.id });
   };
 
   const toggleLightbox = (open: boolean) => {
@@ -297,7 +349,7 @@ export default function ProductDetailClient({
                         src={allImages[activeImageIndex] || '/images/NoImage.jpg'}
                         alt={product.name}
                         fill
-                        className="object-contain p-2 sm:p-6 lg:p-10 cursor-zoom-in group-hover:scale-110 transition-transform duration-1000"
+                        className="object-contain scale-110 sm:scale-125 cursor-zoom-in group-hover:scale-[1.3] transition-transform duration-1000"
                         onClick={() => toggleLightbox(true)}
                         priority
                     />
@@ -328,43 +380,42 @@ export default function ProductDetailClient({
                     </p>
                     <div className="space-y-3">
                         <div className="flex flex-wrap items-center gap-3">
-                            <h3 className="text-3xl font-black text-foreground uppercase tracking-tighter leading-none italic">Exceptional</h3>
-                            <div className="flex text-amber-400 gap-1 shrink-0">
-                                {Array.from({ length: 5 }).map((_, i) => (
-                                    <Star key={i} size={18} className="fill-amber-400 text-amber-400" />
-                                ))}
-                            </div>
+                            <h3 className="text-3xl font-black text-foreground uppercase tracking-tighter leading-none italic">Tasting Notes</h3>
                         </div>
                         <p className="text-slate-600 font-medium leading-relaxed italic text-lg pr-4">
-                            &quot;{dossier?.origin_story || "A masterfully balanced profile that defines excellence in its category."}&quot;
+                            {dossier?.origin_story || product.description || 'Explore the recorded sensory profile for this drink.'}
                         </p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-8 border-t border-slate-100">
                         {[
-                            { label: 'Body', key: 'body' },
-                            { label: 'Sweet', key: 'sweet' },
-                            { label: 'Smoke', key: 'smoke' },
-                            { label: 'Spice', key: 'spice' },
+                            { label: 'Body', key: 'body' as const },
+                            { label: 'Sweetness', key: 'sweetness' as const },
+                            { label: 'Smoke', key: 'smoke' as const },
+                            { label: 'Intensity', key: 'intensity' as const },
                         ].map(trait => {
-                            const val = product.sensory_metrics?.[trait.key] || dossier?.sensory_dna?.[trait.key as keyof SensoryDNA] || 60;
-                            const activeCount = Math.min(5, Math.max(1, Math.round(val / 20)));
+                            const val = sensoryDNA[trait.key];
+                            const activeCount = typeof val === 'number' ? Math.min(5, Math.max(0, Math.round(val / 20))) : 0;
                             return (
                                 <div key={trait.label} className="flex items-center justify-between gap-4">
                                     <span className="text-[11px] font-black uppercase text-slate-500 tracking-[0.2em]">{trait.label}</span>
-                                    <div className="flex gap-2">
-                                        {Array.from({ length: 5 }).map((_, i) => (
-                                            <div
-                                                key={i}
-                                                className={cn(
-                                                    "h-3.5 w-3.5 rounded-full transition-all duration-700",
-                                                    i < activeCount
-                                                        ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)] scale-110"
-                                                        : "bg-slate-200/80"
-                                                )}
-                                            />
-                                        ))}
-                                    </div>
+                                    {typeof val === 'number' ? (
+                                        <div className="flex gap-2" aria-label={`${trait.label}: ${Math.round(val)} out of 100`}>
+                                            {Array.from({ length: 5 }).map((_, i) => (
+                                                <div
+                                                    key={i}
+                                                    className={cn(
+                                                        "h-3.5 w-3.5 rounded-full transition-all duration-700",
+                                                        i < activeCount
+                                                            ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)] scale-110"
+                                                            : "bg-slate-200/80"
+                                                    )}
+                                                />
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Not scored</span>
+                                    )}
                                 </div>
                             );
                         })}
@@ -421,7 +472,7 @@ export default function ProductDetailClient({
                 <div className="space-y-4 min-w-0">
                     <p className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-red truncate">{product.category}</p>
                     <h1 className="text-4xl sm:text-5xl font-black text-foreground tracking-tighter leading-[1] uppercase italic break-words">{product.name}</h1>
-                    <div className="flex flex-wrap items-center gap-3">
+                    <Link href="#customer-reviews" className="inline-flex flex-wrap items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                         <div className="flex text-amber-400 text-sm tracking-tighter shrink-0 gap-0.5">
                             {reviewStats.count > 0 ? (
                                 <>
@@ -429,14 +480,14 @@ export default function ProductDetailClient({
                                         <Star key={i} size={14} className={cn(i < Math.round(reviewStats.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-100")} />
                                     ))}
                                 </>
-                            ) : <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">No verified reviews</span>}
+                            ) : <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Be the first to rate this drink</span>}
                         </div>
                         {reviewStats.count > 0 && (
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                {reviewStats.rating} ({reviewStats.count} verified reviews)
+                                {reviewStats.rating} ({reviewStats.count} reviews)
                             </span>
                         )}
-                    </div>
+                    </Link>
                 </div>
 
                 <div className="space-y-3 min-w-0">
@@ -676,20 +727,13 @@ export default function ProductDetailClient({
 
       <div className="max-w-6xl w-full grid lg:grid-cols-12 gap-10 items-stretch px-4">
             <div className="lg:col-span-4 h-full flex flex-col gap-10">
-                {dossier?.sensory_dna ? (
-                    <ProductDNACard
-                        dna={dossier.sensory_dna}
-                        origin={dossier.country_of_origin || 'Unavailable'}
-                        style={product.category || 'Unavailable'}
-                        abv={dossier.abv_actual || product.abv_label || 'Unavailable'}
-                        verification={dossier.source_verification || {}}
-                    />
-                ) : (
-                    <Card className="p-8 rounded-[3rem] bg-amber-50 border border-amber-200 shadow-sm text-left">
-                        <h3 className="text-lg font-black uppercase tracking-tight text-amber-950">Sensory profile unavailable</h3>
-                        <p className="mt-2 text-xs font-medium leading-relaxed text-amber-900">No verified sensory dossier is recorded for this product.</p>
-                    </Card>
-                )}
+                <ProductDNACard
+                    dna={sensoryDNA}
+                    origin={dossier?.country_of_origin || product.origin || product.beverage_specs?.origin || 'Unavailable'}
+                    style={product.category || 'Unavailable'}
+                    abv={dossier?.abv_actual || product.abv_label || product.beverage_specs?.abv || 'Unavailable'}
+                    verification={dossier?.source_verification || {}}
+                />
                 <AuthenticitySentinel
                     productName={product.name}
                     origin={product.origin || product.beverage_specs?.origin || dossier?.country_of_origin || 'Unavailable'}
@@ -819,7 +863,7 @@ export default function ProductDetailClient({
               {relatedProducts.map((item) => (
                 <Link key={item.id} href={`/shop/${item.id}`} className="group block text-left">
                   <div className="bg-slate-50 rounded-[2.5rem] aspect-square flex items-center justify-center p-8 mb-6 border border-transparent group-hover:border-slate-100 transition-all relative overflow-hidden shadow-sm hover:shadow-2xl">
-                    <Image src={normalizeImage(item.image || item.image_url)} alt={item.name} fill className="object-contain p-8 transform group-hover:scale-110 transition-transform duration-500" />
+                    <Image src={normalizeImage(item.image || item.image_url)} alt={item.name} fill className="object-contain p-3 transform scale-110 group-hover:scale-125 transition-transform duration-500" />
                   </div>
                   <h3 className="text-[13px] font-black text-foreground uppercase tracking-widest truncate group-hover:text-brand-red transition-colors italic">{item.name}</h3>
                   <p className="text-sm font-black text-slate-400 mt-2">{formatPrice(item.price)}</p>
@@ -827,6 +871,60 @@ export default function ProductDetailClient({
               ))}
             </div>
           </section>
+        )}
+        {isShareOpen && (
+          <div
+            className="fixed inset-0 z-[6000] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setIsShareOpen(false);
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="share-product-title"
+              className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl sm:p-8"
+            >
+              <div className="mb-6 flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="share-product-title" className="text-xl font-black uppercase tracking-tight text-slate-900">Share this drink</h2>
+                  <p className="mt-1 text-sm text-slate-500">Share a trackable product link with your friends.</p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close sharing options"
+                  onClick={() => setIsShareOpen(false)}
+                  className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => void shareProduct('native')} className="col-span-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-700">
+                  More apps &amp; devices
+                </button>
+                <button type="button" onClick={() => void shareProduct('whatsapp')} className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-100">
+                  WhatsApp
+                </button>
+                <button type="button" onClick={() => void shareProduct('facebook')} className="rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-800 hover:bg-blue-100">
+                  Facebook
+                </button>
+                <button type="button" onClick={() => void shareProduct('x')} className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-200">
+                  Share to X
+                </button>
+                <button type="button" onClick={() => void shareProduct('instagram')} className="rounded-xl bg-pink-50 px-4 py-3 text-sm font-bold text-pink-800 hover:bg-pink-100">
+                  Copy link for Instagram
+                </button>
+                <button type="button" onClick={() => void shareProduct('copy')} className="col-span-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                  <Copy size={16} className="mr-2 inline" /> Copy tracked product link
+                </button>
+              </div>
+              {shareFeedback && <p role="status" className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-medium leading-relaxed text-amber-900">{shareFeedback}</p>}
+              <p className="mt-4 break-all rounded-lg bg-slate-50 p-3 text-[11px] text-slate-500">
+                {getTrackedShareUrl('share')}
+              </p>
+            </section>
+          </div>
         )}
     </div>
   );

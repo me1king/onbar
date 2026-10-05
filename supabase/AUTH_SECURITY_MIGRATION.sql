@@ -1,5 +1,21 @@
 -- Authentication audit records and server-only access controls.
 
+DO $$
+DECLARE
+    missing_tables TEXT;
+BEGIN
+    SELECT string_agg(required.table_name, ', ')
+    INTO missing_tables
+    FROM (VALUES ('public.staff'), ('public.audit_logs')) AS required(table_name)
+    WHERE to_regclass(required.table_name) IS NULL;
+
+    IF missing_tables IS NOT NULL THEN
+        RAISE EXCEPTION 'Authentication migration requires the core schema. Missing tables: %.', missing_tables
+            USING HINT = 'Run supabase/FINAL_ESTABLISHMENT_SQL.sql first, then rerun this migration.';
+    END IF;
+END;
+$$;
+
 ALTER TABLE public.staff
     ADD COLUMN IF NOT EXISTS supplier_id UUID,
     ADD COLUMN IF NOT EXISTS can_execute_payouts BOOLEAN NOT NULL DEFAULT false,
@@ -79,6 +95,12 @@ CREATE TABLE IF NOT EXISTS public.ip_blacklist (
     created_by TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.ip_blacklist
+    ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS created_by TEXT,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 ALTER TABLE public.ip_blacklist ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.ip_blacklist FROM anon, authenticated;

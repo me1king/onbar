@@ -164,7 +164,7 @@ export default function AdminUploadPage() {
 }
 
 function UploadContent() {
-  const { role, email } = useAdmin();
+  const { role, email, permissions } = useAdmin();
   const { settings } = useSettings();
   const [form, setForm] = useState(initialForm);
   const [variantStock, setVariantStock] = useState<Record<string, string>>({});
@@ -222,7 +222,7 @@ function UploadContent() {
     setExistingImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const canManageInventory = role === 'staff' || role === 'admin' || role === 'owner';
+  const canManageInventory = role === 'admin' || role === 'owner' || permissions.can_manage_inventory;
 
   const fetchProducts = async () => {
     if (!supabase) return;
@@ -413,29 +413,26 @@ function UploadContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase || !canManageInventory) return;
+    if (!canManageInventory) return;
     setIsSubmitting(true);
+    const uploadedPaths: string[] = [];
+    let productSaved = false;
 
     try {
       let imageUrls = [...existingImages];
-      const BUCKET = 'onlinebar-assets';
 
       if (selectedFiles.length > 0) {
-          const uploads = selectedFiles.map(async f => {
-              const path = `products/${Date.now()}-${f.name}`;
-              const { error: uploadError } = await supabase!.storage.from(BUCKET).upload(path, f);
-
-              if (uploadError) {
-                  if (uploadError.message.includes('not found')) {
-                      throw new Error(`Storage Bucket "${BUCKET}" not found. Go to Supabase Dashboard > Storage and create it.`);
-                  }
-                  throw uploadError;
+          for (const file of selectedFiles) {
+              const formData = new FormData();
+              formData.set('file', file);
+              const response = await fetch('/api/admin/product-image', { method: 'POST', body: formData });
+              const result = await response.json() as { path?: string; image_url?: string; error?: string };
+              if (!response.ok || !result.path || !result.image_url) {
+                  throw new Error(result.error || 'Product image upload failed.');
               }
-
-              return supabase!.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-          });
-          const newUrls = await Promise.all(uploads);
-          imageUrls = [...imageUrls, ...newUrls];
+              uploadedPaths.push(result.path);
+              imageUrls.push(result.image_url);
+          }
       }
 
       const vStock: Record<string, number> = {};
@@ -489,33 +486,17 @@ function UploadContent() {
       };
 
       const currentPayload: Record<string, unknown> = { ...productData };
-      let savedId = editingId;
-
-      // 🛡️ [SCHEMA_SAFE_RETRY_LOOP] Auto-strips columns missing from Supabase physical schema cache
-      while (true) {
-          try {
-              if (editingId) {
-                  const { error: upError } = await supabase.from('products').update(currentPayload).eq('id', editingId);
-                  if (upError) throw upError;
-                  savedId = editingId;
-              } else {
-                  const { data: insData, error: insError } = await supabase.from('products').insert([currentPayload]).select('id').single();
-                  if (insError) throw insError;
-                  savedId = insData.id;
-              }
-              break; // Success! Exit loop
-          } catch (err: unknown) {
-              const errorMsg = (err as Error).message || String(err);
-              const match = errorMsg.match(/Could not find the '([^']+)' column of 'products'/i);
-              if (match && match[1]) {
-                  const missingCol = match[1];
-                  delete currentPayload[missingCol];
-                  console.warn(`⚠️ [CELLAR_HUB_SCHEMA] Stripped missing column '${missingCol}' from products payload and retrying...`);
-                  continue;
-              }
-              throw err;
-          }
+      const saveResponse = await fetch('/api/admin/products', {
+          method: editingId ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editingId ? { id: editingId, product: currentPayload } : { product: currentPayload })
+      });
+      const saveResult = await saveResponse.json() as { id?: number; error?: string };
+      if (!saveResponse.ok || typeof saveResult.id !== 'number') {
+          throw new Error(saveResult.error || 'Product could not be saved.');
       }
+      const savedId = saveResult.id;
+      productSaved = true;
 
       await logAuditAction(email || 'admin', editingId ? 'UPDATE_PRODUCT' : 'CREATE_PRODUCT', { id: savedId, name: productData.name });
       setMessage({ type: 'success', text: editingId ? `Product #${savedId} Refined & Saved!` : `Product #${savedId} Ingested to Cellar Hub!` });
@@ -527,6 +508,32 @@ function UploadContent() {
       setTimeout(() => setMessage(null), 3000);
     } catch (err: unknown) {
         const error = err as Error;
+        if (!productSaved && uploadedPaths.length > 0) {
+            try {
+                const cleanupFailures = (await Promise.all(uploadedPaths.map(async path => {
+                    const response = await fetch('/api/admin/product-image', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path })
+                    });
+                    if (response.ok) return null;
+                    const result = await response.json() as { error?: string };
+                    return result.error || `Could not clean up ${path}.`;
+                }))).filter((failure): failure is string => failure !== null);
+                if (cleanupFailures.length > 0) {
+                    console.error('[ProductUpload] Image cleanup failed:', cleanupFailures);
+                    setMessage({ type: 'error', text: `${error.message} ${cleanupFailures.join(' ')}` });
+                    return;
+                }
+            } catch (cleanupError) {
+                console.error('[ProductUpload] Image cleanup failed:', cleanupError);
+                setMessage({
+                    type: 'error',
+                    text: `${error.message} Image cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown cleanup error.'}`
+                });
+                return;
+            }
+        }
         setMessage({ type: 'error', text: error.message });
     } finally {
         setIsSubmitting(false);
@@ -534,10 +541,16 @@ function UploadContent() {
   };
 
   const handleDeleteProduct = async (id: number) => {
-    if (!supabase || !canManageInventory) return;
+    if (!canManageInventory) return;
     if (!window.confirm("Expunge this node from the global catalogue?")) return;
     try {
-        await supabase.from('products').delete().eq('id', id);
+        const response = await fetch('/api/admin/products', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+        const result = await response.json() as { error?: string };
+        if (!response.ok) throw new Error(result.error || 'Product could not be deleted.');
         await logAuditAction(email || 'admin', 'DELETE_PRODUCT', { id });
         fetchProducts();
         cancelEditing();

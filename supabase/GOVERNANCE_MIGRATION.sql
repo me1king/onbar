@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.user_consent (
 );
 
 ALTER TABLE public.user_consent
+    ADD COLUMN IF NOT EXISTS id UUID,
     ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     ADD COLUMN IF NOT EXISTS anonymous_id TEXT,
     ADD COLUMN IF NOT EXISTS necessary BOOLEAN NOT NULL DEFAULT true,
@@ -21,6 +22,17 @@ ALTER TABLE public.user_consent
     ADD COLUMN IF NOT EXISTS marketing BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+UPDATE public.user_consent
+SET id = gen_random_uuid()
+WHERE id IS NULL;
+
+ALTER TABLE public.user_consent
+    ALTER COLUMN id SET DEFAULT gen_random_uuid(),
+    ALTER COLUMN id SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS user_consent_id_uidx
+    ON public.user_consent (id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS user_consent_user_id_uidx
     ON public.user_consent (user_id);

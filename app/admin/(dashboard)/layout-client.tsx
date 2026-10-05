@@ -398,8 +398,8 @@ export default function AdminLayoutClient({
                   </div>
               </header>
 
-              <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8 no-scrollbar relative scroll-smooth [overflow-wrap:anywhere]">
-                <div className="container mx-auto w-full space-y-10">
+              <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-3 sm:p-6 lg:p-8 no-scrollbar relative scroll-smooth break-words">
+                <div className="mx-auto w-full max-w-[1400px] space-y-8 sm:space-y-10">
                   {children}
                 </div>
               </main>

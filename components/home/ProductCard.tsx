@@ -10,6 +10,7 @@ import {
     Plus,
     ImageIcon,
     MessageSquare,
+    Star,
     TrendingUp,
     Lock,
     Utensils
@@ -122,7 +123,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
     <>
       <Card className="group flex w-full min-w-0 flex-col bg-white border border-slate-200/80 text-foreground shadow-md hover:shadow-xl transition-all duration-500 rounded-2xl sm:rounded-[3.5rem] overflow-hidden text-left relative min-h-[360px] sm:min-h-[420px]">
         {/* Visual Container */}
-        <div className="relative aspect-square min-w-0 bg-slate-50/80 rounded-xl sm:rounded-[2.5rem] m-2 sm:m-4 flex items-center justify-center p-2 sm:p-6 overflow-hidden border border-slate-100">
+        <div className="relative aspect-square min-w-0 bg-slate-50/80 rounded-xl sm:rounded-[2.5rem] m-2 sm:m-4 flex items-center justify-center p-1 sm:p-2 overflow-hidden border border-slate-100">
 
             {/* Premium Locked Overlay */}
             {isLocked && (
@@ -167,7 +168,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                     disabled={isAdding}
                     className={cn(
                         "absolute top-4 right-4 z-30 h-10 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2 transition-all duration-300 shadow-xl",
-                        justAdded ? "bg-emerald-500 text-white" : "bg-slate-900 text-white hover:bg-primary opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+                        justAdded ? "bg-emerald-500 text-white" : "bg-slate-900 text-white hover:bg-primary opacity-100 translate-y-0"
                     )}
                 >
                     {isAdding ? <Loader2 size={12} className="animate-spin" /> : justAdded ? <Check size={12} /> : <Plus size={12} />}
@@ -184,7 +185,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                     loading="lazy"
                     quality={75}
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
-                    className="object-contain transition-transform duration-700 group-hover:scale-110 p-4"
+                    className="object-contain transition-transform duration-700 scale-110 group-hover:scale-125"
                     onError={() => setImageError(true)}
                   />
                 ) : (
@@ -244,6 +245,15 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                 </div>
             </Link>
 
+            <Link
+                href={`/shop/${product.id}#customer-reviews`}
+                className="mt-2 inline-flex min-h-8 items-center gap-1.5 self-start rounded-md text-[9px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label={`Rate ${product.name}`}
+            >
+                <Star size={12} className="text-amber-500" />
+                Rate this drink
+            </Link>
+
             {/* Stock Indicator */}
             <div className="pt-2 flex items-center gap-3">
                 <div className="flex gap-0.5 shrink-0">
@@ -255,8 +265,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                 </span>
             </div>
 
-            {/* Quick Actions Hidden by Default */}
-            <div className="mt-auto pt-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+            <div className="mt-auto pt-4 flex gap-2 opacity-100">
                 <Link
                     href={`/shop/${product.id}`}
                     className="flex-1 h-10 rounded-xl bg-slate-50 text-[8px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all border border-slate-100 flex items-center justify-center text-foreground"

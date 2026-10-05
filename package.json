@@ -26,7 +26,7 @@
     "jspdf-autotable": "^5.0.8",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.26.0",
-    "next": "15.1.0",
+    "next": "15.5.25",
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "react": "19.0.0",
@@ -53,7 +53,7 @@
     "baseline-browser-mapping": "^2.10.32",
     "cross-env": "^10.1.0",
     "eslint": "^9.39.1",
-    "eslint-config-next": "15.2.1",
+    "eslint-config-next": "15.5.25",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3"
   },

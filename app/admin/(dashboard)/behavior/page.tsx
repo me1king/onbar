@@ -68,6 +68,7 @@ export default function BehaviorOverview() {
         rage_clicks_24h: number;
         zero_results_24h: number;
     } | null>(null);
+    const [metricsWarning, setMetricsWarning] = React.useState<string | null>(null);
     const [topScreens, setTopScreens] = React.useState<TopScreen[]>([]);
     const [topComponents, setTopComponents] = React.useState<TopComponent[]>([]);
 
@@ -85,10 +86,11 @@ export default function BehaviorOverview() {
                 supabase.from('component_interaction_audit').select('*').limit(5)
             ]);
 
-            const metrics = await metricsResponse.json() as { metrics?: BehaviorMetrics; error?: string };
+            const metrics = await metricsResponse.json() as { metrics?: BehaviorMetrics; warning?: string; error?: string };
             if (!metricsResponse.ok || !metrics.metrics) {
                 throw new Error(metrics.error || 'Behavior metrics could not be loaded.');
             }
+            setMetricsWarning(metrics.warning || null);
 
             setStats({
                 liveUsers: metrics.metrics.live_users,
@@ -107,6 +109,7 @@ export default function BehaviorOverview() {
         } catch (err) {
             console.error("Behavioral telemetry error:", err);
             setStats(null);
+            setMetricsWarning(null);
             setTopScreens([]);
             setTopComponents([]);
         } finally {
@@ -121,67 +124,74 @@ export default function BehaviorOverview() {
     }, [fetchData]);
 
     return (
-        <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20">
+        <div className="min-h-screen space-y-6 bg-slate-50 p-3 pb-32 text-left selection:bg-primary/20 sm:space-y-10 sm:p-6 sm:pb-40 lg:p-8">
 
             {/* BEHAVIOR HEADER */}
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-10">
-                <div>
+            <header className="flex min-w-0 flex-col items-start justify-between gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:gap-6 sm:pb-10">
+                <div className="min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                         <Activity className="h-4 w-4 text-primary" />
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary italic text-left">Behavioral OS Terminal</span>
                     </div>
-                    <h1 className="text-4xl lg:text-5xl font-black text-foreground uppercase tracking-tighter leading-none italic">
+                    <h1 className="break-words text-3xl font-black uppercase leading-tight tracking-tighter text-foreground italic sm:text-4xl lg:text-5xl">
                         Behavior <span className="text-primary">Intelligence.</span>
                     </h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1 italic">Decrypting the first-party journey through high-fidelity forensics.</p>
                 </div>
-                <div className="flex gap-4">
-                    <Button onClick={fetchData} variant="outline" className="rounded-xl h-14 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 transition-all">
+                <div className="w-full sm:w-auto">
+                    <Button onClick={fetchData} variant="outline" className="h-12 w-full rounded-xl border-slate-200 bg-white px-5 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-slate-50 sm:w-auto sm:px-6 sm:h-14">
                         <RefreshCcw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} /> Re-Sync Signals
                     </Button>
                 </div>
             </header>
 
+            {metricsWarning && (
+                <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-800">
+                    {metricsWarning}
+                </div>
+            )}
+
             {stats ? (
                 <BehaviorPulse stats={stats} />
             ) : (
-                <Card className="p-10 rounded-[3rem] bg-white border border-slate-100 text-center">
+                <Card className="rounded-2xl border border-slate-100 bg-white p-5 text-center sm:rounded-[3rem] sm:p-10">
                     <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Behavioral metrics unavailable</p>
                     <p className="mt-2 text-xs text-slate-400">No valid telemetry data is currently available.</p>
                 </Card>
             )}
 
-            <div className="grid xl:grid-cols-12 gap-10">
+            <div className="grid min-w-0 gap-6 xl:grid-cols-12 xl:gap-10">
 
                 {/* LEFT: WORKSPACE NODES */}
-                <div className="xl:col-span-8 space-y-10">
+                <div className="min-w-0 space-y-6 xl:col-span-8 xl:space-y-10">
 
                     {/* NAVIGATION MATRIX */}
-                    <div className="grid sm:grid-cols-3 gap-6">
+                    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
                         {[
                             { label: 'Live Radar', icon: Flame, href: '/admin/behavior/live', color: 'bg-primary' },
                             { label: 'Session Forensics', icon: ShieldCheck, href: '/admin/behavior/sessions', color: 'bg-indigo-600' },
                             { label: 'Conversion Funnels', icon: Zap, href: '/admin/behavior/funnels', color: 'bg-emerald-600' },
+                            { label: 'Click Heatmap', icon: MousePointer2, href: '/admin/analytics?tab=ux_heatmaps', color: 'bg-sky-600' },
                         ].map(node => (
                             <Link key={node.label} href={node.href}>
-                                <Card className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm hover:shadow-2xl transition-all group overflow-hidden relative">
-                                    <div className="relative z-10 space-y-6">
-                                        <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center text-white shadow-xl", node.color)}>
+                                <Card className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all group hover:shadow-2xl sm:rounded-3xl sm:p-6">
+                                    <div className="relative z-10 flex min-w-0 items-center gap-3 sm:flex-col sm:items-start sm:gap-5">
+                                        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-xl sm:h-12 sm:w-12 sm:rounded-2xl", node.color)}>
                                             <node.icon size={24} />
                                         </div>
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-xl font-black text-foreground uppercase tracking-tighter italic">{node.label}</h3>
-                                            <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-primary transition-colors" />
+                                        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                                            <h3 className="break-words text-base font-black uppercase tracking-tighter text-foreground italic sm:text-lg">{node.label}</h3>
+                                            <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-primary" />
                                         </div>
                                     </div>
-                                    <node.icon className="absolute -bottom-4 -right-4 h-24 w-24 text-slate-50 rotate-12 -z-0" />
+                                    <node.icon className="absolute -bottom-4 -right-4 -z-0 h-24 w-24 rotate-12 text-slate-50" />
                                 </Card>
                             </Link>
                         ))}
                     </div>
 
                     {/* TOP SCREENS */}
-                    <Card className="p-10 rounded-[4rem] bg-white border border-slate-100 shadow-sm space-y-10">
+                    <Card className="min-w-0 space-y-6 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:rounded-[3rem] sm:p-8 lg:space-y-10">
                         <div className="flex items-center justify-between border-l-4 border-primary pl-6">
                             <div>
                                 <h2 className="text-2xl font-black uppercase tracking-tight text-foreground leading-none">Screen Intelligence</h2>
@@ -221,16 +231,16 @@ export default function BehaviorOverview() {
                 </div>
 
                 {/* RIGHT: COMPONENT AUDIT */}
-                <div className="xl:col-span-4 space-y-10">
+                <div className="min-w-0 space-y-6 xl:col-span-4 xl:space-y-10">
 
-                    <Card className="p-10 rounded-[4rem] bg-white border border-slate-100 shadow-sm space-y-10 relative overflow-hidden">
+                    <Card className="relative min-w-0 space-y-6 overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:space-y-10 sm:rounded-[3rem] sm:p-8">
                         <div className="relative z-10 space-y-8">
                              <div className="space-y-2">
                                 <div className="flex items-center gap-3">
                                     <MousePointer2 className="h-4 w-4 text-primary" />
                                     <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary italic">Interaction Audit</span>
                                 </div>
-                                <h3 className="text-2xl font-black uppercase tracking-tight text-foreground leading-none italic">Top Components</h3>
+                                <h3 className="break-words text-xl font-black uppercase leading-tight tracking-tight text-foreground italic sm:text-2xl">Top Components</h3>
                              </div>
 
                              <div className="space-y-4">
@@ -257,7 +267,7 @@ export default function BehaviorOverview() {
                     </Card>
 
                     {/* FRICTION MONITOR */}
-                    <Card className="p-10 rounded-[4rem] bg-white border border-slate-100 shadow-sm space-y-8 text-left">
+                    <Card className="space-y-6 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm sm:space-y-8 sm:rounded-[3rem] sm:p-8">
                         <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em]">Friction Radar</h3>
                         <div className="space-y-6">
                             <div className="flex items-start gap-4 p-5 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700">

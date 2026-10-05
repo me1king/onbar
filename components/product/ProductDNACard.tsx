@@ -3,7 +3,6 @@
 import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { SensoryDNA } from '@/lib/engines/productKnowledgeEngine';
 import { ShieldCheck, Info, Zap } from 'lucide-react';
 import {
     PolarGrid,
@@ -14,7 +13,7 @@ import {
 } from 'recharts';
 
 interface Props {
-    dna: SensoryDNA;
+    dna: Partial<Record<'body' | 'sweetness' | 'oak' | 'smoke' | 'intensity' | 'acidity' | 'tannin' | 'bitterness', number>>;
     origin: string;
     style: string;
     abv: string;
@@ -23,14 +22,19 @@ interface Props {
 
 export default function ProductDNACard({ dna, origin, style, abv, verification }: Props) {
     const data = React.useMemo(() => [
-        { subject: 'Body', A: dna.body, fullMark: 100 },
-        { subject: 'Sweetness', A: dna.sweetness, fullMark: 100 },
-        { subject: 'Oak', A: dna.oak, fullMark: 100 },
-        { subject: 'Smoke', A: dna.smoke, fullMark: 100 },
-        { subject: 'Intensity', A: dna.intensity, fullMark: 100 },
-    ], [dna]);
+        { subject: 'Body', A: dna.body },
+        { subject: 'Sweetness', A: dna.sweetness },
+        { subject: 'Acidity', A: dna.acidity },
+        { subject: 'Oak', A: dna.oak },
+        { subject: 'Smoke', A: dna.smoke },
+        { subject: 'Intensity', A: dna.intensity },
+    ].map(axis => ({ ...axis, A: Number.isFinite(axis.A) ? Math.min(100, Math.max(0, axis.A!)) : 0, fullMark: 100 })), [dna]);
 
     const isVerified = verification['sensory_dna'] === 'MANUFACTURER' || verification['sensory_dna'] === 'TECHNICAL';
+    const scoredAxes = data.filter((axis) => {
+        const value = dna[axis.subject.toLowerCase() as 'body' | 'sweetness' | 'acidity' | 'oak' | 'smoke' | 'intensity'];
+        return typeof value === 'number' && Number.isFinite(value);
+    }).length;
 
     return (
         <Card className="p-8 rounded-[3rem] bg-white border border-slate-100 shadow-xl space-y-8 text-left relative overflow-hidden group">
@@ -38,7 +42,7 @@ export default function ProductDNACard({ dna, origin, style, abv, verification }
             <div className="flex justify-between items-start relative z-10">
                 <div className="space-y-1">
                     <h3 className="text-xl font-black uppercase tracking-tighter text-foreground">Product DNA</h3>
-                    <p className="text-[10px] font-black text-primary uppercase tracking-[0.4em]">Sensory Analytics Node</p>
+                    <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] sm:tracking-[0.4em]">Sensory Analytics Node</p>
                 </div>
                 <div className={cn(
                     "h-10 w-10 rounded-xl flex items-center justify-center shadow-sm border",
@@ -48,7 +52,7 @@ export default function ProductDNACard({ dna, origin, style, abv, verification }
                 </div>
             </div>
 
-            {/* Radar Chart (Hexagon) */}
+            {/* Six-axis tasting profile */}
             <div className="h-64 w-full relative z-10 py-4">
                 <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
@@ -65,6 +69,9 @@ export default function ProductDNACard({ dna, origin, style, abv, verification }
                     </RadarChart>
                 </ResponsiveContainer>
             </div>
+            <p className="text-center text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                {scoredAxes}/6 tasting dimensions scored · Unscored axes sit at the center
+            </p>
 
             {/* Micro Stats */}
             <div className="grid grid-cols-2 gap-3 relative z-10">

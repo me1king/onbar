@@ -17,6 +17,7 @@ local.properties
 # Next.js
 node_modules/
 .next/
+.next-dev/
 out/
 .env*.local
 .vercel

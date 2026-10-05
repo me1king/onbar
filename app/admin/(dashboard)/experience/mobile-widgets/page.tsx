@@ -128,18 +128,18 @@ export default function MobileWidgetCommand() {
     };
 
     return (
-        <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left selection:bg-primary/20 pb-40">
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
-                <div>
+        <div className="min-h-screen space-y-8 bg-slate-50 p-4 pb-40 text-left selection:bg-primary/20 sm:space-y-10 sm:p-6 lg:p-8">
+            <header className="flex flex-col items-start justify-between gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:gap-6 sm:pb-8">
+                <div className="min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                         <Smartphone className="h-4 w-4 text-primary" />
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Terminal Experience</span>
                     </div>
-                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">App Widget Command</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Design and publish live content nodes directly to patrons&apos; home screens.</p>
+                    <h1 className="break-words text-3xl font-black uppercase leading-tight tracking-tighter text-foreground sm:text-4xl sm:leading-none">App Widget Command</h1>
+                    <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">Design and publish live content nodes directly to patrons&apos; home screens.</p>
                 </div>
-                <div className="flex flex-wrap gap-3">
-                    <Button onClick={requestWidgetPin} variant="outline" className="rounded-xl h-12 px-5 font-black uppercase text-[10px] tracking-widest">
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
+                    <Button onClick={requestWidgetPin} variant="outline" className="h-12 w-full rounded-xl px-5 text-[10px] font-black uppercase tracking-widest sm:w-auto">
                         <Smartphone className="h-4 w-4 mr-2" /> Add to Home Screen
                     </Button>
                     <Button
@@ -152,7 +152,7 @@ export default function MobileWidgetCommand() {
                             cta_label: 'SHOP NOW',
                             start_at: new Date().toISOString().substring(0, 16)
                         })}
-                        className="rounded-xl h-12 px-8 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+                        className="h-12 w-full rounded-xl bg-primary px-6 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-primary/20 transition-all hover:scale-105 active:scale-95 sm:w-auto sm:px-8"
                     >
                         <Plus className="h-4 w-4 mr-2" /> Design New Widget
                     </Button>
@@ -162,11 +162,11 @@ export default function MobileWidgetCommand() {
             {actionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{actionError}</p>}
             {conversionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{conversionError}</p>}
 
-            <div className="grid lg:grid-cols-12 gap-10">
+            <div className="grid min-w-0 gap-8 lg:grid-cols-12 lg:gap-10">
                 <div className="lg:col-span-8 space-y-6">
-                    <div className="flex items-center justify-between px-4">
-                        <h2 className="text-xl font-black uppercase tracking-tighter text-foreground">Active Nodes</h2>
-                        <span className="text-[10px] font-black uppercase text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-100">{widgets.length} Configured</span>
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-1 sm:px-4">
+                        <h2 className="text-lg font-black uppercase tracking-tighter text-foreground sm:text-xl">Active Nodes</h2>
+                        <span className="rounded-full border border-slate-100 bg-white px-3 py-1 text-[10px] font-black uppercase text-slate-400">{widgets.length} Configured</span>
                     </div>
 
                     <div className="grid gap-4">
@@ -180,41 +180,43 @@ export default function MobileWidgetCommand() {
                             </Card>
                         ) : widgets.map((w) => (
                             <Card key={w.id} className={cn(
-                                "p-6 rounded-[2.5rem] border transition-all hover:shadow-xl relative overflow-hidden group",
+                                "relative overflow-hidden rounded-2xl border p-4 transition-all hover:shadow-xl group sm:rounded-[2rem] sm:p-6",
                                 w.status === 'PUBLISHED' ? "bg-white border-slate-100" : "bg-slate-50 border-dashed border-slate-200 opacity-60"
                             )}>
-                                <div className="flex items-center gap-6 relative z-10 text-left">
-                                    <div className="h-16 w-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center relative overflow-hidden shrink-0">
+                                <div className="relative z-10 grid min-w-0 grid-cols-1 gap-4 text-left sm:grid-cols-[4rem_minmax(0,1fr)_auto] sm:items-center sm:gap-5">
+                                    <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 sm:h-16 sm:w-16">
                                         {w.image_url ? (
                                             <Image src={w.image_url} alt="" fill className="object-contain p-2" />
                                         ) : (
                                             <Smartphone className="text-slate-300" />
                                         )}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-3 mb-1">
+                                    <div className="min-w-0">
+                                        <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                                             <span className="text-[10px] font-black uppercase text-primary tracking-widest">{w.content_type}</span>
                                             <div className="h-1 w-1 rounded-full bg-slate-200" />
                                             <span className="text-[8px] font-black uppercase text-slate-400">Target: {w.target_segment}</span>
                                         </div>
-                                        <h3 className="text-xl font-black uppercase tracking-tight text-foreground">{w.title}</h3>
-                                        <p className="text-[10px] font-medium text-slate-500 truncate italic">&quot;{w.description}&quot;</p>
-                                        <p className="pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                        <h3 className="break-words text-lg font-black uppercase tracking-tight text-foreground sm:text-xl">{w.title}</h3>
+                                        <p className="break-words text-xs font-medium italic text-slate-500 sm:truncate sm:text-[10px]">&quot;{w.description}&quot;</p>
+                                        <p className="pt-2 text-[10px] font-bold uppercase leading-relaxed tracking-wide text-slate-500">
                                             {conversionError ? 'Sales attribution unavailable' : `${conversions[w.id]?.orders || 0} attributed orders · ${formatPrice(conversions[w.id]?.revenue || 0)} paid revenue`}
                                         </p>
                                     </div>
-                                    <div className="flex items-center gap-4">
-                                        <Button variant="ghost" size="icon" onClick={() => setEditing(w)} className="h-10 w-10 rounded-xl hover:bg-slate-50"><Settings2 size={18} /></Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(w.id)} className="h-10 w-10 rounded-xl hover:bg-rose-50 text-rose-500"><Trash2 size={18} /></Button>
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-slate-100 pt-3 sm:justify-end sm:border-0 sm:pt-0">
+                                        <Button variant="ghost" size="icon" aria-label={`Edit ${w.title}`} onClick={() => setEditing(w)} className="h-10 w-10 rounded-xl hover:bg-slate-50"><Settings2 size={18} /></Button>
+                                        <Button variant="ghost" size="icon" aria-label={`Delete ${w.title}`} onClick={() => handleDelete(w.id)} className="h-10 w-10 rounded-xl text-rose-500 hover:bg-rose-50"><Trash2 size={18} /></Button>
                                         <div className={cn(
-                                            "px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border",
+                                            "rounded-xl border px-3 py-2 text-[9px] font-black uppercase tracking-widest sm:px-4",
                                             w.status === 'PUBLISHED' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-100 text-slate-400 border-slate-200"
                                         )}>
                                             {w.status}
                                         </div>
                                     </div>
-                                    <p className="text-xs text-slate-500">Orders are attributed when shoppers open this widget’s link and complete payment. Android requires the user to accept the launcher’s widget prompt.</p>
                                 </div>
+                                <p className="mt-4 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-500">
+                                    Orders are attributed when shoppers open this widget’s link and complete payment. Android requires the user to accept the launcher’s widget prompt.
+                                </p>
                             </Card>
                         ))}
                     </div>

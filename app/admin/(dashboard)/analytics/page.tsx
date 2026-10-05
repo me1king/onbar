@@ -77,6 +77,12 @@ export default function AdminAnalyticsPage() {
     const displayPrice = (value: number | null) => value === null ? 'Unavailable' : formatPrice(value);
 
     React.useEffect(() => {
+        if (new URLSearchParams(window.location.search).get('tab') === 'ux_heatmaps') {
+            setActiveTab('ux_heatmaps');
+        }
+    }, []);
+
+    React.useEffect(() => {
         if (activeTab !== 'ux_heatmaps') return;
         let active = true;
         setHeatmapLoading(true);

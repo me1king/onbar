@@ -101,17 +101,19 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
       }
 
       // 2. Insert Review
-      const { error } = await supabase.from('reviews').insert([
-        {
-          product_id: productId,
-          customer_name: name.trim(),
+      const response = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          customerName: name.trim(),
           rating,
           comment: comment.trim(),
-          photo_urls: photoUrls
-        },
-      ]);
-
-      if (error) throw error;
+          photoUrls
+        })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Your review could not be saved.');
 
       // 3. Update Mission Progress
       if (user) {
@@ -156,7 +158,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
           }
       }
 
-      setMessage({ type: 'success', text: 'Thank you! Your verified review has been posted.' });
+      setMessage({ type: 'success', text: 'Thank you! Your review has been posted.' });
       setName('');
       setComment('');
       setRating(5);
@@ -171,7 +173,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
   };
 
   return (
-    <div className="mt-16 border-t border-slate-100 pt-16 text-left">
+    <div id="customer-reviews" className="mt-16 scroll-mt-24 border-t border-slate-100 pt-16 text-left">
       <div className="grid lg:grid-cols-3 gap-12">
 
         {/* Review Summary & Form */}
@@ -182,13 +184,25 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
               <div className="text-5xl font-black text-foreground">
                 {reviews.length > 0
                   ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
-                  : '5.0'}
+                  : '—'}
               </div>
               <div>
                 <div className="flex text-amber-500">
-                  {[...Array(5)].map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      className={cn(
+                        'h-4 w-4',
+                        reviews.length > 0 && i < Math.round(reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length)
+                          ? 'fill-current'
+                          : 'text-slate-200'
+                      )}
+                    />
+                  ))}
                 </div>
-                <p className="text-xs font-bold text-slate-400 uppercase mt-1">{reviews.length} Verified Reviews</p>
+                <p className="text-xs font-bold text-slate-400 uppercase mt-1">
+                  {reviews.length === 0 ? 'No reviews yet' : `${reviews.length} Customer Reviews`}
+                </p>
               </div>
             </div>
           </div>

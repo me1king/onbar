@@ -58,7 +58,7 @@ export async function GET() {
             .eq('status', 'OPEN')
             .order('created_at', { ascending: false })
             .limit(100),
-        admin.client.from('user_consent').select('id', { count: 'exact', head: true }),
+        admin.client.from('user_consent').select('*', { count: 'exact', head: true }),
         admin.client.from('profiles').select('id', { count: 'exact', head: true })
     ]);
 
