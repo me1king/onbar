@@ -247,40 +247,51 @@ export default function BiteCommandPage() {
 
             {/* CATEGORY TABS */}
             <div className="sticky top-16 bg-white/95 backdrop-blur-xl z-40 border-b border-slate-200/80 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex gap-3 overflow-x-auto no-scrollbar">
-                    {CATEGORIES.map(cat => (
-                        <button
-                            key={cat}
-                            onClick={() => setActiveCat(cat)}
-                            className={cn(
-                                "px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shrink-0",
-                                activeCat === cat ? "bg-primary text-white font-black shadow-lg shadow-primary/30 scale-105" : "bg-slate-100 text-slate-600 hover:bg-slate-200/80 border border-slate-200/60"
-                            )}
-                        >
-                            {cat}
-                        </button>
-                    ))}
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+                    <label htmlFor="bite-category" className="sr-only">Filter bites by category</label>
+                    <select
+                        id="bite-category"
+                        value={activeCat}
+                        onChange={event => setActiveCat(event.target.value)}
+                        className="w-full min-w-0 rounded-full border border-slate-200 bg-slate-100 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 sm:hidden"
+                    >
+                        {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                    <div className="hidden sm:flex gap-3 overflow-x-auto no-scrollbar">
+                        {CATEGORIES.map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setActiveCat(cat)}
+                                className={cn(
+                                    "px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all shrink-0",
+                                    activeCat === cat ? "bg-primary text-white font-black shadow-lg shadow-primary/30 scale-105" : "bg-slate-100 text-slate-600 hover:bg-slate-200/80 border border-slate-200/60"
+                                )}
+                            >
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
             {/* BITES GRID */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-12">
                 {addError && (
                     <p role="alert" className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
                         {addError}
                     </p>
                 )}
                 {loading ? (
-                    <div className="py-32 flex flex-col items-center justify-center gap-4">
+                    <div className="py-2 sm:py-32 flex flex-col items-center justify-center gap-4">
                         <Loader2 className="animate-spin text-primary" size={48} />
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Deploying 20-Minute Fast Food Menu...</p>
                     </div>
                 ) : error ? (
-                    <div role="alert" className="py-32 text-center text-rose-600">
-                        <p className="text-sm font-black uppercase tracking-widest">{error}</p>
+                    <div role="alert" className="px-4 py-0 sm:py-32 text-center text-rose-600">
+                        <p className="text-xs sm:text-sm font-black uppercase tracking-wide sm:tracking-widest break-words">{error}</p>
                     </div>
                 ) : filteredBites.length === 0 ? (
-                    <div className="py-32 text-center text-slate-400 space-y-4">
+                    <div className="px-4 py-0 sm:py-32 text-center text-slate-400 space-y-4">
                         <Utensils size={56} className="mx-auto opacity-30" />
                         <p className="text-sm font-black uppercase tracking-widest italic">{activeCat === 'All' ? 'No bites are currently available.' : 'No bites matched this filter. Select All.'}</p>
                         {activeCat !== 'All' && (

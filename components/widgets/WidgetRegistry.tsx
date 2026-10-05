@@ -33,15 +33,25 @@ const DEFAULT_HOME_WIDGETS: WidgetNode[] = [
     { id: 'default-home-hero', widget_key: 'HERO_WIDGET', rank: 1, config: {} },
     { id: 'default-home-catalog', widget_key: 'TRENDING_WIDGET', rank: 2, config: {} },
 ];
+const EMPTY_WIDGETS: WidgetNode[] = [];
 
-export default function WidgetRegistry({ pageRoute = '/' }: { pageRoute?: string }) {
-    const [widgets, setWidgets] = React.useState<WidgetNode[]>([]);
-    const [loading, setLoading] = React.useState(true);
+export default function WidgetRegistry({
+    pageRoute = '/',
+    coreWidgetsRendered = false,
+}: {
+    pageRoute?: string;
+    coreWidgetsRendered?: boolean;
+}) {
+    const defaultWidgets = pageRoute === '/' && !coreWidgetsRendered ? DEFAULT_HOME_WIDGETS : EMPTY_WIDGETS;
+    const [widgets, setWidgets] = React.useState<WidgetNode[]>(
+        defaultWidgets
+    );
+    const [loading, setLoading] = React.useState(pageRoute !== '/');
 
     React.useEffect(() => {
         async function fetchRegistry() {
             if (!supabase) {
-                setWidgets(pageRoute === '/' ? DEFAULT_HOME_WIDGETS : []);
+                setWidgets(defaultWidgets);
                 setLoading(false);
                 return;
             }
@@ -54,12 +64,19 @@ export default function WidgetRegistry({ pageRoute = '/' }: { pageRoute?: string
 
                 if (error) throw error;
                 const activeWidgets = (data || []).filter(widget => widget.status === 'ACTIVE') as WidgetNode[];
+                const configuredWidgets = pageRoute === '/' && coreWidgetsRendered
+                    ? activeWidgets.filter(widget => widget.widget_key !== 'HERO_WIDGET' && widget.widget_key !== 'TRENDING_WIDGET')
+                    : activeWidgets;
                 if (pageRoute !== '/') {
-                    setWidgets(activeWidgets);
-                } else if (activeWidgets.length === 0) {
-                    setWidgets(DEFAULT_HOME_WIDGETS);
+                    setWidgets(configuredWidgets);
+                } else if (configuredWidgets.length === 0) {
+                    setWidgets(defaultWidgets);
                 } else {
-                    const homepageWidgets = [...activeWidgets];
+                    const homepageWidgets = [...configuredWidgets];
+                    if (coreWidgetsRendered) {
+                        setWidgets(homepageWidgets);
+                        return;
+                    }
                     if (!homepageWidgets.some(widget => widget.widget_key === 'HERO_WIDGET')) {
                         homepageWidgets.unshift(DEFAULT_HOME_WIDGETS[0]);
                     }
@@ -70,15 +87,15 @@ export default function WidgetRegistry({ pageRoute = '/' }: { pageRoute?: string
                 }
             } catch (err) {
                 console.error('Could not load the widget registry:', err);
-                setWidgets(pageRoute === '/' ? DEFAULT_HOME_WIDGETS : []);
+                setWidgets(defaultWidgets);
             } finally {
                 setLoading(false);
             }
         }
         fetchRegistry();
-    }, [pageRoute]);
+    }, [pageRoute, coreWidgetsRendered, defaultWidgets]);
 
-    if (loading) return (
+    if (loading && widgets.length === 0) return (
         <div className="py-40 flex flex-col items-center gap-6">
             <Loader2 className="h-10 w-10 text-primary animate-spin" />
             <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-300">Synchronizing Interface Nodes...</p>

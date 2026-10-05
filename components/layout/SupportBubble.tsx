@@ -239,11 +239,11 @@ export default function SupportBubble() {
     };
 
     return (
-        <div className="fixed bottom-32 lg:bottom-8 right-6 sm:right-8 z-[2100] flex flex-col items-end gap-4">
+        <div className="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] lg:bottom-8 right-4 sm:right-8 z-[2100] flex flex-col items-end gap-4">
 
             {/* Greeting Label */}
             {showLabel && !isOpen && (
-                <div className="bg-white px-6 py-4 rounded-[1.8rem] border border-slate-100 shadow-2xl animate-in slide-in-from-right-4 duration-500 flex items-center gap-4 group max-w-[calc(100vw-48px)]">
+                <div className="hidden sm:flex bg-white px-6 py-4 rounded-[1.8rem] border border-slate-100 shadow-2xl animate-in slide-in-from-right-4 duration-500 items-center gap-4 group max-w-[calc(100vw-48px)]">
                     <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-white font-black text-xs shadow-lg shadow-primary/20">
                         {(userProfile?.full_name as string)?.substring(0, 1) || settings?.branding?.owner_name?.substring(0, 1) || 'A'}
                     </div>
@@ -255,7 +255,7 @@ export default function SupportBubble() {
                     </div>
                     <button
                         onClick={(e) => { e.stopPropagation(); handleDismissLabel(); }}
-                        className="h-10 w-10 -mr-2 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-all active:scale-90"
+                        className="h-10 w-10 -mr-2 flex items-center justify-center text-slate-300 hover:text-primary hover:bg-orange-50 rounded-full transition-all active:scale-90"
                         title="Dismiss help bubble"
                     >
                         <X className="h-4 w-4" />
@@ -464,7 +464,7 @@ export default function SupportBubble() {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 aria-label={isOpen ? 'Close customer support' : 'Open customer support'}
-                className="relative h-16 w-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all group border-4 border-white"
+                className="relative flex h-16 w-16 bg-primary text-white rounded-full shadow-2xl items-center justify-center hover:scale-110 active:scale-95 transition-all group border-4 border-white"
             >
                 {isOpen ? <X className="h-7 w-7" /> : <MessageCircle className="h-7 w-7 group-hover:rotate-12 transition-transform" />}
                 {!isOpen && <span className="absolute top-0 right-0 h-4 w-4 bg-primary rounded-full border-2 border-white animate-pulse"></span>}

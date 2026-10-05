@@ -111,11 +111,11 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
   }
 
   return (
-    <div className={cn("flex items-center", isMobileMenu ? "flex-col w-full gap-2" : "gap-2 sm:gap-4")}>
+    <div className={cn("flex items-center", isMobileMenu ? "flex-col w-full gap-2" : "gap-2 max-[430px]:gap-1 sm:gap-4")}>
       <Link
         href="/admin/login"
         className={cn(
-            "text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors mr-2",
+            "text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors mr-2 max-[430px]:mr-0",
             !isMobileMenu && "hidden lg:inline-block"
         )}
       >
@@ -124,8 +124,8 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
       <Link
         href="/auth?mode=signin"
         className={cn(
-            "text-[10px] font-black uppercase tracking-widest text-foreground hover:text-primary transition-colors",
-            !isMobileMenu && "hidden sm:inline-block"
+            "whitespace-nowrap rounded-lg text-[9px] font-black uppercase tracking-wide text-foreground transition-colors hover:text-primary max-[430px]:px-1 max-[430px]:py-1 max-[430px]:text-[8px] max-[430px]:tracking-normal max-[360px]:px-0.5 max-[360px]:py-1 max-[360px]:text-[8px] sm:rounded-none sm:text-[10px] sm:tracking-widest",
+            isMobileMenu ? "w-full py-4 text-center" : "px-1.5 py-2 sm:px-0 sm:py-0"
         )}
       >
         Sign In
@@ -133,22 +133,15 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
       <Link
         href="/auth?mode=signup"
         className={cn(
-            "rounded-xl bg-primary text-white transition hover:bg-primary/90 shadow-lg shadow-primary/10 text-center active:scale-95",
-            isMobileMenu ? "w-full py-4 text-xs font-black" : "hidden sm:inline-block px-5 py-2.5 text-[10px] font-black uppercase tracking-widest"
+            "whitespace-nowrap rounded-lg bg-primary text-center text-white shadow-lg shadow-primary/10 transition hover:bg-primary/90 active:scale-95 max-[430px]:px-1 max-[430px]:py-1 max-[430px]:text-[8px] max-[430px]:tracking-normal sm:rounded-xl",
+            isMobileMenu
+                ? "w-full py-4 text-xs font-black"
+                : "px-2 py-2 text-[9px] font-black uppercase tracking-wide max-[360px]:px-1 max-[360px]:py-1 max-[360px]:text-[8px] sm:px-5 sm:py-2.5 sm:text-[10px] sm:tracking-widest"
         )}
       >
-        Join Now
+        <span className="sm:hidden">Join</span>
+        <span className="hidden sm:inline">Join Now</span>
       </Link>
-      {/* Header-only Mobile Auth Icon */}
-      {!isMobileMenu && (
-          <Link
-            href="/auth?mode=signin"
-            className="sm:hidden h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-600 hover:bg-primary hover:text-white transition-all border border-slate-100 active:scale-95"
-            aria-label="Sign In"
-          >
-            <UserIcon className="h-5 w-5" />
-          </Link>
-      )}
     </div>
   );
 }
@@ -395,11 +388,11 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
           : "bg-white/80 backdrop-blur-md border-b border-slate-100 shadow-sm"
       }`}
     >
-      <div className="container mx-auto px-4 sm:px-6 py-4">
-        <div className="flex items-center justify-between gap-2 lg:gap-4">
-          <div className="flex items-center space-x-2 lg:space-x-4 shrink-0">
+      <div className="container mx-auto px-4 max-[430px]:px-2 max-[360px]:px-2 sm:px-6 py-4 max-[360px]:py-3">
+        <div className="flex items-center justify-between gap-2 max-[430px]:gap-1 max-[360px]:gap-1 lg:gap-4">
+          <div className="flex items-center space-x-2 max-[430px]:space-x-1 max-[360px]:space-x-1 lg:space-x-4 shrink-0">
             <Link
-              className="text-xl sm:text-2xl tracking-tighter font-black text-foreground hover:text-primary transition-colors flex items-center gap-2 uppercase whitespace-nowrap"
+              className="text-xl max-[430px]:text-base max-[360px]:text-base sm:text-2xl tracking-tighter font-black text-foreground hover:text-primary transition-colors flex items-center gap-2 max-[430px]:gap-1 max-[360px]:gap-1 uppercase whitespace-nowrap"
               href="/"
               aria-label="Online Bar Home"
             >
@@ -407,7 +400,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                   <Image src={settings.branding.logo_url} alt="Logo" width={100} height={40} className="h-6 sm:h-8 w-auto" priority />
               ) : (
                   <>
-                    <Wine className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+                    <Wine className="h-5 w-5 max-[360px]:h-4 max-[360px]:w-4 sm:h-6 sm:w-6 text-primary" />
                     <span>Online<span className="text-primary">Bar</span></span>
                   </>
               )}
@@ -541,10 +534,10 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
             )}
           </div>
 
-          <div className="flex items-center space-x-1 sm:space-x-4">
+          <div className="flex items-center space-x-1 max-[430px]:space-x-0 max-[360px]:space-x-0 sm:space-x-4">
             <button
               onClick={() => setIsMobileOpen(!isMobileOpen)}
-              className="2xl:hidden p-1.5 sm:p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
+              className="2xl:hidden p-1.5 max-[430px]:p-1 max-[360px]:p-1 sm:p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
               aria-label="Toggle Menu"
             >
               {isMobileOpen ? <X className="h-5 w-5 text-slate-600" /> : <Menu className="h-5 w-5 text-slate-600" />}
@@ -623,10 +616,10 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
             <Link
               href="/cart"
-              className="relative p-1.5 sm:p-2 rounded-full hover:bg-slate-50 transition-all duration-200 group active:scale-95"
+              className="relative p-1.5 max-[430px]:p-1 sm:p-2 rounded-full hover:bg-slate-50 transition-all duration-200 group active:scale-95"
               aria-label="Shopping Cart"
             >
-              <ShoppingCart className="h-6 w-6 text-slate-600 group-hover:text-primary transition-colors" />
+              <ShoppingCart className="h-6 w-6 max-[430px]:h-5 max-[430px]:w-5 max-[360px]:h-5 max-[360px]:w-5 text-slate-600 group-hover:text-primary transition-colors" />
               {cartCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-primary text-white text-[9px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-lg shadow-rose-500/30">
                   {cartCount}
@@ -634,7 +627,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
               )}
             </Link>
 
-            <div className="hidden sm:flex items-center border-l border-slate-100 pl-2 sm:pl-4">
+            <div className="flex items-center border-l border-slate-100 pl-1 max-[430px]:pl-1 max-[360px]:pl-0.5 sm:pl-4">
               <UserMenu />
             </div>
           </div>

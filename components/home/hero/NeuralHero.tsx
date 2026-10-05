@@ -17,10 +17,10 @@ interface FeaturedProduct {
 }
 
 const categories = [
-    { label: 'Spirits', href: '/shop/category/spirits', color: 'from-amber-200 to-orange-100' },
-    { label: 'Wine', href: '/shop/category/wine', color: 'from-rose-200 to-pink-100' },
-    { label: 'Beer', href: '/shop/category/beer', color: 'from-yellow-200 to-amber-100' },
-    { label: 'Snacks', href: '/bites', color: 'from-lime-200 to-emerald-100' },
+    { label: 'Spirits', href: '/shop/category/spirits' },
+    { label: 'Wine', href: '/shop/category/wine' },
+    { label: 'Beer', href: '/shop/category/beer' },
+    { label: 'Snacks', href: '/bites' },
 ];
 
 export default function NeuralHero() {
@@ -54,7 +54,7 @@ export default function NeuralHero() {
         <div className="overflow-hidden">
             <section className="relative isolate overflow-hidden bg-[#fff8ec] px-4 py-10 sm:px-8 sm:py-14 lg:px-12 lg:py-16">
                 <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-24 -z-10 h-80 w-80 rounded-full bg-amber-300/40 blur-3xl sm:h-[32rem] sm:w-[32rem]" />
-                <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 left-0 -z-10 h-72 w-72 rounded-full bg-rose-200/50 blur-3xl" />
+                <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 left-0 -z-10 h-72 w-72 rounded-full bg-orange-200/50 blur-3xl" />
 
                 <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
                     <div className="min-w-0 space-y-7 sm:space-y-9">
@@ -92,9 +92,9 @@ export default function NeuralHero() {
                     </div>
 
                     <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
-                        <div className="relative min-h-[19rem] overflow-hidden rounded-[2rem] border border-white/80 bg-gradient-to-br from-amber-200 via-orange-100 to-rose-200 p-5 shadow-[0_30px_80px_-36px_rgba(124,45,18,0.45)] sm:min-h-[27rem] sm:rounded-[2.75rem] sm:p-8">
+                        <div className="relative min-h-[19rem] overflow-hidden rounded-[2rem] border border-white/80 bg-gradient-to-br from-orange-200 via-orange-100 to-amber-50 p-5 shadow-[0_30px_80px_-36px_rgba(124,45,18,0.45)] sm:min-h-[27rem] sm:rounded-[2.75rem] sm:p-8">
                             <div aria-hidden="true" className="absolute -right-10 -top-10 h-48 w-48 rounded-full border-[28px] border-white/30 sm:h-64 sm:w-64" />
-                            <div aria-hidden="true" className="absolute -bottom-20 -left-16 h-56 w-56 rounded-full bg-rose-400/20 blur-2xl sm:h-72 sm:w-72" />
+                            <div aria-hidden="true" className="absolute -bottom-20 -left-16 h-56 w-56 rounded-full bg-orange-400/20 blur-2xl sm:h-72 sm:w-72" />
 
                             {imageUrl && !imageFailed ? (
                                 <Image
@@ -136,9 +136,9 @@ export default function NeuralHero() {
 
             <nav id="home-categories" aria-label="Shop by category" className="mx-auto grid max-w-7xl grid-cols-2 gap-3 px-4 py-7 sm:gap-4 sm:px-8 sm:py-10 lg:grid-cols-4 lg:px-12">
                 {categories.map(category => (
-                    <Link key={category.label} href={category.href} className={`group flex min-h-24 min-w-0 items-center justify-between gap-3 overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br ${category.color} p-4 transition hover:-translate-y-1 hover:shadow-lg sm:min-h-28 sm:rounded-3xl sm:p-6`}>
+                    <Link key={category.label} href={category.href} className="group flex min-h-24 min-w-0 items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition lg:hover:-translate-y-1 lg:hover:border-primary/40 lg:hover:shadow-lg sm:min-h-28 sm:gap-3 sm:rounded-3xl sm:p-6">
                         <span className="break-words text-lg font-black uppercase leading-tight tracking-tight text-slate-900 sm:text-xl">{category.label}</span>
-                        <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/75 text-slate-700 transition group-hover:bg-slate-950 group-hover:text-white">
+                        <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-orange-50 text-primary transition sm:h-9 sm:w-9 lg:group-hover:bg-primary lg:group-hover:text-white">
                             <ArrowRight className="h-4 w-4" />
                         </span>
                     </Link>

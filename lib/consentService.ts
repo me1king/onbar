@@ -16,8 +16,24 @@ const STORAGE_KEY = 'ob_user_consent';
 
 export const getLocalConsent = (): ConsentPreferences => {
     if (typeof window === 'undefined') return { necessary: true, analytics: false, personalization: false, marketing: false };
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : { necessary: true, analytics: false, personalization: false, marketing: false };
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!saved) return { necessary: true, analytics: false, personalization: false, marketing: false };
+        const parsed: unknown = JSON.parse(saved);
+        if (typeof parsed !== 'object' || parsed === null) {
+            throw new Error('Saved consent preferences are not an object.');
+        }
+        const value = parsed as Partial<ConsentPreferences>;
+        return {
+            necessary: value.necessary === true,
+            analytics: value.analytics === true,
+            personalization: value.personalization === true,
+            marketing: value.marketing === true
+        };
+    } catch (error) {
+        console.warn('[Consent] Could not read saved preferences; analytics remains disabled:', error);
+        return { necessary: true, analytics: false, personalization: false, marketing: false };
+    }
 };
 
 export const updateConsent = async (prefs: Partial<ConsentPreferences>, userId?: string, anonymousId?: string) => {

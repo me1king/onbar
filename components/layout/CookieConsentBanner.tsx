@@ -33,16 +33,16 @@ export default function CookieConsentBanner() {
     if (!isVisible) return null;
 
     return (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[3000] w-full max-w-4xl px-6 animate-in slide-in-from-bottom-8 duration-700">
-            <Card className="bg-white text-foreground rounded-[3rem] p-10 shadow-2xl border border-slate-100 space-y-10 relative overflow-hidden">
-                <div className="relative z-10 grid md:grid-cols-12 gap-10 items-center text-left">
+        <div className="fixed inset-0 z-[3000] flex items-end justify-center bg-slate-950/25 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:items-center sm:p-6 animate-in fade-in duration-300">
+            <Card className="max-h-[calc(100dvh-1.5rem-env(safe-area-inset-bottom))] w-full max-w-4xl overflow-y-auto bg-white text-foreground rounded-2xl sm:rounded-[3rem] p-5 sm:p-10 shadow-2xl border border-slate-100 space-y-5 sm:space-y-10 relative">
+                <div className="relative z-10 grid md:grid-cols-12 gap-5 sm:gap-10 items-center text-left">
 
-                    <div className="md:col-span-7 space-y-6">
-                        <div className="flex items-center gap-4">
-                            <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner"><ShieldCheck size={28} /></div>
-                            <h2 className="text-2xl font-black uppercase tracking-tighter">Privacy Protocol</h2>
+                    <div className="md:col-span-7 space-y-4 sm:space-y-6">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner shrink-0"><ShieldCheck size={24} /></div>
+                            <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">Privacy Protocol</h2>
                         </div>
-                        <p className="text-sm font-medium text-slate-500 leading-relaxed italic pr-4">
+                        <p className="text-sm font-medium text-slate-500 leading-relaxed italic md:pr-4">
                             &quot;We use cookies to secure your session and optimize the Online Bar experience. Your data choice is critical to our system integrity.&quot;
                         </p>
                     </div>

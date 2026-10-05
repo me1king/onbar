@@ -163,11 +163,11 @@ export default function AIConcierge() {
     return (
         <>
             {!isOpen ? (
-                <div className="fixed right-6 sm:right-8 bottom-[calc(13rem+env(safe-area-inset-bottom))] lg:bottom-28 z-[2100]">
+                <div className="fixed left-4 sm:left-8 bottom-[calc(6.5rem+env(safe-area-inset-bottom))] lg:bottom-28 z-[2100]">
                     <button
                         onClick={() => setIsOpen(true)}
                         aria-label="Open AI Concierge"
-                        className="relative h-16 w-16 rounded-full bg-primary text-white shadow-2xl shadow-primary/40 hover:scale-110 active:scale-95 transition-all flex items-center justify-center group border-4 border-white"
+                        className="relative flex h-16 w-16 rounded-full bg-primary text-white shadow-2xl shadow-primary/40 hover:scale-110 active:scale-95 transition-all items-center justify-center group border-4 border-white"
                     >
                         <Bot className="h-8 w-8 group-hover:rotate-12 transition-transform" />
                         <div className="absolute -top-1 -right-1 h-5 w-5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />

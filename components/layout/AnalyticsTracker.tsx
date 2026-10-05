@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { OB_OS, OSEventType } from '@/lib/onlineBarOS';
 import { supabase } from '@/lib/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
+import { isAllowed } from '@/lib/consentService';
 
 export default function AnalyticsTracker() {
     const pathname = usePathname();
@@ -195,6 +196,7 @@ export default function AnalyticsTracker() {
         if (typeof window === 'undefined') return;
 
         const handleClick = (e: MouseEvent) => {
+            if (!isAllowed('analytics')) return;
             const target = e.target as HTMLElement;
             const now = Date.now();
 
@@ -204,14 +206,38 @@ export default function AnalyticsTracker() {
             const elementText = target.innerText?.substring(0, 30).trim();
 
             if (interactive) {
-                OB_OS.track('UI_INTERACTION', {
-                    details: {
-                        type: target.tagName,
-                        analyticsId: elementId,
-                        text: elementText,
-                        x: e.clientX,
-                        y: e.clientY
+                const layoutWidth = window.innerWidth;
+                const pageHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, window.innerHeight);
+                const pageY = window.scrollY + e.clientY;
+                let coordinateSpace: 'page' | 'fixed' | 'sticky' = 'page';
+                let ancestor: Element | null = interactive;
+                while (ancestor && ancestor !== document.body) {
+                    const position = window.getComputedStyle(ancestor).position;
+                    if (position === 'fixed' || position === 'sticky') {
+                        coordinateSpace = position;
+                        break;
                     }
+                    ancestor = ancestor.parentElement;
+                }
+                const coordinateY = coordinateSpace === 'page' ? pageY : e.clientY;
+                const coordinateHeight = coordinateSpace === 'page' ? pageHeight : window.innerHeight;
+                OB_OS.trackHeatmapClick({
+                    type: target.tagName,
+                    analyticsId: elementId,
+                    text: elementText,
+                    x: e.clientX,
+                    y: e.clientY,
+                    page_x: window.scrollX + e.clientX,
+                    page_y: pageY,
+                    x_percent: Math.max(0, Math.min(100, (e.clientX / layoutWidth) * 100)),
+                    y_percent: Math.max(0, Math.min(100, (coordinateY / coordinateHeight) * 100)),
+                    viewport_width: layoutWidth,
+                    viewport_inner_width: window.innerWidth,
+                    viewport_height: window.innerHeight,
+                    page_height: pageHeight,
+                    scroll_x: window.scrollX,
+                    scroll_y: window.scrollY,
+                    coordinate_space: coordinateSpace
                 });
 
                 // Commerce events are tracked by the cart action itself to avoid click-level duplicates.
@@ -239,6 +265,7 @@ export default function AnalyticsTracker() {
         };
 
         const handleFocus = (e: FocusEvent) => {
+            if (!isAllowed('analytics')) return;
             const target = e.target as HTMLElement;
             const behaviorId = target.getAttribute('data-behavior-id');
             if (behaviorId && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {

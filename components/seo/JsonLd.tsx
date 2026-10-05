@@ -1,41 +1,34 @@
-"use client";
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL?.trim() || 'https://onlinebar.onrender.com';
+const storeName = 'Online Bar';
+const contactPhone = '+254769345599';
 
-import { useSettings } from "@/lib/useSettings";
-import { getPublicBaseUrl } from "@/lib/utils";
+function serializeJsonLd(value: unknown) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
 
 export default function JsonLd() {
-  const { settings } = useSettings();
-
-  const baseUrl = getPublicBaseUrl();
-
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    "name": settings.store_info.name || "Online Bar Nairobi",
+    "name": storeName,
     "url": baseUrl,
     "logo": `${baseUrl}/favicon.svg`,
     "contactPoint": {
       "@type": "ContactPoint",
-      "telephone": `+${settings.contact.whatsapp}`,
+      "telephone": contactPhone,
       "contactType": "customer service",
       "areaServed": "KE",
       "availableLanguage": "English"
-    },
-    "sameAs": [
-      settings.social_links.instagram,
-      settings.social_links.tiktok,
-      settings.social_links.facebook
-    ].filter(Boolean)
+    }
   };
 
   const localBusinessSchema = {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
-    "name": settings.store_info.name || "Online Bar Nairobi",
+    "name": storeName,
     "image": `${baseUrl}/favicon.svg`,
     "address": {
       "@type": "PostalAddress",
-      "streetAddress": settings.contact.address || "Tom Mboya Street",
       "addressLocality": "Nairobi",
       "addressRegion": "Nairobi County",
       "addressCountry": "KE"
@@ -46,7 +39,7 @@ export default function JsonLd() {
       "longitude": 36.817223
     },
     "url": baseUrl,
-    "telephone": `+${settings.contact.whatsapp}`,
+    "telephone": contactPhone,
     "openingHoursSpecification": [
       {
         "@type": "OpeningHoursSpecification",
@@ -67,11 +60,11 @@ export default function JsonLd() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(organizationSchema) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(localBusinessSchema) }}
       />
     </>
   );

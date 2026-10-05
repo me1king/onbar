@@ -36,7 +36,7 @@ export default function MobileBottomNav() {
 
     return (
         <nav data-mobile-bottom-nav className="fixed bottom-0 left-0 right-0 z-[1000] lg:hidden bg-white/95 backdrop-blur-xl border-t border-slate-100 pb-safe animate-in slide-in-from-bottom-full duration-500">
-            <div className="flex justify-around items-center h-20 px-4">
+            <div className="flex justify-around items-center h-20 px-1 sm:px-4">
                 {NAV_ITEMS.map((item) => {
                     const Icon = item.icon;
                     const isActive = pathname === item.href;
@@ -45,7 +45,7 @@ export default function MobileBottomNav() {
                         <Link
                             key={item.label}
                             href={item.href}
-                            className="relative flex flex-col items-center justify-center w-full h-full group"
+                            className="relative flex min-w-0 flex-col items-center justify-center w-full h-full group"
                         >
                             <div className={cn(
                                 "flex flex-col items-center gap-1 transition-all duration-300 min-w-0 px-1",

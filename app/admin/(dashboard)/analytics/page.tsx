@@ -21,6 +21,22 @@ import { cn, formatPrice } from '@/lib/utils';
 
 type AnalyticsTabId = 'overview' | 'roi' | 'performance' | 'ab_testing' | 'dispatch' | 'kitchen' | 'stock' | 'support' | 'ux_heatmaps' | 'ai_insights';
 
+interface HeatmapClick {
+    x: number;
+    y: number;
+    path: string;
+    device: 'mobile' | 'desktop';
+    coordinateSpace: 'page' | 'floating';
+}
+
+interface HeatmapResponse {
+    clicks?: HeatmapClick[];
+    totalEvents?: number;
+    sampledEvents?: number;
+    truncated?: boolean;
+    error?: string;
+}
+
 export default function AdminAnalyticsPage() {
     const [activeTab, setActiveTab] = React.useState<AnalyticsTabId>('overview');
     const [loading, setLoading] = React.useState(true);
@@ -49,8 +65,82 @@ export default function AdminAnalyticsPage() {
         preparingOrders: null,
         totalSignals: null
     });
+    const [heatmapClicks, setHeatmapClicks] = React.useState<HeatmapClick[]>([]);
+    const [heatmapLoading, setHeatmapLoading] = React.useState(false);
+    const [heatmapError, setHeatmapError] = React.useState<string | null>(null);
+    const [heatmapDays, setHeatmapDays] = React.useState(7);
+    const [heatmapPath, setHeatmapPath] = React.useState('');
+    const [heatmapDevice, setHeatmapDevice] = React.useState<'mobile' | 'desktop'>('mobile');
+    const [heatmapCoordinateSpace, setHeatmapCoordinateSpace] = React.useState<'page' | 'floating'>('page');
+    const [heatmapSampleInfo, setHeatmapSampleInfo] = React.useState({ total: 0, sampled: 0, truncated: false });
     const displayCount = (value: number | null) => value === null ? 'Unavailable' : value.toLocaleString();
     const displayPrice = (value: number | null) => value === null ? 'Unavailable' : formatPrice(value);
+
+    React.useEffect(() => {
+        if (activeTab !== 'ux_heatmaps') return;
+        let active = true;
+        setHeatmapLoading(true);
+        setHeatmapError(null);
+
+        fetch(`/api/admin/analytics/heatmap?days=${heatmapDays}`, { cache: 'no-store' })
+            .then(async response => {
+                const result = await response.json() as HeatmapResponse;
+                if (!response.ok) throw new Error(result.error || 'Could not load recorded click data.');
+                if (active) {
+                    const clicks = result.clicks || [];
+                    setHeatmapClicks(clicks);
+                    setHeatmapSampleInfo({
+                        total: result.totalEvents ?? clicks.length,
+                        sampled: result.sampledEvents ?? clicks.length,
+                        truncated: result.truncated ?? false
+                    });
+                    setHeatmapPath(currentPath =>
+                        currentPath && clicks.some(click => click.path === currentPath)
+                            ? currentPath
+                            : clicks.some(click => click.path === '/')
+                                ? '/'
+                                : clicks[0]?.path || ''
+                    );
+                }
+            })
+            .catch(error => {
+                if (!active) return;
+                console.error('[AnalyticsHeatmap] Could not load recorded clicks:', error);
+                setHeatmapClicks([]);
+                setHeatmapSampleInfo({ total: 0, sampled: 0, truncated: false });
+                setHeatmapError(error instanceof Error ? error.message : 'Could not load recorded click data.');
+            })
+            .finally(() => {
+                if (active) setHeatmapLoading(false);
+            });
+
+        return () => { active = false; };
+    }, [activeTab, heatmapDays]);
+
+    const heatmapPaths = React.useMemo(
+        () => Array.from(new Set(heatmapClicks.map(click => click.path))).sort(),
+        [heatmapClicks]
+    );
+    const visibleHeatmapClicks = React.useMemo(
+        () => heatmapClicks.filter(click =>
+            click.path === heatmapPath &&
+            click.device === heatmapDevice &&
+            click.coordinateSpace === heatmapCoordinateSpace
+        ),
+        [heatmapClicks, heatmapPath, heatmapDevice, heatmapCoordinateSpace]
+    );
+    const heatmapCells = React.useMemo(() => {
+        const columns = 24;
+        const rows = 48;
+        const counts = Array.from({ length: columns * rows }, () => 0);
+        visibleHeatmapClicks.forEach(click => {
+            const column = Math.min(columns - 1, Math.floor(click.x / 100 * columns));
+            const row = Math.min(rows - 1, Math.floor(click.y / 100 * rows));
+            counts[row * columns + column] += 1;
+        });
+        return counts;
+    }, [visibleHeatmapClicks]);
+    const heatmapPeak = Math.max(0, ...heatmapCells);
 
     React.useEffect(() => {
         async function fetchData() {
@@ -424,16 +514,118 @@ export default function AdminAnalyticsPage() {
             {activeTab === 'ux_heatmaps' && (
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
                     <Card className="p-5 sm:p-8 rounded-2xl sm:rounded-[3.5rem] bg-white text-foreground border border-slate-200 shadow-sm space-y-6">
-                        <div className="border-b border-slate-200 pb-4">
-                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary">UX event collection</span>
-                            <h3 className="text-2xl font-black uppercase tracking-tight text-foreground mt-1">Recorded storefront events</h3>
-                        </div>
-                        <div className="p-5 sm:p-8 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-4">
-                            <p className="text-sm font-semibold text-slate-600">Analytics events recorded: {displayCount(kdsStats.totalSignals)}</p>
-                            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm">
-                                Coordinate-level heatmaps are unavailable because the application does not record interaction coordinates.
+                        <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary">Consent-based click analytics</span>
+                                <h3 className="text-2xl font-black uppercase tracking-tight text-foreground mt-1">Storefront click heatmap</h3>
+                                <p className="mt-2 text-sm text-slate-500">Actual opted-in clicks, shown separately by page and device—not estimated activity.</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <select
+                                    aria-label="Heatmap time range"
+                                    value={heatmapDays}
+                                    onChange={event => setHeatmapDays(Number(event.target.value))}
+                                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"
+                                >
+                                    <option value={7}>Last 7 days</option>
+                                    <option value={30}>Last 30 days</option>
+                                </select>
+                                <select
+                                    aria-label="Heatmap page"
+                                    value={heatmapPath}
+                                    onChange={event => setHeatmapPath(event.target.value)}
+                                    className="h-10 max-w-48 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"
+                                >
+                                    <option value="" disabled>Select a page</option>
+                                    {heatmapPaths.map(path => <option key={path} value={path}>{path}</option>)}
+                                </select>
+                                <select
+                                    aria-label="Heatmap device"
+                                    value={heatmapDevice}
+                                    onChange={event => setHeatmapDevice(event.target.value as 'mobile' | 'desktop')}
+                                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"
+                                >
+                                    <option value="mobile">Mobile</option>
+                                    <option value="desktop">Desktop</option>
+                                </select>
+                                <select
+                                    aria-label="Heatmap interaction area"
+                                    value={heatmapCoordinateSpace}
+                                    onChange={event => setHeatmapCoordinateSpace(event.target.value as 'page' | 'floating')}
+                                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"
+                                >
+                                    <option value="page">Page content</option>
+                                    <option value="floating">Sticky & floating UI</option>
+                                </select>
                             </div>
                         </div>
+                        {heatmapError ? (
+                            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{heatmapError}</div>
+                        ) : heatmapLoading ? (
+                            <div className="flex items-center justify-center gap-3 rounded-2xl bg-slate-50 p-12 text-sm font-bold text-slate-500">
+                                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading recorded clicks...
+                            </div>
+                        ) : heatmapClicks.length === 0 ? (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center text-sm font-semibold text-amber-900">
+                                No opted-in clicks are recorded for this selection yet. Heatmap collection starts after a visitor allows analytics and interacts with the storefront.
+                            </div>
+                        ) : visibleHeatmapClicks.length === 0 ? (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center text-sm font-semibold text-amber-900">
+                                No recorded clicks match this page, device, and interaction area. Select another page/device or switch between page content and sticky/floating UI.
+                            </div>
+                        ) : (
+                            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
+                                <div>
+                                    <div className="mb-3 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                        <span>{heatmapCoordinateSpace === 'page' ? 'Top of page' : 'Top of viewport'} · {heatmapPath}</span>
+                                        <span>{visibleHeatmapClicks.length.toLocaleString()} mapped clicks · {heatmapSampleInfo.sampled.toLocaleString()} events sampled</span>
+                                    </div>
+                                    <div
+                                        role="img"
+                                        aria-label={`Page-relative click heatmap with ${visibleHeatmapClicks.length} recorded clicks`}
+                                        className="grid aspect-[1/1.45] max-h-[720px] grid-cols-24 grid-rows-[repeat(48,minmax(0,1fr))] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                                    >
+                                        {heatmapCells.map((count, index) => (
+                                            <div
+                                                key={index}
+                                                title={`${count} click${count === 1 ? '' : 's'}`}
+                                                className="border border-white/70"
+                                                style={{
+                                                    backgroundColor: count > 0
+                                                        ? `rgba(249, 115, 22, ${0.12 + (count / heatmapPeak) * 0.78})`
+                                                        : undefined
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                    <div className="mt-3 flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                        <span>Left</span>
+                                        <span>{heatmapCoordinateSpace === 'page' ? 'Page depth' : 'Viewport position'} normalized by device</span>
+                                        <span>Right</span>
+                                    </div>
+                                </div>
+                                <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-700">Most-clicked areas</h4>
+                                    <ol className="mt-4 space-y-3">
+                                        {heatmapCells
+                                            .map((count, index) => ({ count, index }))
+                                            .filter(cell => cell.count > 0)
+                                            .sort((a, b) => b.count - a.count)
+                                            .slice(0, 5)
+                                            .map(({ count, index }) => (
+                                                <li key={index} className="flex items-center justify-between gap-3 text-xs text-slate-600">
+                                                    <span>Column {index % 24 + 1}, page depth {Math.floor(index / 24) * 100 / 48 | 0}%</span>
+                                                    <strong className="shrink-0 text-slate-900">{count} clicks</strong>
+                                                </li>
+                                            ))}
+                                    </ol>
+                                    <p className="mt-5 border-t border-slate-200 pt-4 text-[10px] leading-relaxed text-slate-500">
+                                        Hotter cells represent more recorded clicks. Form fields and typed values are not included in this map.
+                                        {heatmapSampleInfo.truncated && ` Showing the latest ${heatmapSampleInfo.sampled.toLocaleString()} of ${heatmapSampleInfo.total.toLocaleString()} matching events.`}
+                                    </p>
+                                </aside>
+                            </div>
+                        )}
                     </Card>
                 </div>
             )}

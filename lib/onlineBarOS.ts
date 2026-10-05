@@ -104,6 +104,7 @@ class OnlineBarOS {
     private static instance: OnlineBarOS;
     private correlationId: string | null = null;
     private sessionId: string | null = null;
+    private readonly eventQueueStorageKey = 'ob_pending_analytics_events';
     private eventQueue: {
         session_id: string | undefined;
         action_type: OSEventType;
@@ -111,6 +112,7 @@ class OnlineBarOS {
         metadata: Record<string, unknown>;
         timestamp: string;
     }[] = [];
+    private isFlushingQueue = false;
     private flushInterval: NodeJS.Timeout | null = null;
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private isInitialized: boolean = false;
@@ -145,13 +147,18 @@ class OnlineBarOS {
                 localStorage.setItem('ob_anonymous_id', anonId);
             }
 
+            this.restoreQueuedEvents();
+
             // High-fidelity Batch Flusher (15s)
             this.flushInterval = setInterval(() => this.flushQueue(), 15000);
+            window.addEventListener('pagehide', this.flushQueueOnPageHide);
+            document.addEventListener('visibilitychange', this.flushQueueOnHidden);
 
             // 💓 [HEARTBEAT_NODE] High-fidelity Presence (30s)
             this.heartbeatInterval = setInterval(() => this.pulsePresence(), 30000);
 
             this.isInitialized = true;
+            void this.flushQueue();
             this.track('SESSION_START');
         } catch (e) {
             console.warn("[OB_OS] Boot Failure:", e);
@@ -195,32 +202,92 @@ class OnlineBarOS {
     }
 
     private async flushQueue() {
-        if (this.eventQueue.length === 0 || !supabase) return;
+        if (this.eventQueue.length === 0 || !supabase || this.isFlushingQueue) return;
 
         const batch = [...this.eventQueue];
-        this.eventQueue = [];
+        this.eventQueue.splice(0, batch.length);
+        this.isFlushingQueue = true;
+        this.persistQueuedEvents();
 
         try {
             const { error } = await supabase.rpc('log_event_batch', { p_events: batch });
             if (error) {
                 this.consecutiveFailures++;
-                if (this.eventQueue.length < 100) {
-                    this.eventQueue = [...batch, ...this.eventQueue];
-                }
+                this.eventQueue = [...batch, ...this.eventQueue];
+                this.persistQueuedEvents();
 
                 if (this.consecutiveFailures >= 5) {
-                    // One-time console hint instead of repeated error noise
-                    if (process.env.NODE_ENV === 'development') {
-                        console.warn("[OB_OS] Grid synchronization delayed. This is normal during schema updates.");
-                    }
+                    console.warn(`[OB_OS] Analytics batch upload is still failing: ${error.message}`);
                     this.consecutiveFailures = 0;
                 }
             } else {
                 this.consecutiveFailures = 0;
+                this.persistQueuedEvents();
             }
-        } catch {
-            // Absolute silence for flush network exceptions
+        } catch (error) {
+            this.eventQueue = [...batch, ...this.eventQueue];
+            this.persistQueuedEvents();
+            console.warn('[OB_OS] Could not upload queued analytics events:', error);
+        } finally {
+            this.isFlushingQueue = false;
         }
+    }
+
+    private flushQueueOnHidden = () => {
+        if (document.visibilityState === 'hidden') void this.flushQueue();
+    };
+
+    private flushQueueOnPageHide = () => {
+        void this.flushQueue();
+    };
+
+    private restoreQueuedEvents() {
+        try {
+            const stored = localStorage.getItem(this.eventQueueStorageKey);
+            if (!stored) return;
+            const parsed: unknown = JSON.parse(stored);
+            if (!Array.isArray(parsed)) throw new Error('Stored analytics queue is not an array.');
+            this.eventQueue = parsed.filter((event): event is typeof this.eventQueue[number] =>
+                typeof event === 'object' &&
+                event !== null &&
+                typeof event.action_type === 'string' &&
+                typeof event.timestamp === 'string' &&
+                typeof event.metadata === 'object' &&
+                event.metadata !== null
+            );
+            this.persistQueuedEvents();
+        } catch (error) {
+            console.warn('[OB_OS] Could not restore pending analytics events:', error);
+            localStorage.removeItem(this.eventQueueStorageKey);
+        }
+    }
+
+    private persistQueuedEvents() {
+        try {
+            if (this.eventQueue.length === 0) {
+                localStorage.removeItem(this.eventQueueStorageKey);
+            } else {
+                localStorage.setItem(this.eventQueueStorageKey, JSON.stringify(this.eventQueue));
+            }
+        } catch (error) {
+            console.warn('[OB_OS] Could not persist pending analytics events:', error);
+        }
+    }
+
+    public trackHeatmapClick(details: Record<string, unknown>) {
+        this.queueBehaviorEvent('UI_INTERACTION', details);
+        if (this.eventQueue.length >= 10 && supabase) void this.flushQueue();
+    }
+
+    private queueBehaviorEvent(eventType: OSEventType, details: Record<string, unknown>) {
+        this.eventQueue.push({
+            session_id: this.sessionId || undefined,
+            action_type: eventType,
+            page_url: typeof window !== 'undefined' ? window.location.pathname : undefined,
+            metadata: details,
+            timestamp: new Date().toISOString()
+        });
+        this.persistQueuedEvents();
     }
 
     public getSessionId(): string | null {
@@ -248,13 +315,7 @@ class OnlineBarOS {
 
             // 1. High-Fidelity Batching for Behavioral Noise
             if (['UI_INTERACTION', 'SCROLL_DEPTH', 'RAGE_CLICK', 'DEAD_CLICK', 'SECTION_VISIBLE'].includes(eventType)) {
-                this.eventQueue.push({
-                    session_id: sessId,
-                    action_type: eventType,
-                    page_url: typeof window !== 'undefined' ? window.location.pathname : undefined,
-                    metadata: payload.details || {},
-                    timestamp: new Date().toISOString()
-                });
+                this.queueBehaviorEvent(eventType, payload.details || {});
                 if (this.eventQueue.length >= 10) this.flushQueue();
                 return;
             }
