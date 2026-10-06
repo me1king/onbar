@@ -24,8 +24,14 @@ export default function CustomerAnnouncementHost() {
         if (!response.ok) throw new Error(`Announcement request failed (${response.status}).`);
         const result = await response.json() as {
           announcements?: CustomerAnnouncement[];
+          degraded?: boolean;
         };
         if (!active) return;
+
+        if (result.degraded) {
+          setAnnouncement(null);
+          return;
+        }
 
         const latest = result.announcements?.[0] || null;
         const dismissedId = sessionStorage.getItem(DISMISSED_ANNOUNCEMENT_KEY);

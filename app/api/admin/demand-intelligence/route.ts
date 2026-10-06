@@ -1,0 +1,69 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import { verifySessionCookie } from '@/lib/adminAuth';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: Request) {
+  const cookieStore = await cookies();
+  const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
+  if (!session || (!['owner', 'admin'].includes(session.role) && session.permissions.can_view_revenue !== true)) {
+    return NextResponse.json({ error: 'Revenue analytics access is required.' }, { status: 403 });
+  }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !serviceKey) {
+    return NextResponse.json({ error: 'Demand intelligence database access is not configured.' }, { status: 503 });
+  }
+
+  const requestedDays = Number(new URL(request.url).searchParams.get('days') || 30);
+  const days = Number.isFinite(requestedDays) ? Math.min(90, Math.max(7, Math.floor(requestedDays))) : 30;
+  const database = createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+  const { data, error } = await database.rpc('get_demand_intelligence', { p_days: days });
+  if (error) {
+    console.error('[DemandIntelligence] Could not load location aggregates:', error);
+    const migrationMissing = error.code === '42883' || /get_demand_intelligence/i.test(error.message);
+    return NextResponse.json({
+      error: migrationMissing
+        ? 'Demand intelligence schema is not installed. Run supabase/DEMAND_INTELLIGENCE_MIGRATION.sql in Supabase.'
+        : 'Demand intelligence data could not be loaded. Check the Supabase connection and migration status.'
+    }, { status: 503 });
+  }
+
+  const { data: logistics, error: logisticsError } = await database
+    .from('settings')
+    .select('value')
+    .eq('key', 'logistics')
+    .maybeSingle();
+  if (logisticsError) {
+    console.error('[DemandIntelligence] Could not read dispatch coverage settings:', logisticsError);
+    return NextResponse.json({ error: 'Demand data loaded, but configured service areas could not be checked.' }, { status: 503 });
+  }
+  const configuredZones = logistics?.value && typeof logistics.value === 'object'
+    ? (logistics.value as { dispatch_zones?: unknown }).dispatch_zones
+    : null;
+  const dispatchZones = Array.isArray(configuredZones)
+    && configuredZones.every((zone) => typeof zone === 'string')
+    ? configuredZones as string[]
+    : ['CBD', 'Westlands', 'Kilimani', 'Lavington', 'Kileleshwa', 'Karen', 'Langata', 'South C', 'South B', 'Embakasi', 'Roysambu', 'Kasarani', 'Kahawa', 'Githurai', 'Zimmerman', 'Utawala', 'Syokimau', 'Kitengela', 'Rongai', 'Ngong', 'Kikuyu', 'Thika Road', 'Mombasa Road'];
+  const result = data as {
+    days?: number;
+    locations?: Array<{ area?: string }>;
+    [key: string]: unknown;
+  };
+  const response = {
+    ...result,
+    locations: (result.locations || []).map((location) => ({
+      ...location,
+      serviceAvailable: dispatchZones.some((zone) => zone.toLowerCase() === (location.area || '').toLowerCase())
+    }))
+  };
+
+  return NextResponse.json(response, {
+    headers: { 'Cache-Control': 'private, no-store, max-age=0' }
+  });
+}

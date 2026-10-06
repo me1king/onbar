@@ -7,7 +7,11 @@ export async function GET() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!url || !serviceKey) {
-    return NextResponse.json({ error: 'Customer announcements are not configured.' }, { status: 503 });
+    console.error('[CustomerAnnouncements] Announcement storage is not configured.');
+    return NextResponse.json(
+      { announcements: [], degraded: true },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    );
   }
 
   const client = createClient(url, serviceKey, {
@@ -25,7 +29,10 @@ export async function GET() {
 
   if (error) {
     console.error('[CustomerAnnouncements] Could not load announcements:', error);
-    return NextResponse.json({ error: `Could not load customer announcements: ${error.message}` }, { status: 503 });
+    return NextResponse.json(
+      { announcements: [], degraded: true },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    );
   }
 
   return NextResponse.json({ announcements: data || [] }, {

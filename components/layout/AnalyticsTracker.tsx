@@ -110,6 +110,8 @@ export default function AnalyticsTracker() {
 
                 if (typeof sessionStorage !== 'undefined') {
                     try {
+                        sessionStorage.setItem('ob_attribution_source', source);
+                        sessionStorage.setItem('ob_attribution_campaign', campaign);
                         if (utmId) sessionStorage.setItem('ob_attribution_id', utmId);
                         if (utmContent) sessionStorage.setItem('ob_content_variant', utmContent);
                         if (source === 'mobile_widget') sessionStorage.setItem('ob_widget_engagement', 'true');

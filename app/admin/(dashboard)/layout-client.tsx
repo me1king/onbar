@@ -45,7 +45,8 @@ import {
   Utensils,
   Gift,
   Coffee,
-  Camera as CameraIcon
+  Camera as CameraIcon,
+  MapPin
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -201,6 +202,7 @@ export default function AdminLayoutClient({
     ]},
     { group: 'INTELLIGENCE', items: [
       { name: 'Bar Analytics', href: '/admin/analytics', icon: Activity, permission: 'can_view_revenue' },
+      { name: 'Demand Intelligence', href: '/admin/demand', icon: MapPin, permission: 'can_view_revenue' },
       { name: 'Behavioral OS', href: '/admin/behavior', icon: Target, permission: 'can_view_revenue' },
       { name: 'AI Shift Log', href: '/admin/messages?filter=ai', icon: Bot, permission: 'can_manage_customer_care' },
     ]},
