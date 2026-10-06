@@ -13,7 +13,8 @@ import {
     Star,
     TrendingUp,
     Lock,
-    Utensils
+    Utensils,
+    ShoppingCart
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -61,6 +62,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
   };
 
   const isBiteOpen = checkIsBiteOpen();
+  const canPurchase = !isLocked && isBiteOpen && (product.stock || 0) > 0;
 
   // ▮▮ Stock Logic
   const getStockStatus = () => {
@@ -75,7 +77,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isLocked || !isBiteOpen) return;
+    if (!canPurchase) return;
     if (product.is_bite || product.is_snack) {
       router.push(`/shop/${product.id}`);
       return;
@@ -121,9 +123,9 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
   return (
     <>
-      <Card className="group flex w-full min-w-0 flex-col bg-white border border-slate-200/80 text-foreground shadow-md hover:shadow-xl transition-all duration-500 rounded-2xl sm:rounded-[3.5rem] overflow-hidden text-left relative min-h-[320px] sm:min-h-[420px]">
+      <Card className="group relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white text-left text-foreground shadow-md transition-all duration-500 hover:shadow-xl sm:min-h-[420px] sm:rounded-[3.5rem]">
         {/* Visual Container */}
-        <div className="relative aspect-square min-w-0 bg-slate-50/80 rounded-xl sm:rounded-[2.5rem] m-1.5 sm:m-4 flex items-center justify-center p-1 sm:p-2 overflow-hidden border border-slate-100">
+        <div className="relative aspect-[4/3] min-w-0 overflow-hidden rounded-lg border border-slate-100 bg-slate-50/80 p-1 sm:aspect-square sm:m-4 sm:rounded-[2.5rem] sm:p-2">
 
             {/* Premium Locked Overlay */}
             {isLocked && (
@@ -195,11 +197,11 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
         </div>
 
         {/* Content Node */}
-        <CardContent className="p-2.5 pt-3 sm:p-6 sm:pt-8 space-y-2.5 sm:space-y-4 flex-1 flex flex-col min-w-0">
+        <CardContent className="flex min-w-0 flex-1 flex-col space-y-1.5 p-2 pt-1.5 sm:space-y-4 sm:p-6 sm:pt-8">
             {/* Price Line */}
-            <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <div className="bg-primary text-white px-3 py-1 rounded-full text-sm font-black tracking-tight shadow-lg shadow-primary/20 shrink-0">
+            <div className="space-y-0.5 sm:space-y-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3">
+                    <div className="shrink-0 rounded-full bg-primary px-2.5 py-1 text-xs font-black tracking-tight text-white shadow-lg shadow-primary/20 sm:px-3 sm:text-sm">
                         {formatPrice(product.price)}
                     </div>
                     {isSale && (
@@ -217,10 +219,10 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
             {/* Product Hierarchy */}
             <Link href={`/shop/${product.id}`} className="block group/link min-w-0">
-                <h2 className="text-sm sm:text-base font-black text-foreground uppercase tracking-tight leading-tight line-clamp-2 transition-colors group-hover/link:text-primary break-words">
+                <h2 className="break-words text-sm font-black uppercase leading-snug tracking-normal text-foreground line-clamp-2 transition-colors group-hover/link:text-primary sm:text-base sm:tracking-tight">
                     {product.name}
                 </h2>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                <div className="mt-2 hidden flex-wrap items-center gap-x-1.5 gap-y-1 text-[8px] font-bold uppercase leading-relaxed tracking-[0.04em] text-slate-500 sm:flex sm:gap-2 sm:text-[9px] sm:tracking-widest">
                     {(() => {
                         const bevSpecs = product.beverage_specs as Record<string, string> | undefined;
                         const abvDisplay = product.abv_label || bevSpecs?.abv || bevSpecs?.abv_label;
@@ -228,7 +230,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
                         return (
                             <>
-                                <span className="truncate max-w-[90px] text-slate-700 font-extrabold">{originDisplay}</span>
+                                <span className="max-w-[90px] truncate font-extrabold text-slate-700">{originDisplay}</span>
                                 <div className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />
                                 <span className="shrink-0 font-extrabold text-slate-700">{product.size_label || (product.sizes && product.sizes[0]) || '750ml'}</span>
                                 {abvDisplay && (
@@ -247,7 +249,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
             <Link
                 href={`/shop/${product.id}#customer-reviews`}
-                className="mt-1 inline-flex min-h-7 items-center gap-1.5 self-start rounded-md text-[9px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="mt-1 hidden min-h-7 items-center gap-1.5 self-start rounded-md text-[8px] font-black uppercase tracking-[0.05em] text-slate-500 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:inline-flex sm:text-[9px] sm:tracking-widest"
                 aria-label={`Rate ${product.name}`}
             >
                 <Star size={12} className="text-amber-500" />
@@ -255,34 +257,53 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
             </Link>
 
             {/* Stock Indicator */}
-            <div className="pt-1 sm:pt-2 flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 pt-0.5 sm:gap-3 sm:pt-2">
                 <div className="flex gap-0.5 shrink-0">
                     <div className={cn("h-3 w-1.5 rounded-full", stockStatus.bar)} />
                     <div className={cn("h-3 w-1.5 rounded-full opacity-40", stockStatus.bar)} />
                 </div>
-                <span className={cn("text-[10px] font-black uppercase tracking-widest truncate", stockStatus.color)}>
+                <span className={cn("truncate text-[8px] font-black uppercase leading-tight tracking-normal sm:text-[10px] sm:tracking-widest", stockStatus.color)}>
                     {stockStatus.label}
                 </span>
             </div>
 
-            <div className="mt-auto pt-2 sm:pt-4 flex gap-1.5 sm:gap-2 opacity-100">
-                <Link
-                    href={`/shop/${product.id}`}
-                    className="flex-1 min-w-0 h-9 sm:h-10 rounded-xl bg-slate-50 px-1 text-[7px] sm:text-[8px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all border border-slate-100 flex items-center justify-center text-foreground"
+            <div className="mt-auto flex gap-1 pt-1 sm:gap-2 sm:pt-4">
+                <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    disabled={!canPurchase || isAdding}
+                    aria-label={`${product.is_bite || product.is_snack ? 'Buy' : 'Add to cart'} ${product.name}`}
+                    className={cn(
+                        "flex h-9 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl px-1.5 text-[8px] font-black uppercase leading-none tracking-normal transition-all sm:h-10 sm:text-[9px] sm:tracking-widest",
+                        !canPurchase
+                            ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                            : justAdded
+                                ? "bg-emerald-500 text-white"
+                                : "bg-primary text-white shadow-sm hover:bg-primary/90 active:scale-95"
+                    )}
                 >
-                    Take a Look
-                </Link>
+                    {isAdding ? <Loader2 size={12} className="animate-spin" /> : justAdded ? <Check size={12} /> : <ShoppingCart size={12} />}
+                    <span className="truncate">
+                        {!canPurchase
+                            ? (isLocked ? 'Locked' : !isBiteOpen ? 'Closed' : 'Sold out')
+                            : justAdded
+                                ? 'Added'
+                                : product.is_bite || product.is_snack
+                                    ? 'Buy'
+                                    : <><span className="sm:hidden">Buy</span><span className="hidden sm:inline">Add to cart</span></>}
+                    </span>
+                </button>
                 <button
                     onClick={(e) => {
                         e.preventDefault();
                         const message = `Hello Online Bar! I want to order:\n\n*Product:* ${product.name}\n*Price:* ${formatPrice(product.price)}\n\nIs this available for dispatch?`;
                         window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
                     }}
-                    className="h-9 w-9 shrink-0 sm:h-10 sm:w-10 rounded-xl bg-slate-50 flex items-center justify-center text-primary hover:bg-primary/5 transition-all border border-slate-100"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-primary transition-all hover:bg-primary/5 sm:h-10 sm:w-10 sm:rounded-xl"
                 >
                     <MessageSquare size={16} />
                 </button>
-                <button onClick={handleToggleLike} className={cn("h-9 w-9 shrink-0 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center transition-all border border-slate-100", isInWishlist(product.id) ? "bg-rose-50 text-rose-500 border-rose-100" : "bg-slate-50 text-slate-300 hover:text-rose-500")}><Heart size={16} fill={isInWishlist(product.id) ? "currentColor" : "none"} /></button>
+                <button onClick={handleToggleLike} className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-100 transition-all sm:h-10 sm:w-10 sm:rounded-xl", isInWishlist(product.id) ? "bg-rose-50 text-rose-500 border-rose-100" : "bg-slate-50 text-slate-300 hover:text-rose-500")}><Heart size={16} fill={isInWishlist(product.id) ? "currentColor" : "none"} /></button>
             </div>
         </CardContent>
       </Card>

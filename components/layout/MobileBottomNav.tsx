@@ -20,7 +20,7 @@ const NAV_ITEMS = [
     { label: 'Shop', icon: Search, href: '/shop' },
     { label: 'Drinks', icon: Wine, href: '/beverages' },
     { label: 'Souvenirs', icon: Gift, href: '/souvenirs' },
-    { label: 'Buzz', icon: Flame, href: '/buzz' },
+    { label: 'My Night', icon: Flame, href: '/buzz?planner=true' },
     { label: 'Munchies', icon: Cookie, href: '/shop/snacks' },
     { label: 'My Bar', icon: User, href: '/profile' }
 ];
@@ -57,7 +57,7 @@ export default function MobileBottomNav() {
                                         <div className="absolute -top-1 -right-1 h-1.5 w-1.5 bg-primary rounded-full animate-pulse" />
                                     )}
                                 </div>
-                                <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-tighter truncate w-full text-center">{item.label}</span>
+                                <span className="w-full truncate text-center text-[7px] font-black uppercase tracking-[0.02em] sm:text-[10px] sm:tracking-normal">{item.label}</span>
                             </div>
 
                             {/* Active Indicator Bar */}

@@ -170,6 +170,7 @@ function UploadContent() {
   const [variantStock, setVariantStock] = useState<Record<string, string>>({});
   const [beverageSpecs, setBeverageSpecs] = useState<{ key: string, value: string }[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedImagePreviews, setSelectedImagePreviews] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
@@ -200,26 +201,49 @@ function UploadContent() {
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-        const files = Array.from(e.target.files);
+    const input = e.target;
+    if (!input.files) return;
 
-        for (const file of files) {
-            const audit = await auditImageQuality(file);
-            setImageAudits(prev => ({ ...prev, [file.name]: audit }));
+    const files = Array.from(input.files);
+    input.value = '';
+    const availableSlots = Math.max(0, 4 - existingImages.length - selectedFiles.length);
+    if (availableSlots === 0) {
+        setMessage({ type: 'error', text: 'A product can have up to four images total.' });
+        return;
+    }
+    if (files.length > availableSlots) {
+        setMessage({ type: 'error', text: `Only ${availableSlots} more image${availableSlots === 1 ? '' : 's'} can be added (4 total maximum).` });
+    }
 
-            if (audit.isApproved) {
-                const normalizedBlob = await standardizeImageCanvas(file);
-                const normalizedFile = new File([normalizedBlob], file.name, { type: 'image/webp' });
-                setSelectedFiles(prev => [...prev, normalizedFile]);
-            } else {
-                setSelectedFiles(prev => [...prev, file]);
-            }
+    const acceptedFiles = files.slice(0, availableSlots);
+    const processedFiles: File[] = [];
+    const audits: Record<string, ImageAuditResult> = {};
+
+    for (const file of acceptedFiles) {
+        const audit = await auditImageQuality(file);
+        audits[file.name] = audit;
+        if (audit.isApproved) {
+            const normalizedBlob = await standardizeImageCanvas(file);
+            processedFiles.push(new File([normalizedBlob], file.name, { type: 'image/webp' }));
+        } else {
+            processedFiles.push(file);
         }
     }
+
+    setImageAudits(prev => ({ ...prev, ...audits }));
+    setSelectedFiles(prev => [...prev, ...processedFiles]);
+    setSelectedImagePreviews(prev => [...prev, ...processedFiles.map(file => URL.createObjectURL(file))]);
   };
 
   const removeExistingImage = (index: number) => {
     setExistingImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeSelectedImage = (index: number) => {
+    const previewUrl = selectedImagePreviews[index];
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setSelectedImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const canManageInventory = role === 'admin' || role === 'owner' || permissions.can_manage_inventory;
@@ -402,11 +426,13 @@ function UploadContent() {
   };
 
   const cancelEditing = () => {
+    selectedImagePreviews.forEach(URL.revokeObjectURL);
     setEditingId(null);
     setForm(initialForm);
     setVariantStock({});
     setBeverageSpecs([]);
     setSelectedFiles([]);
+    setSelectedImagePreviews([]);
     setExistingImages([]);
     setFormSession(0);
   };
@@ -898,14 +924,24 @@ function UploadContent() {
                               </div>
                           )}
 
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                              <div>
+                                  <h3 className="text-sm font-black uppercase tracking-wide text-foreground">Product images</h3>
+                                  <p className="mt-1 text-xs leading-relaxed text-slate-500">Select several photos together. Up to 4 images per product.</p>
+                              </div>
+                              <span className="text-xs font-bold text-slate-500">
+                                  {existingImages.length + selectedFiles.length} / 4 selected
+                              </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
                               {existingImages.map((url, i) => {
                                   const fileName = url.split('/').pop() || '';
                                   const audit = imageAudits[fileName];
                                   return (
-                                      <div key={i} className="aspect-square rounded-[2.5rem] bg-slate-50 border border-slate-100 relative group overflow-hidden shadow-sm hover:shadow-xl transition-all">
+                                      <div key={`existing-${i}`} className="group relative aspect-square overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 shadow-sm transition-all hover:shadow-xl sm:rounded-3xl">
                                           <Image src={normalizeImage(url)} width={400} height={400} className="w-full h-full object-contain p-4" alt="" />
-                                          <button type="button" onClick={() => removeExistingImage(i)} className="absolute top-4 right-4 bg-rose-500 text-white rounded-xl p-2 opacity-0 group-hover:opacity-100 transition-opacity z-40 shadow-lg"><X size={14}/></button>
+                                          <button type="button" aria-label={`Remove image ${i + 1}`} onClick={() => removeExistingImage(i)} className="absolute right-2 top-2 z-40 rounded-lg bg-rose-500 p-2 text-white shadow-lg transition-opacity sm:opacity-0 sm:group-hover:opacity-100"><X size={14}/></button>
 
                                           {/* Visible Quality Badge */}
                                           {audit && (
@@ -929,19 +965,28 @@ function UploadContent() {
                                       </div>
                                   );
                               })}
-                              <label className="aspect-square rounded-[2.5rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all text-slate-300 hover:text-primary group relative overflow-visible shadow-inner">
-                                  <input type="file" multiple accept="image/*" onChange={handleFileChange} className="hidden" />
-                                  <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform"><Camera size={28} /></div>
-                                  <span className="text-[9px] font-black uppercase tracking-widest">Add Asset</span>
-                                  {selectedFiles.length > 0 && (
-                                      <div className="absolute -bottom-12 left-0 right-0 flex gap-2 z-20">
-                                          <Button type="button" onClick={handleVisionScan} disabled={isVisionScanning} className="flex-1 h-10 rounded-xl bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest shadow-xl">
-                                              {isVisionScanning ? <Loader2 size={12} className="animate-spin" /> : <><Eye size={12} className="mr-2"/> Vision Scan</>}
-                                          </Button>
-                                      </div>
-                                  )}
-                              </label>
+                              {selectedFiles.map((file, i) => (
+                                  <div key={`selected-${file.name}-${i}`} className="relative aspect-square overflow-hidden rounded-2xl border border-primary/20 bg-slate-50 shadow-sm sm:rounded-3xl">
+                                      <Image src={selectedImagePreviews[i]} width={400} height={400} className="h-full w-full object-contain p-3" alt={`Selected product image ${i + 1}`} unoptimized />
+                                      <span className="absolute bottom-2 left-2 right-2 truncate rounded-lg bg-slate-900/75 px-2 py-1 text-[9px] font-bold text-white">{file.name}</span>
+                                      <button type="button" aria-label={`Remove selected image ${i + 1}`} onClick={() => removeSelectedImage(i)} className="absolute right-2 top-2 rounded-lg bg-rose-500 p-2 text-white shadow-lg"><X size={14}/></button>
+                                  </div>
+                              ))}
+                              {existingImages.length + selectedFiles.length < 4 && (
+                                  <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 shadow-inner transition-all hover:border-primary/50 hover:bg-primary/5 hover:text-primary sm:rounded-3xl">
+                                      <input type="file" multiple accept="image/*" onChange={handleFileChange} className="sr-only" aria-label="Choose multiple product images" />
+                                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 sm:h-12 sm:w-12 sm:rounded-2xl"><Camera size={24} /></div>
+                                      <span className="px-2 text-center text-[9px] font-black uppercase tracking-wide">Choose images</span>
+                                      <span className="text-[9px]">Select multiple</span>
+                                  </label>
+                              )}
                           </div>
+                          {selectedFiles.length > 0 && (
+                              <Button type="button" onClick={handleVisionScan} disabled={isVisionScanning} className="h-10 rounded-xl bg-slate-900 px-4 text-[9px] font-black uppercase tracking-widest text-white shadow-xl">
+                                  {isVisionScanning ? <Loader2 size={12} className="mr-2 animate-spin" /> : <Eye size={12} className="mr-2" />}
+                                  Vision Scan
+                              </Button>
+                          )}
                       </CardContent>
                   )}
               </Card>

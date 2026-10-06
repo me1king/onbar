@@ -104,7 +104,7 @@ export default function SnackShopPage() {
                         <p className="text-sm font-black uppercase tracking-widest italic">Restock mission in progress for {activeSub}.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-8 md:grid-cols-4">
                         {products.map((p) => (
                             <ProductCard key={p.id} product={p} />
                         ))}
