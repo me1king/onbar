@@ -125,7 +125,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
     <>
       <Card className="group relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white text-left text-foreground shadow-md transition-all duration-500 hover:shadow-xl sm:min-h-[420px] sm:rounded-[3.5rem]">
         {/* Visual Container */}
-        <div className="relative aspect-[4/3] min-w-0 overflow-hidden rounded-lg border border-slate-100 bg-slate-50/80 p-1 sm:aspect-square sm:m-4 sm:rounded-[2.5rem] sm:p-2">
+        <div className="relative aspect-square min-w-0 overflow-hidden rounded-lg border border-slate-100 bg-slate-50/80 p-1.5 sm:m-4 sm:rounded-[2.5rem] sm:p-2">
 
             {/* Premium Locked Overlay */}
             {isLocked && (
