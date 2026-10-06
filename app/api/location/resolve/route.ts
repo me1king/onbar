@@ -32,11 +32,11 @@ export async function POST(request: Request) {
     const knownArea = LOCATION_AREAS.find((item) =>
       item.city.toLowerCase() === city.toLowerCase()
       && item.area.toLowerCase() === areaName.toLowerCase()
-    );
+    ) || LOCATION_AREAS.find((item) => item.area.toLowerCase() === areaName.toLowerCase());
     area = {
       country: 'Kenya',
       county: knownArea?.county || county,
-      city,
+      city: knownArea?.city || city,
       area: knownArea?.area || areaName
     };
   }

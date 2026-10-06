@@ -46,7 +46,8 @@ import {
   Gift,
   Coffee,
   Camera as CameraIcon,
-  MapPin
+  MapPin,
+  PackageSearch
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -171,6 +172,8 @@ export default function AdminLayoutClient({
       { name: 'Live Runners', href: '/admin/dispatch', icon: Truck, permission: 'can_manage_orders' },
       { name: 'The Buzz Hub', href: '/admin/buzz', icon: Flame, permission: 'can_manage_marketing' },
       { name: 'Tasks Board', href: '/admin/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },
+      { name: 'Merchant Onboarding', href: '/admin/merchants', icon: Store, minRole: 'admin' },
+      { name: 'Traceability & Incidents', href: '/admin/traceability', icon: PackageSearch, permission: 'can_manage_orders' },
       { name: 'Partner Bars', href: '/admin/operations/vendors', icon: Store, permission: 'can_manage_settings' },
       { name: 'Global Supply', href: '/admin/operations/sourcing', icon: Globe, permission: 'can_manage_inventory' },
       { name: 'Distributors', href: '/admin/operations/suppliers', icon: Beer, permission: 'can_manage_inventory' },
@@ -219,10 +222,10 @@ export default function AdminLayoutClient({
       items: group.items.filter(item => {
           if (!role) return false;
           if (isOwner) return true;
-          if (item.minRole === 'viewer') return true;
+          if ('minRole' in item && item.minRole === 'viewer') return true;
           if (item.permission && permissions && permissions[item.permission as keyof Permissions]) return true;
-          if (item.minRole === 'admin') return isAdmin;
-          if (item.minRole === 'owner') return isOwner;
+          if ('minRole' in item && item.minRole === 'admin') return isAdmin;
+          if ('minRole' in item && item.minRole === 'owner') return isOwner;
           return false;
       })
   })).filter(group => group.items.length > 0);

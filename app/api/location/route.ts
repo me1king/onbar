@@ -31,6 +31,18 @@ function getClient() {
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
+function isMissingDemandSchema(error: { code?: string; message?: string }) {
+  return error.code === '42P01'
+    || error.code === 'PGRST205'
+    || /customer_location_preferences|market_waitlist|link_customer_location_preference/i.test(error.message || '');
+}
+
+function locationSetupError() {
+  return NextResponse.json({
+    error: 'Area saving is not set up on this database yet. Run supabase/DEMAND_INTELLIGENCE_MIGRATION.sql in the Supabase SQL Editor, then try again.'
+  }, { status: 503 });
+}
+
 function allowRequest(request: Request) {
   const key = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
     || request.headers.get('x-real-ip')
@@ -250,6 +262,7 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (lookupError) {
     console.error('[Location] Could not check for an existing preference:', lookupError);
+    if (isMissingDemandSchema(lookupError)) return locationSetupError();
     return NextResponse.json({ error: 'Your area preference could not be saved.' }, { status: 503 });
   }
 
@@ -269,6 +282,7 @@ export async function POST(request: Request) {
     : await database.from('customer_location_preferences').insert(values);
   if (result.error) {
     console.error('[Location] Could not save opted-in area preference:', result.error);
+    if (isMissingDemandSchema(result.error)) return locationSetupError();
     return NextResponse.json({ error: 'Your area preference could not be saved.' }, { status: 503 });
   }
 
