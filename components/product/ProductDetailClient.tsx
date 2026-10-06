@@ -155,9 +155,13 @@ export default function ProductDetailClient({
     initData();
   }, [product.id, product.name, product.price, product.category, product.bought_together_ids, product.is_bite, product.is_snack, relatedProducts]);
 
-  const allImages = (product.images && product.images.length > 0)
-    ? product.images.map(img => normalizeImage(img))
-    : [normalizeImage(product.image || product.image_url)];
+  const allImages = Array.from(new Set([
+    product.image || product.image_url,
+    ...(product.images || []),
+    ...(product.image_gallery || [])
+  ].filter((image): image is string => typeof image === 'string' && image.trim().length > 0)
+    .map(image => normalizeImage(image)))).slice(0, 4);
+  if (allImages.length === 0) allImages.push(normalizeImage(null));
   const productDNA = product.sensory_metrics || {};
   const beverageDNA = product.beverage_specs?.sensory_dna;
   const sensoryDNA = {

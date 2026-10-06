@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (supabase) {
     const { data } = await supabase
       .from('products')
-      .select('name, description, image_url, image, price')
+      .select('name, description, image_url, image, images, image_gallery, price')
       .eq('id', id)
       .single();
     product = data as unknown as Product;
@@ -28,19 +28,26 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // No Fallback
   if (!product) return { title: 'Product Not Found | Online Bar' };
 
+  const productImages = Array.from(new Set([
+    product.image || product.image_url,
+    ...(product.images || []),
+    ...(product.image_gallery || [])
+  ].filter((image): image is string => typeof image === 'string' && image.trim().length > 0)
+    .map(image => normalizeImage(image)))).slice(0, 4);
+
   return {
     title: `${product.name} | Online Bar Nairobi`,
     description: product.description || `Buy authentic ${product.name} with Nairobi fast dispatch. Genuine products and premium service.`,
     openGraph: {
       title: product.name,
       description: product.description || undefined,
-      images: [normalizeImage(product.image_url || product.image)],
+      images: productImages.length > 0 ? productImages : [normalizeImage(null)],
       type: 'website',
     },
     twitter: {
         card: 'summary_large_image',
         title: product.name,
-        images: [normalizeImage(product.image_url || product.image)],
+        images: productImages.length > 0 ? productImages : [normalizeImage(null)],
     }
   };
 }
@@ -88,6 +95,13 @@ export default async function Page({ params }: Props) {
     </div>
   );
 
+  const productImages = Array.from(new Set([
+    product.image || product.image_url,
+    ...(product.images || []),
+    ...(product.image_gallery || [])
+  ].filter((image): image is string => typeof image === 'string' && image.trim().length > 0)
+    .map(image => normalizeImage(image)))).slice(0, 4);
+
   // 3. Fetch related products
   if (supabase) {
     const { data } = await supabase
@@ -121,7 +135,7 @@ export default async function Page({ params }: Props) {
               "@context": "https://schema.org/",
               "@type": "Product",
               "name": product.name || 'Premium Selection',
-              "image": [normalizeImage(product.image_url || product.image)],
+              "image": productImages.length > 0 ? productImages : [normalizeImage(null)],
               "description": product.description || '',
               "brand": {
                 "@type": "Brand",

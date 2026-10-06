@@ -481,15 +481,55 @@ export default function ProductStudioTerminal() {
                                     </div>
                                 </div>
                                 <div className="space-y-4">
-                                    <p className="text-[10px] font-black uppercase text-slate-400 ml-1">Gallery Node (Secondary Assets)</p>
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                                        {form.image_gallery?.map((url: string, i: number) => (
-                                            <div key={i} className="aspect-square rounded-3xl bg-slate-50 border border-slate-100 relative group overflow-hidden">
-                                                <Image src={url} alt="" fill className="object-cover" />
-                                                <button className="absolute top-2 right-2 h-8 w-8 rounded-full bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-slate-400 ml-1">Product Gallery</p>
+                                            <p className="text-xs text-slate-500 mt-1">Add up to 3 more images (4 total including the primary image).</p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={(form.image_gallery?.length || 0) >= 3}
+                                            onClick={() => setForm({ ...form, image_gallery: [...(form.image_gallery || []), ''] })}
+                                            className="shrink-0 rounded-xl"
+                                        >
+                                            <Plus size={16} className="mr-2" /> Add image
+                                        </Button>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {(form.image_gallery || []).map((url: string, i: number) => (
+                                            <div key={i} className="flex gap-3 items-start rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-white border border-slate-100">
+                                                    {url.trim() ? (
+                                                        <Image src={url} alt={`Product gallery image ${i + 2}`} fill className="object-cover" />
+                                                    ) : (
+                                                        <div className="h-full w-full flex items-center justify-center text-slate-300"><ImageIcon size={22} /></div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0 space-y-2">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Image {i + 2} URL</label>
+                                                    <Input
+                                                        type="url"
+                                                        value={url}
+                                                        onChange={e => {
+                                                            const gallery = [...(form.image_gallery || [])];
+                                                            gallery[i] = e.target.value;
+                                                            setForm({ ...form, image_gallery: gallery });
+                                                        }}
+                                                        placeholder="https://your-image.jpg"
+                                                        className="h-10 rounded-xl bg-white border-slate-100"
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Remove gallery image ${i + 2}`}
+                                                    onClick={() => setForm({ ...form, image_gallery: form.image_gallery.filter((_, index) => index !== i) })}
+                                                    className="h-9 w-9 shrink-0 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-500"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
                                             </div>
                                         ))}
-                                        <button className="aspect-square rounded-3xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:text-primary transition-all"><Plus size={32} /></button>
                                     </div>
                                 </div>
                                 <div className="space-y-6 text-left">

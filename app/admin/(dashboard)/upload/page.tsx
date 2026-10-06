@@ -612,7 +612,7 @@ function UploadContent() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-7 space-y-8">
-            <form key={`form-${editingId || 'new'}-${formSession}`} onSubmit={handleSubmit} className="space-y-8 pb-32">
+            <form key={`form-${editingId || 'new'}-${formSession}`} onSubmit={handleSubmit} className="space-y-8">
 
               <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
                   <button type="button" onClick={() => toggleSection('basic')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
@@ -1163,8 +1163,8 @@ function UploadContent() {
                   )}
               </Card>
 
-              <div className="sticky bottom-10 z-[50]">
-                  <div className="bg-white/80 backdrop-blur-xl p-4 rounded-[2.5rem] shadow-2xl flex gap-3 border border-slate-100">
+              <div className="pt-2">
+                  <div className="flex gap-3">
                       <Button type="submit" data-behavior-id="upload.deploy_to_bar" disabled={isSubmitting} className="flex-1 h-16 rounded-2xl bg-primary text-white font-black uppercase tracking-[0.2em] text-xs hover:bg-primary/90 transition-all active:scale-95 shadow-xl shadow-primary/20">
                         {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin mr-3" /> : <Wine className="h-5 w-5 mr-3" />}
                         {editingId ? 'Refine Grid Node' : 'Deploy to Bar'}

@@ -160,13 +160,13 @@ export default function BehaviorOverview() {
                 </Card>
             )}
 
-            <div className="grid min-w-0 gap-6 xl:grid-cols-12 xl:gap-10">
+            <div className="grid min-w-0 gap-6 2xl:grid-cols-12 2xl:gap-10">
 
                 {/* LEFT: WORKSPACE NODES */}
-                <div className="min-w-0 space-y-6 xl:col-span-8 xl:space-y-10">
+                <div className="min-w-0 space-y-6 2xl:col-span-8 2xl:space-y-10">
 
                     {/* NAVIGATION MATRIX */}
-                    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
+                    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4 2xl:gap-4">
                         {[
                             { label: 'Live Radar', icon: Flame, href: '/admin/behavior/live', color: 'bg-primary' },
                             { label: 'Session Forensics', icon: ShieldCheck, href: '/admin/behavior/sessions', color: 'bg-indigo-600' },
@@ -231,7 +231,7 @@ export default function BehaviorOverview() {
                 </div>
 
                 {/* RIGHT: COMPONENT AUDIT */}
-                <div className="min-w-0 space-y-6 xl:col-span-4 xl:space-y-10">
+                <div className="min-w-0 space-y-6 2xl:col-span-4 2xl:space-y-10">
 
                     <Card className="relative min-w-0 space-y-6 overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:space-y-10 sm:rounded-[3rem] sm:p-8">
                         <div className="relative z-10 space-y-8">

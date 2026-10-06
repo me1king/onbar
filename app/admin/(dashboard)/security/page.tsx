@@ -118,7 +118,7 @@ export default function SecurityHub() {
     const activeThreats = threats.filter(threat => threat.status === 'OPEN');
 
     return (
-        <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left pb-40">
+        <div className="p-4 sm:p-6 lg:p-8 space-y-8 lg:space-y-10 bg-slate-50 min-h-screen text-left pb-12">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
@@ -183,8 +183,8 @@ export default function SecurityHub() {
                 </div>
             </div>
 
-            <div className="grid lg:grid-cols-12 gap-10">
-                <div className="lg:col-span-8 space-y-12">
+            <div className="grid xl:grid-cols-12 gap-8 xl:gap-10">
+                <div className="min-w-0 xl:col-span-8 space-y-10 xl:space-y-12">
                     <section className="space-y-8">
                         <div className="flex items-center justify-between px-4 shrink-0">
                             <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Bar Shield: Intelligence</h2>
@@ -241,63 +241,58 @@ export default function SecurityHub() {
                             <Button onClick={exportAttempts} variant="ghost" disabled={attempts.length === 0} className="text-[10px] font-black text-primary uppercase underline tracking-widest">Export Loaded History</Button>
                         </div>
 
-                        <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden">
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="bg-slate-50 text-slate-400 font-black uppercase text-[9px] tracking-[0.2em] whitespace-nowrap">
-                                        <th className="px-10 py-6">Event Identity</th>
-                                        <th className="px-10 py-6 text-center">Protocol Status</th>
-                                        <th className="px-10 py-6 text-center">Origin Node</th>
-                                        <th className="px-10 py-6 text-right">Timestamp</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    {error ? (
-                                        <tr><td colSpan={4} role="alert" className="p-12 text-center text-rose-600 font-bold">{error}</td></tr>
-                                    ) : loading ? (
-                                        <tr><td colSpan={4} className="p-12 text-center text-slate-400 font-bold">Loading authentication records...</td></tr>
-                                    ) : attempts.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={4} className="p-20 text-center text-slate-400 font-black uppercase tracking-widest italic opacity-40">No intrusion attempts recorded.</td>
-                                        </tr>
-                                    ) : attempts.map(att => (
-                                        <tr key={att.id} className="hover:bg-primary/5 transition-all group">
-                                            <td className="px-10 py-8">
-                                                <div className="flex items-center gap-6 text-left">
-                                                    <div className={cn(
-                                                        "h-12 w-12 rounded-xl flex items-center justify-center text-white font-black uppercase shadow-lg shadow-slate-100",
-                                                        att.success ? "bg-emerald-500" : "bg-rose-500"
-                                                    )}>
-                                                        <Key size={20} />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-black text-foreground uppercase tracking-tight whitespace-nowrap overflow-hidden text-ellipsis max-w-[180px]">{att.identity_hint || 'Login Attempt'}</p>
-                                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-[220px]">{att.mode} &bull; {att.reason}</p>
-                                                    </div>
+                        <div className="overflow-hidden rounded-[2rem] border border-slate-100 bg-white shadow-sm">
+                            {error ? (
+                                <div role="alert" className="p-8 text-center font-bold text-rose-600">{error}</div>
+                            ) : loading ? (
+                                <div className="p-8 text-center font-bold text-slate-400">Loading authentication records...</div>
+                            ) : attempts.length === 0 ? (
+                                <div className="p-12 text-center text-xs font-black uppercase tracking-widest text-slate-400">No intrusion attempts recorded.</div>
+                            ) : (
+                                <ul className="divide-y divide-slate-100">
+                                    {attempts.map(att => (
+                                        <li key={att.id} className="grid min-w-0 grid-cols-1 gap-4 p-5 transition-colors hover:bg-primary/5 sm:grid-cols-[minmax(0,1fr)_auto] sm:p-6 2xl:grid-cols-[minmax(0,1.5fr)_auto_minmax(90px,0.7fr)_auto] 2xl:items-center">
+                                            <div className="flex min-w-0 items-center gap-4">
+                                                <div className={cn(
+                                                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm",
+                                                    att.success ? "bg-emerald-500" : "bg-rose-500"
+                                                )}>
+                                                    <Key size={18} />
                                                 </div>
-                                            </td>
-                                            <td className="px-10 py-8 text-center">
+                                                <div className="min-w-0">
+                                                    <p className="break-words text-sm font-black uppercase tracking-tight text-foreground">{att.identity_hint || 'Login Attempt'}</p>
+                                                    <p className="mt-1 break-words text-[9px] font-bold uppercase tracking-widest text-slate-400">{att.mode} &bull; {att.reason}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3 sm:justify-start">
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 2xl:hidden">Status</span>
                                                 <span className={cn(
-                                                    "px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border",
-                                                    att.success ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-rose-50 text-rose-600 border-rose-100"
+                                                    "shrink-0 rounded-lg border px-3 py-1.5 text-[9px] font-black uppercase tracking-widest",
+                                                    att.success ? "border-emerald-100 bg-emerald-50 text-emerald-600" : "border-rose-100 bg-rose-50 text-rose-600"
                                                 )}>
                                                     {att.success ? 'Authorized' : 'Violation'}
                                                 </span>
-                                            </td>
-                                            <td className="px-10 py-8 text-center font-mono text-[10px] font-black text-slate-400 tracking-widest">{att.ip_address}</td>
-                                            <td className="px-10 py-8 text-right">
-                                                <p className="text-[11px] font-bold text-foreground uppercase leading-none">{new Date(att.attempt_time).toLocaleTimeString()}</p>
-                                                <p className="text-[9px] font-black text-slate-400 uppercase mt-2 tracking-widest">{new Date(att.attempt_time).toLocaleDateString()}</p>
-                                            </td>
-                                        </tr>
+                                            </div>
+                                            <div className="flex min-w-0 items-center justify-between gap-3 sm:justify-start">
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 2xl:hidden">Origin</span>
+                                                <span className="min-w-0 break-all text-right font-mono text-[10px] font-bold tracking-wide text-slate-500 sm:text-left">{att.ip_address || 'Unknown'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3 sm:justify-start 2xl:flex-col 2xl:items-end 2xl:gap-1">
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 2xl:hidden">Timestamp</span>
+                                                <div className="text-right">
+                                                    <p className="text-[11px] font-bold uppercase leading-none text-foreground">{new Date(att.attempt_time).toLocaleTimeString()}</p>
+                                                    <p className="mt-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400">{new Date(att.attempt_time).toLocaleDateString()}</p>
+                                                </div>
+                                            </div>
+                                        </li>
                                     ))}
-                                </tbody>
-                            </table>
+                                </ul>
+                            )}
                         </div>
                     </section>
                 </div>
 
-                <div className="lg:col-span-4 space-y-10">
+                <div className="min-w-0 xl:col-span-4 grid gap-6 sm:grid-cols-2 xl:grid-cols-1 xl:space-y-0">
                     <Card className="p-10 rounded-[3rem] border border-slate-100 bg-white shadow-sm relative overflow-hidden group">
                         <div className="relative z-10 space-y-8 text-left">
                             <div className="flex items-center gap-4 text-primary">
@@ -319,18 +314,18 @@ export default function SecurityHub() {
                             <div className="h-10 w-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shadow-inner"><History size={20} className="text-slate-400" /></div>
                             <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none">Infrastructure Pulse</h4>
                         </div>
-                        <div className="space-y-6">
-                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                        <div className="space-y-5">
+                            <div className="flex flex-col gap-1.5 text-[10px] font-black uppercase tracking-widest sm:flex-row sm:justify-between sm:gap-4 xl:flex-col 2xl:flex-row">
                                 <span className="text-slate-400">Transport Security</span>
-                                <span className="text-slate-500">Provided by deployment TLS</span>
+                                <span className="break-words text-slate-500 sm:text-right xl:text-left 2xl:text-right">Provided by deployment TLS</span>
                             </div>
-                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                            <div className="flex flex-col gap-1.5 text-[10px] font-black uppercase tracking-widest sm:flex-row sm:justify-between sm:gap-4 xl:flex-col 2xl:flex-row">
                                 <span className="text-slate-400">Audit Database Access</span>
-                                <span className="text-slate-500">Server-side service role</span>
+                                <span className="break-words text-slate-500 sm:text-right xl:text-left 2xl:text-right">Server-side service role</span>
                             </div>
-                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                            <div className="flex flex-col gap-1.5 text-[10px] font-black uppercase tracking-widest sm:flex-row sm:justify-between sm:gap-4 xl:flex-col 2xl:flex-row">
                                 <span className="text-slate-400">API Gateway</span>
-                                <span className="text-primary">15-minute login limit</span>
+                                <span className="break-words text-primary sm:text-right xl:text-left 2xl:text-right">15-minute login limit</span>
                             </div>
                         </div>
                     </div>
