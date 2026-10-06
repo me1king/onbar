@@ -530,7 +530,7 @@ function UploadContent() {
       cancelEditing();
       fetchProducts();
       fetchProducts();
-      setMessage({ type: 'success', text: 'Grid Node Synchronized! 🛰️' });
+      setMessage({ type: 'success', text: 'Grid Node Synchronized!' });
       setTimeout(() => setMessage(null), 3000);
     } catch (err: unknown) {
         const error = err as Error;

@@ -88,11 +88,13 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
     try {
       const photoUrls: string[] = [];
       const BUCKET_NAME = 'onlinebar-assets';
+      const { data: { session: reviewSession } } = await supabase.auth.getSession();
 
       // 1. Upload Photos
       if (selectedPhotos.length > 0) {
           for (const file of selectedPhotos) {
-              const filePath = `reviews/${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
+              const ownerFolder = reviewSession?.user.id || 'guest';
+              const filePath = `reviews/${ownerFolder}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
               const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
               if (uploadError) throw uploadError;
               const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
@@ -103,7 +105,10 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
       // 2. Insert Review
       const response = await fetch('/api/reviews', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(reviewSession ? { Authorization: `Bearer ${reviewSession.access_token}` } : {})
+        },
         body: JSON.stringify({
           productId,
           customerName: name.trim(),
@@ -112,7 +117,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
           photoUrls
         })
       });
-      const result = await response.json() as { error?: string };
+      const result = await response.json() as { error?: string; id?: number };
       if (!response.ok) throw new Error(result.error || 'Your review could not be saved.');
 
       // 3. Update Mission Progress
@@ -123,7 +128,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                   method: 'POST',
                   headers: {
                       'Content-Type': 'application/json',
-                      'Authorization': session ? `Bearer ${session.access_token}` : ''
+                      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {})
                   },
                   body: JSON.stringify({
                       userId: user.id,
@@ -137,15 +142,16 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
       }
 
       // 4. Trigger Reward if Photo included
-      if (selectedPhotos.length > 0 && user) {
+      if (selectedPhotos.length > 0 && user && result.id) {
           try {
               const res = await fetch('/api/member/reward-review', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...(reviewSession ? { Authorization: `Bearer ${reviewSession.access_token}` } : {})
+                  },
                   body: JSON.stringify({
-                      userId: user.id,
-                      hasPhoto: true,
-                      productName: 'Recent Purchase'
+                      reviewId: result.id
                   }),
               });
               const rewardRes = await res.json();

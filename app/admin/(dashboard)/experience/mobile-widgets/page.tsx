@@ -323,10 +323,10 @@ export default function MobileWidgetCommand() {
                                             onChange={e => setEditing({...editing, content_type: e.target.value as 'PRODUCT' | 'TRENDING' | 'ANNOUNCEMENT' | 'ORDER'})}
                                             className="w-full h-14 rounded-2xl bg-slate-50 border border-slate-100 px-6 font-black text-[10px] uppercase outline-none focus:ring-4 focus:ring-primary/5 transition-all"
                                         >
-                                            <option value="PRODUCT">🛍️ Single Product</option>
-                                            <option value="TRENDING">🔥 Trending Now</option>
-                                            <option value="ANNOUNCEMENT">📣 Announcement</option>
-                                            <option value="ORDER">🚚 Order Status</option>
+                                            <option value="PRODUCT">Single Product</option>
+                                            <option value="TRENDING">Trending Now</option>
+                                            <option value="ANNOUNCEMENT">Announcement</option>
+                                            <option value="ORDER">Order Status</option>
                                         </select>
                                     </div>
                                     <div className="space-y-2">

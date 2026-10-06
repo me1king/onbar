@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Gift, Zap, Loader2, Sparkles, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabaseClient';
 
 interface Prize {
     type: string;
@@ -11,7 +12,7 @@ interface Prize {
     label: string;
 }
 
-export default function RewardInteractive({ userId }: { userId: string }) {
+export default function RewardInteractive() {
     const [activeTab, setActiveTab] = useState<'box' | 'spin'>('box');
     const [status, setStatus] = useState<'idle' | 'spinning' | 'opening' | 'won'>('idle');
     const [prize, setPrize] = useState<Prize | null>(null);
@@ -22,10 +23,15 @@ export default function RewardInteractive({ userId }: { userId: string }) {
         setError(null);
 
         try {
+            const { data: { session } } = await supabase?.auth.getSession() ?? { data: { session: null } };
+            if (!session) throw new Error('Sign in to claim rewards.');
             const res = await fetch('/api/member/gamification', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, action: 'claim-daily-reward', payload: { type } }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ action: 'claim-daily-reward', payload: { type } }),
             });
             const data = await res.json();
 

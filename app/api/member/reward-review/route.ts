@@ -1,48 +1,41 @@
-import { supabase } from "@/lib/supabaseClient";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabaseClient';
+import { createServerSupabaseClient } from '@/lib/serverSupabase';
 
 export async function POST(request: Request) {
-    if (!supabase) return NextResponse.json({ error: "DB not connected" }, { status: 500 });
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  if (!token || !supabase) {
+    return NextResponse.json({ error: 'Sign in to claim a review reward.' }, { status: 401 });
+  }
 
-    try {
-        const { userId, hasPhoto, productName } = await request.json();
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Your sign-in has expired.' }, { status: 401 });
+  }
 
-        if (!userId) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+  let body: { reviewId?: unknown };
+  try {
+    body = await request.json() as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'A valid review is required.' }, { status: 400 });
+  }
+  const reviewId = Number(body.reviewId);
+  if (!Number.isSafeInteger(reviewId) || reviewId < 1) {
+    return NextResponse.json({ error: 'A valid review is required.' }, { status: 400 });
+  }
 
-        if (!hasPhoto) {
-            return NextResponse.json({ message: "No photo, no reward. But thanks for the review!" });
-        }
+  const database = createServerSupabaseClient();
+  if (!database) return NextResponse.json({ error: 'Review rewards are not configured.' }, { status: 503 });
 
-        // 1. Get current points
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('loyalty_points')
-            .eq('id', userId)
-            .single();
+  const { data, error } = await database.rpc('award_photo_review_reward', {
+    review_id_input: reviewId,
+    profile_id_input: user.id
+  });
+  if (error) {
+    if (error.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 409 });
+    console.error('[ReviewReward] Could not award review points:', error);
+    return NextResponse.json({ error: 'Could not process the review reward.' }, { status: 500 });
+  }
 
-        const currentPoints = profile?.loyalty_points || 0;
-        const rewardPoints = 50;
-
-        // 2. Update points
-        await supabase
-            .from('profiles')
-            .update({ loyalty_points: currentPoints + rewardPoints })
-            .eq('id', userId);
-
-        // 3. Log to ledger
-        await supabase
-            .from('loyalty_ledger')
-            .insert([{
-                profile_id: userId,
-                amount: rewardPoints,
-                description: `Reward for photo review of ${productName}`
-            }]);
-
-        return NextResponse.json({ success: true, pointsAwarded: rewardPoints });
-
-    } catch (error: unknown) {
-        return NextResponse.json({ error: (error as Error).message }, { status: 500 });
-    }
+  return NextResponse.json({ success: true, pointsAwarded: data });
 }

@@ -375,7 +375,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
             {!location && !manualMode && (
               <>
                 <div className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
-                  <p className="font-bold">📍 Help us show what’s available in your area.</p>
+                  <p className="font-bold">Help us show what’s available in your area.</p>
                   <p className="mt-2">We use an approximate area to check delivery coverage and understand where Onbar should grow. We round your location before matching it to an area and never store the GPS coordinates.</p>
                 </div>
                 <div className="mt-6 grid gap-3">

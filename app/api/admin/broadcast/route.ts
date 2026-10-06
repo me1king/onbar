@@ -77,7 +77,7 @@ export async function POST(request: Request) {
         // SECURITY: Verify authorized admin session
         const session = await getOwnerSession();
         if (!session) {
-            return NextResponse.json({ error: "Unauthorized Access Detected 🛡️" }, { status: 401 });
+            return NextResponse.json({ error: "Unauthorized Access Detected" }, { status: 401 });
         }
 
         const body = await request.json() as {

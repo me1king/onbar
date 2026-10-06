@@ -248,7 +248,7 @@ export default function AdminMediaHub() {
                                             </Button>
                                             <Button
                                                 onClick={() => {
-                                                    const text = `Check out our premium drinks at Online Bar Nairobi! 🚀\n\n${asset.url}`;
+                                                    const text = `Check out our premium drinks at Online Bar Nairobi!\n\n${asset.url}`;
                                                     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
                                                 }}
                                                 className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-black uppercase text-[8px] h-10 rounded-xl border border-emerald-100"

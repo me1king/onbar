@@ -9,7 +9,7 @@ export async function POST(request: Request) {
         const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
 
         if (!session || session.role !== 'owner') {
-            return NextResponse.json({ error: "Unauthorized Command 🛡️" }, { status: 401 });
+            return NextResponse.json({ error: "Unauthorized Command" }, { status: 401 });
         }
 
         const { nodeId, secretKey, apiKey } = (await request.json()) as { nodeId: string; secretKey?: string; apiKey?: string };
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
         }
 
         let isHealthy = true;
-        let message = `${nodeId} Gateway Handshake Active. 🛰️`;
+        let message = `${nodeId} Gateway Handshake Active.`;
 
         // 1. Live Handshake Tests
         switch (nodeId.toUpperCase()) {
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
                             headers: { 'Authorization': `Bearer ${key}` }
                         });
                         isHealthy = res.ok;
-                        message = isHealthy ? 'Paystack Gateway Active. M-Pesa & Card Checkout Verified! 💳' : 'Paystack Secret Key Invalid.';
+                        message = isHealthy ? 'Paystack Gateway Active. M-Pesa & Card Checkout Verified!' : 'Paystack Secret Key Invalid.';
                     } catch {
                         isHealthy = false;
                         message = 'Paystack Connection Timeout.';
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
                 break;
             }
             case 'MPESA': {
-                message = 'M-Pesa Daraja Express Gateway Verified. STK Push & Callbacks Active! 📱';
+                message = 'M-Pesa Daraja Express Gateway Verified. STK Push & Callbacks Active!';
                 break;
             }
             case 'GOOGLE_MAPS':
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
                         const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=Nairobi&key=${key}`);
                         const data = await res.json();
                         isHealthy = data.status === 'OK' || data.status === 'ZERO_RESULTS';
-                        message = isHealthy ? 'Google Maps API Verified. Dispatch & Routing Active! 🗺️' : `Google Maps API Error (${data.status}).`;
+                        message = isHealthy ? 'Google Maps API Verified. Dispatch & Routing Active!' : `Google Maps API Error (${data.status}).`;
                     } catch {
                         isHealthy = false;
                         message = 'Google Maps Connection Error.';
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
                 break;
             }
             default: {
-                message = `${nodeId} Gateway Link Verified. 🛰️`;
+                message = `${nodeId} Gateway Link Verified.`;
                 break;
             }
         }

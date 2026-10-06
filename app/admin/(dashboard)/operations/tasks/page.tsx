@@ -72,7 +72,7 @@ export default function TaskCenter() {
 
             if (error) throw error;
 
-            setMessage({ type: 'success', text: "New operations protocol established. 📝" });
+            setMessage({ type: 'success', text: "New operations protocol established." });
             setTimeout(() => setMessage(null), 3000);
             setIsAdding(false);
             setNewTask({ title: '', description: '', priority: 'Medium' });

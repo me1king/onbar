@@ -37,7 +37,7 @@ export default function AdminBroadcastPage() {
     const [resendActive, setResendActive] = React.useState<boolean | null>(null);
 
     const CAMPAIGN_TEMPLATES = [
-        { id: 'flash', label: 'Flash Sale', content: `🚨 ALERT: Premium Flash Sale active now! Get 20% OFF all premium vintages for the next 4 hours only. Secure yours: ${getPublicBaseUrl()}/shop` },
+        { id: 'flash', label: 'Flash Sale', content: `ALERT: Premium Flash Sale active now! Get 20% OFF all premium vintages for the next 4 hours only. Secure yours: ${getPublicBaseUrl()}/shop` },
         { id: 'weekend', label: 'Weekend Drop', content: `Hello! Our Weekend Drop is live. Restocked premium selections are ready for chilled dispatch. Nairobi fast dispatch active until 6 PM. Shop: ${getPublicBaseUrl()}` },
         { id: 'loyalty', label: 'Reward Boost', content: `Sparkle your bar! ✨ VIP rewards just boosted. Complete your profile to unlock a KSh 500 voucher instantly. Link: ${getPublicBaseUrl()}/profile` },
     ];

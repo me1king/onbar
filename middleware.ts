@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
           }
 
           // Enhanced RBAC Check
-          if (!canAccessRoute(sessionData.role, pathname)) {
+          if (!canAccessRoute(sessionData.role, pathname, sessionData.permissions)) {
               console.warn(`🛑 RBAC REJECTION: Role ${sessionData.role} attempted to access ${pathname}`);
               return NextResponse.redirect(new URL('/admin', request.url));
           }

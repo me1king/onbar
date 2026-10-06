@@ -289,7 +289,7 @@ function BuzzDiscoveryContent() {
                             <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-10 w-full max-w-md px-6">
                                 <div className="bg-white/95 backdrop-blur-md p-5 rounded-3xl border border-slate-100 text-center shadow-2xl">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">
-                                        🛡️ Privacy Safe: Locations are aggregated. <br /> Individual patron telemetry is never exposed to the grid.
+                                        Privacy Safe: Locations are aggregated. <br /> Individual patron telemetry is never exposed to the grid.
                                     </p>
                                 </div>
                             </div>

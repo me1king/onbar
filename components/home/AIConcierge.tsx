@@ -129,7 +129,7 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
                 const { data: prods } = await supabase.from('products').select('*').order('price', { ascending: true }).limit(2);
                 suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
             } else {
-                reply = "I recommend these premium essentials to upgrade your bar experience. 🛡️";
+                reply = "I recommend these premium essentials to upgrade your bar experience.";
                 if (!supabase) throw new Error("Database offline");
                 const { data: prods } = await supabase.from('products').select('*').limit(2);
                 suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
@@ -157,7 +157,7 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
             quantity: 1
         }));
         addBundleToCart(cartItems);
-        setMessages(prev => [...prev, { role: 'assistant', text: "Selection added to bag. Ready for dispatch! 🍷" }]);
+        setMessages(prev => [...prev, { role: 'assistant', text: "Selection added to bag. Ready for dispatch!" }]);
     };
 
     return (

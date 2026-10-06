@@ -47,7 +47,7 @@ export default function LivePulseHUD() {
         {
             label: 'Chill Status',
             val: 'ACTIVE',
-            sub: '4°C Cellar Grid 🟢',
+            sub: '4°C Cellar Grid',
             icon: Snowflake,
             color: 'text-cyan-500 bg-cyan-50'
         },
@@ -61,7 +61,7 @@ export default function LivePulseHUD() {
         {
             label: 'Storefront Status',
             val: 'LIVE',
-            sub: `${hud.beverageNodes} Products Synced 🟢`,
+            sub: `${hud.beverageNodes} Products Synced`,
             icon: Globe,
             color: 'text-indigo-500 bg-indigo-50'
         }

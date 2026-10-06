@@ -26,7 +26,7 @@ export async function POST(request: Request) {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${keyToTest}`;
                 const res = await fetch(url);
                 if (res.ok) {
-                    return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'Google Gemini 1.5 Flash Gateway verified and active. 🛰️' });
+                    return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'Google Gemini 1.5 Flash Gateway verified and active.' });
                 } else {
                     return NextResponse.json({ success: false, provider, status: 'INVALID_KEY', message: `Gemini Key Handshake Failed (HTTP ${res.status}).` });
                 }
@@ -36,30 +36,30 @@ export async function POST(request: Request) {
                     headers: { 'Authorization': `Bearer ${keyToTest}` }
                 });
                 if (res.ok) {
-                    return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'OpenAI GPT-4o Gateway verified and active. 🛰️' });
+                    return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'OpenAI GPT-4o Gateway verified and active.' });
                 } else {
                     return NextResponse.json({ success: false, provider, status: 'INVALID_KEY', message: `OpenAI Key Handshake Failed (HTTP ${res.status}).` });
                 }
             }
             case 'CLAUDE': {
-                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'Anthropic Claude 3.5 Sonnet Gateway ready. 🛰️' });
+                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'Anthropic Claude 3.5 Sonnet Gateway ready.' });
             }
             case 'META':
             case 'INSTAGRAM':
             case 'FACEBOOK': {
-                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'Meta Graph API OAuth Gateway verified. 🛰️' });
+                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'Meta Graph API OAuth Gateway verified.' });
             }
             case 'WHATSAPP': {
-                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'WhatsApp Cloud Business API Gateway active. 💬' });
+                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'WhatsApp Cloud Business API Gateway active.' });
             }
             case 'YOUTUBE': {
-                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'YouTube Shorts v3 Gateway active. 🎥' });
+                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'YouTube Shorts v3 Gateway active.' });
             }
             case 'TIKTOK': {
-                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'TikTok Creator Business Gateway active. 🎵' });
+                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: 'TikTok Creator Business Gateway active.' });
             }
             default:
-                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: `${provider} Gateway verified. 🛰️` });
+                return NextResponse.json({ success: true, provider, status: 'ONLINE', message: `${provider} Gateway verified.` });
         }
 
     } catch (err: unknown) {

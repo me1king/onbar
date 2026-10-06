@@ -118,7 +118,7 @@ export default function VenuePortalDashboard() {
             }]);
             if (error) throw error;
             setUpdateText('');
-            alert("Live Signal Dispatched! 🛰️");
+            alert("Live Signal Dispatched!");
         } catch {
             alert("Uplink failed.");
         }

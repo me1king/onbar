@@ -168,10 +168,8 @@ export async function POST(request: Request) {
                                 'Authorization': `Bearer ${PAYSTACK_SECRET_KEY}`
                             },
                             body: JSON.stringify({
-                                email: firstItem.customer_email,
                                 orderId: firstItem.id,
-                                status: 'Paid',
-                                name: firstItem.customer_name
+                                status: 'Paid'
                             })
                         }).catch(e => console.error("Customer Notify Error:", e));
                     }

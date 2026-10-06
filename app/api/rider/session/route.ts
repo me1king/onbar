@@ -58,18 +58,25 @@ export async function POST(request: Request) {
     `254${nationalNumber}`,
     `+254${nationalNumber}`
   ])];
-  const { data, error } = await database
-    .from('rider_status')
-    .select('id, rider_name, rider_phone, status, verification_status')
-    .in('rider_phone', phoneVariants)
-    .eq('pin', pin)
-    .maybeSingle();
+  const { data: canAttempt, error: rateLimitError } = await database
+    .rpc('allow_rider_login_attempt', { identity_input: nationalNumber });
+  if (rateLimitError) {
+    console.error('[RiderSession] Could not check rider login rate limit:', rateLimitError);
+    return NextResponse.json({ error: 'Rider sign-in is temporarily unavailable.' }, { status: 503 });
+  }
+  if (!canAttempt) {
+    return NextResponse.json({ error: 'Too many sign-in attempts. Try again in 15 minutes.' }, { status: 429 });
+  }
+
+  const { data: matchingRiders, error } = await database
+    .rpc('verify_rider_pin', { phone_variants_input: phoneVariants, pin_input: pin });
   if (error) {
     console.error('[RiderSession] Could not verify rider credentials:', error);
     return NextResponse.json({ error: 'Rider sign-in could not be completed.' }, { status: 503 });
   }
+  const data = matchingRiders?.[0];
   if (!data || data.verification_status !== 'Verified') {
-    return NextResponse.json({ error: data ? 'Rider approval is required before signing in.' : 'Phone number or PIN is incorrect.' }, { status: 401 });
+    return NextResponse.json({ error: 'Phone number or PIN is incorrect, or the rider account is not approved.' }, { status: 401 });
   }
 
   try {

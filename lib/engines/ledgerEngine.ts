@@ -27,7 +27,7 @@ export async function recordTransaction(
     // e.g., +1000 from customer, -800 to merchant, -150 to rider, -50 to platform fees = 0
     const balanceCheck = entries.reduce((sum, e) => sum + e.amount, 0);
     if (Math.abs(balanceCheck) > 0.01) {
-        throw new Error(`🛑 Ledger Integrity Violation: Transaction sum is ${balanceCheck}, not zero.`);
+        throw new Error(`Ledger Integrity Violation: Transaction sum is ${balanceCheck}, not zero.`);
     }
 
     // 2. Create Transaction Header

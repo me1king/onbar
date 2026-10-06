@@ -30,7 +30,7 @@ export default function AccessibilityPage() {
 
           {/* Section 2 - Core Accessibility Features */}
           <section className="p-5 bg-slate-50 border border-slate-200 rounded-xl">
-            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider mb-3">🛠️ Built-in Accessibility Features</h2>
+            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider mb-3">Built-in Accessibility Features</h2>
             <p className="text-xs leading-relaxed text-slate-600 mb-3 italic">
               Our Next.js frontend architecture incorporates key structural principles to ensure a seamless experience:
             </p>

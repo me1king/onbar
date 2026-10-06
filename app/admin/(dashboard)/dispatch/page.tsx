@@ -811,7 +811,7 @@ export default function AdminDispatchPage() {
                                         const baseUrl = getPublicBaseUrl();
                                         const link = `${baseUrl}/rider/dashboard?phone=${selectedRider.rider_phone}`;
                                         navigator.clipboard.writeText(link);
-                                        setMessage({ type: 'success', text: "Magic Link Copied! 🔗" });
+                                        setMessage({ type: 'success', text: "Magic Link Copied!" });
                                         setTimeout(() => setMessage(null), 3000);
                                     }}
                                     variant="outline"

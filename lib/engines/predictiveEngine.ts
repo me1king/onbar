@@ -70,7 +70,7 @@ class PredictiveEngine {
         // 2. Dispatch Push/In-App
         await triggerNotificationByEvent('ORDER_CREATED', {
             userId,
-            title: 'Cellar Check 🍾',
+            title: 'Cellar Check',
             body: `Your favorite ${category} usually lasts you about ${category === 'Beer' ? 'a few days' : 'two weeks'}. Time to restock?`,
             metadata: { category }
         });

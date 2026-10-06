@@ -1,8 +1,7 @@
-import { supabase } from "@/lib/supabaseClient";
 import { NextResponse } from "next/server";
 import { Resend } from 'resend';
-import { verifySessionCookie } from "@/lib/adminAuth";
-import { cookies } from "next/headers";
+import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from "@/lib/utils";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -11,16 +10,17 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
  * Ghost Worker 2.0: Advanced Recovery Engine
  * This route detects inactivity (15m+) and triggers recovery campaigns.
  */
-export async function GET() {
-    // SECURITY: Only allow manual trigger by authorized admin
-    const cookieStore = await cookies();
-    const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
-
-    if (!session) {
-        return NextResponse.json({ error: "Unauthorized Access Detected 🛡️" }, { status: 401 });
+export async function POST(request: Request) {
+    const session = await getAdminSession();
+    if (!session) return NextResponse.json({ error: "Admin access required." }, { status: 401 });
+    if (!hasAdminPermission(session, 'can_manage_communications')) {
+        return NextResponse.json({ error: "Communications permission required." }, { status: 403 });
     }
-
-    if (!supabase) return NextResponse.json({ error: "DB not connected" }, { status: 500 });
+    if (!isSameOriginRequest(request)) {
+        return NextResponse.json({ error: "Request origin could not be verified." }, { status: 403 });
+    }
+    const supabase = createServerSupabaseClient();
+    if (!supabase) return NextResponse.json({ error: "Server database access is not configured." }, { status: 503 });
 
     try {
         // 1. Inactivity Threshold: 15 minutes
@@ -90,8 +90,8 @@ export async function GET() {
                             <a href="${getPublicBaseUrl()}/cart" style="background:#111;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;">RETURN TO BAG</a>
                         </div>`
                     });
-                } catch {
-                    // Ignore email errors
+                } catch (emailError) {
+                    console.error('[CartRecovery] Could not send recovery email:', emailError);
                 }
             }
 

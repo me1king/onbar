@@ -317,7 +317,7 @@ export default function BiteCommandPage() {
                                             </div>
                                             {item.popular && (
                                                 <div className="bg-amber-500 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow-md flex items-center gap-1">
-                                                    🔥 Popular
+                                                    Popular
                                                 </div>
                                             )}
                                         </div>

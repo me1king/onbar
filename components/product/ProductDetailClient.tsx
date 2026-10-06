@@ -713,7 +713,7 @@ export default function ProductDetailClient({
                                             quantity: 1,
                                             category: p.category
                                         })));
-                                        alert("Bundle established in your bag! 🥂");
+                                        alert("Bundle established in your bag!");
                                     }}
                                     className="w-full h-16 rounded-2xl bg-brand-red text-white font-black uppercase text-xs tracking-[0.3em] shadow-xl group-hover:scale-[1.02] active:scale-95 transition-all border-none"
                                 >

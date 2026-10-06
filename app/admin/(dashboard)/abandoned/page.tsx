@@ -129,7 +129,8 @@ export default function AdminAbandonedPage() {
   const handleManualRecovery = async () => {
       setIsRecovering(true);
       try {
-          const response = await fetch('/api/admin/recover-carts');
+          const response = await fetch('/api/admin/recover-carts', { method: 'POST' });
+          if (!response.ok) throw new Error('Cart recovery could not be started.');
           await response.json();
           fetchData();
       } catch (err) {
@@ -142,7 +143,7 @@ export default function AdminAbandonedPage() {
   const handleDraftNudge = (cart: AbandonedCart) => {
       const items = cart.cart_items.map(i => `• ${i.name}`).join('\n');
       const discountLink = `${window.location.origin}/cart?coupon=RECOVER5&session=${cart.session_id}`;
-      const message = `Hello ${cart.customer_name}! 🍷\n\nI noticed you left some premium items in your bag at Online Bar:\n\n${items}\n\nTo make it easier to complete your order, I've initialized a *5% OFF* tactical discount for you. Valid for the next 2 hours!\n\n*Secure your bottles here:* ${discountLink}\n\nCheers, David.`;
+      const message = `Hello ${cart.customer_name}!\n\nI noticed you left some premium items in your bag at Online Bar:\n\n${items}\n\nTo make it easier to complete your order, I've initialized a *5% OFF* tactical discount for you. Valid for the next 2 hours!\n\n*Secure your bottles here:* ${discountLink}\n\nCheers, David.`;
 
       window.open(`https://wa.me/${cart.customer_phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
   };

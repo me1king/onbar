@@ -977,7 +977,7 @@ function CheckoutContent() {
                 {isGift && (
                     <div className="mt-8 space-y-4 animate-in slide-in-from-top-4 duration-500" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center text-[9px] font-black uppercase text-primary tracking-widest px-2">
-                            <span>🎁 Personal Message Preserved</span>
+                            <span>Personal Message Preserved</span>
                             <button
                                 type="button"
                                 onClick={() => {

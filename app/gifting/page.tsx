@@ -86,7 +86,7 @@ export default function GiftingHub() {
         }
 
         addBundleToCart(items);
-        alert("Gift Box established in your bag! 🎁");
+        alert("Gift Box established in your bag!");
         router.push('/cart');
     };
 

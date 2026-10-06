@@ -26,7 +26,7 @@ export async function recordDoubleEntry(
     // 1. Balance Check
     const sum = entries.reduce((s, e) => s + e.amount, 0);
     if (Math.abs(sum) > 0.001) {
-        throw new Error(`🛑 Finance OS: Integrity Violation. Transaction sum is ${sum}, not zero.`);
+        throw new Error(`Finance OS: Integrity Violation. Transaction sum is ${sum}, not zero.`);
     }
 
     // 2. Transaction Hub

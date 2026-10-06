@@ -83,7 +83,7 @@ export default function BuzzStoryCard({ story }: { story: BuzzStory }) {
                             });
                         } else {
                             navigator.clipboard.writeText(window.location.origin + `/buzz?id=${story.id}`);
-                            alert("Mission Link captured! 🛰️");
+                            alert("Mission Link captured!");
                         }
                     }}
                     className="h-10 w-10 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-primary transition-all active:scale-95"

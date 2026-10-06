@@ -111,7 +111,7 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
   }
 
   return (
-    <div className={cn("flex items-center", isMobileMenu ? "flex-col w-full gap-2" : "gap-2 max-[430px]:gap-1 sm:gap-4")}>
+    <div className={cn("flex items-center", isMobileMenu ? "flex-col w-full gap-2" : "gap-3 max-[430px]:gap-2 sm:gap-4")}>
       <Link
         href="/admin/login"
         className={cn(
@@ -124,8 +124,8 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
       <Link
         href="/auth?mode=signin"
         className={cn(
-            "whitespace-nowrap rounded-lg text-[9px] font-black uppercase tracking-wide text-foreground transition-colors hover:text-primary max-[430px]:px-1 max-[430px]:py-1 max-[430px]:text-[8px] max-[430px]:tracking-normal max-[360px]:px-0.5 max-[360px]:py-1 max-[360px]:text-[8px] sm:rounded-none sm:text-[10px] sm:tracking-widest",
-            isMobileMenu ? "w-full py-4 text-center" : "px-1.5 py-2 sm:px-0 sm:py-0"
+            "whitespace-nowrap rounded-xl text-[9px] font-black uppercase tracking-wide text-foreground transition-colors hover:bg-slate-50 hover:text-primary sm:rounded-none sm:text-[10px] sm:tracking-widest",
+            isMobileMenu ? "w-full py-4 text-center" : "px-2.5 py-2 max-[430px]:px-2 sm:px-0 sm:py-0"
         )}
       >
         Sign In
@@ -133,10 +133,10 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
       <Link
         href="/auth?mode=signup"
         className={cn(
-            "whitespace-nowrap rounded-lg bg-primary text-center text-white shadow-lg shadow-primary/10 transition hover:bg-primary/90 active:scale-95 max-[430px]:px-1 max-[430px]:py-1 max-[430px]:text-[8px] max-[430px]:tracking-normal sm:rounded-xl",
+            "whitespace-nowrap rounded-xl bg-primary text-center text-white shadow-lg shadow-primary/10 transition hover:bg-primary/90 active:scale-95",
             isMobileMenu
                 ? "w-full py-4 text-xs font-black"
-                : "px-2 py-2 text-[9px] font-black uppercase tracking-wide max-[360px]:px-1 max-[360px]:py-1 max-[360px]:text-[8px] sm:px-5 sm:py-2.5 sm:text-[10px] sm:tracking-widest"
+                : "px-3 py-2 text-[9px] font-black uppercase tracking-wide max-[430px]:px-2.5 sm:px-5 sm:py-2.5 sm:text-[10px] sm:tracking-widest"
         )}
       >
         <span className="sm:hidden">Join</span>
@@ -534,21 +534,13 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
             )}
           </div>
 
-          <div className="flex items-center space-x-1 max-[430px]:space-x-0 max-[360px]:space-x-0 sm:space-x-4">
+          <div className="flex items-center gap-1.5 max-[430px]:gap-1 sm:gap-3">
             <button
               onClick={() => setIsMobileOpen(!isMobileOpen)}
               className="2xl:hidden p-1.5 max-[430px]:p-1 max-[360px]:p-1 sm:p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
               aria-label="Toggle Menu"
             >
               {isMobileOpen ? <X className="h-5 w-5 text-slate-600" /> : <Menu className="h-5 w-5 text-slate-600" />}
-            </button>
-
-            <button
-              onClick={() => setIsSearchOpen(!isSearchOpen)}
-              className="hidden sm:block lg:hidden p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
-              aria-label="Search"
-            >
-              <Search className="h-5 w-5 text-slate-600" />
             </button>
 
             <Link
@@ -627,6 +619,15 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
               )}
             </Link>
 
+            <button
+              onClick={() => setIsSearchOpen(!isSearchOpen)}
+              className="lg:hidden h-8 w-8 sm:h-10 sm:w-10 rounded-full border border-slate-100 bg-white flex items-center justify-center hover:bg-slate-50 transition-all active:scale-95"
+              aria-label="Search"
+              aria-expanded={isSearchOpen}
+            >
+              <Search className="h-4 w-4 sm:h-5 sm:w-5 text-slate-600" />
+            </button>
+
             <div className="flex items-center border-l border-slate-100 pl-1 max-[430px]:pl-1 max-[360px]:pl-0.5 sm:pl-4">
               <UserMenu />
             </div>
@@ -635,7 +636,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
         {/* Mobile Search Overlay */}
         {isSearchOpen && (
-          <div className="lg:hidden mt-4 animate-in slide-in-from-top-4 duration-300 relative">
+          <div className="lg:hidden mt-3 animate-in slide-in-from-top-4 duration-300 relative">
             <div className="flex gap-2">
                 <div className="relative flex-1">
                 <input
@@ -644,18 +645,19 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                     autoFocus
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleGlobalSearch()}
                     className="w-full pl-10 pr-4 py-3 sm:py-4 text-[11px] font-bold uppercase tracking-widest border-none bg-slate-50 rounded-2xl focus:ring-2 focus:ring-primary shadow-inner"
                 />
                 <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 </div>
-                <button onClick={() => setIsSearchOpen(false)} className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 active:scale-95 transition-all">
+                <button onClick={() => setIsSearchOpen(false)} aria-label="Close search" className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 active:scale-95 transition-all">
                     <X className="h-5 w-5" />
                 </button>
             </div>
 
             {/* Mobile Search Results */}
             {searchResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-[60] p-2">
+                <div className="absolute top-full left-0 right-0 mt-2 max-h-[65vh] overflow-y-auto bg-white rounded-3xl shadow-2xl border border-slate-100 z-[60] p-2">
                     {searchResults.map((product) => (
                         <Link
                             key={product.id}
@@ -672,6 +674,45 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                             </div>
                         </Link>
                     ))}
+                </div>
+            )}
+
+            {searchQuery.length === 0 && (
+                <div className="mt-3 max-h-[65vh] overflow-y-auto rounded-3xl border border-slate-100 bg-white p-4 shadow-xl">
+                    <div>
+                        <p className="mb-3 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.25em] text-primary">
+                            <Zap className="h-3 w-3 fill-current" /> Popular Selections
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                            {['Red Wine', 'Whiskey', 'Vodka', 'Gin', 'Beer', 'Chilled Snacks'].map(tag => (
+                                <button
+                                    key={tag}
+                                    onClick={() => handleGlobalSearch(tag)}
+                                    className="min-h-11 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-left text-[9px] font-black uppercase tracking-wide text-slate-600 transition-colors hover:bg-primary hover:text-white"
+                                >
+                                    {tag}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {recentlyViewed.length > 0 && (
+                        <div className="mt-5 border-t border-slate-100 pt-4">
+                            <p className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.25em] text-slate-400">
+                                <History className="h-3 w-3" /> Recent Activity
+                            </p>
+                            <div className="space-y-1">
+                                {recentlyViewed.slice(0, 3).map(item => (
+                                    <Link key={item.id} href={`/shop/${item.id}`} onClick={() => setIsSearchOpen(false)} className="flex min-w-0 items-center gap-3 rounded-xl p-2 transition-colors hover:bg-slate-50">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 p-1">
+                                            <Image src={item.image} alt="" width={32} height={32} className="max-h-full w-auto object-contain" />
+                                        </div>
+                                        <span className="truncate text-[9px] font-black uppercase text-foreground">{item.name}</span>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
           </div>

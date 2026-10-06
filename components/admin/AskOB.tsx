@@ -110,23 +110,23 @@ export default function AskOB() {
         if (lowQuery.includes('profit') || lowQuery.includes('revenue')) {
             const { data } = await supabase.from('orders').select('total_price, status').eq('status', 'Delivered');
             const total = data?.reduce((s, o) => s + (o.total_price || 0), 0) || 0;
-            return `Online Bar currently holds ${formatPrice(total)} in verified revenue. Our contribution margin is averaging 14.8% this week, bro. 💸`;
+            return `Online Bar currently holds ${formatPrice(total)} in verified revenue. Our contribution margin is averaging 14.8% this week.`;
         }
 
         // 3. LOW STOCK
         if (lowQuery.includes('stock') || lowQuery.includes('inventory')) {
             const { count } = await supabase.from('products').select('id', { count: 'exact' }).lte('stock', 5);
-            return `Alert: ${count || 0} critical beverages are approaching stock-out velocity. Recommended action: Initialize Procurement sequence now. 📦`;
+            return `Alert: ${count || 0} critical beverages are approaching stock-out velocity. Recommended action: Initialize Procurement sequence now.`;
         }
 
         // 4. ORDERS
         if (lowQuery.includes('orders') || lowQuery.includes('sales')) {
             const { count } = await supabase.from('orders').select('id', { count: 'exact' });
-            return `We have processed ${count || 0} tactical missions since system launch. The pipeline is 100% healthy. 🚀`;
+            return `We have processed ${count || 0} tactical missions since system launch. The pipeline is 100% healthy.`;
         }
 
         // DEFAULT
-        return "I'm analyzing your operations in real-time. Ask about top customers, net profit, or inventory alerts, bro. 🛡️";
+        return "I'm analyzing your operations in real-time. Ask about top customers, net profit, or inventory alerts.";
     };
 
     return (

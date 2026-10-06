@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
         if (!GEMINI_API_KEY) {
             return NextResponse.json({
-                response: "Hello! I'm currently offline while the team restocks the cellar. I'll be back soon with more premium drink advice! 🍷"
+                response: "Hello! I'm currently offline while the team restocks the cellar. I'll be back soon with more premium drink advice!"
             }, { status: 200 }); // Return 200 with a graceful message instead of 500
         }
 

@@ -248,7 +248,7 @@ export default function HubsManagement() {
                             </div>
 
                             <Button
-                                onClick={() => alert("Logistics Command Node: Under Construction. 🛰️")}
+                                onClick={() => alert("Logistics Command Node: Under Construction.")}
                                 className="w-full h-16 rounded-[2rem] bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
                             >
                                 Open Logistics Command

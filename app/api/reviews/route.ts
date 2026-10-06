@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,14 @@ export async function POST(request: Request) {
     comment?: unknown;
     photoUrls?: unknown;
   };
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  let userId: string | null = null;
+  if (token) {
+    if (!supabase) return NextResponse.json({ error: 'Review authentication is unavailable.' }, { status: 503 });
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return NextResponse.json({ error: 'Your sign-in has expired.' }, { status: 401 });
+    userId = user.id;
+  }
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -74,6 +83,27 @@ export async function POST(request: Request) {
   const database = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   });
+  if (userId && photoUrls.length > 0) {
+    const folder = `reviews/${userId}`;
+    const paths = photoUrls.map((photo) => {
+      const marker = '/storage/v1/object/public/onlinebar-assets/';
+      return typeof photo === 'string' ? photo.slice(photo.indexOf(marker) + marker.length) : '';
+    });
+    if (paths.some(path => !path.startsWith(`${folder}/`))) {
+      return NextResponse.json({ error: 'Review photos must be uploaded to your own review gallery.' }, { status: 403 });
+    }
+    const { data: uploadedFiles, error: storageError } = await database.storage
+      .from('onlinebar-assets')
+      .list(folder, { limit: 100 });
+    if (storageError) {
+      console.error('[Reviews] Could not verify uploaded review photos:', storageError);
+      return NextResponse.json({ error: 'Review photos could not be verified.' }, { status: 503 });
+    }
+    const uploadedNames = new Set((uploadedFiles || []).map(file => `${folder}/${file.name}`));
+    if (paths.some(path => !uploadedNames.has(path))) {
+      return NextResponse.json({ error: 'Every review photo must be uploaded before submission.' }, { status: 400 });
+    }
+  }
   const { data, error } = await database
     .from('reviews')
     .insert({
@@ -82,6 +112,7 @@ export async function POST(request: Request) {
       rating,
       comment,
       photo_urls: photoUrls,
+      user_id: userId,
       is_verified_owner: false,
       is_hidden: false
     })

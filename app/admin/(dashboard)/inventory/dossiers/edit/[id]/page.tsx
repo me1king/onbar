@@ -116,7 +116,7 @@ export default function DossierEditor() {
             }], { onConflict: 'product_id' });
 
             if (error) throw error;
-            alert("Dossier Node Synchronized. 🛰️");
+            alert("Dossier Node Synchronized.");
             router.push('/admin/inventory/dossiers');
         } catch (err: unknown) {
             alert(`Uplink Failure: ${(err as Error).message}`);
@@ -364,7 +364,7 @@ export default function DossierEditor() {
                             <p className="text-xs font-medium opacity-80 leading-relaxed italic">
                                 &quot;I recommend checking the producer&apos;s official website for the exact constituent statement required by the Kenyan Alcoholic Drinks Control Act.&quot;
                             </p>
-                            <Button onClick={() => alert("Research Crawler Node under construction. 🛰️")} variant="ghost" className="w-full h-12 bg-white/5 border border-white/10 text-white font-black uppercase text-[10px] tracking-widest hover:bg-white/10">
+                            <Button onClick={() => alert("Research Crawler Node under construction.")} variant="ghost" className="w-full h-12 bg-white/5 border border-white/10 text-white font-black uppercase text-[10px] tracking-widest hover:bg-white/10">
                                 Launch Research Crawler
                             </Button>
                         </div>

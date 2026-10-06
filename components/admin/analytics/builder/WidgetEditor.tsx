@@ -105,11 +105,11 @@ export default function WidgetEditor({ widget, dashboardId, onClose, onSave }: E
                                     onChange={e => setForm({...form, type: e.target.value})}
                                     className="w-full h-14 rounded-2xl bg-slate-50 border border-slate-100 px-6 font-black text-[10px] uppercase outline-none focus:ring-4 focus:ring-primary/5 transition-all"
                                 >
-                                    <option value="KPI">🔢 KPI Number</option>
-                                    <option value="CHART_BAR">📊 Bar Chart</option>
-                                    <option value="CHART_LINE">📈 Line Chart</option>
-                                    <option value="CHART_PIE">🥧 Pie Chart</option>
-                                    <option value="TABLE">📋 Data Table</option>
+                                    <option value="KPI">KPI Number</option>
+                                    <option value="CHART_BAR">Bar Chart</option>
+                                    <option value="CHART_LINE">Line Chart</option>
+                                    <option value="CHART_PIE">Pie Chart</option>
+                                    <option value="TABLE">Data Table</option>
                                 </select>
                             </div>
                             <div className="space-y-2">

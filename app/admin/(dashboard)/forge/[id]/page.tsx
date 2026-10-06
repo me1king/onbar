@@ -238,7 +238,7 @@ export default function ProductStudioTerminal() {
             }).eq('id', id);
 
             if (error) throw error;
-            alert("Product Node Synchronized. 🛰️");
+            alert("Product Node Synchronized.");
         } catch (err: unknown) {
             const error = err as Error;
             alert(`Sync Failure: ${error.message}`);
@@ -699,8 +699,8 @@ export default function ProductStudioTerminal() {
                                     {[
                                         { k: 'is_featured', l: '⭐ Featured Selection' },
                                         { k: 'is_new', l: '✨ Marked as New' },
-                                        { k: 'is_on_offer', l: '🏷️ Strategic Offer' },
-                                        { k: 'is_bite', l: '🥘 Night Bite Logic' },
+                                        { k: 'is_on_offer', l: 'Strategic Offer' },
+                                        { k: 'is_bite', l: 'Night Bite Logic' },
                                     ].map(flag => (
                                         <button
                                             key={flag.k}

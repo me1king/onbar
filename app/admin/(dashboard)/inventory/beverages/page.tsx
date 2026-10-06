@@ -430,7 +430,7 @@ export default function BeverageCommandAdmin() {
                                                     "px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase border",
                                                     isLive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
                                                 )}>
-                                                    {isLive ? '🟢 Live Storefront' : '🔴 Deactivated'}
+                                                    {isLive ? 'Live Storefront' : 'Deactivated'}
                                                 </span>
                                             </div>
                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">

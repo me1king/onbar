@@ -38,7 +38,7 @@ export default function TermsAndConditionsPage() {
 
           {/* Section 3 - THE CRITICAL FINAL SALE CLAUSE */}
           <section className="p-5 bg-amber-50 border border-amber-200 rounded-xl">
-            <h2 className="text-sm font-bold text-amber-900 uppercase tracking-wider mb-2">📢 3. Strict Return & Exchange Policy</h2>
+            <h2 className="text-sm font-bold text-amber-900 uppercase tracking-wider mb-2">3. Strict Return & Exchange Policy</h2>
             <p className="text-amber-800 font-bold mb-2">
               Please take extreme care to verify your desired selection and quantities carefully prior to checking out.
             </p>

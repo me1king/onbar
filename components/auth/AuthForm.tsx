@@ -62,9 +62,9 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         const start = Date.now();
         await fetch(url, { mode: 'no-cors' }); // Simple ping
         const latency = Date.now() - start;
-        alert(`🛰️ Network Uplink: Healthy (${latency}ms)`);
+        alert(`Network Uplink: Healthy (${latency}ms)`);
     } catch {
-        alert(`🛑 Network Error: Connection to Supabase failed. Check your internet or ad-blocker.`);
+        alert(`Network Error: Connection to Supabase failed. Check your internet or ad-blocker.`);
     } finally {
         setIsDiagnosticRunning(false);
     }
@@ -120,7 +120,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         if (error) {
             let errorText = error.message || "Uplink Failure";
             const userExists = error.message?.includes("already registered") || error.code === '23505' || error.message?.includes("user_already_exists");
-            if (userExists) errorText = "Identity already exists on the grid. Switch to Login mode below. 🛰️";
+            if (userExists) errorText = "Identity already exists on the grid. Switch to Login mode below.";
             setMessage({ type: 'error', text: errorText });
             setDebugInfo(JSON.stringify({ code: error.code || 'UNKNOWN', message: error.message, name: error.name }));
             setLoading(false);
@@ -132,10 +132,10 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             await OB_OS.track('USER_REGISTERED', { userId: data.user.id, anonymousId: localStorage.getItem('ob_anonymous_id') || undefined });
 
             if (data.session) {
-                setMessage({ type: 'success', text: 'Registration Successful! Establishing profile... 🛰️' });
+                setMessage({ type: 'success', text: 'Registration Successful! Establishing profile...' });
                 if (onSuccess) setTimeout(() => onSuccess(data.user!.id), 2000);
             } else {
-                setMessage({ type: 'success', text: 'Identity Reserved! Please check your email inbox to confirm your account. 🛡️' });
+                setMessage({ type: 'success', text: 'Identity Reserved! Please check your email inbox to confirm your account.' });
             }
         }
       } else {
@@ -146,7 +146,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
 
         if (error) {
             let errorText = error.message || "Uplink Failure";
-            if (error.message?.includes("Invalid login credentials")) errorText = "Credential Mismatch. Incorrect key or identity not found. 🛡️";
+            if (error.message?.includes("Invalid login credentials")) errorText = "Credential Mismatch. Incorrect key or identity not found.";
             setMessage({ type: 'error', text: errorText });
             setDebugInfo(JSON.stringify({ code: error.code || 'UNKNOWN', message: error.message, name: error.name }));
             setLoading(false);
@@ -156,7 +156,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         if (data.user) {
             await handleIdentityStitching(data.user.id);
             await OB_OS.track('USER_LOGIN', { userId: data.user.id });
-            setMessage({ type: 'success', text: 'Access Granted. Entering Vault... 🛡️' });
+            setMessage({ type: 'success', text: 'Access Granted. Entering Vault...' });
             if (onSuccess) {
                 setTimeout(() => onSuccess(data.user!.id), 1500);
             }
@@ -174,17 +174,17 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
       }
 
       if (err.code === 'over_email_send_rate_limit' || err.code === 'over_sms_send_rate_limit') {
-          errorText = "Rate Limit Node Active. Please wait or try Google Social Login below. 🛡️";
+          errorText = "Rate Limit Node Active. Please wait or try Google Social Login below.";
           setCooldown(60);
       }
 
       const userExists = err.message?.includes("already registered") || err.code === '23505' || err.message?.includes("user_already_exists");
       if (userExists) {
-          errorText = "Identity already exists on the grid. Switch to Login mode below. 🛰️";
+          errorText = "Identity already exists on the grid. Switch to Login mode below.";
       }
 
       if (err.message?.includes("Invalid login credentials")) {
-          errorText = "Credential Mismatch. Incorrect key or identity not found. 🛡️";
+          errorText = "Credential Mismatch. Incorrect key or identity not found.";
       }
 
       setMessage({ type: 'error', text: errorText });
@@ -217,7 +217,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             if (error) throw error;
 
             setShowOtpField(true);
-            setMessage({ type: 'success', text: 'Verification code sent via SMS. 📱' });
+            setMessage({ type: 'success', text: 'Verification code sent via SMS.' });
         } else {
             const { data, error } = await supabase.auth.verifyOtp({
                 phone: cleanPhone,
@@ -229,7 +229,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             if (data.user) {
                 await handleIdentityStitching(data.user.id);
                 await OB_OS.track('USER_LOGIN', { userId: data.user.id });
-                setMessage({ type: 'success', text: isSignUp ? 'Identity Established! Synchronizing... 🛡️' : 'Access Granted. Entering Vault... 🛡️' });
+                setMessage({ type: 'success', text: isSignUp ? 'Identity Established! Synchronizing...' : 'Access Granted. Entering Vault...' });
                 if (onSuccess) {
                     setTimeout(() => onSuccess(data.user!.id), 1500);
                 }
@@ -240,11 +240,11 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         let errorText = err.message || "Uplink Failure";
 
         if (errorText.toLowerCase().includes('failed to fetch')) {
-            errorText = "Network Error: Cannot reach Supabase. Check your connection. 🛰️";
+            errorText = "Network Error: Cannot reach Supabase. Check your connection.";
         }
 
         if (err.code === 'over_sms_send_rate_limit') {
-            errorText = "SMS Rate Limit Hit. Try again in 60 seconds. 🛡️";
+            errorText = "SMS Rate Limit Hit. Try again in 60 seconds.";
             setCooldown(60);
         }
 
@@ -270,7 +270,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             redirectTo: `${window.location.origin}/auth/callback?type=recovery`
         });
         if (error) throw error;
-        setMessage({ type: 'success', text: 'Account Recovery Key transmitted! Check your email inbox. 🛰️' });
+        setMessage({ type: 'success', text: 'Account Recovery Key transmitted! Check your email inbox.' });
     } catch (err: unknown) {
         setMessage({ type: 'error', text: (err as Error).message || 'Recovery transmission failed.' });
     } finally {

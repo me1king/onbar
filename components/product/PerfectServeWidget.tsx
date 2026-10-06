@@ -70,7 +70,7 @@ export default function PerfectServeWidget({ specs }: { specs?: ServeSpecs }) {
                 category: mixerProduct.category || 'Mixers'
             }
         ]);
-        alert("Mixer added to bag. Don't forget the ice! 🧊");
+        alert("Mixer added to bag. Don't forget the ice!");
     };
 
     return (

@@ -314,7 +314,7 @@ export default function SocialAccountManagement() {
                                                     {connected ? (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                                                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                            🔵 CONNECTED
+                                                            CONNECTED
                                                         </span>
                                                     ) : (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30">

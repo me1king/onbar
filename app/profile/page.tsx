@@ -492,7 +492,7 @@ export default function ProfilePage() {
 
         if (error) throw error;
 
-        setToast({ type: 'success', text: "Ticket Transmission Successful. 🛰️" });
+        setToast({ type: 'success', text: "Ticket Transmission Successful." });
         setSupportSubject('');
         setSupportMessage('');
         setIsSupportFormOpen(false);
@@ -531,7 +531,7 @@ export default function ProfilePage() {
 
       setProfile(prev => prev ? { ...prev, ...editForm } : null);
       setIsEditing(false);
-      alert("Premium profile synchronized successfully! 🛡️");
+      alert("Premium profile synchronized successfully!");
     } catch (err: unknown) {
       console.error("Profile Update Error:", err);
       alert(`Failed to sync profile: ${(err as Error).message}`);
@@ -554,7 +554,7 @@ export default function ProfilePage() {
           if (error) throw error;
           setProfile(prev => prev ? { ...prev, latitude: lat, longitude: lng } : null);
           setIsPickingLocation(false);
-          alert("GPS Coordinates Locked! 📍");
+          alert("GPS Coordinates Locked!");
       } catch (err: unknown) {
           console.error(err);
           alert(`Failed to sync coordinates: ${(err as Error).message}`);
@@ -714,7 +714,7 @@ export default function ProfilePage() {
                                     </div>
                                 )}
                             </div>
-                            <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-foreground uppercase">My Bar 👋</h1>
+                            <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-foreground uppercase">My Bar</h1>
 
                             <div className="flex gap-2 mt-4 overflow-x-auto no-scrollbar pb-2">
                                 <div className={cn(
@@ -841,7 +841,7 @@ export default function ProfilePage() {
             </div>
             <div className="space-y-10">
                 <RewardMilestoneTracker />
-                <RewardInteractive userId={user?.id || ''} />
+                <RewardInteractive />
             </div>
         </div>
 
@@ -1474,7 +1474,7 @@ export default function ProfilePage() {
                                                         order_id: order.id,
                                                         customer_complaint: complaint,
                                                         status: 'Pending_Pickup'
-                                                    }]).then(() => alert("Quality Mission Initialized. 🛡️"));
+                                                    }]).then(() => alert("Quality Mission Initialized."));
                                                 }
                                             }}
                                             className="text-[7px] font-black uppercase text-primary underline"

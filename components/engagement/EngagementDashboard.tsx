@@ -68,7 +68,7 @@ export default function EngagementDashboard() {
                         <div className="space-y-2">
                             <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.4em]">{greeting},</p>
                             <h2 className="text-5xl font-black text-foreground uppercase tracking-tighter leading-none">
-                                {firstName} <span className="text-primary animate-pulse">👋</span>
+                                {firstName}
                             </h2>
                         </div>
 

@@ -30,7 +30,7 @@ export default function CookiePolicyPage() {
 
           {/* Section 2 - THE ESSENTIAL FUNCTIONALITY WARNING */}
           <section className="p-5 bg-indigo-50 border border-indigo-100 rounded-xl">
-            <h2 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-2">🛒 Why Cookies Matter for Your Order</h2>
+            <h2 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-2">Why Cookies Matter for Your Order</h2>
             <p className="text-xs leading-relaxed text-indigo-800 font-medium">
               Without cookies active, an online e-commerce shop cannot function. Our application uses <strong>Essential Session Cookies</strong> to keep track of your selected bottles as you browse our collections. If you disable cookies in your browser settings, your bag items will automatically disappear whenever you refresh or switch pages, preventing you from checking out successfully.
             </p>

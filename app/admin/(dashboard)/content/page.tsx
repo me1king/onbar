@@ -74,7 +74,7 @@ export default function ContentCommandHub() {
             setNewTitle('');
             setNewDesc('');
             fetchContent();
-            alert("Master narrative established. Grid variants created. 🛰️");
+            alert("Master narrative established. Grid variants created.");
         } catch (err) { console.error(err); }
         finally { setIsEstablishing(false); }
     };
@@ -220,7 +220,7 @@ export default function ContentCommandHub() {
                                             <button
                                                 onClick={() => {
                                                     // This should eventually open a detail/edit view
-                                                    alert("Variant Inspector Node under construction. 🛰️");
+                                                    alert("Variant Inspector Node under construction.");
                                                 }}
                                                 className="h-10 w-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300 hover:bg-primary hover:text-white transition-all shadow-sm"
                                             >

@@ -325,15 +325,15 @@ export async function POST(request: Request) {
     }
 
     if (!phone || !password) return NextResponse.json({ error: 'Phone and PIN are required.' }, { status: 400 });
-    const normalizedPhone = phone.replace(/^\+254/, '').replace(/^0/, '');
-    const { data: rider, error: riderError } = await database
-      .from('rider_status')
-      .select('id, rider_phone, pin, verification_status')
-      .eq('rider_phone', normalizedPhone)
-      .maybeSingle();
+    const digits = phone.replace(/\D/g, '');
+    const normalizedPhone = digits.startsWith('254') ? digits.slice(3) : digits.startsWith('0') ? digits.slice(1) : digits;
+    const phoneVariants = [...new Set([phone, digits, normalizedPhone, `0${normalizedPhone}`, `254${normalizedPhone}`, `+254${normalizedPhone}`])];
+    const { data: matchingRiders, error: riderError } = await database
+      .rpc('verify_rider_pin', { phone_variants_input: phoneVariants, pin_input: password });
     if (riderError) throw new Error(`Could not check rider account: ${riderError.message}`);
+    const rider = matchingRiders?.[0];
 
-    if (!rider || !await matchesSecret(password, rider.pin || '') || rider.verification_status !== 'Verified') {
+    if (!rider || rider.verification_status !== 'Verified') {
       await recordAttempt(database, request, mode, normalizedPhone, false, 'Invalid or unverified rider account');
       const count = await getRecentFailedAttempts(database, ip);
       await maybeRecordBruteForceThreat(database, request, count, threshold);

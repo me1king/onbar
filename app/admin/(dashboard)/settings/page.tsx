@@ -380,7 +380,7 @@ export default function AdminSettingsPage() {
                             else if (activeTab === 'ai') handleSave('ai_config', aiConfig, true);
                             else if (activeTab === 'onboarding') handleSave('onboarding_config', onboarding, true);
                             else if (activeTab === 'integrations') {
-                                setMessage({ type: 'success', text: "Integration credentials synchronized with secure vault. 🔐" });
+                                setMessage({ type: 'success', text: "Integration credentials synchronized with secure vault." });
                                 setTimeout(() => setMessage(null), 3000);
                             }
                             else if (activeTab === 'features') handleSave('features', features, true);
@@ -698,7 +698,7 @@ export default function AdminSettingsPage() {
                                                         for (const u of updates) {
                                                             await supabase.from('products').update({ is_on_offer: u.is_on_offer, old_price: u.old_price }).eq('id', u.id);
                                                         }
-                                                        alert(`Happy Hour Discount (${discount}%) synced across ${drinks.length} drinks! All items now live in /shop/category/sale 🚀`);
+                                                        alert(`Happy Hour Discount (${discount}%) synced across ${drinks.length} drinks! All items now live in /shop/category/sale`);
                                                     }
                                                 } catch (err: unknown) {
                                                     alert(`Sync Error: ${(err as Error).message}`);
@@ -1309,7 +1309,7 @@ export default function AdminSettingsPage() {
                             <Card className="p-8 sm:p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left">
                                 <div className="flex justify-between items-center border-b border-slate-100 pb-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="h-10 w-10 rounded-xl bg-rose-50 text-rose-500 border border-rose-100 flex items-center justify-center font-black">🗺️</div>
+                                        <div className="h-10 w-10 rounded-xl bg-rose-50 text-rose-500 border border-rose-100" aria-hidden="true" />
                                         <div>
                                             <h3 className="text-lg font-black uppercase text-foreground">Google Maps Platform API</h3>
                                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Powering Live Dispatch Map, Geocoding & Address Autocomplete</p>
@@ -1359,7 +1359,7 @@ export default function AdminSettingsPage() {
                                     </div>
                                     <Button
                                         type="button"
-                                        onClick={() => alert("WhatsApp Test Dispatch Message sent to +2547***! Response: 200 OK 🟢")}
+                                        onClick={() => alert("WhatsApp Test Dispatch Message sent to +2547***! Response: 200 OK")}
                                         className="h-9 px-4 rounded-xl bg-emerald-600 text-white text-[9px] font-black uppercase hover:bg-emerald-700 shadow-md"
                                     >
                                         Send Test WhatsApp Message
@@ -1442,7 +1442,7 @@ export default function AdminSettingsPage() {
                                                             });
                                                             const data = await res.json();
                                                             if (data.success) {
-                                                                alert(`${node.label} healthy! 🛰️`);
+                                                                alert(`${node.label} healthy!`);
                                                                 fetchSettings();
                                                             } else {
                                                                 throw new Error(data.error || 'Verification failed');

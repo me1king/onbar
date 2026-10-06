@@ -274,31 +274,35 @@ export default function AdminOrdersPage() {
 
       if (status === 'Dispatched' || status === 'Delivered') {
           const currentOrder = orders.find(o => o.id === orderId);
-          if (currentOrder?.customer_email) {
-              fetch('/api/admin/notify-customer', {
+          if (currentOrder) {
+              const notificationResponse = await fetch('/api/admin/notify-customer', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                      email: currentOrder.customer_email,
                       orderId: currentOrder.id,
-                      status: status,
-                      name: currentOrder.customer_name
+                      status
                   })
               });
+              if (!notificationResponse.ok) {
+                  console.error('Customer status notification failed:', await notificationResponse.text());
+              }
           }
 
           // Phase 9: Autonomous Payout Trigger on Delivery
           if (status === 'Delivered' && currentOrder?.rider_phone) {
-              fetch('/api/admin/payout-worker', {
+              const payoutResponse = await fetch('/api/admin/payout-worker', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      type: 'RIDER',
-                      recipientId: currentOrder.rider_phone,
-                      amount: 430, // Standard Commission
-                      reference: `Order #${currentOrder.id}`
-                  })
-              }).catch(e => console.error("Auto Payout Failure:", e));
+                  body: JSON.stringify({})
+              });
+              if (!payoutResponse.ok) {
+                  const result = await payoutResponse.json() as { error?: string };
+                  setStatusMessage({
+                      type: 'error',
+                      text: result.error || 'Order status saved, but the rider payout was not processed.'
+                  });
+                  return;
+              }
           }
       }
 

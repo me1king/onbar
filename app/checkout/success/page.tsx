@@ -45,7 +45,7 @@ function SuccessContent() {
                     );
 
                     if (oData && !isOwner) {
-                        alert("Unauthorized Payload Access 🛡️");
+                        alert("Unauthorized Payload Access");
                         window.location.href = '/';
                         return;
                     }

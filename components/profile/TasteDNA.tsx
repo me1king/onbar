@@ -72,7 +72,7 @@ export default function TasteDNA({ dna, userId, onUpdate }: TasteDNAProps) {
             if (error) throw error;
             if (onUpdate) onUpdate(formData);
             setIsEditing(false);
-            alert("Taste DNA synchronized successfully! 🍷");
+            alert("Taste DNA synchronized successfully!");
         } catch (err: unknown) {
             alert(`Sync failed: ${(err as Error).message}`);
         } finally {

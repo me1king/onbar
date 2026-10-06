@@ -216,7 +216,7 @@ export default function AdminAuditPage() {
           const result = await response.json() as { error?: string };
           if (!response.ok) throw new Error(result.error || 'Could not clear audit history.');
           setLogs([]);
-          alert("Audit Node Purged Successfully. 🛡️");
+          alert("Audit Node Purged Successfully.");
       } catch (err) {
           console.error('Could not clear audit logs:', err);
           alert(err instanceof Error ? err.message : 'Could not clear audit history.');
@@ -228,10 +228,10 @@ export default function AdminAuditPage() {
           const response = await fetch('/api/admin/audit-logs', { method: 'POST' });
           const result = await response.json() as { error?: string };
           if (!response.ok) throw new Error(result.error || 'Audit log health check failed.');
-          alert("🛰️ Grid Uplink: HEALTHY. Audit node is online.");
+          alert("Grid Uplink: HEALTHY. Audit node is online.");
       } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Unknown error.';
-          alert(`🛑 Grid Uplink: FAILED.\nMessage: ${message}`);
+          alert(`Grid Uplink: FAILED.\nMessage: ${message}`);
       }
   };
 

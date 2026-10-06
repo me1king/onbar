@@ -46,7 +46,7 @@ export default function PrivacyPolicyPage() {
 
           {/* Section 3 - Vital Payment Note */}
           <section className="p-5 bg-indigo-50 border border-indigo-100 rounded-xl">
-            <h2 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-2">🔒 Payment & M-Pesa Security</h2>
+            <h2 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-2">Payment & M-Pesa Security</h2>
             <p className="text-xs leading-relaxed text-indigo-800 font-medium">
               Your security is our absolute priority. Online Bar integration frameworks <strong>never</strong> store your private PIN codes or direct financial credentials.
               All financial executions are handled via direct checkout prompts safely through official mobile carrier infrastructure links (such as Safaricom Daraja STK channels).

@@ -14,11 +14,11 @@ import {
   Plus,
   AlertTriangle,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useAdmin } from '@/context/AdminContext';
+import { supabase } from '@/lib/supabaseClient';
 import dynamic from 'next/dynamic';
 
 const AreaChart = dynamic(() => import('recharts').then(mod => mod.AreaChart), { ssr: false });
@@ -55,7 +55,7 @@ import MarketIntel from '@/components/admin/MarketIntel';
 import BuzzHUD from '@/components/buzz/BuzzHUD';
 import TrustCommandCenter from '@/components/admin/TrustCommandCenter';
 import MarketingCommandCenter from '@/components/admin/MarketingCommandCenter';
-import CommandRelay, { RelayNotification } from '@/components/admin/CommandRelay';
+import CommandRelay from '@/components/admin/CommandRelay';
 
 const LiveDispatchMap = dynamic(() => import('@/components/admin/dispatch/LiveDispatchMap'), {
     ssr: false,
@@ -120,33 +120,31 @@ export default function AdminDashboard() {
   }, []);
 
   React.useEffect(() => {
+    let active = true;
     async function loadStats() {
-      if (!supabase) {
-        setIsLoading(false);
-        return;
-      }
-
       try {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const dateLimit = thirtyDaysAgo.toISOString();
-
-        const [ordersRes, productsRes, ledgerRes, ridersRes, auditResponse] = await Promise.all([
-          supabase.from('orders')
-            .select('*, order_items(*)')
-            .gte('created_at', dateLimit)
-            .order('created_at', { ascending: false }),
-          supabase.from('products').select('id, stock, name, price, image_url, cost_price, category, warehouse_location'),
-          supabase.from('financial_ledger').select('*').gte('created_at', dateLimit),
-          supabase.from('rider_status').select('id, rider_name, status, battery_level').neq('status', 'Offline'),
+        const [dashboardResponse, auditResponse] = await Promise.all([
+          fetch('/api/admin/dashboard-data', { cache: 'no-store' }),
           fetch('/api/admin/audit-logs', { cache: 'no-store' })
         ]);
-
-        if (ordersRes.data) {
-            setOrders(ordersRes.data as OrderRecord[]);
-
+        if (!dashboardResponse.ok) {
+          const result = await dashboardResponse.json() as { error?: string };
+          throw new Error(result.error || 'Could not load dashboard data.');
+        }
+        const dashboardData = await dashboardResponse.json() as {
+          orders: OrderRecord[];
+          products: ProductRecord[];
+          ledger: LedgerRecord[];
+          riders: { id: string; rider_name: string; status: string; battery_level: number }[];
+        };
+        if (!active) return;
+        setOrders(dashboardData.orders);
+        setProducts(dashboardData.products);
+        setLedger(dashboardData.ledger);
+        setRiders(dashboardData.riders);
+        {
             const hours: Record<string, number> = {};
-            ordersRes.data.forEach(o => {
+            dashboardData.orders.forEach(o => {
                 const hour = new Date(o.created_at).getHours();
                 const label = `${hour}:00`;
                 hours[label] = (hours[label] || 0) + 1;
@@ -154,10 +152,10 @@ export default function AdminDashboard() {
             setPeakHours(Object.entries(hours).map(([hour, count]) => ({ hour, count })).sort((a,b) => parseInt(a.hour) - parseInt(b.hour)));
 
             const productCategories = new Map<number, string | undefined>(
-                (productsRes.data || []).map((product: ProductRecord) => [product.id, product.category?.trim()])
+                dashboardData.products.map(product => [product.id, product.category?.trim()])
             );
             const categories: Record<string, number> = {};
-            (ordersRes.data as OrderRecord[]).forEach(order => {
+            dashboardData.orders.forEach(order => {
                 order.order_items?.forEach((item: NonNullable<OrderRecord['order_items']>[number]) => {
                     const category = productCategories.get(item.product_id);
                     if (!category) return;
@@ -166,78 +164,31 @@ export default function AdminDashboard() {
             });
             setCategoryBreakdown(Object.entries(categories).map(([name, value]) => ({ name, value })));
         }
-        if (productsRes.data) setProducts(productsRes.data as ProductRecord[]);
         if (auditResponse.ok) {
             const result = await auditResponse.json() as { logs?: AuditLog[] };
-            setAuditLogs((result.logs || []).slice(0, 2));
+            if (active) setAuditLogs((result.logs || []).slice(0, 2));
         } else {
             const result = await auditResponse.json() as { error?: string };
             console.error('Could not load dashboard audit logs:', result.error || auditResponse.statusText);
         }
-        if (ledgerRes.data) setLedger(ledgerRes.data as LedgerRecord[]);
-        if (ridersRes.data) setRiders(ridersRes.data as { id: string; rider_name: string; status: string; battery_level: number }[]);
 
       } catch (err: unknown) {
         console.error('Error loading dashboard stats:', err);
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     }
     loadStats();
+    const refresh = setInterval(loadStats, 60000);
 
     const shieldScan = setInterval(() => {
         runSecurityScan();
     }, 300000);
 
-    if (!supabase) return;
-
-    const ordersSub = supabase.channel('orders-live')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-            const newOrder = payload.new as OrderRecord;
-            setOrders(prev => [newOrder, ...prev]);
-
-            const event = new CustomEvent('ob-command-relay', {
-                detail: {
-                    id: `order-${newOrder.id}`,
-                    type: 'ORDER',
-                    title: 'Mission Initialized',
-                    message: `Patron ${newOrder.customer_name} established mission Unit #${newOrder.id}.`,
-                    timestamp: new Date(),
-                    href: `/admin/orders?id=${newOrder.id}`
-                } as RelayNotification
-            });
-            window.dispatchEvent(event);
-        })
-        .subscribe();
-
-    const ledgerSub = supabase.channel('ledger-live')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'financial_ledger' }, () => {
-            loadStats();
-        })
-        .subscribe();
-
-    const securitySub = supabase.channel('security-live')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'security_threats' }, payload => {
-            const threat = payload.new;
-            const event = new CustomEvent('ob-command-relay', {
-                detail: {
-                    id: `threat-${threat.id}`,
-                    type: 'SECURITY',
-                    title: 'Shield Alert',
-                    message: `${threat.type} threat identified! Action required.`,
-                    timestamp: new Date(),
-                    href: `/admin/security`
-                } as RelayNotification
-            });
-            window.dispatchEvent(event);
-        })
-        .subscribe();
-
     return () => {
+        active = false;
+        clearInterval(refresh);
         clearInterval(shieldScan);
-        ordersSub.unsubscribe();
-        ledgerSub.unsubscribe();
-        securitySub.unsubscribe();
     };
   }, []);
 
@@ -282,7 +233,7 @@ export default function AdminDashboard() {
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8 sm:pb-10">
           <div className="text-left">
               <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 mb-2">Online Bar Control</p>
-              <h1 className="text-3xl sm:text-5xl font-black text-foreground uppercase tracking-tighter leading-none">Control <span className="text-primary">Tower</span> 🏰</h1>
+              <h1 className="text-3xl sm:text-5xl font-black text-foreground uppercase tracking-tighter leading-none">Control <span className="text-primary">Tower</span></h1>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-4">
                   <div className="flex items-center gap-2 text-emerald-500">
                       <ShieldCheck size={14} />

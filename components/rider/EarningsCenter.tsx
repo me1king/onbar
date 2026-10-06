@@ -48,7 +48,7 @@ export default function EarningsCenter({ balance, totalEarned, orders = [] }: { 
         setRequesting(true);
         // Real payout logic should be integrated with M-Pesa API
         setTimeout(() => {
-            setMessage({ type: 'success', text: "Payout sequence initialized! KSh " + balance + " sent to M-Pesa. 🛡️" });
+            setMessage({ type: 'success', text: "Payout sequence initialized! KSh " + balance + " sent to M-Pesa." });
             setTimeout(() => setMessage(null), 5000);
             setRequesting(false);
         }, 2000);

@@ -192,9 +192,9 @@ export default function SupportCaseManagement() {
     });
 
     const getAISuggestion = (item: UniversalItem) => {
-        if (item.type === 'Review') return "Thank you for the amazing feedback, bro! 🍷";
-        if (item.body.toLowerCase().includes('delivery')) return "Your delivery is currently en route. Estimated arrival in 12 mins. 🚚";
-        return "I'm analyzing your request. Our team will assist shortly. 🛡️";
+        if (item.type === 'Review') return "Thank you for the amazing feedback!";
+        if (item.body.toLowerCase().includes('delivery')) return "Your delivery is currently en route. Estimated arrival in 12 mins.";
+        return "I'm analyzing your request. Our team will assist shortly.";
     };
 
     const updateItemStatus = async (item: UniversalItem, newStatus: string) => {

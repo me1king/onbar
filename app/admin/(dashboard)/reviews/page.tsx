@@ -91,7 +91,7 @@ export default function AdminReviewHub() {
       try {
           // This would ideally insert into a marketing_assets table
           await logAuditAction(adminEmail, 'PROMOTE_REVIEW_TO_MARKETING', { id: review.id });
-          setMessage({ type: 'success', text: "Review boosted to Marketing Hub assets! 🚀" });
+          setMessage({ type: 'success', text: "Review boosted to Marketing Hub assets!" });
           setTimeout(() => setMessage(null), 3000);
       } catch (err) {
           console.error(err);
