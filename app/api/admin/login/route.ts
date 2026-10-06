@@ -150,7 +150,10 @@ function createLoginResponse(
 export async function POST(request: Request) {
   const sessionSecret = process.env.ADMIN_SESSION_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
   if (!sessionSecret) {
-    return NextResponse.json({ error: 'Admin login is not configured on the server.' }, { status: 500 });
+    console.error('[AdminLogin] Missing ADMIN_SESSION_SECRET and ADMIN_PASSWORD server environment variables.');
+    return NextResponse.json({
+      error: 'Admin login is not configured. In Render, open the onlinebar service → Environment and set ADMIN_PASSWORD and ADMIN_SESSION_SECRET, then redeploy.'
+    }, { status: 500 });
   }
   const database = getServerDatabase();
   if (!database || !supabase) {
@@ -224,7 +227,10 @@ export async function POST(request: Request) {
     if (mode === 'pin') {
       const configuredPassword = process.env.ADMIN_PASSWORD?.trim();
       if (!configuredPassword) {
-        return NextResponse.json({ error: 'Owner PIN login is not configured on the server.' }, { status: 500 });
+        console.error('[AdminLogin] Owner PIN login requested without ADMIN_PASSWORD configured.');
+        return NextResponse.json({
+          error: 'Owner PIN login is not configured. Set ADMIN_PASSWORD in the Render service Environment and redeploy.'
+        }, { status: 500 });
       }
       if (!password) return NextResponse.json({ error: 'PIN is required.' }, { status: 400 });
 

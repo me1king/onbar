@@ -419,7 +419,7 @@ function UploadContent() {
     let productSaved = false;
 
     try {
-      let imageUrls = [...existingImages];
+      const imageUrls = [...existingImages];
 
       if (selectedFiles.length > 0) {
           for (const file of selectedFiles) {

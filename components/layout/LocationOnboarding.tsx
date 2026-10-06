@@ -88,6 +88,21 @@ export default function LocationOnboarding() {
   ) => {
     setBusy(true);
     setStatus('');
+    const persistLocalOnly = () => {
+      const saved: SavedLocation = { ...areaDetails, serviceAvailable, source };
+      localStorage.setItem(LOCATION_KEY, JSON.stringify(saved));
+      localStorage.setItem(DECISION_KEY, 'yes');
+      setLocation(saved);
+      setWaitlistSubmitted(false);
+      setEmail('');
+      setPhone('');
+      setNotificationConsent(false);
+      setStatus(serviceAvailable
+        ? `Saved ${areaDetails.area}, ${areaDetails.city} on this device. We’ll use it to check local availability. Admin demand reporting will update after the location database migration is installed.`
+        : `Saved ${areaDetails.area}, ${areaDetails.city} on this device. We’re not serving this area yet. Admin demand reporting and the launch waitlist require the location database migration.`);
+      setManualMode(false);
+    };
+
     try {
       const anonymousId = createAnonymousId();
       const session = supabase ? (await supabase.auth.getSession()).data.session : null;
@@ -109,7 +124,14 @@ export default function LocationOnboarding() {
         })
       });
       const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'Your area preference could not be saved.');
+      if (!response.ok) {
+        const migrationMissing = /Area saving is not set up on this database|DEMAND_INTELLIGENCE_MIGRATION/i.test(result.error || '');
+        if (migrationMissing) {
+          persistLocalOnly();
+          return;
+        }
+        throw new Error(result.error || 'Your area preference could not be saved.');
+      }
 
       const saved: SavedLocation = { ...areaDetails, serviceAvailable, source };
       localStorage.setItem(LOCATION_KEY, JSON.stringify(saved));
