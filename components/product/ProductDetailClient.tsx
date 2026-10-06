@@ -337,7 +337,8 @@ export default function ProductDetailClient({
                     />
                 </div>
             ) : (
-                <div className="relative aspect-square w-full min-w-0 flex items-center justify-center transform hover:scale-105 transition-transform duration-700 ease-out overflow-hidden group">
+                <div className="group relative aspect-square w-full min-w-0 transform overflow-hidden rounded-[2rem] border border-amber-100/70 bg-gradient-to-br from-amber-50 via-white to-rose-50 transition-transform duration-700 ease-out hover:scale-[1.02] sm:rounded-[2.5rem]">
+                    <div aria-hidden="true" className="pointer-events-none absolute inset-[16%] rounded-full bg-white/90 blur-3xl" />
                     {product.beverage_specs?.model_3d_url && (
                         <div className="absolute top-6 right-6 z-20">
                             <Button
@@ -353,7 +354,7 @@ export default function ProductDetailClient({
                         src={allImages[activeImageIndex] || '/images/NoImage.jpg'}
                         alt={product.name}
                         fill
-                        className="object-contain scale-110 sm:scale-125 cursor-zoom-in group-hover:scale-[1.3] transition-transform duration-1000"
+                        className="z-10 object-contain scale-[1.15] drop-shadow-[0_24px_22px_rgba(15,23,42,0.22)] transition-transform duration-1000 group-hover:scale-[1.2] sm:scale-125 sm:group-hover:scale-[1.3]"
                         onClick={() => toggleLightbox(true)}
                         priority
                     />

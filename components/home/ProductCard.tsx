@@ -63,6 +63,19 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
   const isBiteOpen = checkIsBiteOpen();
   const canPurchase = !isLocked && isBiteOpen && (product.stock || 0) > 0;
+  const beverageSpecs = product.beverage_specs;
+  const abvDisplay = product.abv_label || beverageSpecs?.abv || beverageSpecs?.abv_label;
+  const originDisplay = product.origin || beverageSpecs?.origin;
+  const regionDisplay = product.region || beverageSpecs?.region;
+  const sizeDisplay = product.size_label || product.sizes?.[0];
+  const drinkDetails = [
+    { label: 'Origin', value: originDisplay },
+    { label: 'Region', value: regionDisplay },
+    { label: 'Size', value: sizeDisplay },
+    { label: 'Alcohol', value: abvDisplay }
+  ].filter((detail): detail is { label: string; value: string } =>
+    typeof detail.value === 'string' && detail.value.trim().length > 0
+  );
 
   // ▮▮ Stock Logic
   const getStockStatus = () => {
@@ -125,7 +138,8 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
     <>
       <Card className="group relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white text-left text-foreground shadow-md transition-all duration-500 hover:shadow-xl sm:min-h-[420px] sm:rounded-[3.5rem]">
         {/* Visual Container */}
-        <div className="relative aspect-square min-w-0 overflow-hidden rounded-lg border border-slate-100 bg-slate-50/80 p-1.5 sm:m-4 sm:rounded-[2.5rem] sm:p-2">
+        <div className="relative aspect-square min-w-0 overflow-hidden rounded-lg border border-amber-100/80 bg-gradient-to-br from-amber-50 via-white to-rose-50 p-1.5 sm:m-4 sm:rounded-[2.5rem] sm:p-2">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-[14%] rounded-full bg-white/90 blur-2xl" />
 
             {/* Premium Locked Overlay */}
             {isLocked && (
@@ -178,16 +192,16 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                 </button>
             )}
 
-            <Link href={`/shop/${product.id}`} prefetch={true} className="block w-full h-full relative">
+            <Link href={`/shop/${product.id}`} prefetch={true} className="relative z-10 block h-full w-full">
                 {!imageError ? (
                   <Image
                     src={imageUrl}
                     alt={product.name}
                     fill
                     loading="lazy"
-                    quality={75}
+                    quality={90}
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
-                    className="object-contain transition-transform duration-700 scale-110 group-hover:scale-125"
+                    className="object-contain scale-[1.15] drop-shadow-[0_18px_16px_rgba(15,23,42,0.24)] transition-transform duration-700 group-hover:scale-125"
                     onError={() => setImageError(true)}
                   />
                 ) : (
@@ -197,7 +211,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
         </div>
 
         {/* Content Node */}
-        <CardContent className="flex min-w-0 flex-1 flex-col space-y-1.5 p-2 pt-1.5 sm:space-y-4 sm:p-6 sm:pt-8">
+        <CardContent className="flex min-w-0 flex-1 flex-col space-y-2.5 p-3 pt-2.5 sm:space-y-4 sm:p-6 sm:pt-8">
             {/* Price Line */}
             <div className="space-y-0.5 sm:space-y-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3">
@@ -223,28 +237,36 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                     {product.name}
                 </h2>
                 <div className="mt-2 hidden flex-wrap items-center gap-x-1.5 gap-y-1 text-[8px] font-bold uppercase leading-relaxed tracking-[0.04em] text-slate-500 sm:flex sm:gap-2 sm:text-[9px] sm:tracking-widest">
-                    {(() => {
-                        const bevSpecs = product.beverage_specs as Record<string, string> | undefined;
-                        const abvDisplay = product.abv_label || bevSpecs?.abv || bevSpecs?.abv_label;
-                        const originDisplay = product.origin || bevSpecs?.origin || 'Imported';
-
-                        return (
-                            <>
-                                <span className="max-w-[90px] truncate font-extrabold text-slate-700">{originDisplay}</span>
-                                <div className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />
-                                <span className="shrink-0 font-extrabold text-slate-700">{product.size_label || (product.sizes && product.sizes[0]) || '750ml'}</span>
-                                {abvDisplay && (
-                                    <>
-                                        <div className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />
-                                        <span className="shrink-0 font-extrabold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/80">
-                                            {abvDisplay}
-                                        </span>
-                                    </>
-                                )}
-                            </>
-                        );
-                    })()}
+                    {originDisplay && <span className="max-w-[90px] truncate font-extrabold text-slate-700">{originDisplay}</span>}
+                    {originDisplay && sizeDisplay && <div className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />}
+                    {sizeDisplay && <span className="shrink-0 font-extrabold text-slate-700">{sizeDisplay}</span>}
+                    {abvDisplay && (
+                        <>
+                            {(originDisplay || sizeDisplay) && <div className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />}
+                            <span className="shrink-0 rounded border border-amber-200/80 bg-amber-50 px-1.5 py-0.5 font-extrabold text-amber-600">
+                                {abvDisplay}
+                            </span>
+                        </>
+                    )}
                 </div>
+                {drinkDetails.length > 0 && (
+                    <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-2 rounded-lg border border-slate-100 bg-slate-50/80 p-2 sm:hidden">
+                        {drinkDetails.map(({ label, value }) => (
+                            <div key={label} className="min-w-0">
+                                <dt className="text-[7px] font-bold uppercase leading-tight tracking-wider text-slate-400">{label}</dt>
+                                <dd
+                                    className={cn(
+                                        "mt-0.5 truncate text-[9px] font-extrabold leading-tight",
+                                        label === 'Alcohol' ? "text-amber-700" : "text-slate-700"
+                                    )}
+                                    title={value}
+                                >
+                                    {value}
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                )}
             </Link>
 
             <Link
