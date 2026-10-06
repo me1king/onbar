@@ -377,7 +377,7 @@ export async function POST(request: Request) {
       const conflict = error.code === '23505';
       return NextResponse.json({
         error: conflict ? 'This batch is already traced to that order item.'
-          : /hold|expired|inventory|approved merchant|match the traced/i.test(error.message)
+          : /hold|expired|inventory|approved merchant|match the traced|confirmed payment|payment proof|delivery radius|coordinates are required/i.test(error.message)
             ? error.message
             : 'Batch could not be allocated. Confirm the order item and batch are valid.'
       }, { status: conflict ? 409 : 400 });
@@ -397,6 +397,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A valid order, approved merchant, and fulfilment event are required.' }, { status: 400 });
     }
     const note = typeof body.note === 'string' ? body.note.trim().slice(0, 1000) : '';
+    if (body.eventType === 'accepted' && note.length < 8) {
+      return NextResponse.json({
+        error: 'Record how and when the merchant confirmed acceptance before marking this order accepted.'
+      }, { status: 400 });
+    }
     const { data, error } = await access.database.from('merchant_fulfillment_events').insert({
       order_id: body.orderId,
       application_id: body.applicationId,

@@ -291,6 +291,10 @@ export default function MerchantTraceabilityPage() {
   const addFulfillmentEvent = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!result?.order) return;
+    if (fulfillmentEvent === 'accepted' && fulfillmentNote.trim().length < 8) {
+      setError('Record how and when the merchant confirmed acceptance before marking this order accepted.');
+      return;
+    }
     const applicationId = fulfillmentApplicationId;
     if (!applicationId) {
       setError('Link a verified merchant batch to an order item before recording fulfilment events.');
@@ -562,10 +566,11 @@ function FulfillmentForm({
       <form onSubmit={submit} className="grid gap-2 sm:grid-cols-[1fr_1fr_2fr_auto]">
         <select value={applicationId} onChange={event => setApplicationId(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm">{merchants.map(merchant => <option key={merchant.id} value={merchant.id}>{merchant.merchant_code || merchant.business_name}</option>)}</select>
         <select value={availableEvents.includes(eventType) ? eventType : availableEvents[0] || ''} onChange={event => setEventType(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm">{availableEvents.map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}</select>
-        <Input value={note} onChange={event => setNote(event.target.value)} maxLength={1000} placeholder="Event note (optional)" className="h-10 rounded-lg" />
-        <Button disabled={working || !canRecord || !availableEvents.length} className="h-10 rounded-lg">Record event</Button>
+        <Input value={note} onChange={event => setNote(event.target.value)} maxLength={1000} placeholder={eventType === 'accepted' ? 'Merchant confirmation details (required)' : 'Event note (optional)'} className="h-10 rounded-lg" />
+        <Button disabled={working || !canRecord || !availableEvents.length || (eventType === 'accepted' && note.trim().length < 8)} className="h-10 rounded-lg">Record event</Button>
       </form>
       {!canRecord && <p className="mt-2 text-xs text-slate-500">A merchant batch must first be linked to an order item.</p>}
+      {eventType === 'accepted' && <p className="mt-2 text-xs text-amber-700">This records an admin-confirmed merchant response; it does not contact or notify the merchant. Include the confirmation channel/time.</p>}
       <ol className="mt-4 space-y-2">
         {events?.map(event => <li key={event.id} className="flex justify-between gap-3 text-xs"><span><strong>{event.event_type.replaceAll('_', ' ')}</strong> · {event.merchant?.merchant_code || event.merchant?.business_name || 'Merchant'} · {event.actor}</span><time className="text-slate-500">{new Date(event.occurred_at).toLocaleString()}</time></li>)}
         {!events?.length && <p className="text-xs text-slate-500">No fulfilment events have been recorded.</p>}

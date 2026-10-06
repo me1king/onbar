@@ -15,8 +15,6 @@ import {
     Music,
     CheckCircle2,
     AlertCircle,
-    Loader2,
-    Zap,
     Radio,
     Lock,
     Key,
@@ -27,7 +25,6 @@ import {
     Copy,
     Check,
     X,
-    Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -88,9 +85,6 @@ export default function SocialAccountManagement() {
     const [copiedSql, setCopiedSql] = React.useState(false);
 
     // OAuth Handshake Modal State
-    const [selectedPlatform, setSelectedPlatform] = React.useState<PlatformConfig | null>(null);
-    const [isAuthorizing, setIsAuthorizing] = React.useState(false);
-
     // Security Protocol Rotator state
     const [securityCheckIndex, setSecurityCheckIndex] = React.useState(0);
 
@@ -153,21 +147,6 @@ export default function SocialAccountManagement() {
     React.useEffect(() => {
         fetchAccounts();
     }, [fetchAccounts]);
-
-    const handleConfirmOAuthHandshake = async () => {
-        if (!selectedPlatform) return;
-        setIsAuthorizing(true);
-        try {
-            alert(`${selectedPlatform.label} OAuth authorization is not configured. No account or token was saved.`);
-            setSelectedPlatform(null);
-        } finally {
-            setIsAuthorizing(false);
-        }
-    };
-
-    const handleRefreshToken = (platformLabel: string) => {
-        alert(`Token renewal is not configured for ${platformLabel}. No token was changed.`);
-    };
 
     const handleDisconnect = async (id: string, platform: string) => {
         if (!supabase || !confirm(`Permanently disconnect ${platform} account node?`)) return;
@@ -388,19 +367,20 @@ export default function SocialAccountManagement() {
                                                         {connected.account_name || p.label}
                                                     </span>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleRefreshToken(p.label)}
-                                                    className="px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all flex items-center gap-1"
+                                                <span
+                                                    title="OAuth token renewal is not configured."
+                                                    className="inline-flex cursor-not-allowed items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-slate-500"
                                                 >
-                                                    <RefreshCcw size={10} /> Renew Token
-                                                </button>
+                                                    <RefreshCcw size={10} /> Renewal unavailable
+                                                </span>
                                             </div>
                                         ) : (
                                             <Button
-                                                onClick={() => setSelectedPlatform(p)}
-                                                className="w-full h-12 rounded-2xl bg-amber-500 text-slate-950 hover:bg-amber-400 font-black uppercase text-[10px] tracking-widest shadow-xl shadow-amber-500/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                                disabled
+                                                title="Provider OAuth credentials and callback routes are not configured."
+                                                className="w-full h-12 cursor-not-allowed rounded-2xl bg-slate-700 text-slate-200 font-black uppercase text-[10px] tracking-widest opacity-80 shadow-none"
                                             >
-                                                <Zap size={14} className="fill-current" /> Authorize Protocol
+                                                <Lock size={14} /> OAuth Setup Required
                                             </Button>
                                         )}
                                     </div>
@@ -441,9 +421,9 @@ export default function SocialAccountManagement() {
 
                             <div className="pt-2 flex justify-between items-center text-[9px] font-black uppercase text-slate-500 tracking-widest">
                                 <span>{activeNodesCount} of {platforms.length} Nodes Connected</span>
-                                <span className="flex items-center gap-1 text-emerald-400">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
-                                    Live Monitor
+                                <span className="flex items-center gap-1 text-amber-400">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                                    Setup Required
                                 </span>
                             </div>
                         </div>
@@ -456,64 +436,11 @@ export default function SocialAccountManagement() {
                         </div>
                         <h4 className="text-lg font-black uppercase text-foreground leading-none tracking-tighter">Rate Limit Engine</h4>
                         <p className="text-[10px] text-muted-foreground font-medium italic leading-relaxed">
-                            &quot;Different social platforms enforce strict API rate limits. Our Retry Engine automatically queues publishing jobs and applies smart back-off to prevent throttling.&quot;
+                            &quot;Provider rate limits apply after OAuth is configured. Automated publishing, queueing, and retry handling are not configured yet.&quot;
                         </p>
                     </div>
                 </div>
             </div>
-
-            {/* OAUTH HANDSHAKE AUTHORIZATION MODAL */}
-            {selectedPlatform && (
-                <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[3rem] p-8 sm:p-10 max-w-lg w-full space-y-6 shadow-2xl relative border border-slate-100 text-left">
-                        <button
-                            onClick={() => setSelectedPlatform(null)}
-                            className="absolute top-6 right-6 h-10 w-10 rounded-full bg-slate-100 text-slate-500 hover:text-foreground flex items-center justify-center transition-colors"
-                        >
-                            <X size={18} />
-                        </button>
-
-                        <div className="space-y-1">
-                            <span className="text-[10px] font-black uppercase text-primary tracking-widest">OAUTH 2.0 HANDSHAKE GATEWAY</span>
-                            <h2 className="text-3xl font-black text-foreground uppercase tracking-tight">Authorize {selectedPlatform.label}</h2>
-                        </div>
-
-                        <p className="text-xs font-medium text-slate-500 italic">
-                            Granting authorization allows BAR OS to publish content, listen to webhooks, and record conversion analytics for {selectedPlatform.label}.
-                        </p>
-
-                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
-                            <p className="text-[10px] font-black uppercase text-slate-400">Permissions Scope Requested</p>
-                            <div className="space-y-1">
-                                {selectedPlatform.scopes.map((scope, idx) => (
-                                    <div key={idx} className="flex items-center gap-2 text-xs font-bold text-foreground">
-                                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                                        <code>{scope}</code>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/80 space-y-1">
-                            <p className="text-[10px] font-black uppercase text-amber-800">Security Encryption</p>
-                            <p className="text-xs font-bold text-amber-950">Tokens are encrypted at rest with AES-256 and auto-renew every 60 days.</p>
-                        </div>
-
-                        <div className="pt-2 flex justify-end gap-3">
-                            <Button onClick={() => setSelectedPlatform(null)} variant="ghost" className="rounded-xl h-12 px-6 font-bold text-xs">
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={handleConfirmOAuthHandshake}
-                                disabled={isAuthorizing}
-                                className="rounded-2xl h-14 px-8 bg-amber-500 text-white font-black uppercase text-xs shadow-xl hover:bg-amber-600"
-                            >
-                                {isAuthorizing ? <Loader2 className="animate-spin" size={16} /> : <><Sparkles size={16} className="mr-2" /> Check OAuth Availability</>}
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* SQL MIGRATION ASSISTANT MODAL */}
             {isSqlModalOpen && (

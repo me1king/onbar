@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import PulseDetailModal from '@/components/buzz/PulseDetailModal';
 import BuildMyNightWidget from '@/components/widgets/concierge/BuildMyNightWidget';
 import BuzzStoryCard, { BuzzStory } from '@/components/buzz/BuzzStoryCard';
@@ -55,6 +56,17 @@ interface DBBuzzPost {
 }
 
 export default function TheBuzzDiscovery() {
+    return (
+        <React.Suspense fallback={<div className="min-h-screen bg-white" />}>
+            <BuzzDiscoveryContent />
+        </React.Suspense>
+    );
+}
+
+function BuzzDiscoveryContent() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const plannerRequested = searchParams.get('planner') === 'true';
     const [hotspots, setHotspots] = React.useState<BuzzArea[]>([]);
     const [stories, setStories] = React.useState<BuzzStory[]>([]);
     const [selectedArea, setSelectedArea] = React.useState<BuzzArea | null>(null);
@@ -64,13 +76,13 @@ export default function TheBuzzDiscovery() {
     const [nightPlannerOpen, setNightPlannerOpen] = React.useState(false);
 
     React.useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('planner') === 'true') {
-                setNightPlannerOpen(true);
-            }
-        }
-    }, []);
+        if (plannerRequested) setNightPlannerOpen(true);
+    }, [plannerRequested]);
+
+    const closeNightPlanner = () => {
+        setNightPlannerOpen(false);
+        if (plannerRequested) router.replace('/buzz', { scroll: false });
+    };
 
     const fetchBuzzData = React.useCallback(async () => {
         if (!supabase) {
@@ -135,7 +147,7 @@ export default function TheBuzzDiscovery() {
         return [...stories].sort((first, second) => second.trend_score - first.trend_score);
     }, [filter, stories]);
 
-    if (loading) return (
+    if (loading && !plannerRequested && !nightPlannerOpen) return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white">
             <Loader2 className="h-10 w-10 text-primary animate-spin" />
             <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-300">Synchronizing City Signal...</p>
@@ -427,17 +439,18 @@ export default function TheBuzzDiscovery() {
             )}
 
             {nightPlannerOpen && (
-                <div className="fixed inset-0 z-[2000] bg-white flex flex-col animate-in slide-in-from-bottom duration-700 overflow-y-auto no-scrollbar">
-                    <header className="p-8 flex justify-end">
+                <div className="fixed inset-0 z-[2500] flex flex-col overflow-hidden bg-white animate-in slide-in-from-bottom duration-700">
+                    <header className="z-20 flex shrink-0 justify-end border-b border-slate-100 bg-white/95 p-3 backdrop-blur sm:p-5">
                         <button
-                            onClick={() => setNightPlannerOpen(false)}
-                            className="h-14 w-14 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-primary transition-all active:scale-90"
+                            onClick={closeNightPlanner}
+                            aria-label="Close Build My Night"
+                            className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-500 transition-all hover:bg-rose-50 hover:text-rose-600 active:scale-90"
                         >
-                            <X size={24} />
+                            <X size={20} />
                         </button>
                     </header>
-                    <div className="flex-1">
-                        <BuildMyNightWidget />
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                        <BuildMyNightWidget compact />
                     </div>
                 </div>
             )}

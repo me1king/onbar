@@ -70,6 +70,13 @@ CREATE TABLE IF NOT EXISTS public.staff (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS public.settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    is_published BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 2.1 AUTOMATIC PROFILE TRIGGER
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
@@ -126,6 +133,9 @@ CREATE TABLE IF NOT EXISTS public.products (
     image_url TEXT,
     images TEXT[] DEFAULT ARRAY[]::TEXT[],
     sizes TEXT[] DEFAULT ARRAY['Standard'],
+    size_label TEXT,
+    is_ice_cold BOOLEAN NOT NULL DEFAULT false,
+    temperature_celsius NUMERIC(5,2),
     stock INTEGER DEFAULT 0,
     variant_stock JSONB DEFAULT '{}'::JSONB,
     beverage_specs JSONB DEFAULT '{}'::JSONB,
@@ -155,6 +165,9 @@ CREATE TABLE IF NOT EXISTS public.products (
 ALTER TABLE public.products
     ADD COLUMN IF NOT EXISTS is_souvenir BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS is_available_now BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS size_label TEXT,
+    ADD COLUMN IF NOT EXISTS is_ice_cold BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS temperature_celsius NUMERIC(5,2),
     ADD COLUMN IF NOT EXISTS material TEXT,
     ADD COLUMN IF NOT EXISTS finish TEXT,
     ADD COLUMN IF NOT EXISTS capacity_oz NUMERIC,
@@ -390,6 +403,9 @@ CREATE TABLE IF NOT EXISTS public.growth_autopilot_rules (
     last_generated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.growth_autopilot_rules
+    ADD COLUMN IF NOT EXISTS content_source TEXT NOT NULL DEFAULT 'TRENDING';
 
 ALTER TABLE public.growth_autopilot_rules ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.growth_autopilot_rules FROM anon, authenticated;

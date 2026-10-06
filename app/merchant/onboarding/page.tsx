@@ -64,6 +64,8 @@ export default function MerchantOnboarding() {
   const [address, setAddress] = useState('');
   const [county, setCounty] = useState('');
   const [town, setTown] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
   const [operatingAreas, setOperatingAreas] = useState('');
   const [cuisineOrCategory, setCuisineOrCategory] = useState('');
   const [preparationCapacity, setPreparationCapacity] = useState('');
@@ -153,6 +155,8 @@ export default function MerchantOnboarding() {
     payload.set('country', 'Kenya');
     payload.set('county', county.trim());
     payload.set('town', town.trim());
+    payload.set('latitude', latitude);
+    payload.set('longitude', longitude);
     payload.set('operatingAreas', JSON.stringify(operatingAreas.split(',').map(area => area.trim()).filter(Boolean)));
     payload.set('operatingHours', JSON.stringify(hours));
     payload.set('cuisineOrCategory', cuisineOrCategory.trim());
@@ -271,6 +275,16 @@ export default function MerchantOnboarding() {
               </div>
               <Input value={address} onChange={event => setAddress(event.target.value)} maxLength={240} placeholder="Physical business address *" className="h-12 rounded-xl" />
               <Input value={operatingAreas} onChange={event => setOperatingAreas(event.target.value)} maxLength={2000} placeholder="Areas served, comma-separated (e.g. Westlands, Kilimani)" className="h-12 rounded-xl" />
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div>
+                  <p className="text-sm font-bold text-slate-800">Business coordinates (recommended for delivery)</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">Used to check service radius and estimate rider pickup distance. Enter the pin for your business, not a customer location.</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input type="number" min="-90" max="90" step="any" value={latitude} onChange={event => setLatitude(event.target.value)} placeholder="Latitude, e.g. -1.2864" className="h-12 rounded-xl" />
+                  <Input type="number" min="-180" max="180" step="any" value={longitude} onChange={event => setLongitude(event.target.value)} placeholder="Longitude, e.g. 36.8172" className="h-12 rounded-xl" />
+                </div>
+              </div>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setStep(0)} className="h-12 rounded-xl"><ArrowLeft size={16} className="mr-2" /> Back</Button>
                 <Button disabled={!contactAndLocationValid} onClick={() => setStep(2)} className="h-12 flex-1 rounded-xl font-black uppercase">

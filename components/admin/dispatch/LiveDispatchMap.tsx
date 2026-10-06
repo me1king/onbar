@@ -10,8 +10,8 @@ import { decodePolyline } from '@/lib/utils/polyline';
 
 interface Rider {
     id: number | string;
-    lat?: number;
-    lng?: number;
+    lat?: number | null;
+    lng?: number | null;
     status: string;
     rider_name: string;
     battery_level: number;

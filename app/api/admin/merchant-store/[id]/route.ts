@@ -184,3 +184,67 @@ export async function GET(
     }))
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const cookieStore = await cookies();
+  const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
+  if (!session) return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
+  if (!['owner', 'admin'].includes(session.role) && session.permissions.can_manage_settings !== true) {
+    return NextResponse.json({ error: 'Merchant store access is required.' }, { status: 403 });
+  }
+
+  const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: 'A valid merchant ID is required.' }, { status: 400 });
+
+  let body: { latitude?: unknown; longitude?: unknown };
+  try {
+    body = await request.json() as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'Valid business coordinates are required.' }, { status: 400 });
+  }
+
+  const parseCoordinate = (value: unknown): number | null | undefined => {
+    if (value === null || value === '') return null;
+    if (typeof value !== 'number' && typeof value !== 'string') return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+  const latitude = parseCoordinate(body.latitude);
+  const longitude = parseCoordinate(body.longitude);
+  if (
+    latitude === undefined || longitude === undefined
+    || ((latitude === null) !== (longitude === null))
+    || (latitude !== null && (latitude < -90 || latitude > 90))
+    || (longitude !== null && (longitude < -180 || longitude > 180))
+  ) {
+    return NextResponse.json({
+      error: 'Enter both valid coordinates, or clear both fields. Latitude must be -90 to 90 and longitude -180 to 180.'
+    }, { status: 400 });
+  }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !serviceKey) {
+    return NextResponse.json({ error: 'Merchant operations database access is not configured.' }, { status: 503 });
+  }
+  const database = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  const { error } = await database.rpc('update_merchant_dispatch_location', {
+    p_application_id: id,
+    p_latitude: latitude,
+    p_longitude: longitude,
+    p_actor: session.email || session.role
+  });
+  if (error) {
+    console.error('[MerchantStore] Could not update dispatch coordinates:', error);
+    return NextResponse.json({
+      error: /update_merchant_dispatch_location|schema cache/i.test(error.message)
+        ? 'Dispatch migration is missing. Run supabase/DISPATCH_MIGRATION.sql.'
+        : 'Business coordinates could not be saved.'
+    }, { status: 503 });
+  }
+
+  return NextResponse.json({ success: true, latitude, longitude });
+}

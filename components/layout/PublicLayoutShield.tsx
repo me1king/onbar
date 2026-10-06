@@ -68,10 +68,23 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
     const { settings: hookSettings } = useSettings();
     const settings = initialSettings || hookSettings;
     const [mounted, setMounted] = useState(false);
+    const [newsletterVisible, setNewsletterVisible] = useState(false);
 
     useEffect(() => {
         setMounted(true);
     }, []);
+
+    useEffect(() => {
+        if (!mounted) return;
+        const newsletter = document.getElementById('footer-newsletter');
+        if (!newsletter || typeof IntersectionObserver === 'undefined') return;
+        const observer = new IntersectionObserver(
+            ([entry]) => setNewsletterVisible(entry.isIntersecting),
+            { threshold: 0.05 }
+        );
+        observer.observe(newsletter);
+        return () => observer.disconnect();
+    }, [mounted, pathname]);
 
     // 0. Dynamic Favicon
     useEffect(() => {
@@ -128,6 +141,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
     }, [pathname, mounted]);
 
     const isAdmin = pathname?.startsWith('/admin');
+    const suppressFloatingLaunchers = newsletterVisible || pathname?.startsWith('/profile') === true;
 
     if (isAdmin) {
         return <main className="flex-grow">{children}</main>;
@@ -147,7 +161,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
     return (
         <>
             <CustomerAnnouncementHost />
-            <LocationOnboarding />
+            <LocationOnboarding suppressLauncher={suppressFloatingLaunchers} />
             <CookieConsentBanner />
             <LevelUpCelebration />
             <AgeVerification />
@@ -161,8 +175,8 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
             <Footer initialSettings={settings} />
             <ExitIntentPopup />
             <CompareBar />
-            <SupportBubble />
-            <AIConcierge />
+            <SupportBubble suppressLauncher={suppressFloatingLaunchers} />
+            <AIConcierge suppressLauncher={suppressFloatingLaunchers} />
             <SignInTrigger />
         </>
     );

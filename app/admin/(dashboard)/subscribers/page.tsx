@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
   Mail,
   Trash2,
@@ -22,6 +21,9 @@ interface Subscriber {
   id: number;
   email: string;
   created_at: string;
+  is_active: boolean;
+  consented_at: string | null;
+  unsubscribed_at: string | null;
 }
 
 export default function AdminSubscribersPage() {
@@ -29,20 +31,19 @@ export default function AdminSubscribersPage() {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const fetchSubscribers = async () => {
-    if (!supabase) return;
     setLoading(true);
+    setError(null);
     try {
-      const { data, error } = await supabase
-        .from('newsletter_subscribers')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setSubscribers(data || []);
+      const response = await fetch('/api/admin/newsletter-subscribers', { cache: 'no-store' });
+      const result = await response.json() as { subscribers?: Subscriber[]; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not load newsletter contacts.');
+      setSubscribers(result.subscribers || []);
     } catch (err) {
-      console.error(err);
+      console.error('[NewsletterSubscribers] Load failed:', err);
+      setError(err instanceof Error ? err.message : 'Could not load newsletter contacts.');
     } finally {
       setLoading(false);
     }
@@ -52,16 +53,19 @@ export default function AdminSubscribersPage() {
     fetchSubscribers();
   }, []);
 
-  const deleteSubscriber = async (id: number, email: string) => {
-      if (!supabase || !confirm(`Remove ${email} from subscribers?`)) return;
+  const unsubscribeSubscriber = async (id: number, email: string) => {
+      if (!confirm(`Unsubscribe ${email} from marketing emails?`)) return;
       try {
-          const { error } = await supabase.from('newsletter_subscribers').delete().eq('id', id);
-          if (error) throw error;
-
-          await logAuditAction(adminEmail, 'DELETE_SUBSCRIBER', { id, email });
-          setSubscribers(subscribers.filter(s => s.id !== id));
+          const response = await fetch(`/api/admin/newsletter-subscribers?id=${id}`, { method: 'DELETE' });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Could not unsubscribe this contact.');
+          setSubscribers(current => current.map(sub => sub.id === id
+              ? { ...sub, is_active: false, unsubscribed_at: new Date().toISOString() }
+              : sub));
+          await logAuditAction(adminEmail, 'UNSUBSCRIBE_NEWSLETTER', { id, email });
       } catch (err) {
-          console.error(err);
+          console.error('[NewsletterSubscribers] Unsubscribe failed:', err);
+          setError(err instanceof Error ? err.message : 'Could not unsubscribe this contact.');
       }
   };
 
@@ -70,8 +74,13 @@ export default function AdminSubscribersPage() {
   );
 
   const exportToCSV = () => {
-      const headers = ["Email", "Joined At"];
-      const rows = filteredSubscribers.map(s => [s.email, new Date(s.created_at).toLocaleString()]);
+      const headers = ["Email", "Joined At", "Status", "Consent Recorded"];
+      const rows = filteredSubscribers.map(s => [
+          s.email,
+          new Date(s.created_at).toLocaleString(),
+          s.is_active ? 'Subscribed' : 'Unsubscribed',
+          s.consented_at ? new Date(s.consented_at).toLocaleString() : ''
+      ]);
       const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -116,6 +125,8 @@ export default function AdminSubscribersPage() {
           </div>
       </div>
 
+      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</p>}
+
       {loading ? (
           <div className="p-32 text-center flex flex-col items-center gap-4">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -147,7 +158,9 @@ export default function AdminSubscribersPage() {
                                       </div>
                                       <div className="min-w-0">
                                           <p className="font-black text-foreground uppercase text-xs tracking-tight truncate whitespace-nowrap">{sub.email}</p>
-                                          <p className="text-[8px] font-bold text-slate-400 uppercase mt-1 tracking-widest">Verified Lead</p>
+                                          <p className="text-[8px] font-bold text-slate-400 uppercase mt-1 tracking-widest">
+                                              {sub.consented_at ? 'Consent recorded' : 'Legacy subscription'}
+                                          </p>
                                       </div>
                                   </div>
                               </td>
@@ -158,16 +171,18 @@ export default function AdminSubscribersPage() {
                                   </div>
                               </td>
                               <td className="px-8 py-6">
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase border border-emerald-100">
-                                      <UserCheck className="h-2.5 w-2.5" /> Subscribed
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[8px] font-black uppercase border ${sub.is_active ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                                  {sub.is_active ? <><UserCheck className="h-2.5 w-2.5" /> Subscribed</> : 'Unsubscribed'}
                                   </span>
                               </td>
                               <td className="px-8 py-6 text-right">
                                   <Button
-                                    onClick={() => deleteSubscriber(sub.id, sub.email)}
+                                    onClick={() => void unsubscribeSubscriber(sub.id, sub.email)}
+                                    disabled={!sub.is_active}
+                                    aria-label={`Unsubscribe ${sub.email}`}
                                     variant="ghost"
                                     size="icon"
-                                    className="h-9 w-9 rounded-xl text-slate-200 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
+                                    className="h-9 w-9 rounded-xl text-slate-200 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-30"
                                   >
                                       <Trash2 className="h-4 w-4" />
                                   </Button>

@@ -37,7 +37,7 @@ async function getSupportHeaders(token: string, json = false) {
     return headers;
 }
 
-export default function SupportBubble() {
+export default function SupportBubble({ suppressLauncher = false }: { suppressLauncher?: boolean }) {
     const { settings } = useSettings();
     const pathname = usePathname();
     const [showLabel, setShowLabel] = useState(false);
@@ -242,7 +242,7 @@ export default function SupportBubble() {
         <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] lg:bottom-8 right-3 sm:right-8 z-[2100] flex flex-col items-end gap-4">
 
             {/* Greeting Label */}
-            {showLabel && !isOpen && (
+            {!suppressLauncher && showLabel && !isOpen && (
                 <div className="hidden sm:flex bg-white px-6 py-4 rounded-[1.8rem] border border-slate-100 shadow-2xl animate-in slide-in-from-right-4 duration-500 items-center gap-4 group max-w-[calc(100vw-48px)]">
                     <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-white font-black text-xs shadow-lg shadow-primary/20">
                         {(userProfile?.full_name as string)?.substring(0, 1) || settings?.branding?.owner_name?.substring(0, 1) || 'A'}
@@ -461,19 +461,21 @@ export default function SupportBubble() {
             )}
 
             {/* Bubble Button */}
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                aria-label={isOpen ? 'Close customer support' : 'Open customer support'}
-                className="relative flex h-12 w-12 sm:h-16 sm:w-16 bg-primary text-white rounded-full shadow-2xl items-center justify-center hover:scale-110 active:scale-95 transition-all group border-4 border-white"
-            >
-                {isOpen ? <X className="h-5 w-5 sm:h-7 sm:w-7" /> : <MessageCircle className="h-5 w-5 sm:h-7 sm:w-7 group-hover:rotate-12 transition-transform" />}
-                {!isOpen && <span className="absolute top-0 right-0 h-4 w-4 bg-primary rounded-full border-2 border-white animate-pulse"></span>}
-                {!isOpen && supportMessages.some(item => item.admin_response) && (
-                    <span className="absolute -top-1 -left-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1 text-[9px] font-black text-white">
-                        {supportMessages.filter(item => item.admin_response).length}
-                    </span>
-                )}
-            </button>
+            {(!suppressLauncher || isOpen) && (
+                <button
+                    onClick={() => setIsOpen(!isOpen)}
+                    aria-label={isOpen ? 'Close customer support' : 'Open customer support'}
+                    className="relative flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-primary text-white shadow-2xl transition-all hover:scale-110 active:scale-95 group sm:h-16 sm:w-16"
+                >
+                    {isOpen ? <X className="h-5 w-5 sm:h-7 sm:w-7" /> : <MessageCircle className="h-5 w-5 transition-transform group-hover:rotate-12 sm:h-7 sm:w-7" />}
+                    {!isOpen && <span className="absolute right-0 top-0 h-4 w-4 animate-pulse rounded-full border-2 border-white bg-primary"></span>}
+                    {!isOpen && supportMessages.some(item => item.admin_response) && (
+                        <span className="absolute -left-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1 text-[9px] font-black text-white">
+                            {supportMessages.filter(item => item.admin_response).length}
+                        </span>
+                    )}
+                </button>
+            )}
         </div>
     );
 }

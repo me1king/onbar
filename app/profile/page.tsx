@@ -72,6 +72,7 @@ import RewardInteractive from '@/components/profile/RewardInteractive';
 import AchievementBadges from '@/components/profile/AchievementBadges';
 import SecurityDashboard from '@/components/profile/SecurityDashboard';
 import TasteDNA from '@/components/profile/TasteDNA';
+import MarketingPreferences from '@/components/profile/MarketingPreferences';
 
 const LocationPicker = dynamic(() => import('@/components/profile/LocationPicker'), {
     ssr: false,
@@ -843,6 +844,8 @@ export default function ProfilePage() {
                 <RewardInteractive userId={user?.id || ''} />
             </div>
         </div>
+
+        <MarketingPreferences />
 
         {/* 2. REWARD CENTER & MISSIONS */}
         <section className="space-y-10">

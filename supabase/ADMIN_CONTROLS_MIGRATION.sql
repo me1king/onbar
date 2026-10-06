@@ -1,5 +1,13 @@
 -- Database-backed actions used by the admin lockdown and autopilot controls.
 
+CREATE TABLE IF NOT EXISTS public.settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    is_published BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+GRANT ALL ON public.settings TO service_role;
+
 CREATE TABLE IF NOT EXISTS public.growth_autopilot_rules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slot_day_of_week SMALLINT NOT NULL CHECK (slot_day_of_week BETWEEN 0 AND 6),
@@ -10,6 +18,24 @@ CREATE TABLE IF NOT EXISTS public.growth_autopilot_rules (
     last_generated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.growth_autopilot_rules
+    ADD COLUMN IF NOT EXISTS content_source TEXT NOT NULL DEFAULT 'TRENDING';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'public.growth_autopilot_rules'::regclass
+          AND conname = 'growth_autopilot_rules_content_source_check'
+    ) THEN
+        ALTER TABLE public.growth_autopilot_rules
+            ADD CONSTRAINT growth_autopilot_rules_content_source_check
+            CHECK (content_source IN ('TRENDING', 'LOW_STOCK', 'EDITORIAL'));
+    END IF;
+END;
+$$;
 
 ALTER TABLE public.growth_autopilot_rules ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.growth_autopilot_rules FROM anon, authenticated;

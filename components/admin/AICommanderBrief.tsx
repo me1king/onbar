@@ -2,76 +2,124 @@
 
 import * as React from 'react';
 import { Card } from '@/components/ui/card';
-import { Bot, Sparkles, Zap, ShieldAlert, TrendingUp, Loader2 } from 'lucide-react';
+import { Bot, RefreshCw, ShieldAlert, Zap } from 'lucide-react';
+
+interface BriefData {
+    brief: string;
+    autoRate: number | null;
+    automationCount: number;
+    executedAutomationCount: number;
+    exceptionsCount: number;
+    periodStart: string;
+    generatedAt: string;
+}
+
+function formatNairobiTime(value: string, options: Intl.DateTimeFormatOptions) {
+    return new Intl.DateTimeFormat('en-KE', {
+        ...options,
+        timeZone: 'Africa/Nairobi'
+    }).format(new Date(value));
+}
 
 export default function AICommanderBrief() {
-    const [brief, setBrief] = React.useState<string>("");
-    const [stats, setStats] = React.useState({ autoRate: '0', exceptionsCount: 0 });
+    const [data, setData] = React.useState<BriefData | null>(null);
+    const [error, setError] = React.useState('');
     const [loading, setLoading] = React.useState(true);
 
     const generateBrief = React.useCallback(async () => {
         setLoading(true);
+        setError('');
         try {
-            const res = await fetch('/api/admin/intelligence/commander-brief');
-            const data = await res.json();
-            if (data.brief) {
-                setBrief(data.brief);
-                setStats({ autoRate: data.autoRate, exceptionsCount: data.exceptionsCount });
-            }
-        } catch (err) {
-            console.error("Brief generation failure:", err);
-            setBrief("Intelligence Uplink Interrupted. Awaiting shift telemetry synchronization.");
+            const response = await fetch('/api/admin/intelligence/commander-brief', { cache: 'no-store' });
+            const result = await response.json() as BriefData & { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Commander Brief metrics are unavailable.');
+            setData(result);
+        } catch (cause) {
+            console.error('[CommanderBrief] Could not refresh brief:', cause);
+            setData(null);
+            setError(cause instanceof Error ? cause.message : 'Commander Brief metrics are unavailable.');
         } finally {
             setLoading(false);
         }
     }, []);
 
     React.useEffect(() => {
-        generateBrief();
+        void generateBrief();
     }, [generateBrief]);
 
     return (
-        <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm relative overflow-hidden group text-left">
-            <div className="relative z-10 space-y-10">
-                <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-sm">
-                            <Bot size={28} />
+        <Card className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm sm:p-7">
+            <div className="relative z-10 space-y-6">
+                <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                            <Bot size={24} />
                         </div>
-                        <div>
-                            <h3 className="text-xl font-black uppercase tracking-tighter text-foreground">Commander Brief</h3>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Autonomous Business Intelligence</p>
+                        <div className="min-w-0">
+                            <h3 className="text-lg font-black uppercase tracking-tight text-foreground">Commander Brief</h3>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">Yesterday&apos;s business summary · Nairobi time</p>
                         </div>
                     </div>
-                    <button onClick={generateBrief} className="h-10 w-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center hover:bg-slate-100 transition-all">
-                        <TrendingUp size={16} className="text-primary" />
+                    <button
+                        type="button"
+                        onClick={() => void generateBrief()}
+                        disabled={loading}
+                        aria-label="Refresh Commander Brief"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
+                    >
+                        <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                     </button>
                 </div>
 
                 {loading ? (
-                    <div className="flex items-center gap-4 animate-pulse">
-                        <Loader2 className="animate-spin text-primary" size={20} />
-                        <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Synthesizing shift telemetry...</p>
+                    <div className="flex items-center gap-3 py-2 text-sm font-medium text-slate-500" role="status">
+                        <RefreshCw className="animate-spin text-primary" size={18} />
+                        Loading yesterday&apos;s verified figures…
                     </div>
-                ) : (
-                    <div className="space-y-6">
-                        <p className="text-lg font-medium leading-relaxed italic text-slate-600">
-                            &quot;{brief}&quot;
-                        </p>
-                        <div className="flex gap-4">
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 text-emerald-500 rounded-full text-[9px] font-black uppercase border border-emerald-500/20">
-                                <Zap size={10} fill="currentColor" /> Efficiency: {stats.autoRate}%
+                ) : error ? (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800" role="alert">
+                        {error}
+                    </div>
+                ) : data ? (
+                    <>
+                        <div>
+                            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                {formatNairobiTime(data.periodStart, {
+                                    weekday: 'long',
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric'
+                                })}
+                            </p>
+                            <p className="mt-3 text-base leading-relaxed text-slate-700 sm:text-lg">
+                                {data.brief}
+                            </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                                <Zap size={14} />
+                                Automation: {data.autoRate === null ? 'No runs' : `${data.autoRate}% (${data.executedAutomationCount}/${data.automationCount})`}
                             </div>
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-500/10 text-rose-500 rounded-full text-[9px] font-black uppercase border border-rose-500/20">
-                                <ShieldAlert size={10} /> {stats.exceptionsCount} Exceptions
+                            <div className="flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800">
+                                <ShieldAlert size={14} />
+                                {data.exceptionsCount} open {data.exceptionsCount === 1 ? 'exception' : 'exceptions'}
                             </div>
                         </div>
-                    </div>
-                )}
-            </div>
 
-            {/* Background Pattern */}
-            <Sparkles className="absolute -bottom-10 -right-10 h-64 w-64 text-primary/5 rotate-12 -z-0" />
+                        <p className="text-xs text-slate-500">
+                            Updated {formatNairobiTime(data.generatedAt, {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                            })} EAT
+                        </p>
+                    </>
+                ) : null}
+            </div>
         </Card>
     );
 }

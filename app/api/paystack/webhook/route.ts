@@ -1,14 +1,20 @@
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { getPublicBaseUrl } from "@/lib/utils";
+import { recordVerifiedPaystackPayment } from "@/lib/paystackServer";
 
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
 
 export async function POST(request: Request) {
-    if (!supabase) {
-        return NextResponse.json({ error: "Supabase client not initialized" }, { status: 500 });
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    if (!PAYSTACK_SECRET_KEY || !supabaseUrl || !serviceRoleKey) {
+        return NextResponse.json({ error: "Server-side payment processing is not configured" }, { status: 503 });
     }
+    const database = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+    });
     try {
         const body = await request.text();
         const signature = request.headers.get('x-paystack-signature');
@@ -16,7 +22,11 @@ export async function POST(request: Request) {
         // 1. Verify Signature
         const hash = createHmac('sha512', PAYSTACK_SECRET_KEY).update(body).digest('hex');
 
-        if (hash !== signature) {
+        if (
+            !signature
+            || !/^[a-f0-9]{128}$/i.test(signature)
+            || !timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(signature, 'hex'))
+        ) {
             return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
         }
 
@@ -25,13 +35,13 @@ export async function POST(request: Request) {
         // 1.5 Log the event for Anomaly Detection
         if (event.data) {
             const { reference, amount, customer } = event.data;
-            const { data: matchedOrder } = await supabase
+            const { data: matchedOrder } = await database
                 .from('orders')
                 .select('id')
                 .eq('checkout_request_id', reference)
                 .maybeSingle();
 
-            const { error: logError } = await supabase.from('payment_logs').insert([{
+            const { error: logError } = await database.from('payment_logs').insert([{
                 reference,
                 event_type: event.event,
                 amount: (amount || 0) / 100, // Cents to KES
@@ -51,47 +61,61 @@ export async function POST(request: Request) {
 
             if (status === 'success') {
                 // Fetch the order first to see if it's already processed
-                const { data: existingOrders } = await supabase
+                const { data: matchedOrder, error: orderLookupError } = await database
                     .from('orders')
-                    .select('status')
-                    .eq('checkout_request_id', reference);
+                    .select('id, total_price, payment_method, status, payment_verified_at')
+                    .eq('checkout_request_id', reference)
+                    .maybeSingle();
 
-                if (existingOrders && existingOrders.some(o => o.status === 'Paid')) {
+                if (orderLookupError) {
+                    console.error("Webhook Order Lookup Error:", orderLookupError);
+                    return NextResponse.json({ error: "Database lookup failed" }, { status: 500 });
+                }
+                if (!matchedOrder) {
+                    return NextResponse.json({ received: true, message: "No matching order" });
+                }
+                if (
+                    data.currency !== 'KES'
+                    || Number(data.amount) !== Math.round(Number(matchedOrder.total_price) * 100)
+                    || matchedOrder.payment_method !== 'Paystack'
+                ) {
+                    console.error("Paystack transaction does not match the saved order.", reference);
+                    return NextResponse.json({ received: true, message: "Transaction did not match order" });
+                }
+                try {
+                    await recordVerifiedPaystackPayment(database, {
+                        orderId: matchedOrder.id,
+                        reference,
+                        amountKobo: Number(data.amount),
+                        source: 'webhook'
+                    });
+                } catch (error) {
+                    console.error("Webhook payment proof write failed:", error);
+                    return NextResponse.json({ error: "Payment confirmation record failed" }, { status: 500 });
+                }
+                if (matchedOrder.status === 'Paid' && matchedOrder.payment_verified_at) {
                     return NextResponse.json({ received: true, message: "Already processed" });
                 }
 
                 // Update Order in Supabase
-                const updatePayload: { status: string; payment_verified_at: string; note?: string } = {
+                const updatePayload = {
                     status: 'Paid',
-                    payment_verified_at: new Date().toISOString(),
-                    note: `Payment Verified via Webhook. Ref: ${reference}`
+                    payment_verified_at: new Date().toISOString()
                 };
 
-                const { data: orderItems, error: updateError } = await supabase
+                const { data: orderItems, error: updateError } = await database
                     .from('orders')
                     .update(updatePayload)
-                    .eq('checkout_request_id', reference)
+                    .eq('id', matchedOrder.id)
+                    .in('status', ['Pending', 'Payment Failed'])
                     .select('*');
 
                 if (updateError) {
-                    const errorMessage = updateError.message.toLowerCase();
-                    if (errorMessage.includes("note") || errorMessage.includes("schema")) {
-                        // Retry without note
-                        delete updatePayload.note;
-                        const { error: retryError } = await supabase
-                            .from('orders')
-                            .update(updatePayload)
-                            .eq('checkout_request_id', reference)
-                            .select('*');
-
-                        if (retryError) {
-                            console.error("Webhook Order Update Retry Error:", retryError);
-                            return NextResponse.json({ error: "Database update failed" }, { status: 500 });
-                        }
-                    } else {
-                        console.error("Webhook Order Update Error:", updateError);
-                        return NextResponse.json({ error: "Database update failed" }, { status: 500 });
-                    }
+                    console.error("Webhook Order Update Error:", updateError);
+                    return NextResponse.json({ error: "Database update failed" }, { status: 500 });
+                }
+                if (!orderItems || orderItems.length === 0) {
+                    return NextResponse.json({ received: true, message: "Order status already changed" });
                 }
 
                 // Post-Success Fulfillment Logic
@@ -102,14 +126,14 @@ export async function POST(request: Request) {
                     // 1. Deduct Stock for each item in the order
                     for (const item of orderItems) {
                         if (item.product_id) {
-                            const { data: product } = await supabase
+                            const { data: product } = await database
                                 .from('products')
                                 .select('stock')
                                 .eq('id', item.product_id)
                                 .single();
 
                             if (product) {
-                                await supabase
+                                await database
                                     .from('products')
                                     .update({ stock: Math.max(0, (product.stock || 0) - (item.quantity || 1)) })
                                     .eq('id', item.product_id);
@@ -159,15 +183,14 @@ export async function POST(request: Request) {
             const data = event.data;
             const reference = data.reference;
 
-            if (supabase) {
-                await supabase
-                    .from('orders')
-                    .update({
-                        status: 'Payment Failed',
-                        note: `Payment failed: ${data.gateway_response || 'Unknown Error'}`
-                    })
-                    .eq('checkout_request_id', reference);
-            }
+            await database
+                .from('orders')
+                .update({
+                    status: 'Payment Failed',
+                    note: `Payment failed: ${data.gateway_response || 'Unknown Error'}`
+                })
+                .eq('checkout_request_id', reference)
+                .eq('status', 'Pending');
         }
 
         return NextResponse.json({ received: true }, { status: 200 });

@@ -593,6 +593,12 @@ DECLARE
     application_status TEXT;
     order_product BIGINT;
     order_quantity INTEGER;
+    parent_order_id BIGINT;
+    parent_order public.orders%ROWTYPE;
+    has_payment_proof BOOLEAN := false;
+    application_latitude NUMERIC;
+    application_longitude NUMERIC;
+    application_radius NUMERIC;
     already_traced INTEGER;
     available_quantity INTEGER;
 BEGIN
@@ -606,11 +612,54 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Merchant batch does not exist.';
     END IF;
-    SELECT product_id, quantity INTO order_product, order_quantity
+    SELECT product_id, quantity, order_id
+    INTO order_product, order_quantity, parent_order_id
     FROM public.order_items
     WHERE id = NEW.order_item_id;
     IF NOT FOUND OR order_product IS DISTINCT FROM batch_product THEN
         RAISE EXCEPTION 'Batch product must match the traced order item.';
+    END IF;
+    SELECT * INTO parent_order
+    FROM public.orders
+    WHERE id = parent_order_id;
+    IF NOT FOUND
+       OR lower(coalesce(parent_order.status, '')) <> 'paid'
+       OR parent_order.payment_verified_at IS NULL
+       OR lower(coalesce(parent_order.payment_method, '')) <> 'paystack'
+       OR parent_order.latitude IS NULL
+       OR parent_order.longitude IS NULL
+       OR to_regclass('public.payment_confirmations') IS NULL THEN
+        RAISE EXCEPTION 'Merchant inventory can only be allocated to a Paystack order with confirmed payment and delivery coordinates.';
+    END IF;
+    EXECUTE
+        'SELECT EXISTS (
+            SELECT 1 FROM public.payment_confirmations confirmation
+            WHERE confirmation.order_id = $1
+              AND confirmation.provider = ''Paystack''
+              AND confirmation.reference = $2
+              AND confirmation.amount_kobo = round($3 * 100)::BIGINT
+              AND confirmation.currency = ''KES''
+        )'
+    INTO has_payment_proof
+    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price;
+    IF NOT has_payment_proof THEN
+        RAISE EXCEPTION 'Server-verified payment proof is required before merchant stock can be allocated.';
+    END IF;
+    SELECT latitude, longitude, delivery_radius_km
+    INTO application_latitude, application_longitude, application_radius
+    FROM public.merchant_applications
+    WHERE id = (SELECT application_id FROM public.merchant_product_batches WHERE id = NEW.batch_id);
+    IF application_latitude IS NULL
+       OR application_longitude IS NULL
+       OR application_radius IS NULL THEN
+        RAISE EXCEPTION 'Merchant coordinates and delivery radius are required before allocation.';
+    END IF;
+    IF 6371 * 2 * asin(sqrt(
+        power(sin(radians(application_latitude - parent_order.latitude) / 2), 2)
+        + cos(radians(parent_order.latitude)) * cos(radians(application_latitude))
+        * power(sin(radians(application_longitude - parent_order.longitude) / 2), 2)
+    )) > application_radius THEN
+        RAISE EXCEPTION 'Merchant is outside its configured delivery radius for this order.';
     END IF;
     SELECT coalesce(sum(quantity), 0)::INTEGER INTO already_traced
     FROM public.merchant_order_item_trace
@@ -708,6 +757,8 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
+    parent_order public.orders%ROWTYPE;
+    has_payment_proof BOOLEAN := false;
     remaining_quantity INTEGER := coalesce(NEW.quantity, 1);
     batch_record RECORD;
     available_quantity INTEGER;
@@ -715,6 +766,44 @@ DECLARE
     has_tracked_batches BOOLEAN;
 BEGIN
     IF NEW.product_id IS NULL OR remaining_quantity < 1 THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT orders.*
+    INTO parent_order
+    FROM public.orders orders
+    WHERE orders.id = NEW.order_id;
+
+    IF NOT FOUND
+       OR lower(coalesce(parent_order.status, '')) <> 'paid'
+       OR parent_order.payment_verified_at IS NULL
+       OR lower(coalesce(parent_order.payment_method, '')) <> 'paystack'
+       OR to_regclass('public.payment_confirmations') IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    EXECUTE
+        'SELECT EXISTS (
+            SELECT 1
+            FROM public.payment_confirmations confirmation
+            WHERE confirmation.order_id = $1
+              AND confirmation.provider = ''Paystack''
+              AND confirmation.reference = $2
+              AND confirmation.amount_kobo = round($3 * 100)::BIGINT
+              AND confirmation.currency = ''KES''
+        )'
+    INTO has_payment_proof
+    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price;
+
+    IF NOT has_payment_proof OR parent_order.latitude IS NULL OR parent_order.longitude IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM public.merchant_order_item_trace trace
+        WHERE trace.order_item_id = NEW.id
+    ) THEN
         RETURN NEW;
     END IF;
 
@@ -730,8 +819,17 @@ BEGIN
         SELECT b.id, b.expiry_at, b.received_at
         FROM public.merchant_product_batches b
         JOIN public.merchant_applications application ON application.id = b.application_id
+        JOIN public.orders order_header ON order_header.id = NEW.order_id
         WHERE b.product_id = NEW.product_id
           AND application.status = 'approved'
+          AND application.latitude IS NOT NULL
+          AND application.longitude IS NOT NULL
+          AND application.delivery_radius_km IS NOT NULL
+          AND 6371 * 2 * asin(sqrt(
+              power(sin(radians(application.latitude - order_header.latitude) / 2), 2)
+              + cos(radians(order_header.latitude)) * cos(radians(application.latitude))
+              * power(sin(radians(application.longitude - order_header.longitude) / 2), 2)
+          )) <= application.delivery_radius_km
           AND (b.expiry_at IS NULL OR b.expiry_at >= CURRENT_DATE)
           AND NOT EXISTS (
               SELECT 1 FROM public.merchant_batch_holds hold
@@ -760,7 +858,15 @@ BEGIN
                       AND (document->>'expiresAt' IS NULL OR (document->>'expiresAt')::DATE >= CURRENT_DATE)
                 )
           )
-        ORDER BY b.expiry_at NULLS LAST, b.received_at, b.id
+        ORDER BY
+          6371 * 2 * asin(sqrt(
+              power(sin(radians(application.latitude - order_header.latitude) / 2), 2)
+              + cos(radians(order_header.latitude)) * cos(radians(application.latitude))
+              * power(sin(radians(application.longitude - order_header.longitude) / 2), 2)
+          )),
+          b.expiry_at NULLS LAST,
+          b.received_at,
+          b.id
         FOR UPDATE OF b
     LOOP
         SELECT coalesce(sum(quantity_delta), 0)::INTEGER
@@ -791,7 +897,7 @@ $$;
 
 DROP TRIGGER IF EXISTS merchant_auto_allocate_order_item ON public.order_items;
 CREATE TRIGGER merchant_auto_allocate_order_item
-    AFTER INSERT ON public.order_items
+    AFTER INSERT OR UPDATE OF quantity ON public.order_items
     FOR EACH ROW EXECUTE FUNCTION public.allocate_tracked_product_on_order_item();
 
 CREATE OR REPLACE FUNCTION public.receive_merchant_product_batch(

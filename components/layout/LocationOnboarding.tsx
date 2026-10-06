@@ -21,7 +21,7 @@ function createAnonymousId() {
   return id;
 }
 
-export default function LocationOnboarding() {
+export default function LocationOnboarding({ suppressLauncher = false }: { suppressLauncher?: boolean }) {
   const [ready, setReady] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [location, setLocation] = useState<SavedLocation | null>(null);
@@ -326,7 +326,7 @@ export default function LocationOnboarding() {
 
   return (
     <>
-      {location && !isOpen && (
+      {!suppressLauncher && location && !isOpen && (
         <button
           type="button"
           onClick={() => {
@@ -341,7 +341,7 @@ export default function LocationOnboarding() {
         </button>
       )}
 
-      {!location && !isOpen && (
+      {!suppressLauncher && !location && !isOpen && (
         <button
           type="button"
           onClick={() => setIsOpen(true)}

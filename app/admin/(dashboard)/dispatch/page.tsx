@@ -8,7 +8,6 @@ import {
   Truck,
   RefreshCcw,
   XCircle,
-  MapPin,
   Loader2,
   Zap,
   Activity,
@@ -22,8 +21,7 @@ import {
   PackageCheck,
   CreditCard,
   Phone,
-  User,
-  Bot
+  User
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,6 +48,8 @@ interface Rider {
     id: number;
     rider_name: string;
     rider_phone: string;
+    lat?: number | null;
+    lng?: number | null;
     vehicle_type: 'Motorbike' | 'Bike' | 'Car' | 'Van';
     vehicle_reg?: string;
     id_number?: string;
@@ -58,7 +58,6 @@ interface Rider {
     rider_photo_url?: string;
     vehicle_photo_url?: string;
     verification_status?: 'Pending' | 'Verified' | 'Rejected';
-    pin: string;
     current_location: string;
     status: 'Idle' | 'Delivering' | 'Offline' | 'Delayed' | 'Break';
     battery_level: number;
@@ -77,6 +76,53 @@ interface Rider {
     can_view_earnings: boolean;
 }
 
+interface DispatchRiderCandidate {
+    riderPhone: string;
+    riderName: string;
+    status: string | null;
+    activeLoad: number;
+    maxDeliveries: number;
+    distanceKm: number | null;
+    locationAvailable: boolean;
+    healthScore: number;
+}
+
+interface DispatchJob {
+    id: number;
+    status: string;
+    customer_name: string;
+    customer_email?: string | null;
+    payment_method: string;
+    payment_verified_at: string;
+    total_price: number | string;
+    fulfillment: {
+        ready: boolean;
+        reasons: string[];
+        selectedVendorIds: string[];
+        selectedVendorNames: string[];
+        selectedVendorLocations: Array<{
+            vendorId: string;
+            vendorName: string;
+            latitude: number;
+            longitude: number;
+        }>;
+        priceBasis: string;
+        productChecks: Array<{
+            productId: number | null;
+            productName: string;
+            quantity: number;
+            reservedQuantity: number;
+            orderUnitPrice: number | null;
+            cataloguePrice: number | null;
+            priceMatchesCatalogue: boolean;
+            reserved: boolean;
+        }>;
+    };
+    riderCandidates: DispatchRiderCandidate[];
+    recommendedRider: DispatchRiderCandidate | null;
+    riderAvailabilityReason: string | null;
+}
+
 const WAREHOUSES = [
     { id: 'all', name: 'Global Network', city: 'All' },
     { id: 'nairobi', name: 'Nairobi Central Hub', city: 'Nairobi' },
@@ -88,20 +134,30 @@ export default function AdminDispatchPage() {
     const { role, permissions } = useAdmin();
     const { settings } = useSettings();
     const [riders, setRiders] = useState<Rider[]>([]);
-    const [orders, setOrders] = useState<{ id: number; status: string; customer_name: string; customer_email?: string; rider_name?: string, warehouse_location?: string }[]>([]);
+    const [orders, setOrders] = useState<DispatchJob[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedRider, setSelectedRider] = useState<Rider | null>(null);
     const [demandZones, setDemandZones] = useState<{ lat: number, lng: number, intensity: number }[]>([]);
-    const [batches, setBatches] = useState<Array<{ ids: number[], area: string }>>([]);
     const [assigning, setAssigning] = useState<number | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [overrideRiders, setOverrideRiders] = useState<Record<number, string>>({});
+    const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
+    const [recentDecisions, setRecentDecisions] = useState<Array<{
+        id: number;
+        order_id: number;
+        selected_rider_name: string;
+        decision_type: string;
+        chosen_by: string;
+        override_reason: string | null;
+        created_at: string;
+    }>>([]);
+    const [unverifiedPaymentCount, setUnverifiedPaymentCount] = useState(0);
 
     const [showHeatmap, setShowHeatmap] = useState(false);
-    const [autoDispatch, setAutoDispatch] = useState(false);
     const [selectedWarehouse, setSelectedWarehouse] = useState('all');
 
-    const fetchData = async () => {
+    const fetchData = React.useCallback(async () => {
         if (!supabase) {
             setMessage({ type: 'error', text: 'Supabase is not configured. Dispatch data is unavailable.' });
             setLoading(false);
@@ -110,30 +166,42 @@ export default function AdminDispatchPage() {
         setLoading(true);
         setMessage(null);
         try {
-            const [ridersRes, ordersRes, locationsRes] = await Promise.all([
+            const [ridersRes, dispatchRes, locationsRes] = await Promise.all([
                 supabase.from('rider_status').select(`
-                    *,
+                    id, rider_name, rider_phone, vehicle_type, vehicle_reg, id_number, license_number,
+                    plate_number, rider_photo_url, vehicle_photo_url, verification_status, current_location,
+                    status, battery_level, total_deliveries, rating, area_zone, max_deliveries, weekly_salary,
+                    health_score, runner_xp, runner_level, acceptance_rate, can_accept_orders, can_reject_orders,
+                    can_view_earnings, last_known_lat, last_known_lng, location_updated_at, updated_at,
                     wallet:rider_wallets(balance, total_earned)
                 `).order('rider_name', { ascending: true }),
-                supabase.from('orders').select('*').neq('status', 'Delivered'),
+                fetch('/api/admin/dispatch', { cache: 'no-store' }),
                 supabase.rpc('get_order_delivery_demand_zones')
             ]);
             if (ridersRes.error) throw ridersRes.error;
-            if (ordersRes.error) throw ordersRes.error;
-            if (locationsRes.error) throw locationsRes.error;
+            const dispatchData = await dispatchRes.json() as {
+                error?: string;
+                jobs?: DispatchJob[];
+                decisions?: typeof recentDecisions;
+                unverifiedPaymentCount?: number;
+            };
+            if (!dispatchRes.ok) throw new Error(dispatchData.error || 'Dispatch assignments are unavailable.');
 
             // Handle wallet array from Supabase join and align with Rider interface
-            const processedRiders = ((ridersRes.data || []) as (Rider & {
-                wallet?: { balance: number; total_earned: number } | { balance: number; total_earned: number }[];
-            })[]).map((rider) => {
+            const processedRiders = (ridersRes.data || []).map((rider) => {
                 return {
                     ...rider,
-                    wallet: Array.isArray(rider.wallet) ? rider.wallet[0] : rider.wallet
+                    wallet: Array.isArray(rider.wallet) ? rider.wallet[0] : rider.wallet,
+                    lat: rider.last_known_lat === null || rider.last_known_lat === undefined
+                        ? null
+                        : Number(rider.last_known_lat),
+                    lng: rider.last_known_lng === null || rider.last_known_lng === undefined
+                        ? null
+                        : Number(rider.last_known_lng)
                 };
             });
 
-            // The SQL function groups completed order pins into approximate map zones.
-            const zones = ((locationsRes.data || []) as {
+            const zones = locationsRes.error ? [] : ((locationsRes.data || []) as {
                 latitude: number | string;
                 longitude: number | string;
                 order_count: number | string;
@@ -147,26 +215,27 @@ export default function AdminDispatchPage() {
             });
 
             setRiders(processedRiders);
-            setOrders(ordersRes.data || []);
+            setOrders(dispatchData.jobs || []);
+            setRecentDecisions(dispatchData.decisions || []);
+            setUnverifiedPaymentCount(dispatchData.unverifiedPaymentCount || 0);
             setDemandZones(zones);
-
-            // Fetch Neural Batches (Phase 11)
-            const { DispatchControl } = await import('@/lib/engines/dispatchEngine');
-            const batchOpts = await DispatchControl.identifyBatchOpportunities();
-            setBatches(batchOpts);
+            if (locationsRes.error) {
+                console.error('Demand heatmap is unavailable.', locationsRes.error);
+                setMessage({ type: 'error', text: 'Demand heatmap is unavailable; rider dispatch and live GPS remain available.' });
+            }
         } catch (err) {
             console.error("Pipeline link unstable.", err);
             setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Dispatch data could not be refreshed.' });
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchData();
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchData]);
 
     const stats = React.useMemo(() => {
         const total = riders.length;
@@ -186,47 +255,66 @@ export default function AdminDispatchPage() {
         r.area_zone.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const handleAssignRider = React.useCallback(async (orderId: number, rider: Rider) => {
-        if (!supabase) return;
+    const handleAssignRider = React.useCallback(async (
+        orderId: number,
+        riderPhone: string,
+        mode: 'automatic' | 'override'
+    ) => {
         setAssigning(orderId);
         try {
-            const { error } = await supabase
-                .from('orders')
-                .update({
-                    rider_name: rider.rider_name,
-                    rider_phone: rider.rider_phone,
-                    status: 'Dispatched'
+            const response = await fetch('/api/admin/dispatch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    orderId,
+                    mode,
+                    riderPhone: mode === 'override' ? riderPhone : undefined,
+                    reason: mode === 'override' ? overrideReasons[orderId] : undefined
                 })
-                .eq('id', orderId);
-
-            if (error) throw error;
-
-            setOrders(prev => prev.filter(o => o.id !== orderId));
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Dispatch assignment failed.');
 
             const targetOrder = orders.find(o => o.id === orderId);
+            let notificationFailed = false;
             if (targetOrder?.customer_email) {
-                fetch('/api/admin/notify-customer', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        email: targetOrder.customer_email,
-                        orderId: orderId,
-                        status: 'Dispatched',
-                        name: targetOrder.customer_name
-                    })
-                }).catch(() => {});
+                try {
+                    const notificationResponse = await fetch('/api/admin/notify-customer', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: targetOrder.customer_email,
+                            orderId,
+                            status: 'Dispatched',
+                            name: targetOrder.customer_name
+                        })
+                    });
+                    if (!notificationResponse.ok) {
+                        notificationFailed = true;
+                        console.error('Rider was assigned, but the customer notification failed.', await notificationResponse.text());
+                    }
+                } catch (notificationError) {
+                    notificationFailed = true;
+                    console.error('Rider was assigned, but the customer notification request failed.', notificationError);
+                }
             }
 
-            setMessage({ type: 'success', text: `Unit ${rider.rider_name} dispatched! 🚚` });
+            await fetchData();
+            setMessage({
+                type: notificationFailed ? 'error' : 'success',
+                text: notificationFailed
+                    ? 'Rider assignment was saved, but the customer notification failed.'
+                    : 'Rider assignment saved and recorded.'
+            });
             setTimeout(() => setMessage(null), 3000);
         } catch (err) {
             console.error("Dispatch sequence failed.", err);
-            setMessage({ type: 'error', text: 'Dispatch sequence failed.' });
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Dispatch sequence failed.' });
             setTimeout(() => setMessage(null), 5000);
         } finally {
             setAssigning(null);
         }
-    }, [orders]);
+    }, [orders, overrideReasons, fetchData]);
 
     const handleVerifyRider = React.useCallback(async (phone: string) => {
         if (!supabase) return;
@@ -241,7 +329,7 @@ export default function AdminDispatchPage() {
                 .eq('rider_phone', phone);
 
             if (error) throw error;
-            setRiders(prev => prev.map(r => r.rider_phone === phone ? { ...r, verification_status: 'Verified', pin } : r));
+            setRiders(prev => prev.map(r => r.rider_phone === phone ? { ...r, verification_status: 'Verified' } : r));
             setMessage({ type: 'success', text: `Unit Authorized. Issued PIN: ${pin}. ✅` });
             setTimeout(() => setMessage(null), 10000);
         } catch (err) {
@@ -249,50 +337,6 @@ export default function AdminDispatchPage() {
             setMessage({ type: 'error', text: "Authorization Failed." });
         }
     }, []);
-
-    const runAutonomousMaster = React.useCallback(async () => {
-        const pending = orders.filter(o => o.status === 'Pending');
-        if (pending.length === 0) return;
-
-        setLoading(true);
-        setMessage({ type: 'success', text: `Initializing Master Hub: Geo-fencing mission routing...` });
-
-        try {
-            for (const order of pending) {
-                // Geo-fencing logic: Filter riders by area zone matching order warehouse if specified
-                let eligibleRiders = riders.filter(r => r.status === 'Idle');
-
-                if (order.warehouse_location) {
-                    const hubCity = order.warehouse_location.split(' ')[0];
-                    eligibleRiders = eligibleRiders.filter(r => r.area_zone.includes(hubCity));
-                }
-
-                if (eligibleRiders.length > 0) {
-                    const rider = eligibleRiders.sort((a,b) => b.health_score - a.health_score)[0];
-                    await handleAssignRider(order.id, rider);
-                    rider.status = 'Delivering';
-                }
-            }
-            setMessage({ type: 'success', text: "Grid Deployment Complete. Nodes Synchronized. 🦾" });
-        } finally {
-            setLoading(false);
-            setTimeout(() => setMessage(null), 3000);
-        }
-    }, [orders, riders, handleAssignRider]);
-
-    // Autonomous Mode Loop
-    useEffect(() => {
-        if (!autoDispatch) return;
-
-        const masterLoop = setInterval(() => {
-            const pending = orders.filter(o => o.status === 'Pending');
-            if (pending.length > 0) {
-                runAutonomousMaster();
-            }
-        }, 15000); // Check every 15s when armed
-
-        return () => clearInterval(masterLoop);
-    }, [autoDispatch, orders, runAutonomousMaster]);
 
     return (
         <div className="p-8 space-y-8 bg-background min-h-screen text-left">
@@ -320,16 +364,6 @@ export default function AdminDispatchPage() {
                             </button>
                         ))}
                     </div>
-                    <Button
-                        onClick={() => setAutoDispatch(!autoDispatch)}
-                        variant="outline"
-                        className={cn(
-                            "rounded-xl h-12 px-6 border-indigo-200 font-black uppercase text-[10px] tracking-widest transition-all active:scale-95",
-                            autoDispatch ? "bg-indigo-500 text-white shadow-lg" : "bg-white text-indigo-400 hover:bg-indigo-50"
-                        )}
-                    >
-                        <Bot className="h-4 w-4 mr-2" /> Auto-Dispatch {autoDispatch ? 'Armed' : 'Locked'}
-                    </Button>
                     <Button
                         onClick={() => setShowHeatmap(!showHeatmap)}
                         variant="outline"
@@ -399,87 +433,133 @@ export default function AdminDispatchPage() {
                     <section className="space-y-6">
                         <div className="flex items-center justify-between px-2 text-left">
                             <div className="flex items-center gap-3">
-                                <Bot className="h-6 w-6 text-indigo-500 animate-pulse" />
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Neural Batch Suggestions</h2>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {batches.length === 0 ? (
-                                <div className="p-10 text-center bg-card rounded-[3rem] border-2 border-dashed border-border opacity-30">
-                                    <p className="text-[10px] font-black uppercase italic">Scanning for proximity clusters...</p>
-                                </div>
-                            ) : batches.map((batch, idx) => (
-                                <Card key={idx} className="p-6 rounded-[2.5rem] border-2 border-indigo-100 bg-indigo-50/30 flex flex-col gap-4 group hover:shadow-xl transition-all">
-                                    <div className="flex justify-between items-start">
-                                        <div className="space-y-1">
-                                            <span className="px-3 py-1 bg-indigo-500 text-white text-[8px] font-black rounded-full uppercase">Proximity Cluster</span>
-                                            <h4 className="text-sm font-black uppercase text-indigo-900 mt-2">{batch.area} Sector</h4>
-                                        </div>
-                                        <div className="h-10 w-10 rounded-xl bg-indigo-500 text-white flex items-center justify-center font-black">
-                                            {batch.ids.length}
-                                        </div>
-                                    </div>
-                                    <p className="text-[9px] font-medium text-indigo-600">Orders: {batch.ids.map(id => `#${id}`).join(', ')}</p>
-                                    <Button size="sm" className="w-full h-10 rounded-xl bg-indigo-500 text-white font-black uppercase text-[8px] tracking-widest shadow-lg shadow-indigo-200">
-                                        Authorize Batch Dispatch
-                                    </Button>
-                                </Card>
-                            ))}
-                        </div>
-                    </section>
-
-                    <section className="space-y-6">
-                        <div className="flex items-center justify-between px-2 text-left">
-                            <div className="flex items-center gap-3">
                                 <Zap className="h-6 w-6 text-primary animate-pulse" />
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Live Dispatch Feed</h2>
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Payment-confirmed Dispatch Queue</h2>
                             </div>
                         </div>
+                        <p className="px-2 text-xs text-muted-foreground">
+                            Pickup distance uses fresh rider GPS and straight-line distances between selected merchant locations; it is not a road-route or ETA calculation.
+                        </p>
+
+                        {unverifiedPaymentCount > 0 && (
+                            <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                                {unverifiedPaymentCount} paid order(s) do not have a matching server-verified Paystack record and remain unassigned.
+                            </p>
+                        )}
 
                         <div className="grid grid-cols-1 gap-4">
-                            {orders.filter(o => o.status === 'Pending').length === 0 ? (
+                            {orders.length === 0 ? (
                                 <div className="p-16 text-center bg-card rounded-[3rem] border-2 border-dashed border-border flex flex-col items-center gap-4">
                                     <PackageCheck className="h-12 w-12 text-muted" />
-                                    <p className="text-sm font-black text-muted-foreground uppercase italic">Pipeline clear.</p>
+                                    <p className="text-sm font-black text-muted-foreground uppercase italic">No eligible confirmed-payment orders.</p>
                                 </div>
-                            ) : orders.filter(o => o.status === 'Pending').slice(0, 3).map(order => {
-                                const candidates = riders.filter(r => r.status === 'Idle').sort((a, b) => b.health_score - a.health_score);
-                                const recommendation = candidates[0];
-
+                            ) : orders.map(order => {
+                                const recommendation = order.recommendedRider;
                                 return (
-                                    <Card key={order.id} className="p-8 rounded-[3rem] border border-border bg-card shadow-sm flex flex-col lg:flex-row justify-between items-center gap-8 group hover:shadow-2xl transition-all">
-                                        <div className="flex items-center gap-6 flex-1 text-left">
-                                            <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
-                                                <Package className="h-7 w-7" />
-                                            </div>
+                                    <Card key={order.id} className="p-7 rounded-[2rem] border border-border bg-card shadow-sm space-y-6">
+                                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 text-left">
                                             <div>
                                                 <h3 className="font-black text-foreground uppercase text-lg tracking-tighter">Order #{order.id}</h3>
-                                                <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1 flex items-center gap-2">
-                                                    <MapPin className="h-3 w-3" /> {order.customer_name}
-                                                </p>
+                                                <p className="text-xs text-muted-foreground mt-1">{order.customer_name} · {formatPrice(Number(order.total_price))}</p>
+                                                <p className="text-[10px] text-emerald-700 font-bold uppercase mt-2">Payment confirmed · {order.payment_method}</p>
                                             </div>
+                                            {recommendation ? (
+                                                <div className="rounded-xl bg-primary/5 border border-primary/10 p-3 text-sm">
+                                                    <p className="text-[9px] font-black uppercase text-primary">Approx. straight-line pickup path · {recommendation.distanceKm} km</p>
+                                                    <p className="font-bold text-foreground">{recommendation.riderName} · {recommendation.activeLoad}/{recommendation.maxDeliveries} active</p>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-amber-700 font-semibold">{order.riderAvailabilityReason || 'No rider recommendation available.'}</p>
+                                            )}
                                         </div>
 
-                                        <div className="flex items-center gap-10">
-                                            {recommendation && (
-                                                <div className="text-right hidden sm:block">
-                                                    <p className="text-[8px] font-black uppercase text-primary mb-1 animate-pulse">Smart Match</p>
-                                                    <p className="text-sm font-black text-foreground uppercase">{recommendation.rider_name}</p>
-                                                </div>
+                                        <div className={`rounded-xl border p-4 text-left ${order.fulfillment.ready ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                                            <p className="text-xs font-black uppercase">{order.fulfillment.ready ? 'Vendor fulfillment verified' : 'Vendor fulfillment has gaps'}</p>
+                                            <ul className="mt-2 space-y-1 text-xs">
+                                                {order.fulfillment.reasons.length > 0
+                                                    ? order.fulfillment.reasons.map((reason, index) => <li key={index}>• {reason}</li>)
+                                                    : <li>Product, reserved quantity, availability, price and delivery radius verified.</li>}
+                                            </ul>
+                                            {order.fulfillment.selectedVendorNames.length > 0 && (
+                                                <p className="mt-2 text-xs">Existing merchant allocations: {order.fulfillment.selectedVendorNames.join(', ')}</p>
                                             )}
+                                            {order.fulfillment.selectedVendorLocations.map(vendor => (
+                                                <p key={vendor.vendorId} className="mt-1 text-xs">
+                                                    Pickup: {vendor.vendorName} · {vendor.latitude.toFixed(5)}, {vendor.longitude.toFixed(5)}
+                                                </p>
+                                            ))}
+                                            <div className="mt-3 space-y-1 text-xs">
+                                                {order.fulfillment.productChecks.map((check, index) => (
+                                                    <p key={`${check.productId}-${index}`}>
+                                                        {check.productName}: qty {check.quantity}, reserved {check.reservedQuantity}, order/catalogue price {check.orderUnitPrice === null ? 'unavailable' : formatPrice(check.orderUnitPrice)}/{check.cataloguePrice === null ? 'unavailable' : formatPrice(check.cataloguePrice)}
+                                                    </p>
+                                                ))}
+                                            </div>
+                                            <p className="mt-2 text-[11px] opacity-80">{order.fulfillment.priceBasis}</p>
+                                        </div>
+
+                                        <div className="flex flex-col md:flex-row gap-3">
                                             <Button
-                                                onClick={() => recommendation && handleAssignRider(order.id, recommendation)}
-                                                disabled={!recommendation || assigning === order.id}
-                                                className="h-14 px-10 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest active:scale-95 group-hover:scale-105"
+                                                onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
+                                                disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
+                                                className="h-12 px-6 rounded-xl bg-primary text-white font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
                                             >
-                                                {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign'}
+                                                {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign recommended rider'}
+                                            </Button>
+                                            <div className="flex-1 grid sm:grid-cols-2 gap-2">
+                                                <p className="text-xs text-muted-foreground sm:col-span-2">
+                                                    Rider override changes only the rider. It cannot bypass confirmed payment or unverified merchant fulfillment.
+                                                </p>
+                                                <select
+                                                    value={overrideRiders[order.id] || ''}
+                                                    onChange={event => setOverrideRiders(prev => ({ ...prev, [order.id]: event.target.value }))}
+                                                    className="h-12 rounded-xl border border-border bg-background px-3 text-sm"
+                                                >
+                                                    <option value="">Choose rider for override</option>
+                                                    {order.riderCandidates.map(candidate => (
+                                                        <option key={candidate.riderPhone} value={candidate.riderPhone}>
+                                                            {candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
+                                                            {candidate.locationAvailable ? ` · ${candidate.distanceKm} km straight-line` : ' · location unknown'}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <Input
+                                                    value={overrideReasons[order.id] || ''}
+                                                    onChange={event => setOverrideReasons(prev => ({ ...prev, [order.id]: event.target.value }))}
+                                                    placeholder="Override reason (required)"
+                                                    className="h-12 rounded-xl"
+                                                />
+                                            </div>
+                                            <Button
+                                                onClick={() => handleAssignRider(order.id, overrideRiders[order.id] || '', 'override')}
+                                                disabled={!order.fulfillment.ready || !overrideRiders[order.id] || (overrideReasons[order.id] || '').trim().length < 8 || assigning === order.id}
+                                                variant="outline"
+                                                className="h-12 px-6 rounded-xl border-amber-300 text-amber-800 font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
+                                            >
+                                                Override & assign
                                             </Button>
                                         </div>
                                     </Card>
                                 );
                             })}
                         </div>
+                    </section>
+
+                    <section className="space-y-4 text-left">
+                        <h2 className="text-xl font-black uppercase tracking-tight text-foreground">Recent assignment decisions</h2>
+                        {recentDecisions.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No dispatch decisions recorded yet.</p>
+                        ) : recentDecisions.slice(0, 8).map(decision => (
+                            <div key={decision.id} className="rounded-xl border border-border bg-card p-4 text-sm">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="font-bold">Order #{decision.order_id} → {decision.selected_rider_name}</span>
+                                    <span className="text-xs text-muted-foreground">{new Date(decision.created_at).toLocaleString()}</span>
+                                </div>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {decision.decision_type === 'admin_override' ? `Override by ${decision.chosen_by}: ${decision.override_reason}` : `Recommended assignment by ${decision.chosen_by}`}
+                                </p>
+                            </div>
+                        ))}
                     </section>
 
                     <div className="space-y-6 text-left">

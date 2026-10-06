@@ -50,6 +50,8 @@ function RiderDashboardContent() {
 
     const [phone, setPhone] = useState('');
     const [pin, setPin] = useState('');
+    const [sessionToken, setSessionToken] = useState('');
+    const [gpsMessage, setGpsMessage] = useState<string | null>(null);
     const [isIdentified, setIsIdentified] = useState(false);
     const [loading, setLoading] = useState(false);
     const [missions, setMissions] = useState<Mission[]>([]);
@@ -62,32 +64,43 @@ function RiderDashboardContent() {
     const [stats, setStats] = useState({ tier: 'Bronze', rating: 5.0, acceptance: 100, maintenance: 'Healthy' });
     const [activeMission, setActiveMission] = useState<Mission | null>(null);
 
-    const verifyAndFetch = useCallback(async (riderPhone: string, riderPin: string) => {
+    const verifyAndFetch = useCallback(async (riderPhone: string, riderPin: string, savedToken?: string) => {
         if (!supabase) return;
         setLoading(true);
         setAuthError(null);
         try {
+            const sessionResponse = await fetch(savedToken ? '/api/rider/session' : '/api/rider/session', {
+                method: savedToken ? 'GET' : 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(savedToken ? { Authorization: `Bearer ${savedToken}` } : {})
+                },
+                ...(savedToken ? {} : { body: JSON.stringify({ phone: riderPhone, pin: riderPin.trim() }) }),
+                cache: 'no-store'
+            });
+            const sessionData = await sessionResponse.json() as {
+                token?: string;
+                rider?: { id: number; name: string; phone: string; status: string; verificationStatus: string };
+                error?: string;
+            };
+            if (!sessionResponse.ok || !sessionData.rider) {
+                throw new Error(sessionData.error || 'Rider sign-in failed.');
+            }
+            const activeToken = savedToken || sessionData.token;
+            if (!activeToken) throw new Error('The server did not issue a rider session.');
+            const canonicalPhone = sessionData.rider.phone;
+
             const { data: riderData, error: authErr } = await supabase
                 .from('rider_status')
-                .select('*')
-                .eq('rider_phone', riderPhone.replace(/^0/, '').trim())
-                .eq('pin', riderPin.trim())
+                .select('id, rider_name, rider_phone, status, verification_status, current_tier, rating, acceptance_rate, battery_level')
+                .eq('rider_phone', canonicalPhone)
                 .maybeSingle();
 
             if (authErr || !riderData) {
-                setAuthError("Identity Link Terminated. Check Phone Number & PIN.");
-                return;
-            }
-
-            if (riderData.verification_status !== 'Verified') {
-                setAuthError(`Status: ${riderData.verification_status || 'Pending'}. Approval Required.`);
-                return;
+                throw new Error(authErr?.message || 'Rider profile could not be loaded.');
             }
 
             // Fetch Real Stats & Wallet
-            const { data: walletData } = await supabase.from('rider_wallets').select('*').eq('rider_phone', riderPhone.trim()).maybeSingle();
-            if (walletData) setWallet({ balance: walletData.balance, total_earned: walletData.total_earned });
-
             setStats({
                 tier: riderData.current_tier || 'Bronze',
                 rating: riderData.rating || 5.0,
@@ -95,68 +108,141 @@ function RiderDashboardContent() {
                 maintenance: 'Healthy'
             });
 
-            const { data: orders } = await supabase.from('orders').select('*').eq('rider_phone', riderPhone.trim()).order('created_at', { ascending: false });
+            const missionsResponse = await fetch('/api/rider/missions', {
+                headers: { Authorization: `Bearer ${activeToken}` },
+                cache: 'no-store'
+            });
+            const missionData = await missionsResponse.json() as {
+                missions?: Mission[];
+                wallet?: { balance: number; total_earned: number };
+                error?: string;
+            };
+            if (!missionsResponse.ok) throw new Error(missionData.error || 'Rider missions could not be loaded.');
+            if (missionData.wallet) setWallet(missionData.wallet);
 
             // AUTO-SELECT ACTIVE MISSION
-            const currentMissions = (orders as Mission[]) || [];
-            const dispatched = currentMissions.find(m => m.status === 'Dispatched' || m.status === 'Out for Delivery');
+            const currentMissions = missionData.missions || [];
+            const dispatched = currentMissions.find(m => ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(m.status));
             if (dispatched) setActiveMission(dispatched);
 
-            localStorage.setItem('ob_rider_phone', riderPhone);
-            localStorage.setItem('ob_rider_pin', riderPin);
+            localStorage.setItem('ob_rider_phone', canonicalPhone);
+            localStorage.setItem('ob_rider_token', activeToken);
+            localStorage.removeItem('ob_rider_pin');
+            setPhone(canonicalPhone);
+            setSessionToken(activeToken);
             setRider(riderData);
             setMissions(currentMissions);
             setIsIdentified(true);
-            setIsOnline(riderData.status !== 'Offline');
-        } catch {
-            setAuthError("Tactical link unstable.");
+            setIsOnline(riderData.status === 'Idle' || riderData.status === 'Delivering');
+        } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'Rider sign-in failed.');
         } finally {
             setLoading(false);
         }
     }, []);
 
-    const handleCompleteMission = useCallback(async (orderId: number) => {
-        if (!supabase || !phone) return;
-
+    const handleAdvanceMission = useCallback(async (orderId: number) => {
+        if (!sessionToken) return;
         setLoading(true);
         try {
-            await supabase
-                .from('orders')
-                .update({ status: 'Delivered', updated_at: new Date().toISOString() })
-                .eq('id', orderId);
+            const response = await fetch('/api/rider/delivery-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+                body: JSON.stringify({
+                    orderId,
+                    nextStatus: activeMission?.id === orderId
+                        ? activeMission.status === 'Dispatched'
+                            ? 'Picked Up'
+                            : activeMission.status === 'Picked Up'
+                                ? 'Out for Delivery'
+                                : 'Delivered'
+                        : undefined
+                }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as {
+                status?: string;
+                error?: string;
+                warning?: string;
+                wallet?: { balance: number; total_earned: number };
+            };
+            if (!response.ok || !result.status) throw new Error(result.error || 'Delivery status could not be updated.');
 
-            const commission = 150;
-            const r = (rider as Record<string, unknown> & { wallet?: { balance: number, total_earned: number }[] });
-            await supabase.from('rider_wallets').update({
-                balance: (r?.wallet?.[0]?.balance || 0) + commission,
-                total_earned: (r?.wallet?.[0]?.total_earned || 0) + commission,
-                updated_at: new Date().toISOString()
-            }).eq('rider_phone', phone);
-
-            setMissions(prev => prev.map(m => m.id === orderId ? { ...m, status: 'Delivered' } : m));
-            setActiveMission(null);
-            setWallet(prev => ({ ...prev, balance: prev.balance + commission, total_earned: prev.total_earned + commission }));
-            alert("Mission Accomplished! 🏁 Payload Delivered.");
-
-        } catch (err) {
-            console.error(err);
-            setAuthError("Mission verify failed.");
+            setMissions(prev => prev.map(m => m.id === orderId ? { ...m, status: result.status! } : m));
+            if (result.wallet) setWallet(result.wallet);
+            if (result.status === 'Delivered') {
+                setActiveMission(null);
+                alert(result.warning || 'Mission accomplished. The order and rider commission are saved.');
+            } else {
+                setActiveMission(prev => prev?.id === orderId ? { ...prev, status: result.status! } : prev);
+            }
+            if (result.warning) setAuthError(result.warning);
+        } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'Delivery status could not be updated.');
         } finally {
             setLoading(false);
         }
-    }, [phone, rider]);
+    }, [activeMission, sessionToken]);
 
     useEffect(() => {
         const savedPhone = localStorage.getItem('ob_rider_phone');
-        const savedPin = localStorage.getItem('ob_rider_pin');
-        if (savedPhone && savedPin) {
+        const savedToken = localStorage.getItem('ob_rider_token');
+        if (savedPhone && savedToken) {
             setPhone(savedPhone);
-            setPin(savedPin);
-            verifyAndFetch(savedPhone, savedPin);
+            setSessionToken(savedToken);
+            verifyAndFetch(savedPhone, '', savedToken);
         } else if (phoneParam) {
             setPhone(phoneParam);
         }
     }, [phoneParam, verifyAndFetch]);
+
+    useEffect(() => {
+        if (!isOnline || !sessionToken) return;
+        if (!navigator.geolocation) {
+            setGpsMessage('This device does not support GPS; pickup distance will be unavailable.');
+            return;
+        }
+
+        let lastSentAt = 0;
+        let active = true;
+        const watchId = navigator.geolocation.watchPosition(async position => {
+            if (!active || Date.now() - lastSentAt < 30_000) return;
+            lastSentAt = Date.now();
+            try {
+                const response = await fetch('/api/rider/sync-location', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${sessionToken}`
+                    },
+                    body: JSON.stringify({
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    })
+                });
+                const result = await response.json() as { error?: string };
+                if (!response.ok) throw new Error(result.error || 'GPS could not be synced.');
+                if (active) setGpsMessage(`Pickup location updated ${new Date().toLocaleTimeString()}.`);
+            } catch (error) {
+                if (active) setGpsMessage(error instanceof Error ? error.message : 'GPS could not be synced.');
+            }
+        }, error => {
+            if (active) {
+                setGpsMessage(error.code === error.PERMISSION_DENIED
+                    ? 'Location permission is blocked. Enable location access to receive distance-ranked assignments.'
+                    : 'GPS is unavailable right now. Keep the app open and retry location access.');
+            }
+        }, {
+            enableHighAccuracy: true,
+            maximumAge: 10_000,
+            timeout: 20_000
+        });
+
+        return () => {
+            active = false;
+            navigator.geolocation.clearWatch(watchId);
+        };
+    }, [isOnline, sessionToken]);
 
     const handleBioAuth = async () => {
         try {
@@ -169,29 +255,26 @@ function RiderDashboardContent() {
     };
 
     const handleToggleOnline = async () => {
-        if (!supabase || !phone) return;
+        if (!sessionToken || !phone) return;
         setLoading(true);
-        const newStatus = isOnline ? 'Offline' : 'Idle';
 
         try {
-            const { error } = await supabase
-                .from('rider_status')
-                .update({
-                    status: newStatus,
-                    online_since: isOnline ? null : new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                .eq('rider_phone', phone);
-
-            if (!error) {
-                setIsOnline(!isOnline);
-                localStorage.setItem('ob_rider_status', newStatus);
-            } else {
-                throw error;
-            }
+            const response = await fetch('/api/rider/status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${sessionToken}`
+                },
+                body: JSON.stringify({ online: !isOnline })
+            });
+            const result = await response.json() as { status?: string; error?: string };
+            if (!response.ok || !result.status) throw new Error(result.error || 'Rider status could not be saved.');
+            setIsOnline(result.status !== 'Offline');
+            setRider(current => current ? { ...current, status: result.status } : current);
+            localStorage.setItem('ob_rider_status', result.status);
+            setGpsMessage(result.status === 'Offline' ? null : 'Online. Waiting for a fresh GPS fix…');
         } catch (err) {
-            console.error(err);
-            setAuthError("Failed to update status.");
+            setAuthError(err instanceof Error ? err.message : 'Failed to update rider status.');
         } finally {
             setLoading(false);
         }
@@ -200,7 +283,10 @@ function RiderDashboardContent() {
     const handleLogout = () => {
         localStorage.removeItem('ob_rider_phone');
         localStorage.removeItem('ob_rider_pin');
+        localStorage.removeItem('ob_rider_token');
         setIsIdentified(false);
+        setIsOnline(false);
+        setSessionToken('');
         setMissions([]);
         setPhone('');
         setPin('');
@@ -289,6 +375,11 @@ function RiderDashboardContent() {
                     >
                         {isOnline ? "Go Offline" : "Go Online"}
                     </Button>
+                    {isOnline && (
+                        <p className="mt-3 max-w-[18rem] rounded-xl bg-white/95 px-3 py-2 text-center text-xs font-semibold text-slate-700 shadow" role="status">
+                            {gpsMessage || 'Waiting for a fresh GPS fix to rank pickup distance…'}
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -331,10 +422,15 @@ function RiderDashboardContent() {
 
                         <div className="pt-8 border-t border-slate-50 space-y-6">
                             <Button
-                                onClick={() => handleCompleteMission(activeMission.id)}
+                                onClick={() => handleAdvanceMission(activeMission.id)}
+                                disabled={loading}
                                 className="w-full h-24 rounded-[2.5rem] bg-primary hover:bg-primary/90 text-white font-black uppercase text-sm tracking-[0.5em] shadow-[0_20px_40px_-10px_rgba(255,107,0,0.3)] active:scale-95 transition-all relative overflow-hidden"
                             >
-                                Secure Handover
+                                {loading ? 'Updating...' : activeMission.status === 'Dispatched'
+                                    ? 'Confirm Pickup'
+                                    : activeMission.status === 'Picked Up'
+                                        ? 'Start Delivery'
+                                        : 'Secure Handover'}
                             </Button>
                         </div>
                     </div>

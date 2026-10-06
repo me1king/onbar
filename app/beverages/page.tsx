@@ -31,9 +31,10 @@ interface BeverageItem {
     is_ice_cold?: boolean;
     temperature_celsius?: number;
     stock?: number;
+    is_available_now?: boolean;
 }
 
-const CATEGORIES = ['All Drinks', 'Soft Drinks', 'Energy', 'Water', 'Juices', 'Coffee', 'Vintages & Spirits'];
+const CATEGORIES = ['All Drinks', 'Soft Drinks', 'Energy', 'Water', 'Juices', 'Coffee', 'Mixers'];
 
 export default function BeverageCommandPage() {
     const [beverages, setBeverages] = useState<BeverageItem[]>([]);
@@ -68,7 +69,9 @@ export default function BeverageCommandPage() {
                     let items = (data as unknown as BeverageItem[]).filter(i => {
                         const cat = (i.category || '').toLowerCase();
                         const subCat = (i.sub_category || '').toLowerCase();
-                        return !alcoholicCategories.some(a => cat.includes(a) || subCat.includes(a));
+                        return i.is_available_now !== false
+                            && Number(i.stock) > 0
+                            && !alcoholicCategories.some(a => cat.includes(a) || subCat.includes(a));
                     });
 
                     if (activeCat !== 'All Drinks') {

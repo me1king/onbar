@@ -72,6 +72,9 @@ function CheckoutContent() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [deliveryBuilding, setDeliveryBuilding] = useState("");
+  const [deliveryLandmark, setDeliveryLandmark] = useState("");
+  const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"M-Pesa" | "COD">("M-Pesa");
   const [shippingRegionId, setShippingRegionId] = useState('nairobi-cbd');
   const [freeDeliveryAreas, setFreeDeliveryAreas] = useState<DeliveryArea[]>([]);
@@ -471,16 +474,21 @@ function CheckoutContent() {
             ref: checkoutRequestId,
             callback: async (response: PaystackResponse) => {
                 if (response.status === 'success' && supabase) {
-                    const { error: paymentUpdateError } = await supabase.from('orders').update({
-                        status: 'Paid',
-                        payment_verified_at: new Date().toISOString(),
-                        note: `Paystack Ref: ${response.reference}`
-                    }).eq('checkout_request_id', checkoutRequestId);
-                    if (paymentUpdateError) {
-                        console.error("Order payment confirmation error:", paymentUpdateError);
+                    try {
+                        const verification = await fetch('/api/paystack/verify-order', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ reference: response.reference })
+                        });
+                        const verificationResult = await verification.json() as { error?: string };
+                        if (!verification.ok) {
+                            throw new Error(verificationResult.error || 'Server-side payment verification failed.');
+                        }
+                    } catch (error) {
+                        console.error("Order payment confirmation error:", error);
                         setCheckoutStatus({
                             type: "error",
-                            message: `Payment was received, but order confirmation is still pending. Contact support with reference ${response.reference}.`
+                            message: `Payment was received, but server verification is still pending. Contact support with reference ${response.reference}.`
                         });
                         setIsPlacingOrder(false);
                         return;
@@ -551,6 +559,10 @@ function CheckoutContent() {
           captured_by: 'system',
           latitude: coords.lat ?? profile?.latitude ?? null,
           longitude: coords.lng ?? profile?.longitude ?? null,
+          delivery_area: matchedFreeDeliveryArea?.name || currentRegion.label,
+          delivery_building: deliveryBuilding.trim() || null,
+          delivery_landmark: deliveryLandmark.trim() || null,
+          delivery_instructions: deliveryInstructions.trim() || null,
           is_gift: isGift,
           gift_message: giftMessage.trim() || null,
           gift_recipient: isGift ? giftRecipient || null : null,
@@ -911,6 +923,20 @@ function CheckoutContent() {
                 {/* Decoration */}
                 <Zap className="absolute -bottom-6 -right-6 h-20 w-20 sm:h-24 sm:w-24 text-slate-100/50 rotate-12" />
             </Card>
+            <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Building / Estate (Optional)</label>
+                    <Input value={deliveryBuilding} onChange={event => setDeliveryBuilding(event.target.value)} maxLength={120} placeholder="Building or estate name" disabled={isPlacingOrder} className="h-14 rounded-2xl border-slate-100 bg-slate-50/50" />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Landmark (Optional)</label>
+                    <Input value={deliveryLandmark} onChange={event => setDeliveryLandmark(event.target.value)} maxLength={120} placeholder="Nearby landmark" disabled={isPlacingOrder} className="h-14 rounded-2xl border-slate-100 bg-slate-50/50" />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Delivery Instructions (Optional)</label>
+                    <textarea value={deliveryInstructions} onChange={event => setDeliveryInstructions(event.target.value)} maxLength={500} placeholder="Gate, floor, or handoff instructions" disabled={isPlacingOrder} className="min-h-24 w-full rounded-2xl border border-slate-100 bg-slate-50/50 p-4 text-sm outline-none focus:border-primary disabled:opacity-60" />
+                </div>
+            </div>
           </section>
 
           {/* 🎁 GIFTING OPTIONS */}

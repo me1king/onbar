@@ -98,42 +98,42 @@ export default function MarketingOverview() {
             {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{error}</p>}
 
             {/* 1. TOP DASHBOARD PERFORMANCE HUD */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                <Card className="p-6 sm:p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2 text-left">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 sm:gap-6">
+                <Card className="min-w-0 p-5 sm:p-6 lg:p-8 rounded-[2rem] sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2 text-left">
                     <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Registered Accounts</p>
-                    <div className="flex items-baseline justify-between">
-                        <p className="text-3xl font-black text-foreground tabular-nums">{stats.reach}</p>
-                        <span className="inline-flex items-center text-[10px] font-black text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                    <div className="flex min-w-0 flex-col items-start gap-2">
+                        <p className="text-2xl font-black text-foreground tabular-nums sm:text-3xl">{stats.reach}</p>
+                        <span className="inline-flex max-w-full items-center whitespace-normal break-words rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-500">
                             {stats.reachTrend}
                         </span>
                     </div>
                 </Card>
 
-                <Card className="p-6 sm:p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2 text-left">
+                <Card className="min-w-0 p-5 sm:p-6 lg:p-8 rounded-[2rem] sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2 text-left">
                     <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Storefront Events</p>
-                    <div className="flex items-baseline justify-between">
-                        <p className="text-3xl font-black text-foreground tabular-nums">{stats.contentInteraction}</p>
-                        <span className="inline-flex items-center text-[10px] font-black text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                    <div className="flex min-w-0 flex-col items-start gap-2">
+                        <p className="text-2xl font-black text-foreground tabular-nums sm:text-3xl">{stats.contentInteraction}</p>
+                        <span className="inline-flex max-w-full items-center whitespace-normal break-words rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-500">
                             {stats.interactionTrend}
                         </span>
                     </div>
                 </Card>
 
-                <Card className="p-6 sm:p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2 text-left">
+                <Card className="min-w-0 p-5 sm:p-6 lg:p-8 rounded-[2rem] sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2 text-left">
                     <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Followers</p>
-                    <div className="flex items-baseline justify-between">
-                        <p className="text-3xl font-black text-foreground tabular-nums">{stats.followers}</p>
-                        <span className="inline-flex items-center text-[10px] font-black text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                    <div className="flex min-w-0 flex-col items-start gap-2">
+                        <p className="text-2xl font-black text-foreground tabular-nums sm:text-3xl">{stats.followers}</p>
+                        <span className="inline-flex max-w-full items-center whitespace-normal break-words rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-500">
                             {stats.followersTrend}
                         </span>
                     </div>
                 </Card>
 
-                <Card className="p-6 sm:p-8 rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2 text-left">
+                <Card className="min-w-0 p-5 sm:p-6 lg:p-8 rounded-[2rem] sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2 text-left">
                     <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Link Clicks</p>
-                    <div className="flex items-baseline justify-between">
-                        <p className="text-3xl font-black text-foreground tabular-nums">{stats.linkClicks}</p>
-                        <span className="inline-flex items-center text-[10px] font-black text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                    <div className="flex min-w-0 flex-col items-start gap-2">
+                        <p className="text-2xl font-black text-foreground tabular-nums sm:text-3xl">{stats.linkClicks}</p>
+                        <span className="inline-flex max-w-full items-center whitespace-normal break-words rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black text-slate-500">
                             {stats.clicksTrend}
                         </span>
                     </div>
@@ -143,12 +143,12 @@ export default function MarketingOverview() {
             {/* 2. WORLD AUDIENCE MAP & IMPRESSIONS */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 text-left">
                 <Card className="lg:col-span-8 p-8 sm:p-10 rounded-[3.5rem] bg-slate-950 text-white shadow-2xl space-y-8 relative overflow-hidden">
-                    <div className="flex justify-between items-start relative z-10 border-b border-slate-800 pb-6">
-                        <div>
+                    <div className="relative z-10 flex flex-col gap-3 border-b border-slate-800 pb-6 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
                             <span className="text-[9px] font-black uppercase tracking-[0.3em] text-amber-400">Social Audience Metrics</span>
-                            <h3 className="text-3xl font-black uppercase tracking-tight text-white mt-1">Total Impressions: {stats.totalImpressions}</h3>
+                            <h3 className="mt-1 break-words text-2xl font-black uppercase tracking-tight text-white sm:text-3xl">Total Impressions: {stats.totalImpressions}</h3>
                         </div>
-                        <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-slate-800 text-slate-200 border border-slate-700">
+                        <span className="max-w-full self-start whitespace-normal break-words rounded-xl border border-slate-700 bg-slate-800 px-3 py-1 text-[9px] font-black uppercase text-slate-200">
                             {stats.impressionsTrend}
                         </span>
                     </div>
@@ -185,15 +185,15 @@ export default function MarketingOverview() {
                     </div>
 
                     <div className="space-y-4 font-mono text-xs">
-                        <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100">
+                        <div className="flex flex-wrap justify-between items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                             <span className="text-slate-500 font-sans font-bold">MQLs</span>
                             <span className="font-black text-foreground">{stats.mqls}</span>
                         </div>
-                        <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100">
+                        <div className="flex flex-wrap justify-between items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                             <span className="text-slate-500 font-sans font-bold">Conversion Rate</span>
                             <span className="font-black text-emerald-600">{stats.conversionRate}</span>
                         </div>
-                        <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100">
+                        <div className="flex flex-wrap justify-between items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
                             <span className="text-slate-500 font-sans font-bold">Marketing ROI</span>
                             <span className="font-black text-primary">{stats.marketingRoi}</span>
                         </div>

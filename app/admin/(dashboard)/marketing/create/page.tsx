@@ -561,28 +561,28 @@ export default function CreateCampaign() {
 
                 {/* Right Sidebar: Dynamic Intelligence */}
                 <div className="lg:col-span-4 space-y-8">
-                    <Card className="p-10 rounded-[3rem] bg-white border border-slate-100 shadow-xl relative overflow-hidden group">
+                    <Card className="min-w-0 p-5 sm:p-8 lg:p-10 rounded-[2rem] sm:rounded-[3rem] bg-white border border-slate-100 shadow-xl relative overflow-hidden group">
                         <div className="relative z-10 space-y-6 text-left">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">Payload Specs</h3>
                             {selectedProduct ? (
                                 <div className="space-y-6">
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                                         <div className="h-16 w-16 rounded-2xl bg-slate-50 p-2 overflow-hidden relative border border-slate-100 flex items-center justify-center">
                                             {selectedProduct.image_url && <Image src={selectedProduct.image_url} fill className="object-contain" alt="" />}
                                         </div>
-                                        <div>
+                                        <div className="min-w-0">
                                             <p className="text-[9px] font-black text-primary uppercase leading-none mb-1">Target Viewport</p>
-                                            <p className="text-sm font-black text-foreground uppercase tracking-tight leading-tight">{selectedProduct.name}</p>
+                                            <p className="break-words text-sm font-black text-foreground uppercase tracking-tight leading-tight">{selectedProduct.name}</p>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 shadow-inner">
+                                    <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3">
+                                        <div className="min-w-0 p-3 sm:p-4 rounded-2xl bg-slate-50 border border-slate-100 shadow-inner">
                                             <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Price</p>
-                                            <p className="text-lg font-black text-foreground">{formatPrice(selectedProduct.price)}</p>
+                                            <p className="whitespace-nowrap text-sm font-black tabular-nums text-foreground sm:text-base">{formatPrice(selectedProduct.price)}</p>
                                         </div>
-                                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 shadow-inner">
+                                        <div className="min-w-0 p-3 sm:p-4 rounded-2xl bg-slate-50 border border-slate-100 shadow-inner">
                                             <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Stock</p>
-                                            <p className="text-lg font-black text-foreground">{selectedProduct.stock} U</p>
+                                            <p className="whitespace-nowrap text-sm font-black tabular-nums text-foreground sm:text-base">{selectedProduct.stock} U</p>
                                         </div>
                                     </div>
                                 </div>

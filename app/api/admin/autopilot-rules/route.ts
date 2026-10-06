@@ -50,9 +50,12 @@ export async function GET() {
     if (error) {
         console.error('[AutopilotRules] Could not load rules:', error);
         const missingTable = error.code === '42P01' || error.code === 'PGRST205';
+        const outdatedTable = error.code === '42703' && /content_source/i.test(error.message);
         return NextResponse.json({
             error: missingTable
                 ? 'Autopilot storage is missing. Run supabase/ADMIN_CONTROLS_MIGRATION.sql in Supabase.'
+                : outdatedTable
+                    ? 'Autopilot storage needs its latest columns. Re-run supabase/ADMIN_CONTROLS_MIGRATION.sql in Supabase.'
                 : `Could not load autopilot rules: ${error.message}`
         }, { status: 500 });
     }

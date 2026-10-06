@@ -1,90 +1,162 @@
-import { supabase } from "@/lib/supabaseClient";
-import { NextResponse } from "next/server";
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+import { verifySessionCookie } from '@/lib/adminAuth';
 
-const GEMINI_API_KEY = process.env.GOOGLE_GEMINI_API_KEY;
+export const dynamic = 'force-dynamic';
+
+const BUSINESS_TIME_ZONE = 'Africa/Nairobi';
+const PAGE_SIZE = 1000;
+const MAX_REVENUE_ROWS = 100_000;
+
+function getNairobiMidnight(date: Date, daysOffset = 0) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: BUSINESS_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    const utcMidnight = Date.UTC(
+        Number(values.year),
+        Number(values.month) - 1,
+        Number(values.day) + daysOffset
+    );
+
+    // Nairobi uses UTC+03:00; convert its calendar midnight to a UTC instant.
+    return new Date(utcMidnight - 3 * 60 * 60 * 1000).toISOString();
+}
+
+async function getRevenueTotal(database: SupabaseClient, start: string, end: string) {
+    let total = 0;
+
+    for (let offset = 0; offset < MAX_REVENUE_ROWS; offset += PAGE_SIZE) {
+        const { data, error } = await database
+            .from('ledger_entries')
+            .select('amount')
+            .eq('entry_type', 'REVENUE')
+            .gte('created_at', start)
+            .lt('created_at', end)
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(offset, offset + PAGE_SIZE - 1);
+
+        if (error) throw new Error(`Could not load revenue ledger: ${error.message}`);
+
+        for (const row of data || []) {
+            const amount = Number(row.amount);
+            if (!Number.isFinite(amount)) throw new Error('Revenue ledger contains an invalid amount.');
+            total += amount;
+        }
+
+        if (!data || data.length < PAGE_SIZE) return total;
+    }
+
+    throw new Error(`Revenue ledger scan exceeded ${MAX_REVENUE_ROWS} rows.`);
+}
 
 export async function GET() {
-    if (!supabase) return NextResponse.json({ error: "DB offline" }, { status: 500 });
+    const cookieStore = await cookies();
+    const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
+    if (!session || (session.role !== 'owner' && session.role !== 'admin')) {
+        return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
+    }
+
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !serviceKey) {
+        return NextResponse.json({ error: 'Admin database access is not configured.' }, { status: 500 });
+    }
+
+    const database = createClient(url, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+    });
 
     try {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const since = yesterday.toISOString();
+        const now = new Date();
+        const todayStart = getNairobiMidnight(now);
+        const yesterdayStart = getNairobiMidnight(now, -1);
+        const comparisonStart = getNairobiMidnight(now, -8);
 
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const sinceWeek = sevenDaysAgo.toISOString();
+        const countQuery = (table: string, start: string, end: string) => database
+            .from(table)
+            .select('id', { count: 'exact', head: true })
+            .gte('created_at', start)
+            .lt('created_at', end);
 
-        // 1. Fetch Key Stats from Yesterday and Last 7 Days
-        const [ordersRes, revenueRes, automationRes, exceptionsRes, trendRes, cartsRes] = await Promise.all([
-            supabase.from('orders').select('id').gte('created_at', since),
-            supabase.from('ledger_entries').select('amount').eq('entry_type', 'REVENUE').gte('created_at', since),
-            supabase.from('automation_runs').select('status').gte('created_at', since),
-            supabase.from('exception_log').select('id').eq('status', 'Open'),
-            supabase.from('orders').select('created_at, total_price').gte('created_at', sinceWeek),
-            supabase.from('analytics_events').select('id').eq('event_name', 'ADD_TO_CART').gte('timestamp', since)
+        const [
+            yesterdayOrders,
+            previousWeekOrders,
+            revenueTotal,
+            executedAutomations,
+            totalAutomations,
+            openExceptions
+        ] = await Promise.all([
+            countQuery('orders', yesterdayStart, todayStart),
+            countQuery('orders', comparisonStart, yesterdayStart),
+            getRevenueTotal(database, yesterdayStart, todayStart),
+            database.from('automation_runs')
+                .select('id', { count: 'exact', head: true })
+                .eq('status', 'EXECUTED')
+                .gte('created_at', yesterdayStart)
+                .lt('created_at', todayStart),
+            countQuery('automation_runs', yesterdayStart, todayStart),
+            database.from('exception_log')
+                .select('id', { count: 'exact', head: true })
+                .eq('status', 'Open')
         ]);
 
-        const orderCount = ordersRes.data?.length || 0;
-        const cartCount = cartsRes.data?.length || 0;
-        const totalRevenue = revenueRes.data?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
+        const countResults = [
+            yesterdayOrders,
+            previousWeekOrders,
+            executedAutomations,
+            totalAutomations,
+            openExceptions
+        ];
+        const failedCount = countResults.find(result => result.error || result.count === null);
+        if (failedCount?.error) throw new Error(`Could not load dashboard metrics: ${failedCount.error.message}`);
+        if (failedCount) throw new Error('The database did not return an exact dashboard metric count.');
 
-        // Abandonment Estimate (Simplified)
-        const abandonmentRate = cartCount > 0 ? (100 - (orderCount / cartCount * 100)).toFixed(1) : '0';
+        const orderCount = yesterdayOrders.count!;
+        const priorWeekAverage = (previousWeekOrders.count || 0) / 7;
+        const executionCount = executedAutomations.count!;
+        const automationCount = totalAutomations.count!;
+        const autoRate = automationCount === 0
+            ? null
+            : Math.round((executionCount / automationCount) * 1000) / 10;
+        const dateLabel = new Intl.DateTimeFormat('en-KE', {
+            timeZone: BUSINESS_TIME_ZONE,
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        }).format(new Date(yesterdayStart));
 
-        const autoSuccess = automationRes.data?.filter(r => r.status === 'EXECUTED').length || 0;
-        const autoTotal = automationRes.data?.length || 1;
-        const autoRate = ((autoSuccess / autoTotal) * 100).toFixed(1);
-        const exceptionsCount = exceptionsRes.data?.length || 0;
-
-        // Trend calculation
-        const weekOrders = trendRes.data?.length || 0;
-        const avgDailyOrders = weekOrders / 7;
-        const orderTrend = orderCount >= avgDailyOrders ? 'UP' : 'DOWN';
-
-        const statsContext = `
-        Context for Online Bar Kenya (Yesterday):
-        - Orders Processed: ${orderCount} (Trend: ${orderTrend} vs 7D average of ${avgDailyOrders.toFixed(1)})
-        - Abandonment Rate: ${abandonmentRate}% (Carts: ${cartCount})
-        - Total Revenue: KSh ${totalRevenue.toLocaleString()}
-        - Automation Efficiency: ${autoRate}%
-        - Active Exceptions: ${exceptionsCount}
-        `;
-
-        let aiBrief = `Good morning, David. Online Bar handled ${autoRate}% of operational events automatically yesterday. Revenue reached KSh ${totalRevenue.toLocaleString()}. You have ${exceptionsCount} exceptions needing your immediate review.`;
-
-        if (GEMINI_API_KEY) {
-            try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [{
-                                text: `You are the Online Bar AI Commander. Based on these stats, write a concise (max 50 words), tactical morning brief for David (the owner).
-                                If the trend is DOWN, briefly speculate a "Why" based on common e-commerce factors (e.g., midweek slump, payment gateway latency) and offer a quick recommendation.
-                                Use Kenayn hospitality slang where appropriate.
-                                ${statsContext}`
-                            }]
-                        }]
-                    })
-                });
-
-                const data = await response.json();
-                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text) aiBrief = text.trim();
-            } catch (err) {
-                console.error("Gemini Brief Error:", err);
-            }
+        let brief = `For ${dateLabel}, ${orderCount} ${orderCount === 1 ? 'order was' : 'orders were'} recorded, versus a previous 7-day daily average of ${priorWeekAverage.toFixed(1)}. Revenue ledger entries totalled KSh ${revenueTotal.toLocaleString('en-KE')}.`;
+        if (orderCount === 0 && revenueTotal === 0) {
+            brief += ' If sales were expected, verify that orders and payments synced before treating this as a confirmed zero.';
+        } else if (orderCount > 0 && revenueTotal === 0) {
+            brief += ' Orders exist but no revenue entries were found; check payment and ledger sync.';
         }
 
         return NextResponse.json({
-            brief: aiBrief,
+            brief,
             autoRate,
-            exceptionsCount
+            automationCount,
+            executedAutomationCount: executionCount,
+            exceptionsCount: openExceptions.count,
+            orderCount,
+            revenueTotal,
+            periodStart: yesterdayStart,
+            periodEnd: todayStart,
+            comparisonAverageOrders: Math.round(priorWeekAverage * 10) / 10,
+            generatedAt: now.toISOString(),
+            timeZone: BUSINESS_TIME_ZONE
         });
-
-    } catch (err: unknown) {
-        return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    } catch (error) {
+        console.error('[CommanderBrief] Could not generate an accurate brief:', error);
+        return NextResponse.json({
+            error: error instanceof Error ? error.message : 'Could not load Commander Brief metrics.'
+        }, { status: 500 });
     }
 }

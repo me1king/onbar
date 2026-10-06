@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, FileText, Loader2, PackageSearch, ShieldCheck, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 
 interface MerchantDocument {
   id: string;
@@ -28,6 +29,8 @@ interface MerchantApplication {
   country: string;
   county: string;
   town: string;
+  latitude: number | null;
+  longitude: number | null;
   operating_areas: string[];
   operating_hours: Record<string, string>;
   cuisine_or_category: string | null;
@@ -93,6 +96,10 @@ export default function MerchantStorePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openingDocument, setOpeningDocument] = useState<string | null>(null);
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [locationMessage, setLocationMessage] = useState('');
 
   const loadStore = useCallback(async () => {
     setLoading(true);
@@ -102,6 +109,8 @@ export default function MerchantStorePage() {
       const result = await response.json() as Partial<MerchantStoreData> & { error?: string };
       if (!response.ok || !result.application) throw new Error(result.error || 'Merchant store could not be loaded.');
       setData(result as MerchantStoreData);
+      setLatitude(result.application.latitude == null ? '' : String(result.application.latitude));
+      setLongitude(result.application.longitude == null ? '' : String(result.application.longitude));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Merchant store could not be loaded.');
     } finally {
@@ -110,6 +119,34 @@ export default function MerchantStorePage() {
   }, [merchantId]);
 
   useEffect(() => { void loadStore(); }, [loadStore]);
+
+  const saveDispatchLocation = async () => {
+    setSavingLocation(true);
+    setLocationMessage('');
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/merchant-store/${encodeURIComponent(merchantId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude, longitude })
+      });
+      const result = await response.json() as { success?: boolean; latitude?: number | null; longitude?: number | null; error?: string };
+      if (!response.ok || !result.success) throw new Error(result.error || 'Business coordinates could not be saved.');
+      setData(current => current ? {
+        ...current,
+        application: {
+          ...current.application,
+          latitude: result.latitude ?? null,
+          longitude: result.longitude ?? null
+        }
+      } : current);
+      setLocationMessage(result.latitude === null ? 'Coordinates cleared.' : 'Pickup coordinates saved and audit recorded.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Business coordinates could not be saved.');
+    } finally {
+      setSavingLocation(false);
+    }
+  };
 
   const openDocument = async (document: MerchantDocument) => {
     const tab = window.open('about:blank', '_blank', 'noopener,noreferrer');
@@ -172,6 +209,24 @@ export default function MerchantStorePage() {
         <Detail label="Category" value={application.cuisine_or_category} />
         <Detail label="Preparation capacity" value={application.preparation_capacity} />
         <Detail label="Delivery radius" value={application.delivery_radius_km ? `${application.delivery_radius_km} km` : null} />
+        <div className="rounded-xl bg-slate-50 p-3 sm:col-span-2">
+          <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Dispatch pickup coordinates</p>
+          <p className="mt-1 text-xs text-slate-600">Set the verified business pin. It is used for merchant service-radius checks and rider pickup-distance estimates.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <Input type="number" min="-90" max="90" step="any" value={latitude} onChange={event => setLatitude(event.target.value)} placeholder="Latitude (-90 to 90)" aria-label="Merchant latitude" />
+            <Input type="number" min="-180" max="180" step="any" value={longitude} onChange={event => setLongitude(event.target.value)} placeholder="Longitude (-180 to 180)" aria-label="Merchant longitude" />
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button type="button" onClick={() => void saveDispatchLocation()} disabled={savingLocation} className="rounded-xl">
+              {savingLocation ? <Loader2 size={15} className="mr-2 animate-spin" /> : null}
+              Save coordinates
+            </Button>
+            {locationMessage && <span className="text-xs font-semibold text-emerald-700" role="status">{locationMessage}</span>}
+            {application.latitude == null || application.longitude == null
+              ? <span className="text-xs font-semibold text-amber-700">Distance-based dispatch unavailable until set.</span>
+              : <span className="text-xs text-slate-500">Saved: {application.latitude}, {application.longitude}</span>}
+          </div>
+        </div>
         <Detail label="Collection" value={application.collection_available ? 'Available' : 'Not listed'} />
         <Detail label="Application submitted" value={dateTime(application.submitted_at)} />
         <Detail label="Last reviewed" value={application.reviewed_at ? `${dateTime(application.reviewed_at)} by ${application.reviewed_by || 'Admin'}` : null} />

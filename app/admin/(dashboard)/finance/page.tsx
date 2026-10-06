@@ -9,7 +9,6 @@ import {
     Zap,
     Scale,
     CheckCircle2,
-    ShieldAlert,
     Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,10 +31,9 @@ interface LedgerEntry {
 export default function AdminFinancePage() {
     const [loading, setLoading] = React.useState(true);
     const [ledger, setLedger] = React.useState<LedgerEntry[]>([]);
-    const [isReconciling, setIsReconciling] = React.useState(false);
     const [currency, setCurrency] = React.useState<'KES' | 'USD'>('KES');
-    const exchangeRate = 129.5; // Current KES/USD
-    const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const exchangeRate = 129.5;
+    const [loadError, setLoadError] = React.useState<string | null>(null);
 
     const convert = (amount: number) => {
         if (currency === 'KES') return amount;
@@ -48,7 +46,11 @@ export default function AdminFinancePage() {
     };
 
     const fetchLedger = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setLoadError('Supabase is not configured. Financial ledger data is unavailable.');
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const { data, error } = await supabase
@@ -58,8 +60,10 @@ export default function AdminFinancePage() {
 
             if (error) throw error;
             setLedger(data || []);
+            setLoadError(null);
         } catch (err) {
             console.error("Financial Uplink Desync:", err);
+            setLoadError(err instanceof Error ? err.message : 'Financial ledger data could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -68,33 +72,6 @@ export default function AdminFinancePage() {
     React.useEffect(() => {
         fetchLedger();
     }, [fetchLedger]);
-
-    const handleReconcile = async () => {
-        setIsReconciling(true);
-        setMessage(null);
-        try {
-            // Online Bar OS: Automatic Reconciliation Logic
-            // In real app, this would hit gateway APIs
-            await new Promise(r => setTimeout(r, 2000));
-
-            if (!supabase) throw new Error("Database offline");
-
-            const { error } = await supabase
-                .from('financial_ledger')
-                .update({ is_reconciled: true, reconciliation_ref: `RECON-${Date.now()}` })
-                .eq('is_reconciled', false);
-
-            if (error) throw error;
-
-            setMessage({ type: 'success', text: "Ledger reconciliation complete. 100% Integrity match. ✅" });
-            fetchLedger();
-        } catch (err: unknown) {
-            const error = err as Error;
-            setMessage({ type: 'error', text: error.message });
-        } finally {
-            setIsReconciling(false);
-        }
-    };
 
     const stats = React.useMemo(() => {
         const revenue = ledger.filter(l => l.entry_type === 'REVENUE').reduce((s, l) => s + l.amount, 0);
@@ -117,15 +94,15 @@ export default function AdminFinancePage() {
     );
 
     return (
-        <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left">
+        <div className="min-w-0 p-4 sm:p-6 lg:p-8 space-y-8 sm:space-y-10 bg-slate-50 min-h-screen text-left">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
                         <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600">Treasury OS Active</span>
                     </div>
-                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Financial Fortress</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Real-time contribution margin and transaction state control.</p>
+                    <h1 className="text-3xl sm:text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Financial Fortress</h1>
+                    <p className="text-muted-foreground text-sm font-medium mt-1">Ledger-based financial summaries. Reconciliation requires a verified external match.</p>
                 </div>
                 <div className="flex gap-2">
                     <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex mr-2">
@@ -142,36 +119,26 @@ export default function AdminFinancePage() {
                             </button>
                         ))}
                     </div>
-                    <Button
-                        onClick={handleReconcile}
-                        disabled={isReconciling || stats.unreconciled === 0}
-                        className="rounded-xl h-12 px-6 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
-                    >
-                        {isReconciling ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Scale className="h-4 w-4 mr-2" />}
-                        {isReconciling ? 'Reconciling...' : `Reconcile ${stats.unreconciled} Variances`}
-                    </Button>
+                    {currency === 'USD' && <span className="self-center text-[9px] font-bold text-slate-500">Approx. rate: KSh 129.50/USD</span>}
+                    <span title="Gateway matching is not configured. Records cannot be marked reconciled automatically.">
+                        <Button disabled className="h-12 cursor-not-allowed rounded-xl px-4 text-[10px] font-black uppercase tracking-widest opacity-60 sm:px-6">
+                            <Scale className="mr-2 h-4 w-4" /> Verified reconciliation unavailable
+                        </Button>
+                    </span>
                 </div>
             </header>
 
-            {message && (
-                <div className={cn(
-                    "p-6 rounded-[2.5rem] border-2 flex items-center gap-4 animate-in slide-in-from-top-4",
-                    message.type === 'success' ? "bg-emerald-50 border-emerald-100 text-emerald-600" : "bg-rose-50 border-rose-100 text-rose-600"
-                )}>
-                    {message.type === 'success' ? <CheckCircle2 size={24} /> : <ShieldAlert size={24} />}
-                    <p className="text-sm font-black uppercase tracking-widest">{message.text}</p>
-                </div>
-            )}
+            {loadError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{loadError}</p>}
 
             {/* Financial KPIs 2.0 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 items-stretch">
                 {[
-                    { label: 'Total Revenue', val: stats.revenue, icon: DollarSign, color: 'primary' },
-                    { label: 'Unreconciled', val: stats.totalVariances, icon: Target, color: 'amber' },
-                    { label: 'Gross Profit', val: stats.contributionProfit, icon: TrendingUp, color: 'emerald' },
-                    { label: 'Margin efficiency', val: `${stats.margin.toFixed(1)}%`, icon: Scale, color: 'indigo' },
+                    { label: 'Total Revenue', val: loadError ? 'Unavailable' : stats.revenue, icon: DollarSign, color: 'primary' },
+                    { label: 'Unreconciled', val: loadError ? 'Unavailable' : stats.totalVariances, icon: Target, color: 'amber' },
+                    { label: 'Gross Profit', val: loadError ? 'Unavailable' : stats.contributionProfit, icon: TrendingUp, color: 'emerald' },
+                    { label: 'Margin efficiency', val: loadError ? 'Unavailable' : `${stats.margin.toFixed(1)}%`, icon: Scale, color: 'indigo' },
                 ].map((item) => (
-                    <Card key={item.label} className="p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm group hover:shadow-xl transition-all relative overflow-hidden h-full flex flex-col justify-between">
+                    <Card key={item.label} className="min-w-0 p-6 sm:p-8 rounded-[2rem] sm:rounded-[3rem] bg-white border border-slate-100 shadow-sm group hover:shadow-xl transition-all relative overflow-hidden h-full flex flex-col justify-between">
                         <div className="relative z-10 space-y-8">
                             <div className={cn(
                                 "h-12 w-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 shadow-sm",
@@ -184,7 +151,7 @@ export default function AdminFinancePage() {
                             </div>
                             <div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{item.label}</p>
-                                <h3 className="text-3xl font-black text-foreground tracking-tighter uppercase">
+                                <h3 className="break-words text-2xl font-black tabular-nums text-foreground tracking-tighter uppercase sm:text-3xl">
                                     {typeof item.val === 'string' ? item.val : formatVal(convert(item.val))}
                                 </h3>
                             </div>
@@ -270,7 +237,7 @@ export default function AdminFinancePage() {
                                 </div>
                                 <div className="flex justify-between items-center text-xs font-black text-foreground">
                                     <p>Avg Order Value</p>
-                                    <p>{formatVal(convert(stats.revenue / (ledger.filter(l => l.entry_type === 'REVENUE').length || 1)))}</p>
+                                    <p>{loadError ? 'Unavailable' : formatVal(convert(stats.revenue / (ledger.filter(l => l.entry_type === 'REVENUE').length || 1)))}</p>
                                 </div>
                             </div>
                         </div>

@@ -22,11 +22,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn, formatPrice, getPublicBaseUrl } from '@/lib/utils';
 
 export default function AdminBroadcastPage() {
-    const [subscribers, setSubscribers] = React.useState<{ id: string | number; email: string; created_at: string }[]>([]);
+    const [newsletterCount, setNewsletterCount] = React.useState(0);
     const [campaignOrders, setCampaignOrders] = React.useState<{ total_price: number }[]>([]);
     const [sending, setSending] = React.useState(false);
     const [channel, setChannel] = React.useState<'email' | 'whatsapp' | 'in_app'>('in_app');
-    const audience = 'all';
+    const [audiences, setAudiences] = React.useState<{ id: string; name: string; estimated_reach: number }[]>([]);
+    const [audience, setAudience] = React.useState('all');
+    const [audiencesLoading, setAudiencesLoading] = React.useState(true);
+    const [audiencesError, setAudiencesError] = React.useState<string | null>(null);
     const schedule = 'now' as const;
     const [subject, setSubject] = React.useState('');
     const [message, setMessage] = React.useState('');
@@ -39,20 +42,29 @@ export default function AdminBroadcastPage() {
         { id: 'loyalty', label: 'Reward Boost', content: `Sparkle your bar! ✨ VIP rewards just boosted. Complete your profile to unlock a KSh 500 voucher instantly. Link: ${getPublicBaseUrl()}/profile` },
     ];
 
-    const AUDIENCES = [
-        { id: 'all', label: 'Everyone', icon: Users },
-    ];
-
     const applyTemplate = (content: string) => {
         setMessage(content);
         if (channel !== 'whatsapp') setSubject("Online Bar Nairobi Update");
     };
 
     React.useEffect(() => {
-        async function fetchSubscribers() {
-            if (!supabase) return;
-            const { data } = await supabase.from('newsletter_subscribers').select('*');
-            setSubscribers(data || []);
+        async function fetchAudiences() {
+            try {
+                const response = await fetch('/api/admin/broadcast', { cache: 'no-store' });
+                const data = await response.json() as {
+                    audiences?: { id: string; name: string; estimated_reach: number }[];
+                    newsletter_count?: number;
+                    error?: string;
+                };
+                if (!response.ok) throw new Error(data.error || 'Unable to load opted-in audiences.');
+                setAudiences(data.audiences || []);
+                setNewsletterCount(Number(data.newsletter_count) || 0);
+            } catch (error) {
+                console.error('[AdminBroadcast] Audience load failed:', error);
+                setAudiencesError(error instanceof Error ? error.message : 'Unable to load opted-in audiences.');
+            } finally {
+                setAudiencesLoading(false);
+            }
         }
 
         async function fetchCampaignROI() {
@@ -76,7 +88,7 @@ export default function AdminBroadcastPage() {
             }
         }
 
-        fetchSubscribers();
+        void fetchAudiences();
         fetchCampaignROI();
         checkResend();
     }, []);
@@ -84,6 +96,9 @@ export default function AdminBroadcastPage() {
     const totalCampaignRevenue = React.useMemo(() => {
         return campaignOrders.reduce((sum, o) => sum + (o.total_price || 0), 0);
     }, [campaignOrders]);
+    const eligibleReach = channel === 'in_app'
+        ? audiences.find(item => item.id === audience)?.estimated_reach ?? 0
+        : newsletterCount;
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -96,7 +111,7 @@ export default function AdminBroadcastPage() {
             const response = await fetch('/api/admin/broadcast', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel, subject, message, audience, schedule }),
+                body: JSON.stringify({ channel, subject, message, audience: channel === 'in_app' ? audience : 'all', schedule }),
             });
 
             const data = await response.json();
@@ -105,8 +120,8 @@ export default function AdminBroadcastPage() {
             setStatus({
                 type: 'success',
                 text: channel === 'in_app'
-                    ? 'Announcement is now live on the customer storefront.'
-                    : `Email campaign delivered to ${data.count} subscribers.`
+                    ? `Delivered to ${data.count} opted-in customers in their Onbar inbox.`
+                    : `Email campaign delivered to ${data.count} newsletter subscribers.`
             });
             setMessage('');
             setSubject('');
@@ -156,22 +171,26 @@ export default function AdminBroadcastPage() {
                             {/* Audience Select */}
                             <div className="space-y-4">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Target Audience</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {AUDIENCES.map(a => (
-                                        <button
-                                            key={a.id}
-                                        type="button"
-                                        disabled
-                                            className={cn(
-                                                "p-4 rounded-2xl border transition-all text-left flex flex-col gap-2",
-                                                "bg-primary/5 border-primary text-primary"
-                                            )}
-                                        >
-                                            <a.icon size={16} />
-                                            <span className="text-[9px] font-black uppercase tracking-widest">{a.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
+                                {channel === 'in_app' ? (
+                                    <select
+                                        value={audience}
+                                        onChange={event => setAudience(event.target.value)}
+                                        disabled={audiencesLoading || audiences.length === 0}
+                                        className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-foreground disabled:opacity-60"
+                                    >
+                                        {audiences.map(item => (
+                                        <option key={item.id} value={item.id}>
+                                            {item.name} ({item.estimated_reach} opted in)
+                                        </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-600">
+                                        <Users size={16} /> Opted-in newsletter subscribers only
+                                    </div>
+                                )}
+                                {audiencesLoading && channel === 'in_app' && <p className="text-xs font-semibold text-slate-400">Loading consented audiences…</p>}
+                                {audiencesError && channel === 'in_app' && <p role="alert" className="text-xs font-semibold text-rose-600">{audiencesError}</p>}
                             </div>
 
                             {/* Channel & Schedule */}
@@ -208,7 +227,7 @@ export default function AdminBroadcastPage() {
                                 <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Write your announcement here..." rows={8} className="rounded-[2rem] bg-slate-50 border-slate-200 text-sm font-medium resize-none p-8 text-foreground" />
                             </div>
 
-                            <Button disabled={sending || !message.trim() || (channel === 'email' && (subscribers.length === 0 || resendActive === false)) || channel === 'whatsapp'} className="w-full h-20 rounded-[1.5rem] bg-primary text-white font-black uppercase text-sm tracking-[0.3em] shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                            <Button disabled={sending || !message.trim() || (channel === 'email' && (newsletterCount === 0 || resendActive === false)) || (channel === 'in_app' && (audiencesLoading || eligibleReach === 0 || Boolean(audiencesError))) || channel === 'whatsapp'} className="w-full h-20 rounded-[1.5rem] bg-primary text-white font-black uppercase text-sm tracking-[0.3em] shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
                                 {sending ? <><Loader2 className="h-5 w-5 animate-spin mr-3" /> Engaging...</> : <><Send className="h-5 w-5 mr-3" /> {channel === 'in_app' ? 'Publish to Store' : 'Launch Campaign'}</>}
                             </Button>
                         </form>
@@ -216,7 +235,7 @@ export default function AdminBroadcastPage() {
                         {channel === 'email' && resendActive === false && (
                             <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-700 animate-in slide-in-from-top-2">
                                 <AlertCircle className="h-5 w-5 shrink-0" />
-                                <p className="text-[10px] font-black uppercase tracking-widest">Email service inactive: RESEND_API_KEY is missing.</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Email service unavailable: configure RESEND_API_KEY and a verified RESEND_FROM_EMAIL.</p>
                             </div>
                         )}
 
@@ -237,17 +256,17 @@ export default function AdminBroadcastPage() {
                             <h3 className="text-2xl font-black uppercase tracking-tighter leading-none mb-6 text-foreground">Audience Intel</h3>
                             <div className="space-y-6">
                                 <div className="flex justify-between items-center py-4 border-b border-slate-50">
-                                    <span className="text-[10px] font-black uppercase text-slate-400">Tactical Reach</span>
-                                    <span className="text-4xl font-black text-foreground tracking-tighter leading-none">{subscribers.length}</span>
+                                    <span className="text-[10px] font-black uppercase text-slate-400">Eligible Reach</span>
+                                    <span className="text-4xl font-black text-foreground tracking-tighter leading-none">{eligibleReach}</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Open Rate</p>
-                                        <p className="text-xl font-black text-foreground tracking-tighter">72.4%</p>
+                                        <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Channel</p>
+                                        <p className="text-sm font-black text-foreground tracking-tighter">{channel === 'in_app' ? 'In-app' : channel === 'email' ? 'Email' : 'Unavailable'}</p>
                                     </div>
                                     <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                                        <p className="text-[8px] font-black uppercase text-slate-400 mb-1">CTR</p>
-                                        <p className="text-xl font-black text-foreground tracking-tighter">18.9%</p>
+                                        <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Consent</p>
+                                        <p className="text-sm font-black text-emerald-700 tracking-tighter">Required</p>
                                     </div>
                                 </div>
                             </div>
@@ -259,7 +278,7 @@ export default function AdminBroadcastPage() {
                     <div className="bg-card rounded-[3rem] border border-border p-10 shadow-sm space-y-8">
                         <div className="flex items-center gap-3">
                             <BarChart3 className="h-6 w-6 text-primary" />
-                            <h3 className="text-xl font-black uppercase tracking-tighter text-foreground">ROI Extraction</h3>
+                            <h3 className="text-xl font-black uppercase tracking-tighter text-foreground">Referral Revenue</h3>
                         </div>
                         <div className="space-y-6">
                             <div className="flex justify-between items-center text-left">
@@ -269,7 +288,7 @@ export default function AdminBroadcastPage() {
                             <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
                                 <div className="h-full bg-primary" style={{ width: `${Math.min(100, (totalCampaignRevenue / 50000) * 100)}%` }}></div>
                             </div>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase italic">Measured across delivered referral orders.</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase italic">Delivered orders attributed to referrals; this is not campaign-attributed revenue.</p>
                         </div>
                     </div>
                 </div>

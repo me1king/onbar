@@ -119,6 +119,8 @@ export async function POST(request: Request) {
   const country = value(form, 'country', 80) || 'Kenya';
   const county = value(form, 'county', 100);
   const town = value(form, 'town', 100);
+  const latitudeRaw = value(form, 'latitude', 30);
+  const longitudeRaw = value(form, 'longitude', 30);
   const cuisineOrCategory = value(form, 'cuisineOrCategory', 120);
   const capacityRaw = value(form, 'preparationCapacity', 10);
   const radiusRaw = value(form, 'deliveryRadiusKm', 10);
@@ -146,6 +148,9 @@ export async function POST(request: Request) {
 
   const preparationCapacity = capacityRaw ? Number(capacityRaw) : null;
   const deliveryRadiusKm = radiusRaw ? Number(radiusRaw) : null;
+  const latitude = latitudeRaw ? Number(latitudeRaw) : null;
+  const longitude = longitudeRaw ? Number(longitudeRaw) : null;
+  const hasCoordinates = latitude !== null && longitude !== null;
   if (value(form, 'privacyAcknowledged', 5) !== 'true') {
     return NextResponse.json({ error: 'Confirm the application privacy notice before submission.' }, { status: 400 });
   }
@@ -160,6 +165,11 @@ export async function POST(request: Request) {
     || town.length < 2
     || (capacityRaw && (!Number.isInteger(preparationCapacity) || Number(preparationCapacity) < 1 || Number(preparationCapacity) > 100_000))
     || (radiusRaw && (!Number.isFinite(deliveryRadiusKm) || Number(deliveryRadiusKm) < 0 || Number(deliveryRadiusKm) > 500))
+    || (Boolean(latitudeRaw) !== Boolean(longitudeRaw))
+    || (hasCoordinates && (
+      !Number.isFinite(latitude) || latitude! < -90 || latitude! > 90
+      || !Number.isFinite(longitude) || longitude! < -180 || longitude! > 180
+    ))
   ) {
     return NextResponse.json({ error: 'Complete the required business, contact, location, and operations fields with valid values.' }, { status: 400 });
   }
@@ -274,6 +284,8 @@ export async function POST(request: Request) {
       country,
       county,
       town,
+      latitude,
+      longitude,
       operating_areas: operatingAreas,
       operating_hours: operatingHours,
       cuisine_or_category: cuisineOrCategory || null,

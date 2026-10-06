@@ -19,7 +19,7 @@ const NAV_ITEMS = [
     { label: 'Home', icon: Home, href: '/' },
     { label: 'Shop', icon: Search, href: '/shop' },
     { label: 'Drinks', icon: Wine, href: '/beverages' },
-    { label: 'Merch', icon: Gift, href: '/souvenirs' },
+    { label: 'Souvenirs', icon: Gift, href: '/souvenirs' },
     { label: 'Buzz', icon: Flame, href: '/buzz' },
     { label: 'Munchies', icon: Cookie, href: '/shop/snacks' },
     { label: 'My Bar', icon: User, href: '/profile' }

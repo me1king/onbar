@@ -1,60 +1,82 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { verifyRiderSession } from '@/lib/riderSession.server';
 
-export async function POST(req: Request) {
-    try {
-        const { phone, token, lat, lng, accuracy, speed, heading, battery } = await req.json();
+export const dynamic = 'force-dynamic';
 
-        if (!phone || !token || lat === undefined || lng === undefined) {
-            return NextResponse.json({ error: 'Missing telemetry data.' }, { status: 400 });
-        }
+export async function POST(request: Request) {
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  const session = verifyRiderSession(token);
+  if (!session) return NextResponse.json({ error: 'Rider session expired. Sign in again.' }, { status: 401 });
 
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!
-        );
+  let body: { lat?: unknown; lng?: unknown; battery?: unknown };
+  try {
+    body = await request.json() as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'Valid GPS telemetry is required.' }, { status: 400 });
+  }
+  const { lat, lng, battery } = body;
+  if (
+    typeof lat !== 'number'
+    || typeof lng !== 'number'
+    || !Number.isFinite(lat)
+    || !Number.isFinite(lng)
+    || lat < -90 || lat > 90
+    || lng < -180 || lng > 180
+  ) {
+    return NextResponse.json({ error: 'Valid GPS coordinates are required.' }, { status: 400 });
+  }
+  const batteryLevel = typeof battery === 'number' && Number.isFinite(battery)
+    ? Math.min(100, Math.max(0, Math.round(battery)))
+    : null;
 
-        // 1. Simple Token Validation (In production, use JWT verify)
-        // For this hardening phase, we assume the token is the b64 string created at login
-        const decoded = atob(token);
-        if (!decoded.startsWith(phone)) {
-             return NextResponse.json({ error: 'Session Compromised.' }, { status: 401 });
-        }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !serviceKey) {
+    return NextResponse.json({ error: 'Rider location sync is not configured on the server.' }, { status: 503 });
+  }
+  const database = createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+  const { data: rider, error: lookupError } = await database
+    .from('rider_status')
+    .select('status, verification_status')
+    .eq('rider_phone', session.phone)
+    .maybeSingle();
+  if (lookupError) {
+    console.error('[RiderLocation] Could not verify rider status:', lookupError);
+    return NextResponse.json({ error: 'Rider location could not be verified.' }, { status: 503 });
+  }
+  if (!rider || rider.verification_status !== 'Verified') {
+    return NextResponse.json({ error: 'This rider account is not approved.' }, { status: 403 });
+  }
+  if (!['Idle', 'Delivering'].includes(rider.status)) {
+    return NextResponse.json({ error: 'Go online before sharing pickup location.' }, { status: 409 });
+  }
 
-        // 2. Atomic Update: Current Status + History
-        // We use a transaction or parallel calls. RLS will eventually handle some of this.
+  const timestamp = new Date().toISOString();
+  const update: Record<string, string | number> = {
+    last_known_lat: lat,
+    last_known_lng: lng,
+    location_updated_at: timestamp,
+    updated_at: timestamp
+  };
+  if (batteryLevel !== null) update.battery_level = batteryLevel;
 
-        const [statusUpdate, historyInsert] = await Promise.all([
-            supabase
-                .from('rider_status')
-                .update({
-                    last_known_lat: lat,
-                    last_known_lng: lng,
-                    battery_level: Math.round(battery || 100),
-                    updated_at: new Date().toISOString()
-                })
-                .eq('rider_phone', phone),
+  const { error: updateError } = await database
+    .from('rider_status')
+    .update(update)
+    .eq('rider_phone', session.phone);
+  if (updateError) {
+    console.error('[RiderLocation] Could not save rider GPS:', updateError);
+    return NextResponse.json({
+      error: /location_updated_at|last_known_lat|last_known_lng/i.test(updateError.message)
+        ? 'Rider GPS fields are missing. Run supabase/DISPATCH_MIGRATION.sql.'
+        : 'Rider GPS could not be saved.'
+    }, { status: 503 });
+  }
 
-            supabase
-                .from('rider_location_history')
-                .insert([{
-                    rider_phone: phone,
-                    latitude: lat,
-                    longitude: lng,
-                    accuracy,
-                    speed,
-                    heading,
-                    battery_level: Math.round(battery || 100)
-                }])
-        ]);
-
-        if (statusUpdate.error) throw statusUpdate.error;
-        if (historyInsert.error) throw historyInsert.error;
-
-        return NextResponse.json({ success: true, timestamp: new Date().toISOString() });
-
-    } catch (err: unknown) {
-        console.error("[GPS_SYNC_ERROR]", (err as Error).message);
-        return NextResponse.json({ error: (err as Error).message }, { status: 500 });
-    }
+  return NextResponse.json({ success: true, timestamp }, {
+    headers: { 'Cache-Control': 'no-store' }
+  });
 }

@@ -22,6 +22,54 @@ ALTER TABLE public.customer_sessions
     ALTER COLUMN active_heartbeat_count SET DEFAULT 0,
     ALTER COLUMN daily_active_time_sec SET DEFAULT 0;
 
+CREATE OR REPLACE FUNCTION public.sync_customer_aggregate_metrics()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    IF NEW.user_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    INSERT INTO public.customer_aggregate_metrics (user_id)
+    VALUES (NEW.user_id)
+    ON CONFLICT (user_id) DO UPDATE SET
+        total_sessions = (
+            SELECT COUNT(*)
+            FROM public.customer_sessions
+            WHERE user_id = NEW.user_id
+        ),
+        total_active_time_sec = COALESCE((
+            SELECT SUM(total_active_time_sec)
+            FROM public.customer_sessions
+            WHERE user_id = NEW.user_id
+        ), 0),
+        total_pages_viewed = (
+            SELECT COUNT(*)
+            FROM public.analytics_events
+            WHERE user_id = NEW.user_id
+              AND event_name = 'PAGE_VIEW'
+        ),
+        total_products_viewed = (
+            SELECT COUNT(*)
+            FROM public.analytics_events
+            WHERE user_id = NEW.user_id
+              AND event_name = 'PRODUCT_VIEW'
+        ),
+        total_clicks = (
+            SELECT COUNT(*)
+            FROM public.analytics_events
+            WHERE user_id = NEW.user_id
+              AND event_name = 'UI_INTERACTION'
+        ),
+        updated_at = now();
+
+    RETURN NEW;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.handle_presence_heartbeat(
     p_session_id TEXT,
     p_page TEXT,

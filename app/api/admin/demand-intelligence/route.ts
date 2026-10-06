@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
+import { loadDemandIntelligenceFallback } from '@/lib/demandIntelligenceFallback';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,14 +24,26 @@ export async function GET(request: Request) {
   const database = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   });
-  const { data, error } = await database.rpc('get_demand_intelligence', { p_days: days });
-  if (error) {
+  const { data: rpcData, error } = await database.rpc('get_demand_intelligence', { p_days: days });
+  let data = rpcData;
+  if (error && (error.code === '42883' || error.code === 'PGRST202')) {
+    try {
+      console.warn('[DemandIntelligence] Aggregate RPC is missing; using the server-side table fallback.');
+      data = await loadDemandIntelligenceFallback(database, days);
+    } catch (fallbackError) {
+      console.error('[DemandIntelligence] Could not load demand data using the table fallback:', fallbackError);
+      const tablesMissing = fallbackError instanceof Error
+        && /could not find the table|schema cache/i.test(fallbackError.message);
+      return NextResponse.json({
+        error: tablesMissing
+          ? 'Demand location tables are not installed in this Supabase project. Run supabase/DEMAND_INTELLIGENCE_MIGRATION.sql in its SQL Editor, then refresh.'
+          : 'Demand intelligence is only partially installed. Run supabase/DEMAND_INTELLIGENCE_MIGRATION.sql in Supabase, then retry.'
+      }, { status: 503 });
+    }
+  } else if (error) {
     console.error('[DemandIntelligence] Could not load location aggregates:', error);
-    const migrationMissing = error.code === '42883' || /get_demand_intelligence/i.test(error.message);
     return NextResponse.json({
-      error: migrationMissing
-        ? 'Demand intelligence schema is not installed. Run supabase/DEMAND_INTELLIGENCE_MIGRATION.sql in Supabase.'
-        : 'Demand intelligence data could not be loaded. Check the Supabase connection and migration status.'
+      error: 'Demand intelligence data could not be loaded. Check the Supabase connection and migration status.'
     }, { status: 503 });
   }
 

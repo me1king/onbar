@@ -142,8 +142,11 @@ export default function TheBuzzMap() {
                     category: categories.get(p.category_id || '') || 'Vibe'
                 })));
             } catch (err) {
-                console.error('[BuzzMap] Could not load published map events:', err);
-                setError(err instanceof Error ? err.message : 'Unable to load published events.');
+                const detail = err instanceof Error ? err.message : 'Unable to load published events.';
+                console.error('[BuzzMap] Could not load published map events:', detail);
+                setError(/buzz_posts|buzz_venues|buzz_categories|column|relation|schema cache/i.test(detail)
+                    ? 'Buzz map data is not set up yet. Run supabase/DELIVERY_ENGINE_AND_BUZZ_MIGRATION.sql in your Supabase SQL Editor.'
+                    : detail);
             } finally {
                 setLoading(false);
             }

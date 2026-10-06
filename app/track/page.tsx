@@ -23,6 +23,7 @@ interface OrderDetails {
   payment_method: string;
   rider_name?: string | null;
   rider_phone?: string | null;
+  delivery_eta_minutes?: number | null;
 }
 
 interface QuickSnack {
@@ -37,7 +38,9 @@ const STEPS = [
     { id: 'Pending', label: 'Order Received', icon: Clock, detail: 'Securing your beverages in our cellar...' },
     { id: 'Paid', label: 'Payment Verified', icon: ShieldCheck, detail: 'M-Pesa sync complete. Funds verified.' },
     { id: 'Processing', label: 'Chill Check', icon: Package, detail: 'Temperature and quality inspection in progress.' },
-    { id: 'Dispatched', label: 'Out for Delivery', icon: Truck, detail: 'Fast dispatch active. Runner approaching.' },
+    { id: 'Dispatched', label: 'Rider Assigned', icon: Truck, detail: 'Your rider has been assigned.' },
+    { id: 'Picked Up', label: 'Picked Up', icon: Package, detail: 'Your order has been collected from the vendor.' },
+    { id: 'Out for Delivery', label: 'On the Way', icon: Truck, detail: 'Your rider is heading to your delivery location.' },
     { id: 'Delivered', label: 'Handed Over', icon: CheckCircle, detail: 'Beverages secured. Welcome to the Bar Club.' },
 ];
 
@@ -345,13 +348,17 @@ function TrackingContent() {
                             <div className="space-y-1">
                                 <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Est. Arrival</p>
                                 <p className="font-bold text-emerald-600 uppercase text-xs">
-                                    {order.status === 'Delivered' ? 'Arrived' : 'Within 2 Hours'}
+                                    {order.status === 'Delivered'
+                                        ? 'Arrived'
+                                        : order.delivery_eta_minutes != null
+                                            ? `${order.delivery_eta_minutes} min`
+                                            : 'ETA not available yet'}
                                 </p>
                             </div>
                         </div>
 
                         {/* Contextual Action: WhatsApp Dispatch */}
-                        {order.status === 'Dispatched' && (
+                        {['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status) && (
                             <div className="mt-12 p-8 bg-indigo-50 rounded-3xl border border-indigo-100 flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse">
                                 <div className="flex items-center gap-4">
                                     <div className="h-12 w-12 rounded-2xl bg-white flex items-center justify-center text-indigo-600 shadow-sm"><Truck className="h-6 w-6" /></div>

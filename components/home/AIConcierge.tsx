@@ -28,7 +28,7 @@ interface Suggestion {
     image_url: string;
 }
 
-export default function AIConcierge() {
+export default function AIConcierge({ suppressLauncher = false }: { suppressLauncher?: boolean }) {
     const { settings } = useSettings();
     const [isOpen, setIsOpen] = React.useState(false);
     const [query, setQuery] = React.useState('');
@@ -163,6 +163,7 @@ export default function AIConcierge() {
     return (
         <>
             {!isOpen ? (
+                suppressLauncher ? null : (
                 <div className="fixed left-3 sm:left-8 bottom-[calc(6rem+env(safe-area-inset-bottom))] lg:bottom-28 z-[2100]">
                     <button
                         onClick={() => setIsOpen(true)}
@@ -173,6 +174,7 @@ export default function AIConcierge() {
                         <div className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />
                     </button>
                 </div>
+                )
             ) : (
                 <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/45 p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-sm sm:p-6">
                     <button

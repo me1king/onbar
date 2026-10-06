@@ -1,30 +1,42 @@
-import { supabase } from "@/lib/supabaseClient";
 import { NextResponse } from "next/server";
 import { Resend } from 'resend';
+import { createClient } from '@supabase/supabase-js';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID || '';
 
 export async function POST(request: Request) {
     try {
-        const { email } = await request.json();
+        let body: { email?: unknown };
+        try {
+            body = await request.json() as typeof body;
+        } catch {
+            return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+        }
+        const email = body.email;
 
-        if (!email) {
-            return NextResponse.json({ error: "Email is required" }, { status: 400 });
+        if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || email.trim().length > 320) {
+            return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
         }
 
-        if (!supabase) {
-            return NextResponse.json({ error: "Database not connected" }, { status: 500 });
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+        if (!url || !serviceKey) {
+            return NextResponse.json({ error: "Newsletter database access is not configured on the server." }, { status: 503 });
         }
+        const database = createClient(url, serviceKey, {
+            auth: { autoRefreshToken: false, persistSession: false }
+        });
+        const normalizedEmail = email.trim().toLowerCase();
 
-        // 1. Save to Supabase (Backup)
-        const { error: dbError } = await supabase
+        const { error: dbError } = await database
             .from('newsletter_subscribers')
-            .insert([{ email: email.toLowerCase() }]);
-
-        if (dbError && dbError.code === '23505') {
-            return NextResponse.json({ message: "Already subscribed!" }, { status: 200 });
-        }
+            .upsert({
+                email: normalizedEmail,
+                is_active: true,
+                consented_at: new Date().toISOString(),
+                unsubscribed_at: null
+            }, { onConflict: 'email' });
 
         if (dbError) throw dbError;
 
@@ -32,7 +44,7 @@ export async function POST(request: Request) {
         if (resend) {
             try {
                 await resend.contacts.create({
-                    email: email.toLowerCase(),
+                    email: normalizedEmail,
                     audienceId: AUDIENCE_ID,
                 });
             } catch (resendError) {

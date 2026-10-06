@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, User, ArrowRight, BookOpen } from 'lucide-react';
+import { Calendar, User, ArrowRight, BookOpen, RefreshCw } from 'lucide-react';
 
 interface BlogPost {
   id: number;
@@ -21,19 +20,26 @@ interface BlogPost {
 export default function BlogListPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadPosts() {
-      if (!supabase) return;
+      if (!supabase) {
+        setLoadError('The mixology guides are unavailable because the store connection is not configured.');
+        setLoading(false);
+        return;
+      }
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('blog_posts')
           .select('*')
           .eq('is_published', true)
           .order('created_at', { ascending: false });
+        if (error) throw error;
         setPosts(data || []);
       } catch (err) {
-        console.error(err);
+        console.error('Could not load published mixology guides:', err);
+        setLoadError(err instanceof Error ? err.message : 'Could not load mixology guides.');
       } finally {
         setLoading(false);
       }
@@ -53,8 +59,8 @@ export default function BlogListPage() {
   return (
     <div className="min-h-screen bg-white text-left">
       {/* Hero Header */}
-      <section className="bg-slate-50 py-24 border-b border-slate-100 relative overflow-hidden">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+      <section className="relative overflow-hidden border-b border-slate-100 bg-slate-50 py-14 sm:py-20 lg:py-24">
+          <div className="relative z-10 mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
               <Badge className="mb-6 bg-primary/10 text-primary border-none font-black uppercase text-[10px] tracking-widest px-4 py-2 rounded-full">Mixology Hub</Badge>
               <h1 className="text-5xl lg:text-7xl font-black text-foreground uppercase tracking-tighter leading-none mb-8">
                   Drink <span className="text-primary italic">Guides.</span>
@@ -66,14 +72,22 @@ export default function BlogListPage() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -z-0"></div>
       </section>
 
-      <div className="max-w-7xl mx-auto px-4 py-24 sm:px-6 lg:px-8">
-        {posts.length === 0 ? (
-          <div className="text-center py-24 bg-slate-50 rounded-[3rem] border border-slate-100 border-dashed">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-16 lg:px-8 lg:py-20">
+        {loadError ? (
+          <div role="alert" className="mx-auto max-w-xl rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center">
+            <p className="font-bold text-rose-700">{loadError}</p>
+            <button type="button" onClick={() => window.location.reload()} className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-rose-800 underline underline-offset-4">
+              <RefreshCw size={15} /> Try again
+            </button>
+          </div>
+        ) : posts.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center sm:py-16">
             <BookOpen className="h-12 w-12 text-slate-200 mx-auto mb-4" />
-            <p className="text-slate-400 font-black uppercase text-xs tracking-widest">New guides are being written...</p>
+            <p className="text-slate-600 font-black uppercase text-xs tracking-widest">No published guides yet</p>
+            <p className="mt-2 text-sm text-slate-500">We’ll add new drink guides here when they’re ready.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 lg:gap-12">
             {posts.map((post) => (
               <Link key={post.id} href={`/blog/${post.slug}`} className="group block">
                 <article className="space-y-6">
@@ -106,19 +120,6 @@ export default function BlogListPage() {
         )}
       </div>
 
-      {/* CTA section */}
-      <section className="bg-slate-50 py-24 text-center text-foreground border-t border-slate-100">
-          <h2 className="text-4xl font-black uppercase tracking-tighter mb-4">Want the latest deals?</h2>
-          <p className="text-slate-500 font-medium mb-10 max-w-sm mx-auto">Join 1,000+ patrons getting weekly premium beverage tips.</p>
-          <div className="flex justify-center">
-              <Button
-                onClick={() => document.getElementById('footer-newsletter')?.scrollIntoView({ behavior: 'smooth' })}
-                className="h-16 px-12 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-xs shadow-2xl shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95"
-              >
-                Subscribe Now
-              </Button>
-          </div>
-      </section>
     </div>
   );
 }
