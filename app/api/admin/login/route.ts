@@ -239,7 +239,9 @@ export async function POST(request: Request) {
       if (!isMatch) {
         const count = await getRecentFailedAttempts(database, ip);
         await maybeRecordBruteForceThreat(database, request, count, threshold);
-        return NextResponse.json({ error: 'Incorrect PIN.' }, { status: 401 });
+        return NextResponse.json({
+          error: 'Incorrect PIN. Check that the Owner PIN matches ADMIN_PASSWORD in the Render Environment, then redeploy.'
+        }, { status: 401 });
       }
 
       const ownerPermissions = {

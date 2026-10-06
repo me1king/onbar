@@ -121,9 +121,9 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
   return (
     <>
-      <Card className="group flex w-full min-w-0 flex-col bg-white border border-slate-200/80 text-foreground shadow-md hover:shadow-xl transition-all duration-500 rounded-2xl sm:rounded-[3.5rem] overflow-hidden text-left relative min-h-[360px] sm:min-h-[420px]">
+      <Card className="group flex w-full min-w-0 flex-col bg-white border border-slate-200/80 text-foreground shadow-md hover:shadow-xl transition-all duration-500 rounded-2xl sm:rounded-[3.5rem] overflow-hidden text-left relative min-h-[320px] sm:min-h-[420px]">
         {/* Visual Container */}
-        <div className="relative aspect-square min-w-0 bg-slate-50/80 rounded-xl sm:rounded-[2.5rem] m-2 sm:m-4 flex items-center justify-center p-1 sm:p-2 overflow-hidden border border-slate-100">
+        <div className="relative aspect-square min-w-0 bg-slate-50/80 rounded-xl sm:rounded-[2.5rem] m-1.5 sm:m-4 flex items-center justify-center p-1 sm:p-2 overflow-hidden border border-slate-100">
 
             {/* Premium Locked Overlay */}
             {isLocked && (
@@ -137,7 +137,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
             )}
 
             {/* Badges */}
-            <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
+            <div className="absolute left-2.5 top-2.5 z-20 flex flex-col gap-2 sm:left-4 sm:top-4">
                 {product.badge_override ? (
                     <span className="bg-slate-100 text-slate-800 text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest border border-slate-200/60">{product.badge_override}</span>
                 ) : (
@@ -167,7 +167,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                     onClick={handleAddToCart}
                     disabled={isAdding}
                     className={cn(
-                        "absolute top-4 right-4 z-30 h-10 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2 transition-all duration-300 shadow-xl",
+                        "absolute right-2.5 top-2.5 z-30 h-8 px-2.5 rounded-lg font-black uppercase text-[9px] tracking-widest flex items-center gap-1.5 transition-all duration-300 shadow-xl sm:right-4 sm:top-4 sm:h-10 sm:rounded-xl sm:px-4 sm:text-[10px] sm:gap-2",
                         justAdded ? "bg-emerald-500 text-white" : "bg-slate-900 text-white hover:bg-primary opacity-100 translate-y-0"
                     )}
                 >
@@ -195,7 +195,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
         </div>
 
         {/* Content Node */}
-        <CardContent className="p-3 pt-4 sm:p-6 sm:pt-8 space-y-4 flex-1 flex flex-col min-w-0">
+        <CardContent className="p-2.5 pt-3 sm:p-6 sm:pt-8 space-y-2.5 sm:space-y-4 flex-1 flex flex-col min-w-0">
             {/* Price Line */}
             <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -247,7 +247,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
             <Link
                 href={`/shop/${product.id}#customer-reviews`}
-                className="mt-2 inline-flex min-h-8 items-center gap-1.5 self-start rounded-md text-[9px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="mt-1 inline-flex min-h-7 items-center gap-1.5 self-start rounded-md text-[9px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 aria-label={`Rate ${product.name}`}
             >
                 <Star size={12} className="text-amber-500" />
@@ -255,7 +255,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
             </Link>
 
             {/* Stock Indicator */}
-            <div className="pt-2 flex items-center gap-3">
+            <div className="pt-1 sm:pt-2 flex items-center gap-2 sm:gap-3">
                 <div className="flex gap-0.5 shrink-0">
                     <div className={cn("h-3 w-1.5 rounded-full", stockStatus.bar)} />
                     <div className={cn("h-3 w-1.5 rounded-full opacity-40", stockStatus.bar)} />
@@ -265,10 +265,10 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                 </span>
             </div>
 
-            <div className="mt-auto pt-4 flex gap-2 opacity-100">
+            <div className="mt-auto pt-2 sm:pt-4 flex gap-1.5 sm:gap-2 opacity-100">
                 <Link
                     href={`/shop/${product.id}`}
-                    className="flex-1 h-10 rounded-xl bg-slate-50 text-[8px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all border border-slate-100 flex items-center justify-center text-foreground"
+                    className="flex-1 min-w-0 h-9 sm:h-10 rounded-xl bg-slate-50 px-1 text-[7px] sm:text-[8px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all border border-slate-100 flex items-center justify-center text-foreground"
                 >
                     Take a Look
                 </Link>
@@ -278,11 +278,11 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                         const message = `Hello Online Bar! I want to order:\n\n*Product:* ${product.name}\n*Price:* ${formatPrice(product.price)}\n\nIs this available for dispatch?`;
                         window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
                     }}
-                    className="h-10 w-10 rounded-xl bg-slate-50 flex items-center justify-center text-primary hover:bg-primary/5 transition-all border border-slate-100"
+                    className="h-9 w-9 shrink-0 sm:h-10 sm:w-10 rounded-xl bg-slate-50 flex items-center justify-center text-primary hover:bg-primary/5 transition-all border border-slate-100"
                 >
                     <MessageSquare size={16} />
                 </button>
-                <button onClick={handleToggleLike} className={cn("h-10 w-10 rounded-xl flex items-center justify-center transition-all border border-slate-100", isInWishlist(product.id) ? "bg-rose-50 text-rose-500 border-rose-100" : "bg-slate-50 text-slate-300 hover:text-rose-500")}><Heart size={16} fill={isInWishlist(product.id) ? "currentColor" : "none"} /></button>
+                <button onClick={handleToggleLike} className={cn("h-9 w-9 shrink-0 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center transition-all border border-slate-100", isInWishlist(product.id) ? "bg-rose-50 text-rose-500 border-rose-100" : "bg-slate-50 text-slate-300 hover:text-rose-500")}><Heart size={16} fill={isInWishlist(product.id) ? "currentColor" : "none"} /></button>
             </div>
         </CardContent>
       </Card>

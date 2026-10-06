@@ -333,7 +333,7 @@ export default function LocationOnboarding() {
             setStatus('');
             setIsOpen(true);
           }}
-          className="fixed bottom-24 left-3 z-[90] inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-lg backdrop-blur sm:bottom-6 sm:left-6"
+          className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] left-3 z-[90] inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-lg backdrop-blur sm:bottom-6 sm:left-6"
           aria-label={`Change saved area, currently ${location.area}, ${location.city}`}
         >
           <MapPin size={14} className="text-primary" />
@@ -345,7 +345,7 @@ export default function LocationOnboarding() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-24 left-3 z-[90] inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-lg backdrop-blur sm:bottom-6 sm:left-6"
+          className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] left-3 z-[90] inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-lg backdrop-blur sm:bottom-6 sm:left-6"
         >
           <MapPin size={14} className="text-primary" />
           Set your area

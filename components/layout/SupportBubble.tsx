@@ -239,7 +239,7 @@ export default function SupportBubble() {
     };
 
     return (
-        <div className="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] lg:bottom-8 right-4 sm:right-8 z-[2100] flex flex-col items-end gap-4">
+        <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] lg:bottom-8 right-3 sm:right-8 z-[2100] flex flex-col items-end gap-4">
 
             {/* Greeting Label */}
             {showLabel && !isOpen && (
@@ -464,9 +464,9 @@ export default function SupportBubble() {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 aria-label={isOpen ? 'Close customer support' : 'Open customer support'}
-                className="relative flex h-16 w-16 bg-primary text-white rounded-full shadow-2xl items-center justify-center hover:scale-110 active:scale-95 transition-all group border-4 border-white"
+                className="relative flex h-12 w-12 sm:h-16 sm:w-16 bg-primary text-white rounded-full shadow-2xl items-center justify-center hover:scale-110 active:scale-95 transition-all group border-4 border-white"
             >
-                {isOpen ? <X className="h-7 w-7" /> : <MessageCircle className="h-7 w-7 group-hover:rotate-12 transition-transform" />}
+                {isOpen ? <X className="h-5 w-5 sm:h-7 sm:w-7" /> : <MessageCircle className="h-5 w-5 sm:h-7 sm:w-7 group-hover:rotate-12 transition-transform" />}
                 {!isOpen && <span className="absolute top-0 right-0 h-4 w-4 bg-primary rounded-full border-2 border-white animate-pulse"></span>}
                 {!isOpen && supportMessages.some(item => item.admin_response) && (
                     <span className="absolute -top-1 -left-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1 text-[9px] font-black text-white">
