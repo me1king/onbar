@@ -1,9 +1,7 @@
-// ONLINE BAR OS: PWA SERVICE WORKER v2
-// High-fidelity caching and home-screen widget orchestration.
+// Keep navigations online so an old homepage can never replace the current app.
 
-const CACHE_NAME = 'ob-os-cache-v2';
+const CACHE_NAME = 'ob-os-static-v3';
 const ASSETS_TO_CACHE = [
-  '/',
   '/favicon.svg',
   '/images/NoImage.jpg',
   '/widgets/mobile-node.json'
@@ -11,9 +9,9 @@ const ASSETS_TO_CACHE = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(ASSETS_TO_CACHE))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -22,21 +20,40 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          if (
+            cacheName !== CACHE_NAME
+            && (cacheName.startsWith('ob-os-cache-') || cacheName.startsWith('ob-os-static-'))
+          ) {
             return caches.delete(cacheName);
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin || request.mode === 'navigate') return;
+  if (!ASSETS_TO_CACHE.includes(url.pathname)) return;
+
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(request);
+      if (response.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+      }
+      return response;
+    } catch (error) {
+      const cachedResponse = await caches.match(request);
+      if (cachedResponse) return cachedResponse;
+      throw error;
+    }
+  })());
 });
 
 /**
