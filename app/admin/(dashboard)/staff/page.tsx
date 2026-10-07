@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import {
   Users,
@@ -53,6 +52,7 @@ interface StaffMember {
   can_view_sensitive_data: boolean;
   can_manage_communications: boolean;
   can_manage_marketing: boolean;
+  can_manage_kitchen: boolean;
   created_at: string;
 }
 
@@ -110,15 +110,16 @@ export default function AdminStaffPage() {
   }, [newRole]);
 
   const fetchStaffData = async () => {
-    if (!supabase) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('staff').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      setStaff(data as StaffMember[]);
+      const response = await fetch('/api/admin/staff', { cache: 'no-store' });
+      const result = await response.json() as { staff?: StaffMember[]; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Failed to load team grid.');
+      setStaff(result.staff || []);
     } catch (err: unknown) {
-      console.error(err);
-      setMessage({ type: 'error', text: 'Failed to load team grid.' });
+      const error = err as Error;
+      console.error('[AdminStaff] Could not load team grid:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to load team grid.' });
     } finally {
       setLoading(false);
     }
@@ -130,36 +131,24 @@ export default function AdminStaffPage() {
 
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmail.trim() || !supabase) return;
+    if (!newEmail.trim()) return;
 
     setIsAdding(true);
     setMessage(null);
 
     try {
-      const { data: userData, error: rpcError } = await supabase.rpc('get_user_id_by_email', {
-          email_input: (newEmail || '').trim().toLowerCase()
+      const response = await fetch('/api/admin/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newEmail,
+          role: newRole,
+          pin: newPin.trim() || null,
+          ...permissions
+        })
       });
-
-      if (rpcError || !userData || userData.length === 0) {
-          throw new Error("Patron must exist on the bar grid first. Ask them to sign up.");
-      }
-
-      const userId = userData[0].id;
-
-      const { error } = await supabase
-        .from('staff')
-        .insert([{
-            id: userId,
-            email: (newEmail || '').trim().toLowerCase(),
-            role: newRole,
-            pin: newPin.trim() || null,
-            ...permissions
-        }]);
-
-      if (error) {
-          if (error.code === '23505') throw new Error("This unit is already operational in the staff node.");
-          throw error;
-      }
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not authorize staff.');
 
       setMessage({ type: 'success', text: `Unit ${newEmail} authorized as ${newRole}.` });
       if (adminEmail) await logAuditAction(adminEmail, 'ADD_STAFF', { email: newEmail, role: newRole });
@@ -175,34 +164,47 @@ export default function AdminStaffPage() {
   };
 
   const updatePermission = async (id: string, field: string, value: boolean) => {
-      if (!supabase) return;
-      const { error } = await supabase.from('staff').update({ [field]: value }).eq('id', id);
-      if (!error) {
+      try {
+          const response = await fetch('/api/admin/staff', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id, field, value })
+          });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Could not update permission.');
           if (adminEmail) await logAuditAction(adminEmail, 'UPDATE_PERMISSION', { id, field, value });
           setStaff(staff.map(s => s.id === id ? { ...s, [field]: value } : s));
+      } catch (err) {
+          const error = err as Error;
+          setMessage({ type: 'error', text: error.message });
       }
   };
 
   const removeStaff = async (id: string) => {
-      if (!supabase || !confirm("Revoke all access for this unit?")) return;
+      if (!confirm("Revoke all access for this unit?")) return;
       const member = staff.find(s => s.id === id);
-      const { error } = await supabase.from('staff').delete().eq('id', id);
-      if (!error) {
+      try {
+          const response = await fetch(`/api/admin/staff?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Could not revoke staff access.');
           if (adminEmail) await logAuditAction(adminEmail, 'REMOVE_STAFF', { id, email: member?.email });
           setStaff(staff.filter(s => s.id !== id));
           setMessage({ type: 'success', text: 'Unit access revoked.' });
+      } catch (err) {
+          const error = err as Error;
+          setMessage({ type: 'error', text: error.message });
       }
   };
 
   return (
-    <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left selection:bg-primary/20 pb-40">
+    <div className="min-w-0 p-4 sm:p-8 space-y-8 sm:space-y-10 bg-slate-50 min-h-screen text-left selection:bg-primary/20 pb-40">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Workforce Command</span>
           </div>
-          <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Identity Hub</h1>
+          <h1 className="text-3xl sm:text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Identity Hub</h1>
           <p className="text-muted-foreground text-sm font-medium mt-2">Manage team operational parameters and granular permission nodes.</p>
         </div>
         <Button onClick={fetchStaffData} variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 transition-all active:scale-95">
@@ -224,7 +226,7 @@ export default function AdminStaffPage() {
 
           {/* AUTHORIZATION FORM */}
           <div className="lg:col-span-4 space-y-8">
-              <Card className="rounded-[3rem] border border-slate-100 p-10 bg-white shadow-sm space-y-10">
+              <Card className="min-w-0 rounded-[2rem] sm:rounded-[3rem] border border-slate-100 p-5 sm:p-10 bg-white shadow-sm space-y-8 sm:space-y-10">
                   <div className="flex items-center gap-4">
                       <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><UserPlus size={24} /></div>
                       <h2 className="text-xl font-black text-foreground uppercase tracking-tighter">Authorize Unit</h2>
@@ -294,8 +296,8 @@ export default function AdminStaffPage() {
 
           {/* TEAM DIRECTORY */}
           <div className="lg:col-span-8 space-y-8">
-              <Card className="rounded-[3rem] border border-slate-100 bg-white shadow-sm overflow-hidden min-h-[600px] text-left">
-                  <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <Card className="min-w-0 rounded-[2rem] sm:rounded-[3rem] border border-slate-100 bg-white shadow-sm overflow-hidden min-h-[600px] text-left">
+                  <div className="p-4 sm:p-8 border-b border-slate-50 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                           <Users className="h-6 w-6 text-primary" />
                           <h2 className="text-2xl font-black text-foreground uppercase tracking-tighter">Active Directory</h2>
@@ -304,7 +306,7 @@ export default function AdminStaffPage() {
                   </div>
 
                   <div className="overflow-x-auto">
-                      <table className="w-full text-left">
+                      <table className="w-full min-w-[680px] text-left">
                           <thead>
                               <tr className="bg-slate-50 text-slate-400 font-black uppercase text-[9px] tracking-[0.2em]">
                                   <th className="px-10 py-6">Unit Identity</th>
@@ -380,7 +382,7 @@ export default function AdminStaffPage() {
                                           </div>
                                       </td>
                                       <td className="px-10 py-8 text-right">
-                                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                               <Link href={`/admin/staff/${member.id}`}>
                                                   <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl border-slate-100 text-slate-400 hover:text-primary"><Eye size={16} /></Button>
                                               </Link>

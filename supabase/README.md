@@ -1,0 +1,26 @@
+# Supabase migrations
+
+## Admin dashboard recovery
+
+The analytics, finance, staff, and dispatch dashboards expect schema that may not
+be present in older databases. Apply migrations in this order using the Supabase
+SQL Editor:
+
+1. `FINAL_ESTABLISHMENT_SQL.sql`
+2. `MERCHANT_OPERATIONS_MIGRATION.sql`
+3. `DISPATCH_MIGRATION.sql`
+4. `AUTH_SECURITY_MIGRATION.sql`
+5. `ADMIN_DASHBOARD_RECOVERY_MIGRATION.sql`
+
+The recovery migration adds the missing rider and staff fields, restores the
+analytics RPC functions, and creates the legacy tax-ledger and reconciliation
+staging tables expected by the finance widgets. It also creates the rider
+wallet table if it is missing, so the dashboard recovery script can proceed
+without a separate delivery migration. It is additive and idempotent;
+it does not backfill financial/tax entries or mark reconciliation records as
+matched. Those widgets will correctly report only the records that actually
+exist after applying it.
+
+The admin APIs use the server-side `SUPABASE_SERVICE_ROLE_KEY`. Keep that key
+server-only; the recovery migration denies direct browser access to its finance
+tables.

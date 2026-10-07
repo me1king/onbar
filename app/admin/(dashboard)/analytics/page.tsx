@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     BarChart3,
     Activity as Zap,
@@ -149,48 +148,36 @@ export default function AdminAnalyticsPage() {
     const heatmapPeak = Math.max(0, ...heatmapCells);
 
     React.useEffect(() => {
+        let active = true;
         async function fetchData() {
             setLoading(true);
             try {
-                if (supabase) {
-                    const [ordersRes, preparingRes, profilesRes, inventoryRes, ridersRes, eventsRes, ticketsRes] = await Promise.all([
-                        supabase.rpc('get_completed_order_summary'),
-                        supabase.from('orders').select('id', { count: 'exact', head: true }).in('status', ['Pending', 'Preparing']),
-                        supabase.from('profiles').select('id', { count: 'exact', head: true }),
-                        supabase.rpc('get_listed_price_stock_value'),
-                        supabase.from('rider_status').select('id', { count: 'exact', head: true }).neq('status', 'Offline'),
-                        supabase.from('analytics_events').select('id', { count: 'exact', head: true }),
-                        supabase.from('support_tickets').select('id', { count: 'exact', head: true })
-                    ]);
-
-                    const queryError = ordersRes.error || preparingRes.error || profilesRes.error || inventoryRes.error || ridersRes.error || eventsRes.error || ticketsRes.error;
-                    if (queryError) throw queryError;
-
-                    const orderSummary = Array.isArray(ordersRes.data) ? ordersRes.data[0] : null;
-                    const rev = orderSummary ? Number(orderSummary.total_revenue) : null;
-                    const orderCount = orderSummary ? Number(orderSummary.order_count) : null;
-                    const users = profilesRes.count;
-                    const aov = orderCount !== null && orderCount > 0 && rev !== null ? Math.round(rev / orderCount) : orderCount === 0 ? 0 : null;
-                    const invVal = inventoryRes.data === null ? null : Number(inventoryRes.data);
-
-                    setLiveStats({
-                        totalRevenue: rev,
-                        activeUsers: users,
-                        conversionRate: null,
-                        avgOrderValue: aov,
-                        inventoryValue: invVal,
-                        supportTickets: ticketsRes.count
-                    });
-
-                    setKdsStats({
-                        activeRunners: ridersRes.count,
-                        preparingOrders: preparingRes.count,
-                        totalSignals: eventsRes.count
-                    });
-                } else {
-                    setError('Supabase is not configured. Analytics are unavailable.');
-                }
+                const response = await fetch('/api/admin/analytics/dashboard', { cache: 'no-store' });
+                const result = await response.json() as {
+                    stats?: typeof liveStats & typeof kdsStats;
+                    problems?: string[];
+                    error?: string;
+                };
+                if (!response.ok) throw new Error(result.error || 'Unable to load analytics.');
+                if (!active) return;
+                const stats = result.stats;
+                if (!stats) throw new Error('Analytics response did not include dashboard metrics.');
+                setLiveStats({
+                    totalRevenue: stats.totalRevenue,
+                    activeUsers: stats.activeUsers,
+                    conversionRate: stats.conversionRate,
+                    avgOrderValue: stats.avgOrderValue,
+                    inventoryValue: stats.inventoryValue,
+                    supportTickets: stats.supportTickets
+                });
+                setKdsStats({
+                    activeRunners: stats.activeRunners,
+                    preparingOrders: stats.preparingOrders,
+                    totalSignals: stats.totalSignals
+                });
+                setError((result.problems || []).join(' · '));
             } catch (err) {
+                if (!active) return;
                 console.error("Analytics fetch error:", err);
                 setError(err instanceof Error ? err.message : 'Unable to load analytics.');
                 setLiveStats({
@@ -203,10 +190,11 @@ export default function AdminAnalyticsPage() {
                 });
                 setKdsStats({ activeRunners: null, preparingOrders: null, totalSignals: null });
             } finally {
-                setLoading(false);
+                if (active) setLoading(false);
             }
         }
         fetchData();
+        return () => { active = false; };
     }, []);
 
     const handleDownloadReport = () => {
@@ -238,7 +226,7 @@ export default function AdminAnalyticsPage() {
     );
 
     return (
-        <div className="p-4 sm:p-8 space-y-8 sm:space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20">
+        <div className="min-w-0 p-4 sm:p-8 space-y-8 sm:space-y-10 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20">
             {/* Header */}
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
                 <div>
@@ -468,20 +456,20 @@ export default function AdminAnalyticsPage() {
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
                     <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
                         <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-                            <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Kitchen & KDS Operations Analytics</h3>
+                            <h3 className="min-w-0 break-words text-lg sm:text-2xl font-black uppercase tracking-tight text-foreground">Kitchen & KDS Operations Analytics</h3>
                             <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200">
                                 {displayCount(kdsStats.preparingOrders)} Orders Preparing
                             </span>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
                             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                                 <p className="text-[9px] font-black uppercase text-slate-400">Vehicles On Road</p>
-                                <p className="text-3xl font-black text-foreground">{displayCount(kdsStats.activeRunners)} Runners</p>
+                                <p className="break-words text-2xl sm:text-3xl font-black text-foreground">{displayCount(kdsStats.activeRunners)} Runners</p>
                             </div>
                             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                                 <p className="text-[9px] font-black uppercase text-slate-400">Currently Prepared</p>
-                                <p className="text-3xl font-black text-amber-600">{displayCount(kdsStats.preparingOrders)} Tickets</p>
+                                <p className="break-words text-2xl sm:text-3xl font-black text-amber-600">{displayCount(kdsStats.preparingOrders)} Tickets</p>
                             </div>
                             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                                 <p className="text-[9px] font-black uppercase text-slate-400">Customer Satisfaction</p>

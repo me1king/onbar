@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import Image from 'next/image';
 import {
   Truck,
@@ -158,70 +157,28 @@ export default function AdminDispatchPage() {
     const [selectedWarehouse, setSelectedWarehouse] = useState('all');
 
     const fetchData = React.useCallback(async () => {
-        if (!supabase) {
-            setMessage({ type: 'error', text: 'Supabase is not configured. Dispatch data is unavailable.' });
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         setMessage(null);
         try {
-            const [ridersRes, dispatchRes, locationsRes] = await Promise.all([
-                supabase.from('rider_status').select(`
-                    id, rider_name, rider_phone, vehicle_type, vehicle_reg, id_number, license_number,
-                    plate_number, rider_photo_url, vehicle_photo_url, verification_status, current_location,
-                    status, battery_level, total_deliveries, rating, area_zone, max_deliveries, weekly_salary,
-                    health_score, runner_xp, runner_level, acceptance_rate, can_accept_orders, can_reject_orders,
-                    can_view_earnings, last_known_lat, last_known_lng, location_updated_at, updated_at,
-                    wallet:rider_wallets(balance, total_earned)
-                `).order('rider_name', { ascending: true }),
-                fetch('/api/admin/dispatch', { cache: 'no-store' }),
-                supabase.rpc('get_order_delivery_demand_zones')
-            ]);
-            if (ridersRes.error) throw ridersRes.error;
+            const dispatchRes = await fetch('/api/admin/dispatch', { cache: 'no-store' });
             const dispatchData = await dispatchRes.json() as {
                 error?: string;
                 jobs?: DispatchJob[];
                 decisions?: typeof recentDecisions;
                 unverifiedPaymentCount?: number;
+                riders?: Rider[];
+                demandZones?: { lat: number; lng: number; intensity: number }[];
+                demandZonesError?: string | null;
             };
             if (!dispatchRes.ok) throw new Error(dispatchData.error || 'Dispatch assignments are unavailable.');
 
-            // Handle wallet array from Supabase join and align with Rider interface
-            const processedRiders = (ridersRes.data || []).map((rider) => {
-                return {
-                    ...rider,
-                    wallet: Array.isArray(rider.wallet) ? rider.wallet[0] : rider.wallet,
-                    lat: rider.last_known_lat === null || rider.last_known_lat === undefined
-                        ? null
-                        : Number(rider.last_known_lat),
-                    lng: rider.last_known_lng === null || rider.last_known_lng === undefined
-                        ? null
-                        : Number(rider.last_known_lng)
-                };
-            });
-
-            const zones = locationsRes.error ? [] : ((locationsRes.data || []) as {
-                latitude: number | string;
-                longitude: number | string;
-                order_count: number | string;
-            }[]).flatMap(zone => {
-                const latitude = Number(zone.latitude);
-                const longitude = Number(zone.longitude);
-                const intensity = Number(zone.order_count);
-                return Number.isFinite(latitude) && Number.isFinite(longitude) && Number.isFinite(intensity)
-                    ? [{ lat: latitude, lng: longitude, intensity }]
-                    : [];
-            });
-
-            setRiders(processedRiders);
+            setRiders(dispatchData.riders || []);
             setOrders(dispatchData.jobs || []);
             setRecentDecisions(dispatchData.decisions || []);
             setUnverifiedPaymentCount(dispatchData.unverifiedPaymentCount || 0);
-            setDemandZones(zones);
-            if (locationsRes.error) {
-                console.error('Demand heatmap is unavailable.', locationsRes.error);
-                setMessage({ type: 'error', text: 'Demand heatmap is unavailable; rider dispatch and live GPS remain available.' });
+            setDemandZones(dispatchData.demandZones || []);
+            if (dispatchData.demandZonesError) {
+                setMessage({ type: 'error', text: dispatchData.demandZonesError });
             }
         } catch (err) {
             console.error("Pipeline link unstable.", err);
@@ -317,24 +274,21 @@ export default function AdminDispatchPage() {
     }, [orders, overrideReasons, fetchData]);
 
     const handleVerifyRider = React.useCallback(async (phone: string) => {
-        if (!supabase) return;
-        const pin = Math.floor(1000 + Math.random() * 9000).toString(); // Generate random 4-digit PIN
         try {
-            const { error } = await supabase
-                .from('rider_status')
-                .update({
-                    verification_status: 'Verified',
-                    pin: pin
-                })
-                .eq('rider_phone', phone);
-
-            if (error) throw error;
+            const response = await fetch('/api/admin/dispatch/riders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone })
+            });
+            const result = await response.json() as { pin?: string; error?: string };
+            if (!response.ok) throw new Error(result.error || 'Rider authorization failed.');
+            if (!result.pin) throw new Error('Rider authorization completed without issuing a PIN.');
             setRiders(prev => prev.map(r => r.rider_phone === phone ? { ...r, verification_status: 'Verified' } : r));
-            setMessage({ type: 'success', text: `Unit Authorized. Issued PIN: ${pin}. ✅` });
+            setMessage({ type: 'success', text: `Unit Authorized. Issued PIN: ${result.pin}.` });
             setTimeout(() => setMessage(null), 10000);
         } catch (err) {
-            console.error("Authorization Failed.", err);
-            setMessage({ type: 'error', text: "Authorization Failed." });
+            console.error('Rider authorization failed:', err);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Rider authorization failed.' });
         }
     }, []);
 

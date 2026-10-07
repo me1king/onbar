@@ -39,6 +39,8 @@ interface ForgeProductData {
     brand: string;
     category: string;
     size_label: string;
+    sizes: string[];
+    variant_prices: Record<string, number>;
     origin: string;
     price: number;
     old_price?: number;
@@ -112,6 +114,8 @@ export default function ProductStudioTerminal() {
         brand: '',
         category: '',
         size_label: '',
+        sizes: [],
+        variant_prices: {},
         origin: '',
         price: 0,
         old_price: undefined,
@@ -146,6 +150,8 @@ export default function ProductStudioTerminal() {
                 const { data } = await supabase.from('products').select('*').eq('id', id).single();
                 if (data) setForm({
                     ...data,
+                    sizes: data.sizes || (data.size_label ? [data.size_label] : []),
+                    variant_prices: data.variant_prices || {},
                     ingredients: data.ingredients || [],
                     sensory_metrics: data.sensory_metrics || { body: 60, sweet: 60, smoke: 20, spice: 40 },
                     pairing_suggestions: data.pairing_suggestions || [],
@@ -198,6 +204,12 @@ export default function ProductStudioTerminal() {
 
     const handleSave = async () => {
         if (!supabase || !id) return;
+        for (const [size, price] of Object.entries(form.variant_prices)) {
+            if (!Number.isFinite(price) || price < 0) {
+                alert(`Enter a valid non-negative price for ${size}.`);
+                return;
+            }
+        }
         setSaving(true);
         try {
             // High-fidelity sync including new V33 intelligence nodes
@@ -209,6 +221,8 @@ export default function ProductStudioTerminal() {
                 origin: form.origin,
                 price: Number(form.price),
                 old_price: form.old_price ? Number(form.old_price) : null,
+                sizes: form.sizes,
+                variant_prices: form.variant_prices,
                 cost_price: Number(form.cost_price),
                 stock: Number(form.stock),
                 stock_threshold_low: Number(form.stock_threshold_low),
@@ -269,38 +283,39 @@ export default function ProductStudioTerminal() {
         { id: 'intelligence', label: 'Intelligence', icon: Zap },
         { id: 'search', label: 'Discovery', icon: Search },
     ];
+    const productSizes = form.sizes.length ? form.sizes : (form.size_label ? [form.size_label] : []);
 
     return (
-        <div className="p-8 space-y-12 bg-slate-50 min-h-screen text-left pb-40 selection:bg-primary/20 animate-in fade-in duration-700">
+        <div className="min-w-0 p-3 sm:p-6 lg:p-8 space-y-6 sm:space-y-10 lg:space-y-12 bg-slate-50 min-h-screen text-left pb-24 sm:pb-40 selection:bg-primary/20 animate-in fade-in duration-700">
 
             {/* STUDIO HEADER */}
-            <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-10 border-b border-slate-200 pb-10">
-                <div className="flex items-center gap-8">
-                    <button onClick={() => router.back()} className="h-14 w-14 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-slate-300 hover:text-primary transition-all shadow-sm">
-                        <ArrowLeft size={28} />
+            <header className="flex min-w-0 flex-col lg:flex-row justify-between items-stretch lg:items-end gap-5 sm:gap-8 lg:gap-10 border-b border-slate-200 pb-6 sm:pb-10">
+                <div className="flex min-w-0 items-start sm:items-center gap-3 sm:gap-6 lg:gap-8">
+                    <button onClick={() => router.back()} className="h-11 w-11 sm:h-14 sm:w-14 shrink-0 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-slate-300 hover:text-primary transition-all shadow-sm">
+                        <ArrowLeft size={24} />
                     </button>
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-3">
+                    <div className="min-w-0 space-y-2 sm:space-y-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
                             <Zap className="h-4 w-4 text-primary" fill="currentColor" />
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary italic">Product Studio Terminal v3.0</span>
+                            <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.25em] sm:tracking-[0.4em] text-primary italic">Product Studio Terminal v3.0</span>
                         </div>
-                        <h1 className="text-4xl lg:text-5xl font-black text-foreground uppercase tracking-tighter leading-none italic">
+                        <h1 className="break-words text-2xl sm:text-4xl lg:text-5xl font-black text-foreground uppercase tracking-tighter leading-none italic">
                             Edit: <span className="text-primary">{form.name}</span>
                         </h1>
                     </div>
                 </div>
-                <div className="flex gap-4">
-                    <Button onClick={handleSave} disabled={saving} className="rounded-2xl h-16 px-10 bg-slate-900 text-white font-black uppercase text-xs tracking-widest shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
+                <div className="flex w-full sm:w-auto gap-4">
+                    <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto rounded-2xl h-14 sm:h-16 px-5 sm:px-10 bg-slate-900 text-white font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
                         {saving ? <Loader2 className="animate-spin mr-3" /> : <Save className="h-5 w-5 mr-3" />} Sync & Publish
                     </Button>
                 </div>
             </header>
 
-            <div className="grid xl:grid-cols-12 gap-12">
+            <div className="grid min-w-0 xl:grid-cols-12 gap-6 sm:gap-10 xl:gap-12">
 
                 {/* LEFT: LIVE PREVIEW STAGE */}
-                <div className="xl:col-span-4 space-y-10 order-2 xl:order-1">
-                    <div className="sticky top-10 space-y-10">
+                <div className="min-w-0 xl:col-span-4 space-y-6 sm:space-y-10 order-2 xl:order-1">
+                    <div className="xl:sticky xl:top-10 space-y-6 sm:space-y-10">
                         <div className="space-y-4">
                             <h3 className="text-xs font-black uppercase tracking-[0.4em] text-slate-400 px-6 italic">Live Grid Preview</h3>
                             <div className="max-w-[340px] mx-auto xl:mx-0 transform-gpu rotate-[-1deg] hover:rotate-0 transition-transform duration-700">
@@ -324,16 +339,16 @@ export default function ProductStudioTerminal() {
                 </div>
 
                 {/* RIGHT: CONFIGURATION HUB */}
-                <div className="xl:col-span-8 space-y-10 order-1 xl:order-2">
+                <div className="min-w-0 xl:col-span-8 space-y-6 sm:space-y-10 order-1 xl:order-2">
 
                     {/* Navigation Nodes */}
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-2 pb-2">
                         {sections.map(sec => (
                             <button
                                 key={sec.id}
                                 onClick={() => setActiveSection(sec.id as StudioSection)}
                                 className={cn(
-                                    "flex items-center gap-3 h-14 px-8 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0",
+                                    "min-w-0 flex items-center justify-center sm:justify-start gap-2 sm:gap-3 h-11 sm:h-14 px-2 sm:px-5 xl:px-8 rounded-xl sm:rounded-2xl text-[8px] sm:text-[10px] font-black uppercase tracking-wide sm:tracking-widest transition-all border",
                                     activeSection === sec.id ? "bg-white border-primary text-primary shadow-lg" : "bg-slate-50 text-slate-400 border-transparent hover:bg-white hover:border-slate-200"
                                 )}
                             >
@@ -342,7 +357,7 @@ export default function ProductStudioTerminal() {
                         ))}
                     </div>
 
-                    <Card className="p-10 rounded-[4rem] bg-white border border-slate-100 shadow-sm animate-in slide-in-from-right-4 duration-500 min-h-[600px] text-left">
+                    <Card className="min-w-0 p-4 sm:p-7 xl:p-10 rounded-3xl sm:rounded-[3rem] xl:rounded-[4rem] bg-white border border-slate-100 shadow-sm animate-in slide-in-from-right-4 duration-500 min-h-[600px] text-left">
 
                         {activeSection === 'basic' && (
                             <div className="space-y-10 animate-in fade-in duration-500">
@@ -577,7 +592,7 @@ export default function ProductStudioTerminal() {
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Margins & Tactical Pricing</p>
                                     </div>
                                 </div>
-                                <div className="grid sm:grid-cols-3 gap-8">
+                                <div className="grid min-w-0 sm:grid-cols-3 gap-4 sm:gap-8">
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Grid Price (Selling)</label>
                                         <Input type="number" name="price" value={form.price} onChange={handleInputChange} className="h-14 rounded-2xl bg-primary/5 border-primary/20 text-primary font-black text-xl pl-6" />
@@ -591,6 +606,36 @@ export default function ProductStudioTerminal() {
                                         <Input type="number" name="cost_price" value={form.cost_price} onChange={handleInputChange} className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" />
                                     </div>
                                 </div>
+                                {productSizes.length > 0 && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h3 className="text-xs font-black uppercase text-foreground">Prices by size</h3>
+                                            <p className="mt-1 text-xs text-slate-500">Leave a size blank to use the grid price above.</p>
+                                        </div>
+                                        <div className="grid min-w-0 sm:grid-cols-2 gap-3 sm:gap-4">
+                                            {productSizes.map(size => (
+                                                <label key={size} className="min-w-0 space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                                    <span className="block truncate text-[10px] font-black uppercase tracking-widest text-slate-500">{size}</span>
+                                                    <Input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={form.variant_prices[size] ?? ''}
+                                                        onChange={e => {
+                                                            const variantPrices = { ...form.variant_prices };
+                                                            const value = e.target.value;
+                                                            if (value === '') delete variantPrices[size];
+                                                            else variantPrices[size] = Number(value);
+                                                            setForm({ ...form, variant_prices: variantPrices });
+                                                        }}
+                                                        className="h-12 min-w-0 rounded-xl bg-white border-slate-100 font-black"
+                                                        placeholder={`Grid price: ${form.price}`}
+                                                    />
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="space-y-6 text-left">
                                     <div className="flex justify-between items-center text-left">
                                         <h3 className="text-xs font-black uppercase text-foreground">Patron FAQs</h3>

@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     DollarSign,
     TrendingUp,
@@ -17,20 +16,12 @@ import { formatPrice, cn } from '@/lib/utils';
 import TaxControlCenter from '@/components/admin/finance/TaxControlCenter';
 import InventoryValuation from '@/components/admin/finance/InventoryValuation';
 import ReconciliationEngine from '@/components/admin/finance/ReconciliationEngine';
-
-interface LedgerEntry {
-    id: number;
-    order_id: number;
-    entry_type: 'REVENUE' | 'SUPPLIER_PAYABLE' | 'DELIVERY_FEE' | 'PAYMENT_FEE' | 'REFUND' | 'COST';
-    amount: number;
-    description: string;
-    is_reconciled: boolean;
-    created_at: string;
-}
+import { AdminFinanceData, FinancialLedgerEntry } from '@/lib/adminFinanceTypes';
 
 export default function AdminFinancePage() {
     const [loading, setLoading] = React.useState(true);
-    const [ledger, setLedger] = React.useState<LedgerEntry[]>([]);
+    const [ledger, setLedger] = React.useState<FinancialLedgerEntry[]>([]);
+    const [financeData, setFinanceData] = React.useState<AdminFinanceData | null>(null);
     const [currency, setCurrency] = React.useState<'KES' | 'USD'>('KES');
     const exchangeRate = 129.5;
     const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -46,21 +37,15 @@ export default function AdminFinancePage() {
     };
 
     const fetchLedger = React.useCallback(async () => {
-        if (!supabase) {
-            setLoadError('Supabase is not configured. Financial ledger data is unavailable.');
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('financial_ledger')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            setLedger(data || []);
-            setLoadError(null);
+            const response = await fetch('/api/admin/finance-data', { cache: 'no-store' });
+            const result = await response.json() as AdminFinanceData & { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Financial data could not be loaded.');
+            setFinanceData(result);
+            setLedger(result.ledger || []);
+            const problems = Object.entries(result.errors || {}).filter(([, error]) => error).map(([section, error]) => `${section}: ${error}`);
+            setLoadError(problems.length ? problems.join(' · ') : null);
         } catch (err) {
             console.error("Financial Uplink Desync:", err);
             setLoadError(err instanceof Error ? err.message : 'Financial ledger data could not be loaded.');
@@ -74,9 +59,9 @@ export default function AdminFinancePage() {
     }, [fetchLedger]);
 
     const stats = React.useMemo(() => {
-        const revenue = ledger.filter(l => l.entry_type === 'REVENUE').reduce((s, l) => s + l.amount, 0);
-        const cost = Math.abs(ledger.filter(l => l.entry_type === 'SUPPLIER_PAYABLE' || l.entry_type === 'COST').reduce((s, l) => s + l.amount, 0));
-        const fees = Math.abs(ledger.filter(l => l.entry_type === 'PAYMENT_FEE').reduce((s, l) => s + l.amount, 0));
+        const revenue = ledger.filter(l => l.entry_type === 'REVENUE').reduce((s, l) => s + Number(l.amount), 0);
+        const cost = Math.abs(ledger.filter(l => l.entry_type === 'SUPPLIER_PAYABLE' || l.entry_type === 'COST').reduce((s, l) => s + Number(l.amount), 0));
+        const fees = Math.abs(ledger.filter(l => l.entry_type === 'PAYMENT_FEE').reduce((s, l) => s + Number(l.amount), 0));
 
         const contributionProfit = revenue - cost - fees;
         const margin = revenue > 0 ? (contributionProfit / revenue) * 100 : 0;
@@ -85,6 +70,7 @@ export default function AdminFinancePage() {
 
         return { revenue, contributionProfit, margin, unreconciled, payables: cost, totalVariances };
     }, [ledger]);
+    const ledgerUnavailable = !financeData || Boolean(financeData.errors.ledger);
 
     if (loading) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
@@ -133,10 +119,10 @@ export default function AdminFinancePage() {
             {/* Financial KPIs 2.0 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 items-stretch">
                 {[
-                    { label: 'Total Revenue', val: loadError ? 'Unavailable' : stats.revenue, icon: DollarSign, color: 'primary' },
-                    { label: 'Unreconciled', val: loadError ? 'Unavailable' : stats.totalVariances, icon: Target, color: 'amber' },
-                    { label: 'Gross Profit', val: loadError ? 'Unavailable' : stats.contributionProfit, icon: TrendingUp, color: 'emerald' },
-                    { label: 'Margin efficiency', val: loadError ? 'Unavailable' : `${stats.margin.toFixed(1)}%`, icon: Scale, color: 'indigo' },
+                    { label: 'Total Revenue', val: ledgerUnavailable ? 'Unavailable' : stats.revenue, icon: DollarSign, color: 'primary' },
+                    { label: 'Unreconciled', val: ledgerUnavailable ? 'Unavailable' : stats.totalVariances, icon: Target, color: 'amber' },
+                    { label: 'Gross Profit', val: ledgerUnavailable ? 'Unavailable' : stats.contributionProfit, icon: TrendingUp, color: 'emerald' },
+                    { label: 'Margin efficiency', val: ledgerUnavailable ? 'Unavailable' : `${stats.margin.toFixed(1)}%`, icon: Scale, color: 'indigo' },
                 ].map((item) => (
                     <Card key={item.label} className="min-w-0 p-6 sm:p-8 rounded-[2rem] sm:rounded-[3rem] bg-white border border-slate-100 shadow-sm group hover:shadow-xl transition-all relative overflow-hidden h-full flex flex-col justify-between">
                         <div className="relative z-10 space-y-8">
@@ -162,10 +148,10 @@ export default function AdminFinancePage() {
 
             {/* FINANCE OS MODULES */}
             <div className="grid lg:grid-cols-2 gap-8">
-                <TaxControlCenter />
-                <InventoryValuation />
+                <TaxControlCenter entries={financeData?.taxEntries || []} error={financeData?.errors.tax || null} />
+                <InventoryValuation products={financeData?.inventory || []} error={financeData?.errors.inventory || null} />
                 <div className="lg:col-span-2">
-                    <ReconciliationEngine />
+                    <ReconciliationEngine records={financeData?.reconciliation || []} error={financeData?.errors.reconciliation || null} onRefresh={fetchLedger} loading={loading} />
                 </div>
             </div>
 

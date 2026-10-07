@@ -336,7 +336,7 @@ function recommendRiders(
 }
 
 async function loadDispatchData(database: SupabaseClient) {
-  const [ordersResult, ridersResult, loadResult, decisionResult] = await Promise.all([
+  const [ordersResult, ridersResult, loadResult, decisionResult, directoryRidersResult, zonesResult] = await Promise.all([
     database.from('orders')
       .select('id, status, payment_method, payment_verified_at, checkout_request_id, customer_name, customer_email, total_price, latitude, longitude, note, created_at, rider_name, rider_phone')
       .eq('status', 'Paid')
@@ -353,10 +353,19 @@ async function loadDispatchData(database: SupabaseClient) {
     database.from('dispatch_decisions')
       .select('id, order_id, selected_rider_name, selected_rider_phone, selected_vendor_ids, decision_type, criteria, chosen_by, override_reason, created_at')
       .order('created_at', { ascending: false })
-      .limit(50)
+      .limit(50),
+    database.from('rider_status').select(`
+      id, rider_name, rider_phone, vehicle_type, vehicle_reg, id_number, license_number,
+      plate_number, rider_photo_url, vehicle_photo_url, verification_status, current_location,
+      status, battery_level, total_deliveries, rating, area_zone, max_deliveries, weekly_salary,
+      health_score, runner_xp, runner_level, acceptance_rate, can_accept_orders, can_reject_orders,
+      can_view_earnings, last_known_lat, last_known_lng, location_updated_at, updated_at,
+      wallet:rider_wallets(balance, total_earned)
+    `).order('rider_name', { ascending: true }),
+    database.rpc('get_order_delivery_demand_zones')
   ]);
 
-  for (const result of [ordersResult, ridersResult, loadResult, decisionResult]) {
+  for (const result of [ordersResult, ridersResult, loadResult, decisionResult, directoryRidersResult]) {
     if (result.error) throw result.error;
   }
 
@@ -388,6 +397,11 @@ async function loadDispatchData(database: SupabaseClient) {
   for (const row of loadResult.data || []) {
     if (row.rider_phone) loads.set(row.rider_phone, (loads.get(row.rider_phone) || 0) + 1);
   }
+  const demandZones = (zonesResult.data || []) as Array<{
+    latitude: number | string | null;
+    longitude: number | string | null;
+    order_count: number | string | null;
+  }>;
 
   const orderIds = orders.map(order => order.id);
   const { data: itemData, error: itemError } = orderIds.length
@@ -429,7 +443,22 @@ async function loadDispatchData(database: SupabaseClient) {
   return {
     jobs,
     decisions: decisionResult.data || [],
-    unverifiedPaymentCount: paidOrders.length - confirmedOrderIds.size
+    unverifiedPaymentCount: paidOrders.length - confirmedOrderIds.size,
+    riders: (directoryRidersResult.data || []).map(rider => ({
+      ...rider,
+      wallet: Array.isArray(rider.wallet) ? rider.wallet[0] || null : rider.wallet || null,
+      lat: rider.last_known_lat === null || rider.last_known_lat === undefined ? null : Number(rider.last_known_lat),
+      lng: rider.last_known_lng === null || rider.last_known_lng === undefined ? null : Number(rider.last_known_lng)
+    })),
+    demandZones: zonesResult.error ? [] : demandZones.flatMap(zone => {
+      const latitude = Number(zone.latitude);
+      const longitude = Number(zone.longitude);
+      const intensity = Number(zone.order_count);
+      return Number.isFinite(latitude) && Number.isFinite(longitude) && Number.isFinite(intensity)
+        ? [{ lat: latitude, lng: longitude, intensity }]
+        : [];
+    }),
+    demandZonesError: zonesResult.error ? 'Demand heatmap is unavailable; add or verify customer delivery coordinates.' : null
   };
 }
 

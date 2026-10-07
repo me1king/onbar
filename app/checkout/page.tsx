@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { type User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,6 +74,10 @@ function CheckoutContent() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [showCustomerErrors, setShowCustomerErrors] = useState(false);
+  const customerNameInputRef = useRef<HTMLInputElement>(null);
+  const customerPhoneInputRef = useRef<HTMLInputElement>(null);
+  const customerEmailInputRef = useRef<HTMLInputElement>(null);
   const [deliveryBuilding, setDeliveryBuilding] = useState("");
   const [deliveryLandmark, setDeliveryLandmark] = useState("");
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
@@ -399,20 +403,22 @@ function CheckoutContent() {
     }
 
     if (!customerName.trim() || !customerPhone.trim()) {
-      const msg = "Enter your full name and phone number before placing the order.";
-      setCheckoutStatus({
-        type: "error",
-        message: msg,
-      });
+      setShowCustomerErrors(true);
+      const firstMissingInput = !customerName.trim() ? customerNameInputRef.current : customerPhoneInputRef.current;
+      firstMissingInput?.scrollIntoView({ behavior: "smooth", block: "center" });
+      requestAnimationFrame(() => firstMissingInput?.focus({ preventScroll: true }));
       OB_OS.track('FORM_VALIDATION_FAILED', { details: { reason: 'MISSING_REQUIRED_FIELDS' } });
       return;
     }
 
     if (paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
-      setCheckoutStatus({ type: "error", message: "Enter a valid email address to continue with Paystack." });
+      setShowCustomerErrors(true);
+      customerEmailInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      requestAnimationFrame(() => customerEmailInputRef.current?.focus({ preventScroll: true }));
       return;
     }
 
+    setShowCustomerErrors(false);
     const paystackPublicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY?.trim();
     if (paymentMethod === "M-Pesa" && !paystackPublicKey) {
       setCheckoutStatus({ type: "error", message: "Online payments are not configured. Please choose Cash on Delivery or contact support." });
@@ -830,16 +836,19 @@ function CheckoutContent() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Full Name</label>
-                  <Input placeholder="Patron Name" className="rounded-2xl border-slate-100 bg-slate-50/50 h-14" value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={isPlacingOrder} />
+                  <label htmlFor="checkout-customer-name" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Full Name *</label>
+                  <Input id="checkout-customer-name" ref={customerNameInputRef} autoComplete="name" required aria-invalid={showCustomerErrors && !customerName.trim()} aria-describedby={showCustomerErrors && !customerName.trim() ? "checkout-customer-name-error" : undefined} placeholder="Patron Name" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && !customerName.trim() ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={isPlacingOrder} />
+                  {showCustomerErrors && !customerName.trim() && <p id="checkout-customer-name-error" role="alert" className="text-xs font-semibold text-rose-600">Enter your full name to continue.</p>}
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Phone Number</label>
-                  <Input placeholder="07XXXXXXXX" className="rounded-2xl border-slate-100 bg-slate-50/50 h-14" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} disabled={isPlacingOrder} />
+                  <label htmlFor="checkout-customer-phone" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Phone Number *</label>
+                  <Input id="checkout-customer-phone" ref={customerPhoneInputRef} type="tel" autoComplete="tel" inputMode="tel" required aria-invalid={showCustomerErrors && !customerPhone.trim()} aria-describedby={showCustomerErrors && !customerPhone.trim() ? "checkout-customer-phone-error" : undefined} placeholder="07XXXXXXXX" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && !customerPhone.trim() ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} disabled={isPlacingOrder} />
+                  {showCustomerErrors && !customerPhone.trim() && <p id="checkout-customer-phone-error" role="alert" className="text-xs font-semibold text-rose-600">Enter your phone number to continue.</p>}
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Address {paymentMethod === "M-Pesa" ? "(Required for Paystack)" : "(For PDF Receipt)"}</label>
-                  <Input type="email" placeholder="you@example.com" className="rounded-2xl border-slate-100 bg-slate-50/50 h-14" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} disabled={isPlacingOrder} />
+                  <label htmlFor="checkout-customer-email" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Address {paymentMethod === "M-Pesa" ? "(Required for Paystack)" : "(For PDF Receipt)"}</label>
+                  <Input id="checkout-customer-email" ref={customerEmailInputRef} type="email" autoComplete="email" required={paymentMethod === "M-Pesa"} aria-invalid={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())} aria-describedby={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "checkout-customer-email-error" : undefined} placeholder="you@example.com" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} disabled={isPlacingOrder} />
+                  {showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && <p id="checkout-customer-email-error" role="alert" className="text-xs font-semibold text-rose-600">Enter a valid email address for Paystack.</p>}
                 </div>
             </div>
           </section>

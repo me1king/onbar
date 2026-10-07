@@ -1,60 +1,29 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Card } from '@/components/ui/card';
 import { Zap, RefreshCcw, AlertCircle, Loader2 } from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { ReconciliationRow } from '@/lib/adminFinanceTypes';
 
-export default function ReconciliationEngine() {
-    const [stats, setStats] = React.useState<{
-        total_count: number;
-        unmatched_count: number;
-        unmatched_value: number;
-        matched_count: number;
-        match_rate: number | null;
-    } | null>(null);
-    const [loading, setLoading] = React.useState(true);
-    const [loadError, setLoadError] = React.useState<string | null>(null);
-
-    const fetchReconStats = React.useCallback(async () => {
-        if (!supabase) {
-            setLoadError('Supabase is not configured. Reconciliation records are unavailable.');
-            setStats(null);
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        try {
-            const { data, error } = await supabase.from('reconciliation_staging').select('is_matched, amount');
-            if (error) throw error;
-            const rows = data || [];
-            const unmatched = rows.filter(row => !row.is_matched);
-            const matchedCount = rows.length - unmatched.length;
-
-            setStats({
-                total_count: rows.length,
-                unmatched_count: unmatched.length,
-                unmatched_value: unmatched.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-                matched_count: matchedCount,
-                match_rate: rows.length > 0 ? Math.round((matchedCount / rows.length) * 100) : null
-            });
-            setLoadError(null);
-        } catch (error) {
-            console.error('Could not load reconciliation records:', error);
-            setLoadError(error instanceof Error ? error.message : 'Reconciliation records could not be loaded.');
-            setStats(null);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    React.useEffect(() => {
-        fetchReconStats();
-    }, [fetchReconStats]);
-
-    if (loading) return <div className="h-64 bg-slate-50 rounded-[3rem] animate-pulse" />;
+export default function ReconciliationEngine({ records, error, onRefresh, loading }: {
+    records: ReconciliationRow[];
+    error: string | null;
+    onRefresh: () => void;
+    loading: boolean;
+}) {
+    const stats = React.useMemo(() => {
+        const unmatched = records.filter(row => !row.is_matched);
+        const matchedCount = records.length - unmatched.length;
+        return {
+            total_count: records.length,
+            unmatched_count: unmatched.length,
+            unmatched_value: unmatched.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+            matched_count: matchedCount,
+            match_rate: records.length > 0 ? Math.round((matchedCount / records.length) * 100) : null
+        };
+    }, [records]);
 
     return (
         <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-10 text-left overflow-hidden relative">
@@ -68,25 +37,25 @@ export default function ReconciliationEngine() {
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Saved payment reconciliation data</p>
                     </div>
                 </div>
-                <Button onClick={fetchReconStats} disabled={loading} variant="outline" className="h-12 rounded-xl font-black uppercase text-[10px] tracking-widest">
+                <Button onClick={onRefresh} disabled={loading} variant="outline" className="h-12 rounded-xl font-black uppercase text-[10px] tracking-widest">
                     {loading ? <Loader2 className="animate-spin mr-2" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
                     Refresh Records
                 </Button>
             </header>
 
-            {loadError && (
+            {error && (
                 <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                    Reconciliation data unavailable: {loadError}
+                    Reconciliation data unavailable: {error}
                 </p>
             )}
 
-            {stats && stats.total_count === 0 && (
+            {!error && stats.total_count === 0 && (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                     No reconciliation records are currently stored.
                 </p>
             )}
 
-            {stats && stats.total_count > 0 && (
+            {!error && stats.total_count > 0 && (
             <div className="grid sm:grid-cols-2 gap-8">
                 <div className="p-8 bg-slate-50 rounded-[2.5rem] space-y-6">
                     <div className="flex justify-between items-center">
