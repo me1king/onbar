@@ -162,6 +162,9 @@ export default function AffiliateDashboard() {
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Approved affiliate</p>
           <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl">{data?.application.business_name}</h1>
           <p className="text-slate-600">Share your referral link, follow completed orders, and request a payout.</p>
+          <Link href="/affiliate/agreement" className="mt-1 w-fit text-sm font-semibold text-primary underline underline-offset-2">
+            View Affiliate &amp; Partner Agreement draft
+          </Link>
         </header>
 
         {message && (

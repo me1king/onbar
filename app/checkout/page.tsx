@@ -35,6 +35,7 @@ interface CheckoutStatus {
 interface Coupon {
   code: string;
   discount_percent: number;
+  discount_amount?: number;
 }
 
 interface DBProduct {
@@ -103,8 +104,8 @@ function CheckoutContent() {
   }, []);
 
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const [pointsPerKsh, setPointsPerKsh] = useState(10);
   const [usePoints, setUsePoints] = useState(false);
-  const [isRestoredBonus, setIsRestoredBonus] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<{ latitude?: number, longitude?: number } | null>(null);
 
@@ -259,11 +260,16 @@ function CheckoutContent() {
                     setCoords({ lat: profileData.latitude, lng: profileData.longitude });
                 }
             }
+            const configResponse = await fetch('/api/loyalty/config', { cache: 'no-store' });
+            if (configResponse.ok) {
+                const configResult = await configResponse.json();
+                const configuredRate = Number(configResult.config?.points?.points_per_ksh);
+                if (Number.isSafeInteger(configuredRate) && configuredRate > 0) setPointsPerKsh(configuredRate);
+            }
         }
 
         // Check for restored bonus from profile
         if (typeof window !== 'undefined') {
-            setIsRestoredBonus(localStorage.getItem('ob_restored_bonus') === 'true');
         }
     }
     loadProfile();
@@ -291,8 +297,10 @@ function CheckoutContent() {
       : currentRegion.label);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const discount = activeCoupon ? (subtotal * activeCoupon.discount_percent) / 100 : 0;
-  const pointsDiscount = usePoints ? Math.min(subtotal - discount, loyaltyPoints / 10) : 0;
+  const discount = activeCoupon
+    ? Math.min(subtotal, Number(activeCoupon.discount_amount || 0) || (subtotal * activeCoupon.discount_percent) / 100)
+    : 0;
+  const pointsDiscount = usePoints ? Math.min(subtotal - discount, Math.floor(loyaltyPoints / pointsPerKsh)) : 0;
   const totalSavings = discount + pointsDiscount;
   const originalTotal = subtotal + deliveryFee;
   const total = originalTotal - totalSavings;
@@ -311,6 +319,7 @@ function CheckoutContent() {
                 customer_phone: customerPhone.trim(),
                 cart_items: cart,
                 total_price: total,
+                loyalty_points_redeemed: usePoints ? Math.min(loyaltyPoints, Math.ceil(pointsDiscount * pointsPerKsh)) : 0,
                 session_id: sessionId,
                 updated_at: new Date().toISOString(),
                 recovery_status: 'Waiting'
@@ -322,7 +331,7 @@ function CheckoutContent() {
 
     const timer = setTimeout(syncAbandonedCart, 5000); // Sync after 5s of typing
     return () => clearTimeout(timer);
-  }, [customerName, customerPhone, cart, total]);
+  }, [customerName, customerPhone, cart, total, loyaltyPoints, pointsDiscount, pointsPerKsh, usePoints]);
 
   // 1.5 Realtime "Magic" Checkout Listener
   useEffect(() => {
@@ -568,6 +577,9 @@ function CheckoutContent() {
           payment_method: paymentMethod === 'M-Pesa' ? 'Paystack' : paymentMethod,
           checkout_request_id: requestId,
           referred_by_code: referralCode,
+          loyalty_points_redeemed: user && usePoints
+            ? Math.min(loyaltyPoints, Math.ceil(pointsDiscount * pointsPerKsh))
+            : 0,
           attribution_id: typeof window !== 'undefined' ? sessionStorage.getItem('ob_attribution_id') : null,
           captured_by: 'system',
           latitude: coords.lat ?? profile?.latitude ?? null,
@@ -580,7 +592,7 @@ function CheckoutContent() {
           gift_message: giftMessage.trim() || null,
           gift_recipient: isGift ? giftRecipient || null : null,
           gift_occasion: isGift ? giftOccasion || null : null,
-          note: `Region: ${currentRegion.label}${matchedFreeDeliveryArea ? ` | Free delivery area: ${matchedFreeDeliveryArea.name}` : ''}${activeCoupon ? ` | Coupon: ${activeCoupon.code}` : ''}${usePoints ? ` | Used ${pointsDiscount * 10} points` : ''}${referralCode ? ` | Referred by ${referralCode}` : ''}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`
+          note: `Region: ${currentRegion.label}${matchedFreeDeliveryArea ? ` | Free delivery area: ${matchedFreeDeliveryArea.name}` : ''}${activeCoupon ? ` | Coupon: ${activeCoupon.code}` : ''}${usePoints ? ` | Used ${Math.min(loyaltyPoints, Math.ceil(pointsDiscount * pointsPerKsh))} points` : ''}${referralCode ? ` | Referred by ${referralCode}` : ''}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`
       };
 
       const { data: headerData, error: headerError } = await client
@@ -653,49 +665,10 @@ function CheckoutContent() {
         });
     }
 
-    // 1. Update Loyalty Points & Referral Bonuses
+    // Awarding happens server-side once payment succeeds or delivery is confirmed.
     const client = supabase;
     if (user && client) {
         try {
-            let finalPoints = loyaltyPoints;
-            const pointDetails: { profile_id: string, amount: number, description: string }[] = [];
-
-            if (usePoints) {
-                const pointsUsed = pointsDiscount * 10;
-                finalPoints -= pointsUsed;
-                pointDetails.push({ profile_id: user.id, amount: -pointsUsed, description: `Used at Checkout` });
-            }
-
-            // Award new points (5% of total paid)
-            const earned = Math.floor(total * 0.05);
-            finalPoints += earned;
-            pointDetails.push({ profile_id: user.id, amount: earned, description: `Earned from Order` });
-
-            // Referral Bonus
-            if (referralCode) {
-                finalPoints += 100;
-                pointDetails.push({ profile_id: user.id, amount: 100, description: `Referral Welcome Bonus` });
-
-                const { data: referrer } = await client.from('profiles').select('id, loyalty_points, total_commission_earned').eq('referral_code', referralCode).single();
-                if (referrer) {
-                    await client.from('profiles').update({ loyalty_points: (referrer.loyalty_points || 0) + 100 }).eq('id', referrer.id);
-                    await client.from('loyalty_ledger').insert([{ profile_id: referrer.id, amount: 100, description: `Referral Award (Friend Join)` }]);
-                    const commission = Math.floor(total * 0.05);
-                    await client.from('profiles').update({ total_commission_earned: (referrer.total_commission_earned || 0) + commission }).eq('id', referrer.id);
-                }
-            }
-
-            if (isRestoredBonus) {
-                finalPoints += 50;
-                pointDetails.push({ profile_id: user.id, amount: 50, description: `Welcome Back Bonus (Restored Bag)` });
-                localStorage.removeItem('ob_restored_bonus');
-            }
-
-            await client.from('profiles').update({ loyalty_points: finalPoints }).eq('id', user.id);
-            if (pointDetails.length > 0) {
-                await client.from('loyalty_ledger').insert(pointDetails);
-            }
-
             // Grant Achievements
             await runPostCheckoutAudit(user.id, total);
 
@@ -1157,7 +1130,7 @@ function CheckoutContent() {
                   <div className="pt-4 border-t border-slate-100">
                       <div className="flex items-center justify-between mb-3 px-1">
                           <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Club Rewards</p>
-                          <span className="text-[8px] font-bold text-slate-300 uppercase italic">10 Pts = 1 Ksh</span>
+                          <span className="text-[8px] font-bold text-slate-300 uppercase italic">{pointsPerKsh} Pts = 1 KSh</span>
                       </div>
                       <button
                         onClick={() => setUsePoints(!usePoints)}
@@ -1173,7 +1146,7 @@ function CheckoutContent() {
                               <div>
                                   <p className="text-[10px] font-black uppercase tracking-widest leading-none">Redeem {loyaltyPoints.toLocaleString()} Points</p>
                                   <p className={cn("text-[9px] font-bold mt-1.5 uppercase tracking-tighter", usePoints ? "text-primary-foreground/60" : "text-primary")}>
-                                      Save {formatPrice(loyaltyPoints / 10)} on this order
+                                      Save up to {formatPrice(Math.floor(loyaltyPoints / pointsPerKsh))} on this order
                                   </p>
                               </div>
                           </div>

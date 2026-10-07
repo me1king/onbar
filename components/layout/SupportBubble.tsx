@@ -238,6 +238,8 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
         }
     };
 
+    if (pathname === '/affiliate/agreement') return null;
+
     return (
         <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] lg:bottom-8 right-3 sm:right-8 z-[2100] flex flex-col items-end gap-4">
 

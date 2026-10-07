@@ -34,7 +34,7 @@ import Image from 'next/image';
 import { OB_OS } from '@/lib/onlineBarOS';
 import { v4 as uuidv4 } from 'uuid';
 import { useInteractionTracking } from '@/lib/utils/useInteractionTracking';
-import { productKnowledgeEngine, ProductDossier } from '@/lib/engines/productKnowledgeEngine';
+import { productKnowledgeEngine, ProductDossier, SensoryDNA } from '@/lib/engines/productKnowledgeEngine';
 import { supabase } from '@/lib/supabaseClient';
 import { Product } from '@/types/product';
 import { getVariantPrice } from '@/lib/productPricing';
@@ -46,6 +46,22 @@ import ProductDNACard from './ProductDNACard';
 import PerfectServeCommerce from './PerfectServeCommerce';
 import DossierEditorialHub from './DossierEditorialHub';
 import AuthenticitySentinel from './AuthenticitySentinel';
+
+type SensoryProfile = Pick<SensoryDNA, 'body' | 'sweetness' | 'oak' | 'smoke' | 'intensity'>;
+
+function getSensoryProfile(source: Partial<SensoryDNA> | Record<string, number> | null | undefined): SensoryProfile | null {
+    if (!source) return null;
+    const profile: SensoryProfile = {
+        body: Number(source.body),
+        sweetness: Number(source.sweetness ?? ('sweet' in source ? source.sweet : undefined)),
+        oak: Number(source.oak),
+        smoke: Number(source.smoke),
+        intensity: Number(source.intensity)
+    };
+    return Object.values(profile).every(value => Number.isFinite(value) && value >= 0 && value <= 100)
+        ? profile
+        : null;
+}
 
 interface FoodAddon {
     id: string;
@@ -75,6 +91,9 @@ export default function ProductDetailClient({
   const isFoodProduct = Boolean(product.is_bite || product.is_snack);
 
   const [dossier, setDossier] = useState<ProductDossier | null>(null);
+  const sensoryProfile = getSensoryProfile(dossier?.sensory_dna)
+    || getSensoryProfile(product.beverage_specs?.sensory_dna)
+    || getSensoryProfile(product.sensory_metrics);
   const [quantity, setQuantity] = useState<number>(1);
   const [selectedVariant, setSelectedVariant] = useState<string>(
     (product.sizes && product.sizes.length > 0) ? product.sizes[0] : 'Standard'
@@ -93,6 +112,22 @@ export default function ProductDetailClient({
   const [foodAddonsLoading, setFoodAddonsLoading] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [shareFeedback, setShareFeedback] = useState('');
+  const [orderEarnPercent, setOrderEarnPercent] = useState(5);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/loyalty/config', { cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('Could not load reward rate.');
+        return response.json();
+      })
+      .then(result => {
+        const rate = Number(result.config?.points?.order_earn_percent);
+        if (active && Number.isFinite(rate) && rate >= 0) setOrderEarnPercent(rate);
+      })
+      .catch(error => console.error('Product loyalty estimate unavailable:', error));
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     async function initData() {
@@ -182,7 +217,7 @@ export default function ProductDetailClient({
   const discountPercent = isSale ? Math.round((1 - (product.price / Number(product.old_price!))) * 100) : 0;
   const savings = isSale ? (Number(product.old_price) - product.price) : 0;
   const selectedVariantPrice = getVariantPrice(product.price, product.variant_prices, selectedVariant);
-  const points = Math.floor(selectedVariantPrice / 23);
+  const points = Math.floor(selectedVariantPrice * orderEarnPercent / 100);
 
   const activeBundleItems = [product, ...bundleProducts].filter(p => boughtTogether.includes(p.id));
   const getBundleVariant = (item: Product) => item.id === product.id ? selectedVariant : item.sizes?.[0] || 'Standard';
@@ -839,13 +874,20 @@ export default function ProductDetailClient({
 
       {!isFoodProduct && <div className="max-w-6xl w-full grid lg:grid-cols-12 gap-10 items-stretch px-4">
             <div className="lg:col-span-4 h-full flex flex-col gap-10">
-                <ProductDNACard
-                    dna={sensoryDNA}
-                    origin={dossier?.country_of_origin || product.origin || product.beverage_specs?.origin || 'Unavailable'}
-                    style={product.category || 'Unavailable'}
-                    abv={dossier?.abv_actual || product.abv_label || product.beverage_specs?.abv || 'Unavailable'}
-                    verification={dossier?.source_verification || {}}
-                />
+                {sensoryProfile ? (
+                    <ProductDNACard
+                        dna={sensoryProfile}
+                        origin={dossier?.country_of_origin || product.origin || product.beverage_specs?.origin || 'Unavailable'}
+                        style={product.category || 'Unavailable'}
+                        abv={dossier?.abv_actual || product.abv_label || product.beverage_specs?.abv || 'Unavailable'}
+                        verification={dossier?.source_verification || {}}
+                    />
+                ) : (
+                    <Card className="p-8 rounded-[3rem] bg-amber-50 border border-amber-200 shadow-sm text-left">
+                        <h3 className="text-lg font-black uppercase tracking-tight text-amber-950">Sensory profile unavailable</h3>
+                        <p className="mt-2 text-xs font-medium leading-relaxed text-amber-900">A complete sensory profile has not been recorded for this product yet, so we won&apos;t show estimated values.</p>
+                    </Card>
+                )}
                 <AuthenticitySentinel
                     productName={product.name}
                     origin={product.origin || product.beverage_specs?.origin || dossier?.country_of_origin || 'Unavailable'}

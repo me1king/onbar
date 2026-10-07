@@ -204,16 +204,22 @@ export default function Product() {
       });
 
       // Update Mission
-      if (user) {
-          fetch('/api/member/gamification', {
+      if (user && supabase) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session || session.user.id !== user.id) return;
+          const response = await fetch('/api/member/gamification', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${session.access_token}`
+              },
               body: JSON.stringify({
                   userId: user.id,
                   action: 'update-mission-progress',
                   payload: { missionType: 'wishlist-items', increment: 1 }
               }),
           });
+          if (!response.ok) console.error('Could not update wishlist mission:', await response.text());
       }
     }
   };

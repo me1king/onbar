@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS public.affiliates (
     verification_status TEXT NOT NULL DEFAULT 'Pending',
     commission_rate_override NUMERIC NOT NULL DEFAULT 5,
     marketing_agreement_accepted BOOLEAN NOT NULL DEFAULT false,
+    agreement_version TEXT,
+    agreement_accepted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT affiliates_status_check CHECK (verification_status IN ('Pending', 'Verified', 'Rejected', 'Suspended')),
@@ -36,6 +38,8 @@ ALTER TABLE public.affiliates
     ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'Pending',
     ADD COLUMN IF NOT EXISTS commission_rate_override NUMERIC NOT NULL DEFAULT 5,
     ADD COLUMN IF NOT EXISTS marketing_agreement_accepted BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS agreement_version TEXT,
+    ADD COLUMN IF NOT EXISTS agreement_accepted_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 UPDATE public.affiliates

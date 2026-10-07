@@ -36,6 +36,14 @@ export async function verifyBottle(bottleId: string, metadata: { userId?: string
         if (!passport) {
             return { valid: false, error: 'Identifier could not be verified in the Online Bar registry.' };
         }
+        if (passport.current_status !== 'Verified') {
+            return {
+                valid: false,
+                error: passport.current_status === 'Compromised'
+                    ? 'This passport is marked as compromised. Do not rely on this bottle; contact Online Bar support.'
+                    : 'This passport requires review. Contact Online Bar support before relying on this bottle.'
+            };
+        }
 
         // 2. Check for Anomaly (Simultaneous scans in different cities)
         const { data: recentScans, error: scansError } = await supabase

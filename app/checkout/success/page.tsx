@@ -25,6 +25,7 @@ function SuccessContent() {
     const [order, setOrder] = useState<Order | null>(null);
     const [referralCode, setReferralCode] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loyaltyNotice, setLoyaltyNotice] = useState('');
     const { settings } = useSettings();
 
     useEffect(() => {
@@ -50,7 +51,29 @@ function SuccessContent() {
                         return;
                     }
 
-                    if (oData) setOrder(oData as unknown as Order);
+                    if (oData) {
+                        setOrder(oData as unknown as Order);
+                        if (session && oData.user_id === session.user.id && ['Paid', 'Delivered', 'Completed'].includes(oData.status)) {
+                            try {
+                                const loyaltyResponse = await fetch('/api/member/loyalty', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        Authorization: `Bearer ${session.access_token}`
+                                    },
+                                    body: JSON.stringify({ action: 'process-order', orderId: oData.id })
+                                });
+                                const loyaltyResult = await loyaltyResponse.json();
+                                if (!loyaltyResponse.ok) throw new Error(loyaltyResult.error || 'Points could not be updated.');
+                                if (loyaltyResult.earnedPoints > 0) {
+                                    setLoyaltyNotice(`${loyaltyResult.earnedPoints} loyalty points added to your account.`);
+                                }
+                            } catch (loyaltyError) {
+                                console.error('Order confirmed but loyalty points could not be processed:', loyaltyError);
+                                setLoyaltyNotice('Your order is confirmed. Loyalty points are still syncing; refresh this page shortly.');
+                            }
+                        }
+                    }
                 }
 
                 // 2. Fetch User Referral Code
@@ -153,6 +176,12 @@ function SuccessContent() {
                     </div>
                 </CardContent>
             </Card>
+
+            {loyaltyNotice && (
+                <p aria-live="polite" className="mb-8 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+                    {loyaltyNotice}
+                </p>
+            )}
 
             {/* Premium Invitation Section */}
             {referralCode && (

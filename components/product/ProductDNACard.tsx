@@ -73,16 +73,19 @@ export default function ProductDNACard({ dna, origin, style, abv, verification }
                 {scoredAxes}/6 tasting dimensions scored · Unscored axes sit at the center
             </p>
 
-            {/* Micro Stats */}
-            <div className="grid grid-cols-2 gap-3 relative z-10">
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                    <span className="text-[8px] font-black uppercase text-slate-400">Complexity</span>
-                    <span className="text-[9px] font-black text-foreground">High</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                    <span className="text-[8px] font-black uppercase text-slate-400">Finish</span>
-                    <span className="text-[9px] font-black text-foreground">Long</span>
-                </div>
+            <div className="relative z-10 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {[
+                    { label: 'Body', value: dna.body },
+                    { label: 'Sweetness', value: dna.sweetness },
+                    { label: 'Oak', value: dna.oak },
+                    { label: 'Smoke', value: dna.smoke },
+                    { label: 'Intensity', value: dna.intensity }
+                ].map(metric => (
+                    <div key={metric.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                        <p className="text-[8px] font-black uppercase text-slate-400">{metric.label}</p>
+                        <p className="mt-1 text-sm font-black text-foreground">{metric.value}<span className="ml-0.5 text-[9px] text-slate-400">/100</span></p>
+                    </div>
+                ))}
             </div>
 
             {/* Metadata Footer */}

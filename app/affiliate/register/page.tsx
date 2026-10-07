@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { AFFILIATE_AGREEMENT_VERSION } from '@/lib/affiliateAgreement';
 
 export default function AffiliateRegistration() {
     const [loading, setLoading] = React.useState(false);
@@ -29,7 +30,8 @@ export default function AffiliateRegistration() {
         primary_channels: [] as string[],
         preferred_payout_method: 'M-Pesa',
         payout_details: '',
-        marketing_agreement_accepted: false
+        marketing_agreement_accepted: false,
+        agreement_draft_acknowledged: false
     });
 
     const channels = [
@@ -61,6 +63,7 @@ export default function AffiliateRegistration() {
             }
             if (formData.primary_channels.length === 0) throw new Error('Select at least one promotional channel.');
             if (!formData.marketing_agreement_accepted) throw new Error('Accept the affiliate marketing terms to continue.');
+            if (!formData.agreement_draft_acknowledged) throw new Error('Review and acknowledge the affiliate agreement draft to continue.');
 
             const response = await fetch('/api/affiliate', {
                 method: 'POST',
@@ -70,6 +73,7 @@ export default function AffiliateRegistration() {
                 },
                 body: JSON.stringify({
                     ...formData,
+                    agreement_version: AFFILIATE_AGREEMENT_VERSION,
                     audience_size: Number(formData.audience_size)
                 })
             });
@@ -213,6 +217,22 @@ export default function AffiliateRegistration() {
                                     className="mt-0.5 h-4 w-4 accent-primary"
                                 />
                                 <span>I agree to promote Online Bar responsibly and understand applications and payout requests are reviewed manually.</span>
+                            </label>
+                            <label className="relative z-10 flex items-start gap-3 text-xs font-medium text-slate-600">
+                                <input
+                                    type="checkbox"
+                                    required
+                                    checked={formData.agreement_draft_acknowledged}
+                                    onChange={event => setFormData({ ...formData, agreement_draft_acknowledged: event.target.checked })}
+                                    className="mt-0.5 h-4 w-4 accent-primary"
+                                />
+                                <span>
+                                    I have reviewed the{' '}
+                                    <Link href="/affiliate/agreement" target="_blank" rel="noreferrer" className="font-bold text-primary underline underline-offset-2">
+                                        Affiliate &amp; Partner Agreement draft
+                                    </Link>
+                                    , understand that it is not final or legally binding, and acknowledge the terms marked “TO BE CONFIRMED” must be finalized before partner activation.
+                                </span>
                             </label>
                             <Rocket className="absolute -bottom-6 -right-6 h-32 w-32 text-primary/5 -rotate-12" />
                         </div>

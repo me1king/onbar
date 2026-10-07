@@ -8,46 +8,19 @@ export async function unlockAchievement(userId: string, key: string) {
     if (!supabase || !userId) return;
 
     try {
-        // 1. Check if already unlocked
-        const { data: existing } = await supabase
-            .from('user_achievements')
-            .select('*')
-            .eq('user_id', userId)
-            .eq('achievement_key', key)
-            .maybeSingle();
-
-        if (existing) return; // Already achieved
-
-        // 2. Fetch Reward Details
-        const { data: achievement } = await supabase
-            .from('achievements')
-            .select('xp_reward, points_reward')
-            .eq('key', key)
-            .single();
-
-        if (!achievement) throw new Error("Achievement blueprint not found.");
-
-        // 3. Unlock & Grant Rewards
-        const { error: unlockError } = await supabase
-            .from('user_achievements')
-            .insert([{
-                user_id: userId,
-                achievement_key: key,
-                unlocked_at: new Date().toISOString()
-            }]);
-
-        if (unlockError) throw unlockError;
-
-        // 4. Update Profile XP & Points
-        const { data: profile } = await supabase.from('profiles').select('xp, loyalty_points').eq('id', userId).single();
-        if (profile) {
-            await supabase.from('profiles').update({
-                xp: (profile.xp || 0) + (achievement.xp_reward || 0),
-                loyalty_points: (profile.loyalty_points || 0) + (achievement.points_reward || 0)
-            }).eq('id', userId);
-        }
-
-        return true;
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session || session.user.id !== userId) throw new Error('A signed-in member session is required.');
+        const response = await fetch('/api/member/achievement', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({ achievementKey: key })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Achievement reward failed.');
+        return result.unlocked === true;
     } catch (err) {
         console.error("Achievement Unlock Failure:", err);
         return false;
@@ -62,15 +35,6 @@ export async function runPostCheckoutAudit(userId: string, orderTotal: number) {
     if (!supabase || !userId) return;
 
     try {
-        // Grant Base XP for Purchase (1 XP per 10 KSh)
-        const purchaseXP = Math.floor(orderTotal / 10);
-        const { data: profile } = await supabase.from('profiles').select('xp').eq('id', userId).single();
-        if (profile) {
-            await supabase.from('profiles').update({
-                xp: (profile.xp || 0) + purchaseXP
-            }).eq('id', userId);
-        }
-
         // 1. First Pour
         await unlockAchievement(userId, 'first-pour');
 

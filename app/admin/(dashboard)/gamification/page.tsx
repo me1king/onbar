@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Flame,
     Target,
@@ -34,6 +33,13 @@ import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 
 const DEFAULTS = {
+    points: {
+        order_earn_percent: 5,
+        points_per_ksh: 10,
+        photo_review: 50,
+        referral_bonus: 100,
+        welcome_back_bonus: 50
+    },
     streak: {
         milestone_days: 14,
         milestone_reward_label: "KSh 500 Bar Voucher",
@@ -104,7 +110,7 @@ export default function AdminGamificationPage() {
     const runSimulation = () => {
         const amount = Number(simPurchase) || 0;
         const xp = Math.floor(amount / 10); // 1 XP per 10 KSh
-        const points = Math.floor(xp * 1.5);
+        const points = Math.floor(amount * config.points.order_earn_percent / 100);
 
         // Find Rank
         const rank = [...config.tiers].sort((a, b) => b.threshold - a.threshold).find(t => xp >= t.threshold)?.label || 'Patron';
@@ -115,29 +121,39 @@ export default function AdminGamificationPage() {
 
     React.useEffect(() => {
         async function fetchConfig() {
-            if (!supabase) return;
             setLoading(true);
-            const { data } = await supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle();
-            if (data) setConfig(data.value);
-            setLoading(false);
+            try {
+                const response = await fetch('/api/admin/gamification', { cache: 'no-store' });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not load reward configuration.');
+                if (result.config) {
+                    setConfig({
+                        ...DEFAULTS,
+                        ...result.config,
+                        points: { ...DEFAULTS.points, ...result.config.points },
+                        streak: { ...DEFAULTS.streak, ...result.config.streak },
+                        rewards: { ...DEFAULTS.rewards, ...result.config.rewards }
+                    });
+                }
+            } catch (error) {
+                setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load reward configuration.' });
+            } finally {
+                setLoading(false);
+            }
         }
         fetchConfig();
     }, []);
 
     const handleSave = async () => {
-        if (!supabase) return;
         setSaving(true);
         try {
-            const { error } = await supabase
-                .from('settings')
-                .upsert({
-                    key: 'gamification',
-                    value: config,
-                    is_published: true,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'key' });
-
-            if (error) throw error;
+            const response = await fetch('/api/admin/gamification', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not save reward configuration.');
             await logAuditAction(email, 'UPDATE_GAMIFICATION', config);
             setMessage({ type: 'success', text: "Bar Reward protocols updated successfully." });
         } catch (err: unknown) {
@@ -240,6 +256,110 @@ export default function AdminGamificationPage() {
                                         className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold"
                                     />
                                 </div>
+                            </div>
+                        </Card>
+                    )}
+
+                    {activeTab === 'rewards' && (
+                        <Card className="rounded-[3rem] border border-slate-100 p-6 sm:p-10 bg-white shadow-sm space-y-8 animate-in fade-in slide-in-from-left-4 duration-500">
+                            <div>
+                                <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><DollarSign className="h-5 w-5 text-primary" /> Loyalty Point Rules</h2>
+                                <p className="mt-2 text-sm text-slate-500">These values determine live order rewards, checkout redemption, and photo-review bonuses.</p>
+                            </div>
+                            <div className="grid gap-5 sm:grid-cols-2">
+                                {([
+                                    ['Order earning rate (%)', 'order_earn_percent', 100],
+                                    ['Points per KSh redeemed', 'points_per_ksh', 10000],
+                                    ['Photo review bonus (points)', 'photo_review', 100000],
+                                    ['Referral bonus (points)', 'referral_bonus', 100000],
+                                    ['Welcome-back bonus (points)', 'welcome_back_bonus', 100000]
+                                ] as const).map(([label, key, max]) => (
+                                    <div key={key} className="space-y-2">
+                                        <label htmlFor={`loyalty-${key}`} className="text-[10px] font-black uppercase text-slate-500">{label}</label>
+                                        <Input
+                                            id={`loyalty-${key}`}
+                                            type="number"
+                                            min={0}
+                                            max={max}
+                                            step={key === 'order_earn_percent' ? 0.1 : 1}
+                                            value={config.points[key]}
+                                            onChange={event => setConfig({
+                                                ...config,
+                                                points: { ...config.points, [key]: Number(event.target.value) }
+                                            })}
+                                            className="h-12 rounded-xl bg-slate-50 border-slate-100 font-black"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs font-medium text-amber-900">
+                                Example: a KSh 2,000 eligible purchase earns {Math.floor(2000 * config.points.order_earn_percent / 100)} points. A KSh 100 voucher costs {Math.ceil(100 * config.points.points_per_ksh)} points.
+                            </p>
+                            <div className="space-y-5">
+                                <h3 className="text-sm font-black uppercase tracking-wide text-slate-700">Daily Reward Odds</h3>
+                                {([
+                                    ['crate_probabilities', 'Daily Crate'],
+                                    ['spin_probabilities', 'Premium Spin']
+                                ] as const).map(([key, label]) => (
+                                    <div key={key} className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:p-5">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <h4 className="text-xs font-black uppercase text-slate-700">{label}</h4>
+                                            <span className={`text-xs font-bold ${config.rewards[key].reduce((sum, reward) => sum + Number(reward.chance || 0), 0) === 100 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                {config.rewards[key].reduce((sum, reward) => sum + Number(reward.chance || 0), 0)}% total (must equal 100%)
+                                            </span>
+                                        </div>
+                                        {config.rewards[key].map((reward, index) => (
+                                            <div key={`${key}-${index}`} className="grid gap-3 rounded-xl bg-white p-3 sm:grid-cols-[minmax(0,1fr)_110px_110px]">
+                                                <div className="space-y-1">
+                                                    <label htmlFor={`${key}-label-${index}`} className="text-[9px] font-bold uppercase text-slate-400">Reward</label>
+                                                    <Input
+                                                        id={`${key}-label-${index}`}
+                                                        value={reward.label}
+                                                        maxLength={80}
+                                                        onChange={event => {
+                                                            const rewards = [...config.rewards[key]];
+                                                            rewards[index] = { ...rewards[index], label: event.target.value };
+                                                            setConfig({ ...config, rewards: { ...config.rewards, [key]: rewards } });
+                                                        }}
+                                                        className="h-10 rounded-lg border-slate-100 font-semibold"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label htmlFor={`${key}-value-${index}`} className="text-[9px] font-bold uppercase text-slate-400">{reward.type === 'xp' ? 'Points' : reward.type === 'voucher' ? 'KSh value' : 'Value'}</label>
+                                                    <Input
+                                                        id={`${key}-value-${index}`}
+                                                        type="number"
+                                                        min={0}
+                                                        value={reward.value}
+                                                        onChange={event => {
+                                                            const rewards = [...config.rewards[key]];
+                                                            rewards[index] = { ...rewards[index], value: Number(event.target.value) };
+                                                            setConfig({ ...config, rewards: { ...config.rewards, [key]: rewards } });
+                                                        }}
+                                                        className="h-10 rounded-lg border-slate-100 font-semibold"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label htmlFor={`${key}-chance-${index}`} className="text-[9px] font-bold uppercase text-slate-400">Chance %</label>
+                                                    <Input
+                                                        id={`${key}-chance-${index}`}
+                                                        type="number"
+                                                        min={0}
+                                                        max={100}
+                                                        step={0.1}
+                                                        value={reward.chance}
+                                                        onChange={event => {
+                                                            const rewards = [...config.rewards[key]];
+                                                            rewards[index] = { ...rewards[index], chance: Number(event.target.value) };
+                                                            setConfig({ ...config, rewards: { ...config.rewards, [key]: rewards } });
+                                                        }}
+                                                        className="h-10 rounded-lg border-slate-100 font-semibold"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
                             </div>
                         </Card>
                     )}

@@ -1,20 +1,26 @@
 -- Authentication audit records and server-only access controls.
 
-DO $$
-DECLARE
-    missing_tables TEXT;
-BEGIN
-    SELECT string_agg(required.table_name, ', ')
-    INTO missing_tables
-    FROM (VALUES ('public.staff'), ('public.audit_logs')) AS required(table_name)
-    WHERE to_regclass(required.table_name) IS NULL;
-
-    IF missing_tables IS NOT NULL THEN
-        RAISE EXCEPTION 'Authentication migration requires the core schema. Missing tables: %.', missing_tables
-            USING HINT = 'Run supabase/FINAL_ESTABLISHMENT_SQL.sql first, then rerun this migration.';
-    END IF;
-END;
-$$;
+CREATE TABLE IF NOT EXISTS public.staff (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT DEFAULT 'STAFF',
+    pin TEXT,
+    status TEXT DEFAULT 'Offline',
+    can_view_revenue BOOLEAN DEFAULT false,
+    can_manage_inventory BOOLEAN DEFAULT true,
+    can_manage_orders BOOLEAN DEFAULT true,
+    can_execute_payouts BOOLEAN DEFAULT false,
+    can_view_audit_logs BOOLEAN DEFAULT false,
+    can_manage_settings BOOLEAN DEFAULT false,
+    can_manage_staff BOOLEAN DEFAULT false,
+    can_view_sensitive_data BOOLEAN DEFAULT false,
+    can_manage_communications BOOLEAN DEFAULT false,
+    can_manage_marketing BOOLEAN DEFAULT false,
+    can_manage_kitchen BOOLEAN DEFAULT false,
+    completed_tasks INTEGER DEFAULT 0,
+    sla_rating NUMERIC DEFAULT 100,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
 
 ALTER TABLE public.staff
     ADD COLUMN IF NOT EXISTS supplier_id UUID,
@@ -25,6 +31,23 @@ ALTER TABLE public.staff
     ADD COLUMN IF NOT EXISTS can_manage_communications BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS can_manage_marketing BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS can_manage_kitchen BOOLEAN NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    staff_email TEXT,
+    actor_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    details JSONB,
+    resource_type TEXT,
+    resource_id TEXT,
+    old_value JSONB,
+    new_value JSONB,
+    correlation_id TEXT,
+    request_id TEXT,
+    ip_address TEXT,
+    device_info TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS public.login_attempts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -19,6 +19,7 @@ import { useCart } from '@/context/CartContext';
 import { useSettings } from '@/lib/useSettings';
 import Image from 'next/image';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useInteractionTracking } from '@/lib/utils/useInteractionTracking';
 
 interface Suggestion {
@@ -29,6 +30,7 @@ interface Suggestion {
 }
 
 export default function AIConcierge({ suppressLauncher = false }: { suppressLauncher?: boolean }) {
+    const pathname = usePathname();
     const { settings } = useSettings();
     const [isOpen, setIsOpen] = React.useState(false);
     const [query, setQuery] = React.useState('');
@@ -159,6 +161,8 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
         addBundleToCart(cartItems);
         setMessages(prev => [...prev, { role: 'assistant', text: "Selection added to bag. Ready for dispatch!" }]);
     };
+
+    if (pathname === '/affiliate/agreement') return null;
 
     return (
         <>

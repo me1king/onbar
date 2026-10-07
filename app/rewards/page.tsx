@@ -19,10 +19,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 const VOUCHERS = [
-    { points: 500, value: 500, code_prefix: 'PREMIUM500' },
-    { points: 1000, value: 1000, code_prefix: 'PREMIUM1000' },
-    { points: 2500, value: 2500, code_prefix: 'PREMIUM2500' },
-    { points: 5000, value: 5000, code_prefix: 'PREMIUM5000' },
+    { value: 50 },
+    { value: 100 },
+    { value: 250 },
+    { value: 500 },
 ];
 
 export default function RewardsShop() {
@@ -32,31 +32,50 @@ export default function RewardsShop() {
     const [isExchanging, setIsExchanging] = useState<number | null>(null);
     const [claimedVoucher, setClaimedVoucher] = useState<string | null>(null);
     const [myVouchers, setMyVouchers] = useState<{ code: string; value: string; date: string }[]>([]);
+    const [pointsPerKsh, setPointsPerKsh] = useState(10);
+    const [loadError, setLoadError] = useState('');
     const router = useRouter();
 
     useEffect(() => {
         async function loadProfile() {
-            if (!supabase) return;
+            if (!supabase) {
+                setLoadError('Rewards are not available right now.');
+                setLoading(false);
+                return;
+            }
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
                 router.push('/auth?mode=signin');
                 return;
             }
             setUser(session.user);
-            const { data } = await supabase.from('profiles').select('loyalty_points').eq('id', session.user.id).single();
-            if (data) setPoints(data.loyalty_points || 0);
+            try {
+                const response = await fetch('/api/member/loyalty', {
+                    headers: { Authorization: `Bearer ${session.access_token}` },
+                    cache: 'no-store'
+                });
+                const loyalty = await response.json();
+                if (!response.ok) throw new Error(loyalty.error || 'Could not load your points.');
+                setPoints(Number(loyalty.points || 0));
+                setPointsPerKsh(Number(loyalty.config?.points?.points_per_ksh || 10));
+            } catch (error) {
+                setLoadError(error instanceof Error ? error.message : 'Could not load your points.');
+            }
 
             // Fetch My Vouchers from ledger
-            const { data: ledger } = await supabase
+            const { data: ledger, error: ledgerError } = await supabase
                 .from('loyalty_ledger')
                 .select('*')
                 .eq('profile_id', session.user.id)
                 .ilike('description', '%CODE:%');
 
-            if (ledger) {
+            if (ledgerError) {
+                console.error('Could not load redeemed vouchers:', ledgerError);
+                setLoadError(current => current || 'Your voucher history could not be loaded.');
+            } else if (ledger) {
                 const parsed = ledger.map(l => {
                     const code = l.description.split('CODE: ')[1];
-                    const val = l.description.split(' Voucher')[0].split('for ')[1];
+                    const val = l.description.split('CODE: ')[0].match(/KSh\s+[\d,.]+/)?.[0] || 'Store credit';
                     return { code, value: val, date: l.created_at };
                 });
                 setMyVouchers(parsed);
@@ -67,46 +86,28 @@ export default function RewardsShop() {
         loadProfile();
     }, [router]);
 
-    const handleExchange = async (voucher: typeof VOUCHERS[0]) => {
-        if (points < voucher.points || !supabase || !user) return;
+    const handleExchange = async (voucher: typeof VOUCHERS[number]) => {
+        const pointsRequired = Math.ceil(voucher.value * pointsPerKsh);
+        if (points < pointsRequired || !supabase || !user) return;
 
-        setIsExchanging(voucher.points);
+        setIsExchanging(pointsRequired);
         try {
-            const voucherCode = `${voucher.code_prefix}-${Math.random().toString(36).substring(7).toUpperCase()}`;
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session || session.user.id !== user.id) throw new Error('Sign in again to redeem points.');
+            const response = await fetch('/api/member/loyalty', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ action: 'redeem', points: pointsRequired, valueKsh: voucher.value })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not redeem points.');
 
-            // Map points to percent
-            const percentMap: Record<number, number> = { 500: 5, 1000: 10, 2500: 15, 5000: 20 };
-            const discountPercent = percentMap[voucher.points] || 5;
-
-            // 1. Create the coupon in DB
-            const { error: couponError } = await supabase
-                .from('coupons')
-                .insert([{
-                    code: voucherCode,
-                    discount_percent: discountPercent,
-                    is_active: true,
-                }]);
-
-            if (couponError) throw couponError;
-
-            // 2. Deduct points
-            const { error: pointsError } = await supabase
-                .from('profiles')
-                .update({ loyalty_points: points - voucher.points })
-                .eq('id', user.id);
-
-            if (pointsError) throw pointsError;
-
-            // 3. Log to ledger
-            await supabase.from('loyalty_ledger').insert([{
-                profile_id: user.id,
-                amount: -voucher.points,
-                description: `Exchanged for ${discountPercent}% Bar Voucher. CODE: ${voucherCode}`
-            }]);
-
-            setPoints(prev => prev - voucher.points);
-            setClaimedVoucher(voucherCode);
-            setMyVouchers(prev => [{ code: voucherCode, value: `${discountPercent}% Off`, date: new Date().toISOString() }, ...prev]);
+            setPoints(Number(result.balance));
+            setClaimedVoucher(result.code);
+            setMyVouchers(prev => [{ code: result.code, value: `KSh ${voucher.value} Store Credit`, date: new Date().toISOString() }, ...prev]);
 
         } catch (err: unknown) {
             const error = err as Error;
@@ -133,6 +134,10 @@ export default function RewardsShop() {
                 <Link href="/profile" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors mb-12">
                     <ArrowLeft className="h-4 w-4" /> Back to Dashboard
                 </Link>
+
+                {loadError && (
+                    <p role="alert" className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{loadError}</p>
+                )}
 
                 <header className="mb-16 flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
                     <div className="space-y-4">
@@ -174,9 +179,10 @@ export default function RewardsShop() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {VOUCHERS.map((v) => {
-                        const canAfford = points >= v.points;
+                        const pointsRequired = Math.ceil(v.value * pointsPerKsh);
+                        const canAfford = points >= pointsRequired;
                         return (
-                            <div key={v.points} className={cn(
+                            <div key={v.value} className={cn(
                                 "bg-white rounded-[2.5rem] border p-8 flex flex-col transition-all group relative overflow-hidden",
                                 canAfford ? "border-slate-100 hover:shadow-2xl hover:-translate-y-2" : "border-slate-50 opacity-60"
                             )}>
@@ -187,13 +193,13 @@ export default function RewardsShop() {
                                     <Ticket className="h-7 w-7" />
                                 </div>
 
-                                <h3 className="text-xl font-black text-foreground uppercase tracking-tighter leading-none mb-2">Ksh {v.value.toLocaleString()} <br/> Voucher</h3>
+                                <h3 className="text-xl font-black text-foreground uppercase tracking-tighter leading-none mb-2">KSh {v.value.toLocaleString()} <br/> Store Credit</h3>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8">Store Credit</p>
 
                                 <div className="mt-auto pt-6 border-t border-slate-50">
                                     <div className="flex justify-between items-center mb-4">
                                         <span className="text-[9px] font-black uppercase text-slate-400">Required</span>
-                                        <span className={cn("text-xs font-black", canAfford ? "text-primary" : "text-slate-300")}>{v.points} PTS</span>
+                                        <span className={cn("text-xs font-black", canAfford ? "text-primary" : "text-slate-300")}>{pointsRequired.toLocaleString()} PTS</span>
                                     </div>
                                     <Button
                                         onClick={() => handleExchange(v)}
@@ -203,7 +209,7 @@ export default function RewardsShop() {
                                             canAfford ? "bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20" : "bg-slate-50 text-slate-300 border-none"
                                         )}
                                     >
-                                        {isExchanging === v.points ? <Loader2 className="h-4 w-4 animate-spin" /> : canAfford ? 'Claim Now' : 'Not Enough Points'}
+                                        {isExchanging === pointsRequired ? <Loader2 className="h-4 w-4 animate-spin" /> : canAfford ? 'Claim Now' : 'Not Enough Points'}
                                     </Button>
                                 </div>
 
@@ -248,10 +254,10 @@ export default function RewardsShop() {
 
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-12 pt-12 border-t border-slate-100">
                             {[
-                                { label: 'Order', pts: '5%', desc: 'of total KES' },
-                                { label: 'Photo Review', pts: '50', desc: 'verified products' },
-                                { label: 'Friend Join', pts: '100', desc: 'referral' },
-                                { label: 'Bag Restore', pts: '50', desc: 'limited time' },
+                                { label: 'Order', pts: 'Points', desc: 'based on current earn rate' },
+                                { label: 'Photo Review', pts: 'Admin set', desc: 'verified photo reviews' },
+                                { label: 'Friend Join', pts: 'Admin set', desc: 'referral bonus' },
+                                { label: 'Bag Restore', pts: 'Admin set', desc: 'when eligible' },
                             ].map(benefit => (
                                 <div key={benefit.label} className="space-y-1">
                                     <p className="text-primary font-black text-2xl tracking-tighter">+{benefit.pts}</p>

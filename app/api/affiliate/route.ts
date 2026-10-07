@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
+import { AFFILIATE_AGREEMENT_VERSION } from '@/lib/affiliateAgreement';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,6 +109,9 @@ export async function POST(request: Request) {
   const payoutMethod = body.preferred_payout_method;
   const payoutDetails = typeof body.payout_details === 'string' ? body.payout_details.trim() : '';
   const agreementAccepted = body.marketing_agreement_accepted === true;
+  const agreementVersion = body.agreement_version;
+  const agreementAcknowledged = body.agreement_draft_acknowledged === true
+    && agreementVersion === AFFILIATE_AGREEMENT_VERSION;
   const allowedChannels = new Set(['Instagram', 'TikTok', 'WhatsApp', 'Website']);
   if (
     businessName.length < 2 || businessName.length > 120
@@ -117,6 +121,7 @@ export async function POST(request: Request) {
     || !['M-Pesa', 'Bank'].includes(String(payoutMethod))
     || payoutDetails.length < 3 || payoutDetails.length > 200
     || !agreementAccepted
+    || !agreementAcknowledged
   ) {
     return NextResponse.json({ error: 'Complete each application field with valid details and select at least one channel.' }, { status: 400 });
   }
@@ -158,6 +163,8 @@ export async function POST(request: Request) {
     verification_status: 'Pending',
     referral_code: referralCode,
     marketing_agreement_accepted: true,
+    agreement_version: AFFILIATE_AGREEMENT_VERSION,
+    agreement_accepted_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
   const query = existing

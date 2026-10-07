@@ -1,15 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import { Gift, Zap, Loader2, Sparkles, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabaseClient';
 
 interface Prize {
     type: string;
-    amount: number;
+    value: number;
     label: string;
+    code?: string | null;
 }
 
 export default function RewardInteractive() {
@@ -19,27 +20,25 @@ export default function RewardInteractive() {
     const [error, setError] = useState<string | null>(null);
 
     const handleClaim = async (type: 'spin' | 'box') => {
+        if (!supabase) {
+            setError('Rewards are unavailable. Please try again later.');
+            return;
+        }
         setStatus(type === 'spin' ? 'spinning' : 'opening');
         setError(null);
 
         try {
-            const { data: { session } } = await supabase?.auth.getSession() ?? { data: { session: null } };
+            const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error('Sign in to claim rewards.');
-            const res = await fetch('/api/member/gamification', {
+            const res = await fetch('/api/member/loyalty', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${session.access_token}`
                 },
-                body: JSON.stringify({ action: 'claim-daily-reward', payload: { type } }),
+                body: JSON.stringify({ action: 'claim-daily-reward', rewardType: type }),
             });
             const data = await res.json();
-
-            if (res.status === 429) {
-                setError(data.error);
-                setStatus('idle');
-                return;
-            }
 
             if (data.ok) {
                 // Delay for animation
@@ -50,8 +49,8 @@ export default function RewardInteractive() {
             } else {
                 throw new Error(data.error);
             }
-        } catch {
-            setError("Tactical link offline. Try again later.");
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Could not claim the reward.');
             setStatus('idle');
         }
     };
@@ -89,7 +88,14 @@ export default function RewardInteractive() {
                         <div className="space-y-2">
                             <h4 className="text-4xl font-black uppercase tracking-tighter">Mission Accomplished</h4>
                             <p className="text-primary font-black text-2xl italic tracking-widest">{prize.label} Received</p>
-                            <p className="text-slate-400 text-xs font-medium italic mt-4">&quot;Your reward has been added to your account ledger.&quot;</p>
+                            {prize.code ? (
+                                <p className="rounded-xl border border-primary/20 bg-primary/5 px-5 py-3 font-mono text-lg font-black tracking-widest text-primary">
+                                    {prize.code}
+                                </p>
+                            ) : null}
+                            <p className="text-slate-400 text-xs font-medium italic mt-4">
+                                {prize.code ? 'Use this voucher code at checkout.' : 'Your reward has been added to your account ledger.'}
+                            </p>
                         </div>
                         <Button onClick={() => setStatus('idle')} className="h-14 px-12 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-[10px] hover:bg-primary/90 transition-all active:scale-95 mt-4">
                             Dismiss
@@ -114,7 +120,7 @@ export default function RewardInteractive() {
                         <div className="space-y-4 max-w-xs mx-auto">
                             <h4 className="text-2xl font-black uppercase tracking-tighter text-foreground">Daily Bar Crate</h4>
                             <p className="text-slate-500 text-[10px] font-medium leading-relaxed">
-                                Contains random XP boosts or secret store credits. Refreshes every 24 hours.
+                                Contains points or store-credit vouchers. Refreshes every 24 hours.
                             </p>
                             {error ? (
                                 <p className="text-primary font-black text-[9px] uppercase tracking-widest bg-primary/5 py-3 rounded-xl border border-primary/10 px-6">⚠️ {error}</p>
@@ -135,7 +141,7 @@ export default function RewardInteractive() {
                             "relative w-64 h-64 border-8 border-slate-50 rounded-full flex items-center justify-center bg-white transition-all duration-[3000ms] ease-out shadow-inner",
                             status === 'spinning' && "rotate-[1080deg]"
                         )}>
-                             {/* Mock Spin Wheel segments */}
+                             {/* Decorative spin animation; the server chooses the reward. */}
                              <div className="absolute inset-0 rounded-full border-4 border-primary/10 animate-spin-slow"></div>
                              <Zap className={cn(
                                  "h-20 w-20 text-primary fill-current",

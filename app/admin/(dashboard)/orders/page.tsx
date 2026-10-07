@@ -234,6 +234,7 @@ export default function AdminOrdersPage() {
 
       await logAuditAction(email, 'UPDATE_ORDER_STATUS', { id: orderId, newStatus: status });
 
+      let loyaltyWarning = '';
       if (status === 'Delivered' && oldStatus !== 'Delivered' && orderToUpdate?.order_items) {
         for (const item of orderToUpdate.order_items) {
             const { data: productData } = await supabase
@@ -263,6 +264,21 @@ export default function AdminOrdersPage() {
                     .eq('id', item.product_id);
               }
             }
+        }
+      }
+
+      if (status === 'Delivered' && oldStatus !== 'Delivered') {
+        try {
+          const loyaltyResponse = await fetch('/api/admin/loyalty/order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId })
+          });
+          const loyaltyResult = await loyaltyResponse.json();
+          if (!loyaltyResponse.ok) throw new Error(loyaltyResult.error || 'Points could not be processed.');
+        } catch (loyaltyError) {
+          console.error('Order delivered but loyalty points could not be processed:', loyaltyError);
+          loyaltyWarning = ' Loyalty points need a retry; see server logs.';
         }
       }
 
@@ -308,7 +324,7 @@ export default function AdminOrdersPage() {
 
       setStatusMessage({
         type: 'success',
-        text: `Order #${orderId} marked as ${status}.`,
+        text: `Order #${orderId} marked as ${status}.${loyaltyWarning}`,
       });
     } catch (err: unknown) {
       const error = err as Error;

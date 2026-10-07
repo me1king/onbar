@@ -1,40 +1,52 @@
-import { supabase } from "@/lib/supabaseClient";
-import { createServerSupabaseClient } from '@/lib/serverSupabase';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
+export const dynamic = 'force-dynamic';
+
+function getClients() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    const publicKey = (
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    )?.trim();
+    if (!url || !serviceKey || !publicKey) return null;
+    return {
+        auth: createClient(url, publicKey, { auth: { autoRefreshToken: false, persistSession: false } }),
+        database: createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
+    };
+}
+
 export async function POST(request: Request) {
-    if (!supabase) return NextResponse.json({ error: "DB not connected" }, { status: 500 });
+    const clients = getClients();
+    if (!clients) return NextResponse.json({ error: "Gamification services are not configured." }, { status: 503 });
 
     try {
-        const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-        if (!token) return NextResponse.json({ error: "Sign in to use member rewards." }, { status: 401 });
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-        if (authError || !user) return NextResponse.json({ error: "Invalid Auth Token" }, { status: 401 });
+        const token = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+        if (!token) return NextResponse.json({ error: 'Sign in to continue.' }, { status: 401 });
+        const { data: { user }, error: authError } = await clients.auth.auth.getUser(token);
+        if (authError || !user) return NextResponse.json({ error: 'Your sign-in session is invalid.' }, { status: 401 });
 
-        const database = createServerSupabaseClient();
-        if (!database) return NextResponse.json({ error: "Member rewards are not configured." }, { status: 503 });
-        const body = await request.json() as { action?: unknown; payload?: unknown };
-        if (typeof body.action !== 'string' || typeof body.payload !== 'object' || body.payload === null) {
-            return NextResponse.json({ error: "Invalid member reward request." }, { status: 400 });
+        const body = await request.json() as {
+            userId?: unknown;
+            action?: unknown;
+            payload?: { type?: unknown; missionType?: unknown; increment?: unknown };
+        };
+        if (body.userId !== undefined && body.userId !== user.id) {
+            return NextResponse.json({ error: 'You can only update your own account.' }, { status: 403 });
         }
-        const payload = body.payload as Record<string, unknown>;
-
         switch (body.action) {
             case 'update-streak':
-                return await handleUpdateStreak(database, user.id);
+                return await handleUpdateStreak(clients.database, user.id);
             case 'claim-daily-reward':
-                if (payload.type !== 'spin' && payload.type !== 'box') {
-                    return NextResponse.json({ error: "Invalid reward type." }, { status: 400 });
-                }
-                return await handleClaimDailyReward(database, user.id, payload.type);
+                return NextResponse.json({ error: 'Use the loyalty rewards endpoint to claim daily rewards.' }, { status: 410 });
             case 'update-mission-progress':
                 return NextResponse.json(
                     { error: "Mission progress is temporarily disabled until actions can be verified server-side." },
                     { status: 501 }
                 );
             case 'sync-all-stats':
-                return await handleSyncAllStats(database, user.id);
+                return await handleSyncAllStats(clients.database, user.id);
             default:
                 return NextResponse.json({ error: "Invalid action" }, { status: 400 });
         }
@@ -59,19 +71,22 @@ async function handleUpdateStreak(database: SupabaseClient, userId: string) {
 
     const lastUpdate = profile.last_streak_update ? new Date(profile.last_streak_update) : null;
     const now = new Date();
+    const kenyaDay = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Nairobi',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    const todayKey = kenyaDay.format(now);
+    const yesterdayKey = kenyaDay.format(new Date(now.getTime() - 24 * 60 * 60 * 1000));
 
-    // Check if updated today already (Kenya Time focus)
-    if (lastUpdate && lastUpdate.toDateString() === now.toDateString()) {
+    if (lastUpdate && kenyaDay.format(lastUpdate) === todayKey) {
         return NextResponse.json({ ok: true, streak: profile.current_streak, message: "Already updated today" });
     }
 
-    let newStreak = 1;
-    if (lastUpdate) {
-        const diffDays = Math.floor((now.getTime() - lastUpdate.getTime()) / (1000 * 3600 * 24));
-        if (diffDays === 1) {
-            newStreak = (profile.current_streak || 0) + 1;
-        }
-    }
+    const newStreak = lastUpdate && kenyaDay.format(lastUpdate) === yesterdayKey
+        ? Number(profile.current_streak || 0) + 1
+        : 1;
 
     const { error: updateError } = await database
         .from('profiles')
@@ -83,45 +98,30 @@ async function handleUpdateStreak(database: SupabaseClient, userId: string) {
 
     if (updateError) throw updateError;
 
-    return NextResponse.json({ ok: true, newStreak });
-}
-
-async function handleClaimDailyReward(database: SupabaseClient, userId: string, type: 'spin' | 'box') {
-    // Logic to select reward based on admin settings (to be added in admin phase)
-    // For now, simple random reward
-    const rewards = [
-        { type: 'xp', amount: 50, label: '50 XP' },
-        { type: 'xp', amount: 100, label: '100 XP' },
-        { type: 'voucher', amount: 100, label: 'KSh 100 Coupon' },
-        { type: 'perk', amount: 0, label: 'Free Delivery' }
-    ];
-    const prize = rewards[Math.floor(Math.random() * rewards.length)];
-
-    const { data: claim, error: claimError } = await database.rpc('claim_daily_member_reward', {
-        profile_id_input: userId,
-        reward_type_input: type,
-        reward_label_input: prize.label,
-        reward_value_input: prize.amount,
-        points_input: prize.type === 'xp' ? prize.amount : 0
-    }).maybeSingle();
-    if (claimError) {
-        if (claimError.code === 'P0001') {
-            return NextResponse.json({ error: claimError.message }, { status: 429 });
-        }
-        throw claimError;
+    const { data: config, error: configError } = await database
+        .from('loyalty_config')
+        .select('value')
+        .eq('id', true)
+        .single();
+    if (configError) throw configError;
+    const points = Number(config.value?.streak?.xp_per_day || 0);
+    if (!Number.isSafeInteger(points) || points < 0) throw new Error('Daily streak reward is invalid.');
+    if (points > 0) {
+        const { error: rewardError } = await database.rpc('apply_loyalty_points', {
+            profile_id_input: userId,
+            amount_input: points,
+            description_input: 'Daily login streak reward',
+            event_key_input: `streak:${userId}:${todayKey}`
+        });
+        if (rewardError) throw rewardError;
     }
 
-    const claimResult = claim as { next_claim_at?: string } | null;
-    return NextResponse.json({ ok: true, prize, nextClaimAt: claimResult?.next_claim_at });
+    return NextResponse.json({ ok: true, newStreak, pointsAwarded: points });
 }
 
 async function handleSyncAllStats(database: SupabaseClient, userId: string) {
     // 1. Recalculate Commissions from Orders
-    const { data: profile, error: profileError } = await database
-        .from('profiles')
-        .select('referral_code')
-        .eq('id', userId)
-        .single();
+    const { data: profile, error: profileError } = await database.from('profiles').select('referral_code').eq('id', userId).single();
     if (profileError) throw profileError;
     if (!profile?.referral_code) return NextResponse.json({ ok: false, error: "No referral code" });
 
