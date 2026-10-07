@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Product } from '@/types/product';
 import BeverageCommandPage from '@/app/beverages/page';
 import CategoryCatalog from './CategoryCatalog';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 interface CategoryPageProps {
   params: Promise<{ slug: string }>;
@@ -39,7 +40,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         console.error('Could not load category catalogue:', error);
         fetchError = 'Could not load products. Please try again later.';
       } else {
-        products = (data || []) as Product[];
+        products = ((data || []) as Product[]).filter(isStorefrontProductVisible);
       }
     } catch (error) {
       console.error('Could not load category catalogue:', error);

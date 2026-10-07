@@ -35,6 +35,7 @@ import RestockRadar from "@/components/product/RestockRadar";
 import BundleUpsell from "@/components/product/BundleUpsell";
 import PerfectPairingNode from "@/components/product/PerfectPairingNode";
 import { useSettings } from "@/lib/useSettings";
+import { isStorefrontProductVisible } from "@/lib/productVisibility";
 
 interface Tutorial {
     title: string;
@@ -74,7 +75,7 @@ export default function Product() {
                 .eq('id', productId)
                 .single();
 
-            if (dbProd) {
+            if (dbProd && isStorefrontProductVisible(dbProd)) {
                 setLiveProduct(dbProd);
                 setIsProductLive(true);
 

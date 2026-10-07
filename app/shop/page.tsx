@@ -6,6 +6,7 @@ import ProductCard from '@/components/home/ProductCard';
 import { Cookie, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 interface Product {
   id: number;
@@ -43,7 +44,7 @@ export default function AllProductsPage() {
         }
 
         if (data && data.length > 0) {
-          setProducts(data as Product[]);
+          setProducts((data as Product[]).filter(isStorefrontProductVisible));
         } else {
           setProducts([]);
         }
@@ -55,6 +56,17 @@ export default function AllProductsPage() {
       }
     }
     loadInventory();
+
+    if (!supabase) return;
+    const channel = supabase
+      .channel('realtime_storefront_shop')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        loadInventory();
+      })
+      .subscribe();
+    return () => {
+      if (supabase) void supabase.removeChannel(channel);
+    };
   }, []);
 
   if (loading) {

@@ -23,6 +23,7 @@ import { useWishlist } from "@/context/WishlistContext";
 import { useSettings } from "@/lib/useSettings";
 import { Product } from "@/types/product";
 import { getStartingPrice, getVariantPrice } from "@/lib/productPricing";
+import { isStorefrontProductVisible } from "@/lib/productVisibility";
 
 const TIER_RANK: Record<string, number> = {
     'Explorer': 0,
@@ -32,7 +33,7 @@ const TIER_RANK: Record<string, number> = {
     'Legend': 4
 };
 
-export default function ProductCard({ product, userTier = 'Explorer' }: { product: Product, userTier?: string }) {
+export default function ProductCard({ product, userTier = 'Explorer', allowUnpublishedPreview = false }: { product: Product, userTier?: string; allowUnpublishedPreview?: boolean }) {
   const router = useRouter();
   const [imageError, setImageError] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -65,6 +66,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
   const isBiteOpen = checkIsBiteOpen();
   const canPurchase = !isLocked && isBiteOpen && (product.stock || 0) > 0;
+  if (!allowUnpublishedPreview && !isStorefrontProductVisible(product)) return null;
   const beverageSpecs = product.beverage_specs;
   const abvDisplay = product.abv_label || beverageSpecs?.abv;
   const originDisplay = product.origin || beverageSpecs?.origin;

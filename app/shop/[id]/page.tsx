@@ -3,6 +3,7 @@ import ProductDetailClient from '@/components/product/ProductDetailClient';
 import { Metadata } from 'next';
 import { Product } from '@/types/product';
 import { getPublicBaseUrl, normalizeImage } from '@/lib/utils';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -19,14 +20,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (supabase) {
     const { data } = await supabase
       .from('products')
-      .select('name, description, image_url, image, images, image_gallery, price')
+      .select('name, description, image_url, image, images, image_gallery, price, hide_product, status, is_available_now')
       .eq('id', id)
       .single();
     product = data as unknown as Product;
   }
 
   // No Fallback
-  if (!product) return { title: 'Product Not Found | Online Bar' };
+  if (!product || !isStorefrontProductVisible(product)) return { title: 'Product Not Found | Online Bar' };
 
   const productImages = Array.from(new Set([
     product.image || product.image_url,
@@ -88,7 +89,7 @@ export default async function Page({ params }: Props) {
 
   // No Fallback
 
-  if (!product) return (
+  if (!product || !isStorefrontProductVisible(product)) return (
     <div className="min-h-[50dvh] flex flex-col items-center justify-center p-8 text-center">
         <h1 className="text-2xl font-black uppercase text-foreground">Drink Not Found</h1>
         <p className="text-slate-500 mt-2">This item may have been removed from the catalog.</p>
@@ -110,7 +111,7 @@ export default async function Page({ params }: Props) {
       .eq('category', product.category || 'spirits')
       .neq('id', id)
       .limit(4);
-    related = (data || []).map((p) => ({
+    related = (data || []).filter(isStorefrontProductVisible).map((p) => ({
         ...(p as Record<string, unknown>),
         image_url: normalizeImage((p as Record<string, unknown>).image_url as string)
     })) as unknown as Product[];

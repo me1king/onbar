@@ -319,7 +319,7 @@ export default function ProductStudioTerminal() {
                         <div className="space-y-4">
                             <h3 className="text-xs font-black uppercase tracking-[0.4em] text-slate-400 px-6 italic">Live Grid Preview</h3>
                             <div className="max-w-[340px] mx-auto xl:mx-0 transform-gpu rotate-[-1deg] hover:rotate-0 transition-transform duration-700">
-                                <ProductCard product={form} />
+                                <ProductCard product={form} allowUnpublishedPreview />
                             </div>
                         </div>
 

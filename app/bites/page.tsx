@@ -20,6 +20,7 @@ import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 interface BiteItem {
     id: number | string;
@@ -100,7 +101,7 @@ export default function BiteCommandPage() {
                 if (fetchError) {
                     throw fetchError;
                 }
-                setBites((data || []) as unknown as BiteItem[]);
+                setBites(((data || []) as unknown as BiteItem[]).filter(isStorefrontProductVisible));
             } catch (e) {
                 console.error('Error loading bites:', e);
                 setBites([]);

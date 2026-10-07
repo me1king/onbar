@@ -19,21 +19,11 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { Product as CatalogProduct } from '@/types/product';
+import { getStartingPrice } from '@/lib/productPricing';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-  old_price?: number;
-  description?: string;
-  image_url?: string;
-  image?: string;
-  rating?: number;
-  category?: string;
-  stock?: number;
-  sizes?: string[];
-  is_new?: boolean;
-}
+type Product = CatalogProduct;
 
 const CATEGORIES = [
     { id: 'all', label: 'All Menu', icon: LayoutGrid },
@@ -89,7 +79,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
           setProducts([]);
         } else {
           setError(null);
-          setProducts(prodRes.data as Product[] || []);
+          setProducts((prodRes.data as Product[] || []).filter(isStorefrontProductVisible));
         }
 
         if (tierRes?.data) {
@@ -111,6 +101,17 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
     if (!initialProducts || initialProducts.length === 0) {
         fetchInitialData();
     }
+
+    if (!supabase) return;
+    const channel = supabase
+      .channel('realtime_storefront_product_list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        fetchInitialData();
+      })
+      .subscribe();
+    return () => {
+      if (supabase) void supabase.removeChannel(channel);
+    };
   }, [initialProducts]);
 
   // Listen for Global Search Event & URL Params
@@ -143,7 +144,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
   }, []);
 
   const filteredProducts = useMemo(() => {
-      let filtered = [...products];
+      let filtered = products.filter(isStorefrontProductVisible);
 
       // 1. Category Filter
       if (activeCategory !== 'all') {
@@ -155,16 +156,19 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
           const query = (searchQuery || '').toLowerCase();
           filtered = filtered.filter(p =>
             (p.name || '').toLowerCase().includes(query) ||
-            (p.description || '').toLowerCase().includes(query)
+            (p.brand || '').toLowerCase().includes(query) ||
+            (p.description || '').toLowerCase().includes(query) ||
+            (p.category || '').toLowerCase().includes(query) ||
+            (p.sub_category || '').toLowerCase().includes(query)
           );
       }
 
       // 3. Price Range Filter
       if (minPrice) {
-          filtered = filtered.filter(p => p.price >= Number(minPrice));
+          filtered = filtered.filter(p => getStartingPrice(p.price, p.variant_prices, p.sizes) >= Number(minPrice));
       }
       if (maxPrice) {
-          filtered = filtered.filter(p => p.price <= Number(maxPrice));
+          filtered = filtered.filter(p => getStartingPrice(p.price, p.variant_prices, p.sizes) <= Number(maxPrice));
       }
 
       // 4. Stock Filter
@@ -174,14 +178,19 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
 
       // 5. Brand Filter
       if (selectedBrand !== 'all') {
-          filtered = filtered.filter(p => (p.name || '').toLowerCase().startsWith(selectedBrand.toLowerCase()));
+          filtered = filtered.filter(p =>
+            (p.brand?.trim() || (p.name || '').trim().split(' ')[0]).toLowerCase() === selectedBrand.toLowerCase()
+          );
       }
 
       // 6. Sorting
       filtered.sort((a, b) => {
-          if (sortBy === 'low-to-high') return a.price - b.price;
-          if (sortBy === 'high-to-low') return b.price - a.price;
-          return b.id - a.id; // Newest
+          const aPrice = getStartingPrice(a.price, a.variant_prices, a.sizes);
+          const bPrice = getStartingPrice(b.price, b.variant_prices, b.sizes);
+          if (sortBy === 'low-to-high') return aPrice - bPrice;
+          if (sortBy === 'high-to-low') return bPrice - aPrice;
+          return (b.created_at ? new Date(b.created_at).getTime() : b.id)
+            - (a.created_at ? new Date(a.created_at).getTime() : a.id);
       });
 
       return filtered;
@@ -190,13 +199,20 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
   // Extract unique brands (first word of product name)
   const brands = useMemo(() => {
       // Logic: Only show brands that exist in the active category
+      const storefrontProducts = products.filter(isStorefrontProductVisible);
       const currentCategoryProds = activeCategory === 'all'
-        ? products
-        : products.filter(p => (p.category || '').toLowerCase() === activeCategory.toLowerCase());
+        ? storefrontProducts
+        : storefrontProducts.filter(p => (p.category || '').toLowerCase() === activeCategory.toLowerCase());
 
-      const allBrands = currentCategoryProds.map(p => (p.name || '').trim().split(' ')[0]);
-      return ['all', ...Array.from(new Set(allBrands))];
+      const allBrands = currentCategoryProds
+        .map(p => p.brand?.trim() || (p.name || '').trim().split(' ')[0])
+        .filter(Boolean);
+      return ['all', ...Array.from(new Set(allBrands)).sort((a, b) => a.localeCompare(b))];
   }, [products, activeCategory]);
+
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [activeCategory, searchQuery, sortBy, minPrice, maxPrice, inStockOnly, selectedBrand]);
 
   // 3. 🚀 [MASTER_OS] Track Search & Discovery
   useEffect(() => {

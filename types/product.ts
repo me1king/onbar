@@ -15,6 +15,9 @@ export interface Product {
   is_new?: boolean;
   is_featured?: boolean;
   is_on_offer?: boolean;
+  hide_product?: boolean;
+  status?: string;
+  created_at?: string;
   min_loyalty_tier?: string;
   order_count?: number;
   wholesale_price?: number;

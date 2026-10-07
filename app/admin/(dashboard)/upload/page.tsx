@@ -406,6 +406,7 @@ function UploadContent() {
       is_featured: product.is_featured || false,
       is_snack: product.is_snack || false,
       is_on_offer: product.is_on_offer || (product.old_price ? Number(product.old_price) > Number(product.price) : false),
+      hide_product: product.hide_product || false,
       sensory_metrics_body: String(product.sensory_metrics?.body ?? '60'),
       sensory_metrics_sweet: String(product.sensory_metrics?.sweet ?? '60'),
       sensory_metrics_smoke: String(product.sensory_metrics?.smoke ?? '20'),
@@ -521,6 +522,7 @@ function UploadContent() {
           category: form.category,
           is_featured: form.is_featured,
           is_snack: form.is_snack,
+          hide_product: form.hide_product,
           // 🛡️ [SCHEMA_SAFETY] Optional Fields
           low_stock_alert: Number(form.low_stock_alert) || 5,
           sensory_metrics: {
@@ -702,6 +704,19 @@ function UploadContent() {
                                   </Button>
                               </div>
                           </div>
+                          <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <input
+                              type="checkbox"
+                              name="hide_product"
+                              checked={form.hide_product}
+                              onChange={handleInputChange}
+                              className="mt-0.5 h-4 w-4 accent-primary"
+                          />
+                          <span>
+                              <span className="block text-xs font-black uppercase text-slate-800">Hide from storefront</span>
+                              <span className="mt-1 block text-xs text-slate-500">Keep this product in admin inventory without showing it to customers.</span>
+                          </span>
+                          </label>
                       </CardContent>
                   )}
               </Card>

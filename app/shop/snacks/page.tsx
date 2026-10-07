@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ProductCard from '@/components/home/ProductCard';
 import { Product } from '@/types/product';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 const SUBCATS = [
     { label: 'Trending', icon: Flame },
@@ -37,7 +38,11 @@ export default function SnackShopPage() {
     useEffect(() => {
         async function loadSnacks() {
             setLoading(true);
-            if (!supabase) return;
+            if (!supabase) {
+                setProducts([]);
+                setLoading(false);
+                return;
+            }
 
             let query = supabase.from('products').select('*').eq('is_snack', true);
 
@@ -45,11 +50,29 @@ export default function SnackShopPage() {
                 query = query.eq('sub_category', activeSub);
             }
 
-            const { data } = await query.order('created_at', { ascending: false });
-            setProducts((data as unknown as Product[]) || []);
-            setLoading(false);
+            try {
+                const { data, error } = await query.order('created_at', { ascending: false });
+                if (error) throw error;
+                setProducts(((data as unknown as Product[]) || []).filter(isStorefrontProductVisible));
+            } catch (error) {
+                console.error('Could not load snacks:', error);
+                setProducts([]);
+            } finally {
+                setLoading(false);
+            }
         }
         loadSnacks();
+
+        if (!supabase) return;
+        const channel = supabase
+            .channel('realtime_storefront_snacks')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+                loadSnacks();
+            })
+            .subscribe();
+        return () => {
+            if (supabase) void supabase.removeChannel(channel);
+        };
     }, [activeSub]);
 
     return (

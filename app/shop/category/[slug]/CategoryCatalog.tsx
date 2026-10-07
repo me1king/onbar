@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import ProductCard from '@/components/home/ProductCard';
 import { Product } from '@/types/product';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 type SortOrder = 'recommended' | 'price-ascending' | 'price-descending';
 
@@ -28,9 +29,10 @@ export default function CategoryCatalog({
   );
 
   const visibleProducts = useMemo(() => {
+    const availableProducts = products.filter(isStorefrontProductVisible);
     const filtered = selectedType
-      ? products.filter(product => product.sub_category?.trim() === selectedType)
-      : [...products];
+      ? availableProducts.filter(product => product.sub_category?.trim() === selectedType)
+      : [...availableProducts];
 
     if (sortOrder === 'price-ascending') {
       filtered.sort((a, b) => Number(a.price) - Number(b.price));

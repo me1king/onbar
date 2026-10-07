@@ -36,6 +36,7 @@ interface BiteProduct {
     category: string;
     description?: string;
     pairing_suggestions?: string[];
+    is_available_now?: boolean;
 }
 
 interface FoodAddon {
@@ -184,11 +185,14 @@ export default function BiteCommandCenter() {
     const toggleAvailability = async (id: number | string, current: boolean) => {
         if (!supabase) return;
         const status = current ? 'Draft' : 'Live';
-        const { error: updateError } = await supabase.from('products').update({ status }).eq('id', id);
+        const { error: updateError } = await supabase.from('products').update({
+            status,
+            is_available_now: !current
+        }).eq('id', id);
         if (updateError) {
             alert(`Unable to update product status: ${updateError.message}`);
         } else {
-            setBites(bites.map(b => b.id === id ? { ...b, status } : b));
+            setBites(bites.map(b => b.id === id ? { ...b, status, is_available_now: !current } : b));
         }
     };
 
@@ -242,7 +246,8 @@ export default function BiteCommandCenter() {
                 pairing_suggestions: pairings,
                 is_snack: true,
                 is_bite: true,
-                status: 'Live'
+                status: 'Live',
+                is_available_now: true
             };
             const { data, error: insertError } = await supabase.from('products').insert([payload]).select().single();
             if (insertError) throw new Error(`Error adding food item: ${insertError.message}`);

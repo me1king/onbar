@@ -17,6 +17,7 @@ import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 interface BeverageItem {
     id: number | string;
@@ -69,7 +70,7 @@ export default function BeverageCommandPage() {
                     let items = (data as unknown as BeverageItem[]).filter(i => {
                         const cat = (i.category || '').toLowerCase();
                         const subCat = (i.sub_category || '').toLowerCase();
-                        return i.is_available_now !== false
+                        return isStorefrontProductVisible(i)
                             && Number(i.stock) > 0
                             && !alcoholicCategories.some(a => cat.includes(a) || subCat.includes(a));
                     });

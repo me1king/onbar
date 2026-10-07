@@ -20,6 +20,7 @@ import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 interface SouvenirItem {
     id: number | string;
@@ -80,7 +81,7 @@ export default function SouvenirPalacePage() {
                     .order('created_at', { ascending: false });
 
                 if (data && data.length > 0) {
-                    setSouvenirs(data as unknown as SouvenirItem[]);
+                    setSouvenirs((data as unknown as SouvenirItem[]).filter(isStorefrontProductVisible));
                 }
             } catch (e) {
                 console.error('Error fetching souvenirs:', e);
