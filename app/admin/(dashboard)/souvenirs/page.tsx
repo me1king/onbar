@@ -78,74 +78,26 @@ export default function SouvenirForgePage() {
     }, [imageFile]);
 
     const fetchSouvenirs = React.useCallback(async () => {
-        if (!supabase) {
-            setLoadError('Supabase is not configured. Souvenir inventory is unavailable.');
-            setSouvenirs([]);
-            setGiftOrdersCount(null);
-            setTopSeller(null);
-            setSalesReportAvailable(false);
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         setLoadError(null);
         try {
-            const [productsResult, giftsResult] = await Promise.all([
-                supabase
-                    .from('products')
-                    .select('*')
-                    .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%')
-                    .order('name'),
-                supabase
-                    .from('orders')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('is_gift', true),
-            ]);
-
-            if (productsResult.error) throw productsResult.error;
-            setSouvenirs((productsResult.data || []) as SouvenirProduct[]);
-
-            setGiftOrdersCount(giftsResult.error ? null : giftsResult.count ?? 0);
-
-            const salesRows = [];
-            let salesReportError = false;
-            for (let page = 0; ; page += 1) {
-                const { data, error } = await supabase
-                    .from('order_items')
-                    .select('quantity, products!inner(id, name, category, is_souvenir), orders!inner(status)')
-                    .eq('orders.status', 'Delivered')
-                    .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%', { foreignTable: 'products' })
-                    .range(page * 500, page * 500 + 499);
-                if (error) {
-                    salesReportError = true;
-                    break;
-                }
-                salesRows.push(...(data || []));
-                if ((data || []).length < 500) break;
-            }
-
-            if (salesReportError) {
-                setSalesReportAvailable(false);
-                setTopSeller(null);
-            } else {
-                const quantitiesByProduct = new Map<number, { name: string; quantity: number }>();
-                for (const item of salesRows) {
-                    const product = Array.isArray(item.products) ? item.products[0] : item.products;
-                    if (!product?.name) continue;
-                    const prior = quantitiesByProduct.get(product.id);
-                    quantitiesByProduct.set(product.id, {
-                        name: product.name,
-                        quantity: (prior?.quantity || 0) + Number(item.quantity || 0)
-                    });
-                }
-                const bestSeller = [...quantitiesByProduct.values()].sort((a, b) => b.quantity - a.quantity)[0];
-                setTopSeller(bestSeller || null);
-                setSalesReportAvailable(true);
-            }
-        } catch (e) {
-            console.error('Error fetching souvenirs:', e);
+            const response = await fetch('/api/admin/products');
+            const result = await response.json() as {
+                error?: string;
+                products?: SouvenirProduct[];
+                giftOrdersCount?: number | null;
+                topSeller?: { name: string; quantity: number } | null;
+                salesReportAvailable?: boolean;
+            };
+            if (!response.ok) throw new Error(result.error || 'Unable to load souvenir inventory.');
+            setSouvenirs(result.products || []);
+            setGiftOrdersCount(result.giftOrdersCount ?? null);
+            setTopSeller(result.topSeller || null);
+            setSalesReportAvailable(result.salesReportAvailable === true);
+        } catch (error) {
+            console.error('Error fetching souvenirs:', error);
             setSouvenirs([]);
-            setLoadError(e instanceof Error ? e.message : 'Unable to load souvenir inventory.');
+            setLoadError(error instanceof Error ? error.message : 'Unable to load souvenir inventory.');
             setGiftOrdersCount(null);
             setTopSeller(null);
             setSalesReportAvailable(false);
@@ -188,40 +140,40 @@ export default function SouvenirForgePage() {
     }, [fetchSouvenirs]);
 
     const toggleAvailability = async (id: number | string, current: boolean) => {
-        if (!supabase) {
-            setLoadError('Supabase is not configured. Availability was not changed.');
-            return;
-        }
-        const { data, error } = await supabase.from('products').update({ is_available_now: !current }).eq('id', id).select('id').maybeSingle();
-        if (error || !data) {
-            setLoadError(error?.message || 'The product was not found; availability was not changed.');
-        } else {
+        try {
+            const response = await fetch('/api/admin/products', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: Number(id), product: { is_available_now: !current } })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Availability was not changed.');
             setLoadError(null);
             setSouvenirs(currentItems => currentItems.map(s => s.id === id ? { ...s, is_available_now: !current } : s));
+        } catch (error) {
+            setLoadError(error instanceof Error ? error.message : 'Availability was not changed.');
         }
     };
 
     const handleDelete = async (id: number | string) => {
-        if (!supabase) {
-            setLoadError('Supabase is not configured. The souvenir was not removed.');
-            return;
-        }
         if (!confirm('Are you sure you want to remove this souvenir from the catalogue?')) return;
-        const { data, error } = await supabase.from('products').delete().eq('id', id).select('id').maybeSingle();
-        if (error || !data) {
-            setLoadError(error?.message || 'The product was not found; it was not removed.');
-        } else {
+        try {
+            const response = await fetch('/api/admin/products', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: Number(id) })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'The souvenir was not removed.');
             setLoadError(null);
             setSouvenirs(items => items.filter(s => s.id !== id));
+        } catch (error) {
+            setLoadError(error instanceof Error ? error.message : 'The souvenir was not removed.');
         }
     };
 
     const handleCreateSouvenir = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!supabase) {
-            setLoadError('Supabase is not configured. The souvenir was not saved.');
-            return;
-        }
         const price = Number(formData.price);
         const stock = Number(formData.stock);
         const oldPrice = formData.old_price ? Number(formData.old_price) : null;
@@ -246,18 +198,19 @@ export default function SouvenirForgePage() {
         try {
             let imageUrl: string | null = null;
             if (imageFile) {
-                const safeName = imageFile.name.replace(/[^a-zA-Z0-9._-]/g, '-');
-                uploadedPath = `souvenirs/${crypto.randomUUID()}-${safeName}`;
-                const { error: uploadError } = await supabase.storage
-                    .from('onlinebar-assets')
-                    .upload(uploadedPath, imageFile, { contentType: imageFile.type, upsert: false });
-                if (uploadError) {
-                    if (uploadError.message.toLowerCase().includes('not found')) {
-                        throw new Error('The product image storage bucket is missing. Run supabase/FOOD_ADDONS_MIGRATION.sql in Supabase.');
-                    }
-                    throw uploadError;
+                const imageForm = new FormData();
+                imageForm.append('file', imageFile);
+                const uploadResponse = await fetch('/api/admin/product-image', {
+                    method: 'POST',
+                    body: imageForm
+                });
+                const uploadResult = await uploadResponse.json() as { error?: string; path?: string; image_url?: string };
+                if (!uploadResponse.ok) throw new Error(uploadResult.error || 'The product image could not be uploaded.');
+                if (!uploadResult.path || !uploadResult.image_url) {
+                    throw new Error('The image service did not return the uploaded image details.');
                 }
-                imageUrl = supabase.storage.from('onlinebar-assets').getPublicUrl(uploadedPath).data.publicUrl;
+                uploadedPath = uploadResult.path;
+                imageUrl = uploadResult.image_url;
             }
 
             const payload = {
@@ -278,11 +231,15 @@ export default function SouvenirForgePage() {
                 is_available_now: stock > 0,
                 stock
             };
-            const { data, error } = await supabase.from('products').insert([payload]).select();
-            if (error) throw error;
-            if (!data?.[0]) throw new Error('The database did not return the saved product.');
+            const response = await fetch('/api/admin/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ product: payload })
+            });
+            const result = await response.json() as { error?: string; id?: number };
+            if (!response.ok) throw new Error(result.error || 'The souvenir could not be saved.');
+            if (!Number.isSafeInteger(result.id)) throw new Error('The database did not return the saved product ID.');
             uploadedPath = null;
-            setSouvenirs(current => [data[0] as SouvenirProduct, ...current]);
             setIsAddModalOpen(false);
             setImageFile(null);
             setFormData({
@@ -290,12 +247,24 @@ export default function SouvenirForgePage() {
                 weight_grams: '', stock: '', price: '', old_price: '', description: '',
                 story: '', drink_pairings: ''
             });
+            await fetchSouvenirs();
         } catch (err) {
             console.error('Souvenir save error:', err);
             setLoadError(err instanceof Error ? err.message : 'Unable to save the souvenir.');
             if (uploadedPath) {
-                const { error: cleanupError } = await supabase.storage.from('onlinebar-assets').remove([uploadedPath]);
-                if (cleanupError) console.error('Unable to remove unlinked souvenir image:', cleanupError);
+                try {
+                    const cleanupResponse = await fetch('/api/admin/product-image', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: uploadedPath })
+                    });
+                    if (!cleanupResponse.ok) {
+                        const cleanupResult = await cleanupResponse.json() as { error?: string };
+                        console.error('Unable to remove unlinked souvenir image:', cleanupResult.error || cleanupResponse.statusText);
+                    }
+                } catch (cleanupError) {
+                    console.error('Unable to remove unlinked souvenir image:', cleanupError);
+                }
             }
         } finally {
             setIsSubmitting(false);

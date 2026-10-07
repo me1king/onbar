@@ -7,6 +7,10 @@ export const dynamic = 'force-dynamic';
 
 type ProductPayload = Record<string, unknown>;
 type AuthorizedDatabase = { database: SupabaseClient } | { response: NextResponse };
+type ProductSalesRow = {
+    quantity: number | null;
+    products: { id: number; name: string } | Array<{ id: number; name: string }> | null;
+};
 
 async function getAuthorizedDatabase(): Promise<AuthorizedDatabase> {
     const cookieStore = await cookies();
@@ -29,6 +33,67 @@ async function getAuthorizedDatabase(): Promise<AuthorizedDatabase> {
 
 function isProductPayload(value: unknown): value is ProductPayload {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export async function GET() {
+    const access = await getAuthorizedDatabase();
+    if ('response' in access) return access.response;
+
+    const { data: products, error: productsError } = await access.database
+        .from('products')
+        .select('*')
+        .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%')
+        .order('name');
+    if (productsError) {
+        console.error('[ProductAdmin] Could not load souvenir products:', productsError);
+        return NextResponse.json({ error: `Could not load souvenir products: ${productsError.message}` }, { status: 500 });
+    }
+
+    const { count: giftOrdersCount, error: giftOrdersError } = await access.database
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_gift', true);
+    if (giftOrdersError) console.error('[ProductAdmin] Could not count gift orders:', giftOrdersError);
+
+    const salesRows: ProductSalesRow[] = [];
+    let salesReportAvailable = true;
+    for (let page = 0; ; page += 1) {
+        const { data, error } = await access.database
+            .from('order_items')
+            .select('quantity, products!inner(id, name, category, is_souvenir), orders!inner(status)')
+            .eq('orders.status', 'Delivered')
+            .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%', { foreignTable: 'products' })
+            .range(page * 500, page * 500 + 499);
+        if (error) {
+            console.error('[ProductAdmin] Could not load delivered souvenir sales:', error);
+            salesReportAvailable = false;
+            break;
+        }
+        salesRows.push(...(data || []) as ProductSalesRow[]);
+        if ((data || []).length < 500) break;
+    }
+
+    let topSeller: { name: string; quantity: number } | null = null;
+    if (salesReportAvailable) {
+        const quantitiesByProduct = new Map<number, { name: string; quantity: number }>();
+        for (const item of salesRows) {
+            const product = Array.isArray(item.products) ? item.products[0] : item.products;
+            if (!product?.name) continue;
+            const prior = quantitiesByProduct.get(product.id);
+            quantitiesByProduct.set(product.id, {
+                name: product.name,
+                quantity: (prior?.quantity || 0) + Number(item.quantity || 0)
+            });
+        }
+        topSeller = [...quantitiesByProduct.values()].sort((a, b) => b.quantity - a.quantity)[0] || null;
+    }
+
+    return NextResponse.json({
+        products: products || [],
+        giftOrdersCount: giftOrdersError ? null : giftOrdersCount ?? 0,
+        topSeller,
+        salesReportAvailable
+    });
 }
 
 async function saveProduct(database: SupabaseClient, id: number | null, product: ProductPayload) {
