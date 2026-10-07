@@ -22,6 +22,7 @@ export interface Product {
   stock?: number;
   sizes?: string[];
   variant_stock?: Record<string, number>;
+  variant_prices?: Record<string, number>;
   beverage_specs?: {
     sensory_dna?: {
         body: number;

@@ -119,6 +119,7 @@ interface Product {
   low_stock_alert?: number;
   warehouse_location?: string;
   category: string;
+  variant_prices?: Record<string, number>;
   sale_end_date?: string;
   featured_rank?: number;
   is_featured?: boolean;
@@ -168,6 +169,7 @@ function UploadContent() {
   const { settings } = useSettings();
   const [form, setForm] = useState(initialForm);
   const [variantStock, setVariantStock] = useState<Record<string, string>>({});
+  const [variantPrices, setVariantPrices] = useState<Record<string, string>>({});
   const [beverageSpecs, setBeverageSpecs] = useState<{ key: string, value: string }[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedImagePreviews, setSelectedImagePreviews] = useState<string[]>([]);
@@ -335,6 +337,10 @@ function UploadContent() {
     setVariantStock(prev => ({ ...prev, [variant]: value }));
   };
 
+  const handleVariantPriceChange = (variant: string, value: string) => {
+    setVariantPrices(prev => ({ ...prev, [variant]: value }));
+  };
+
   const handleAddSpec = () => setBeverageSpecs([...beverageSpecs, { key: '', value: '' }]);
   const handleSpecChange = (index: number, field: 'key' | 'value', value: string) => {
       const newSpecs = [...beverageSpecs];
@@ -374,6 +380,8 @@ function UploadContent() {
   const startEditing = (product: Product) => {
     const vStock: Record<string, string> = {};
     if (product.variant_stock) Object.entries(product.variant_stock).forEach(([k, v]) => vStock[k] = v.toString());
+    const vPrices: Record<string, string> = {};
+    if (product.variant_prices) Object.entries(product.variant_prices).forEach(([k, v]) => vPrices[k] = String(v));
 
     setForm({
       ...initialForm,
@@ -408,6 +416,7 @@ function UploadContent() {
 
     setExistingImages(product.images || [product.image_url]);
     setVariantStock(vStock);
+    setVariantPrices(vPrices);
     setBeverageSpecs(product.beverage_specs ? Object.entries(product.beverage_specs).map(([key, value]) => ({ key, value })) : []);
     setEditingId(product.id);
     setFormSession(prev => prev + 1);
@@ -430,6 +439,7 @@ function UploadContent() {
     setEditingId(null);
     setForm(initialForm);
     setVariantStock({});
+    setVariantPrices({});
     setBeverageSpecs([]);
     setSelectedFiles([]);
     setSelectedImagePreviews([]);
@@ -445,6 +455,20 @@ function UploadContent() {
     let productSaved = false;
 
     try {
+      const currentVariants = form.sizes.split(',').map(size => size.trim()).filter(Boolean);
+      const vStock: Record<string, number> = {};
+      currentVariants.forEach(variant => vStock[variant] = Number(variantStock[variant] || 0));
+      const vPrices: Record<string, number> = {};
+      for (const variant of currentVariants) {
+          const value = variantPrices[variant]?.trim();
+          if (!value) continue;
+          const price = Number(value);
+          if (!Number.isFinite(price) || price < 0) {
+              throw new Error(`Enter a valid non-negative price for ${variant}.`);
+          }
+          vPrices[variant] = price;
+      }
+
       const imageUrls = [...existingImages];
 
       if (selectedFiles.length > 0) {
@@ -460,9 +484,6 @@ function UploadContent() {
               imageUrls.push(result.image_url);
           }
       }
-
-      const vStock: Record<string, number> = {};
-      currentVariants.forEach(v => vStock[v] = Number(variantStock[v] || 0));
 
       const specs: Record<string, string> = {
           abv: form.abv_label,
@@ -495,6 +516,7 @@ function UploadContent() {
           sizes: currentVariants,
           stock: Object.values(vStock).reduce((a, b) => a + b, 0),
           variant_stock: vStock,
+          variant_prices: vPrices,
           beverage_specs: specs,
           category: form.category,
           is_featured: form.is_featured,
@@ -768,7 +790,7 @@ function UploadContent() {
                       <CardContent className="p-10 pt-0 space-y-8">
                           <div className="grid sm:grid-cols-3 gap-6">
                               <div className="space-y-2 text-left">
-                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Sell Price (Ksh)</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Sell Price / Fallback (Ksh)</label>
                                   <Input type="number" name="price" value={form.price} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-black text-xl text-primary" required />
                               </div>
                               <div className="space-y-2 text-left">
@@ -855,23 +877,47 @@ function UploadContent() {
                   {openSections.inventory && (
                       <CardContent className="p-10 pt-0 space-y-10">
                           <div className="space-y-4 text-left">
-                              <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Variants (Comma Separated)</label>
+                              <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Sizes / Portions (Comma Separated)</label>
                               <Input name="sizes" value={form.sizes} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. 750ml, 1 Litre" />
                           </div>
 
                           {currentVariants.length > 0 && (
-                              <div className="grid sm:grid-cols-2 gap-4 text-left">
-                                  {currentVariants.map(v => (
-                                      <div key={v} className="p-5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:border-primary/20 transition-all">
-                                          <span className="text-[10px] font-black uppercase text-slate-500">{v}</span>
-                                          <Input
-                                            type="number"
-                                            value={variantStock[v] || '0'}
-                                            onChange={(e) => handleVariantStockChange(v, e.target.value)}
-                                            className="w-24 h-10 rounded-xl border-slate-200 bg-white text-center font-black"
-                                          />
-                                      </div>
-                                  ))}
+                              <div className="space-y-3 text-left">
+                                  <div>
+                                      <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-600">Price and stock for each size</h3>
+                                      <p className="mt-1 text-xs text-slate-400">Leave a size price blank to use the Sell Price fallback below.</p>
+                                  </div>
+                                  <div className="grid sm:grid-cols-2 gap-4">
+                                      {currentVariants.map(variant => (
+                                          <div key={variant} className="space-y-3 p-5 rounded-2xl bg-slate-50 border border-slate-100 group hover:border-primary/20 transition-all">
+                                              <span className="block text-[10px] font-black uppercase text-slate-600">{variant}</span>
+                                              <div className="grid grid-cols-2 gap-3">
+                                                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                                                      Price (Ksh)
+                                                      <Input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={variantPrices[variant] ?? ''}
+                                                        onChange={(e) => handleVariantPriceChange(variant, e.target.value)}
+                                                        className="h-10 rounded-xl border-slate-200 bg-white text-center font-black"
+                                                        placeholder={form.price || 'Base price'}
+                                                      />
+                                                  </label>
+                                                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                                                      Stock
+                                                      <Input
+                                                        type="number"
+                                                        min="0"
+                                                        value={variantStock[variant] || '0'}
+                                                        onChange={(e) => handleVariantStockChange(variant, e.target.value)}
+                                                        className="h-10 rounded-xl border-slate-200 bg-white text-center font-black"
+                                                      />
+                                                  </label>
+                                              </div>
+                                          </div>
+                                      ))}
+                                  </div>
                               </div>
                           )}
 

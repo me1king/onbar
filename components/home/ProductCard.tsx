@@ -23,6 +23,7 @@ import { useState } from "react";
 import { useWishlist } from "@/context/WishlistContext";
 import { useSettings } from "@/lib/useSettings";
 import { Product } from "@/types/product";
+import { getStartingPrice, getVariantPrice } from "@/lib/productPricing";
 
 const TIER_RANK: Record<string, number> = {
     'Explorer': 0,
@@ -43,7 +44,9 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
   const { settings } = useSettings();
 
   const imageUrl = normalizeImage(product.image || product.image_url);
-  const isSale = product.old_price && Number(product.old_price) > Number(product.price);
+  const isSale = !product.variant_prices || Object.keys(product.variant_prices).length === 0
+    ? product.old_price && Number(product.old_price) > Number(product.price)
+    : false;
   const discountPercent = isSale ? Math.round((1 - (product.price / Number(product.old_price))) * 100) : 0;
 
   const minTier = product.min_loyalty_tier || 'Explorer';
@@ -68,6 +71,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
   const originDisplay = product.origin || beverageSpecs?.origin;
   const regionDisplay = product.region || beverageSpecs?.region;
   const sizeDisplay = product.size_label || product.sizes?.[0];
+  const startingPrice = getStartingPrice(product.price, product.variant_prices, product.sizes);
   const drinkDetails = [
     { label: 'Origin', value: originDisplay },
     { label: 'Region', value: regionDisplay },
@@ -98,13 +102,14 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
 
     // Standardize variant selection for quick add
     const variant = (product.sizes && product.sizes.length > 0) ? product.sizes[0] : 'Standard';
+    const variantPrice = getVariantPrice(product.price, product.variant_prices, variant);
 
     setIsAdding(true);
     addToCart({
       id: product.id,
       name: product.name,
-      price: product.price,
-      base_price: product.price,
+      price: variantPrice,
+      base_price: variantPrice,
       image: imageUrl,
       quantity: 1,
       category: product.category,
@@ -216,7 +221,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
             <div className="space-y-0.5 sm:space-y-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3">
                     <div className="shrink-0 rounded-full bg-primary px-2.5 py-1 text-xs font-black tracking-tight text-white shadow-lg shadow-primary/20 sm:px-3 sm:text-sm">
-                        {formatPrice(product.price)}
+                        {product.sizes?.length ? `From ${formatPrice(startingPrice)}` : formatPrice(product.price)}
                     </div>
                     {isSale && (
                         <span className="text-xs font-bold text-slate-400 line-through shrink-0">
@@ -318,7 +323,7 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                 <button
                     onClick={(e) => {
                         e.preventDefault();
-                        const message = `Hello Online Bar! I want to order:\n\n*Product:* ${product.name}\n*Price:* ${formatPrice(product.price)}\n\nIs this available for dispatch?`;
+                        const message = `Hello Online Bar! I want to order:\n\n*Product:* ${product.name}\n${product.sizes?.length ? `*Size:* ${product.sizes[0]}\n` : ''}*Price:* ${formatPrice(product.sizes?.length ? getVariantPrice(product.price, product.variant_prices, product.sizes[0]) : product.price)}\n\nIs this available for dispatch?`;
                         window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
                     }}
                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-primary transition-all hover:bg-primary/5 sm:h-10 sm:w-10 sm:rounded-xl"

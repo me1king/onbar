@@ -44,6 +44,9 @@ async function saveProduct(database: SupabaseClient, id: number | null, product:
         const message = result.error?.message || 'Product could not be saved.';
         const missingColumn = message.match(/Could not find the '([^']+)' column of 'products'/i);
         if (missingColumn?.[1] && missingColumn[1] in payload) {
+            if (missingColumn[1] === 'variant_prices') {
+                throw new Error('Run supabase/PRODUCT_VARIANT_PRICING_MIGRATION.sql before saving prices by size.');
+            }
             console.warn(`[ProductAdmin] Ignoring unavailable products column "${missingColumn[1]}" and retrying.`);
             delete payload[missingColumn[1]];
             continue;

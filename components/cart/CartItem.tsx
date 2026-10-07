@@ -15,6 +15,7 @@ interface CartItemProps {
     base_price?: number;
     image: string;
     quantity: number;
+    size?: string;
     cart_key?: string;
     addons?: Array<{ id: string; name: string; price: number }>;
   };
@@ -43,6 +44,7 @@ export default function CartItem({ item, isLast }: CartItemProps) {
               <h2 className="font-semibold text-foreground line-clamp-2">
                 {item.name}
               </h2>
+              {item.size && <p className="text-xs text-muted-foreground mt-1">{item.size}</p>}
               <p className="text-sm text-muted-foreground mt-1">
                 {formatPrice(item.price)} each
               </p>

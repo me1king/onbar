@@ -105,13 +105,13 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         });
       }
 
-      let initialPrice = (item.base_price || item.price) + (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
+      let initialPrice = (item.base_price ?? item.price) + (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
       const qty = item.quantity || 1;
       if (item.wholesale_price && item.wholesale_min_qty && qty >= item.wholesale_min_qty) {
           initialPrice = item.wholesale_price + (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
       }
 
-      return [...prevCart, { ...item, cart_key: cartKey, base_price: item.base_price || item.price, price: initialPrice, quantity: qty }];
+      return [...prevCart, { ...item, cart_key: cartKey, base_price: item.base_price ?? item.price, price: initialPrice, quantity: qty }];
     });
   };
 

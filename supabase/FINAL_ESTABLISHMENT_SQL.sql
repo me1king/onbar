@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     temperature_celsius NUMERIC(5,2),
     stock INTEGER DEFAULT 0,
     variant_stock JSONB DEFAULT '{}'::JSONB,
+    variant_prices JSONB NOT NULL DEFAULT '{}'::JSONB,
     beverage_specs JSONB DEFAULT '{}'::JSONB,
     sensory_metrics JSONB DEFAULT '{"body": 60, "sweet": 60, "smoke": 20, "spice": 40}'::JSONB,
     pairing_suggestions TEXT[] DEFAULT ARRAY['Nyama choma', 'BBQ ribs', 'Smoked brisket', 'Burgers']::TEXT[],

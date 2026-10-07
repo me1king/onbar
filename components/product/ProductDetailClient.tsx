@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import {
     ArrowLeft,
     Zap,
+    Flame,
     ChevronLeft,
     ChevronRight,
     Check,
@@ -36,6 +37,7 @@ import { useInteractionTracking } from '@/lib/utils/useInteractionTracking';
 import { productKnowledgeEngine, ProductDossier } from '@/lib/engines/productKnowledgeEngine';
 import { supabase } from '@/lib/supabaseClient';
 import { Product } from '@/types/product';
+import { getVariantPrice } from '@/lib/productPricing';
 
 import ReviewSection from '@/components/product/ReviewSection';
 import BundleUpsell from './BundleUpsell';
@@ -70,6 +72,7 @@ export default function ProductDetailClient({
   const { addToCart, addBundleToCart } = useCart();
   const { isInWishlist, addToWishlist, removeFromWishlist } = useWishlist();
   const { trackClick } = useInteractionTracking();
+  const isFoodProduct = Boolean(product.is_bite || product.is_snack);
 
   const [dossier, setDossier] = useState<ProductDossier | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
@@ -95,7 +98,7 @@ export default function ProductDetailClient({
     async function initData() {
         if (!supabase) return;
         try {
-            if (product.is_bite || product.is_snack) {
+            if (isFoodProduct) {
                 setFoodAddonsLoading(true);
                 setFoodAddons([]);
                 setSelectedFoodAddonIds([]);
@@ -119,8 +122,10 @@ export default function ProductDetailClient({
                     setFoodAddonsLoading(false);
                 }
             }
-            const knowledge = await productKnowledgeEngine.getDossier(product.id);
-            if (knowledge) setDossier(knowledge);
+            if (!isFoodProduct) {
+                const knowledge = await productKnowledgeEngine.getDossier(product.id);
+                if (knowledge) setDossier(knowledge);
+            }
 
             const { data: { session } } = await supabase.auth.getSession();
             let anonymousId = localStorage.getItem('ob_anonymous_id');
@@ -153,7 +158,7 @@ export default function ProductDetailClient({
         }
     }
     initData();
-  }, [product.id, product.name, product.price, product.category, product.bought_together_ids, product.is_bite, product.is_snack, relatedProducts]);
+  }, [product.id, product.name, product.price, product.category, product.bought_together_ids, isFoodProduct, relatedProducts]);
 
   const allImages = Array.from(new Set([
     product.image || product.image_url,
@@ -173,13 +178,18 @@ export default function ProductDetailClient({
     intensity: dossier?.sensory_dna?.intensity ?? beverageDNA?.intensity ?? productDNA.intensity ?? productDNA.spice,
   };
 
-  const isSale = product.old_price && Number(product.old_price) > Number(product.price);
+  const isSale = !product.variant_prices?.[selectedVariant] && product.old_price && Number(product.old_price) > Number(product.price);
   const discountPercent = isSale ? Math.round((1 - (product.price / Number(product.old_price!))) * 100) : 0;
   const savings = isSale ? (Number(product.old_price) - product.price) : 0;
-  const points = Math.floor(product.price / 23);
+  const selectedVariantPrice = getVariantPrice(product.price, product.variant_prices, selectedVariant);
+  const points = Math.floor(selectedVariantPrice / 23);
 
   const activeBundleItems = [product, ...bundleProducts].filter(p => boughtTogether.includes(p.id));
-  const bundleTotal = activeBundleItems.reduce((sum, item) => sum + item.price, 0);
+  const getBundleVariant = (item: Product) => item.id === product.id ? selectedVariant : item.sizes?.[0] || 'Standard';
+  const bundleTotal = activeBundleItems.reduce(
+    (sum, item) => sum + getVariantPrice(item.price, item.variant_prices, getBundleVariant(item)),
+    0
+  );
 
   const handleAddToCart = () => {
     setIsAdding(true);
@@ -188,8 +198,8 @@ export default function ProductDetailClient({
     addToCart({
       id: product.id,
       name: product.name,
-      price: product.price + addonTotal,
-      base_price: product.price,
+      price: selectedVariantPrice + addonTotal,
+      base_price: selectedVariantPrice,
       image: normalizeImage(product.image || product.image_url),
       quantity: quantity,
       category: product.category,
@@ -211,7 +221,7 @@ export default function ProductDetailClient({
     const selectedAddons = foodAddons.filter(addon => selectedFoodAddonIds.includes(addon.id));
     const addonTotal = selectedAddons.reduce((sum, addon) => sum + Number(addon.price), 0);
     const addonSummary = selectedAddons.length ? `\n*Extras:* ${selectedAddons.map(addon => addon.name).join(', ')}` : '';
-    const message = `Hello Online Bar Nairobi! I want to order:\n\n*Product:* ${product.name}\n*Variant:* ${selectedVariant}\n*Quantity:* ${quantity}${addonSummary}\n*Price:* ${formatPrice((product.price + addonTotal) * quantity)}\n\nIs this available?`;
+    const message = `Hello Online Bar Nairobi! I want to order:\n\n*Product:* ${product.name}\n*Variant:* ${selectedVariant}\n*Quantity:* ${quantity}${addonSummary}\n*Price:* ${formatPrice((selectedVariantPrice + addonTotal) * quantity)}\n\nIs this available?`;
     window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -328,7 +338,7 @@ export default function ProductDetailClient({
                 </div>
             )}
 
-            {is3DMode && product.beverage_specs?.model_3d_url ? (
+            {!isFoodProduct && is3DMode && product.beverage_specs?.model_3d_url ? (
                 <div className="animate-in zoom-in-95 duration-500 relative aspect-square">
                     <Product3DViewer
                         modelUrl={product.beverage_specs.model_3d_url}
@@ -339,7 +349,7 @@ export default function ProductDetailClient({
             ) : (
                 <div className="group relative aspect-square w-full min-w-0 transform overflow-hidden rounded-[2rem] border border-amber-100/70 bg-gradient-to-br from-amber-50 via-white to-rose-50 transition-transform duration-700 ease-out hover:scale-[1.02] sm:rounded-[2.5rem]">
                     <div aria-hidden="true" className="pointer-events-none absolute inset-[16%] rounded-full bg-white/90 blur-3xl" />
-                    {product.beverage_specs?.model_3d_url && (
+                    {!isFoodProduct && product.beverage_specs?.model_3d_url && (
                         <div className="absolute top-6 right-6 z-20">
                             <Button
                                 onClick={() => setIs3DMode(true)}
@@ -378,6 +388,72 @@ export default function ProductDetailClient({
                 </div>
             )}
 
+            {isFoodProduct ? (
+                <div className="mt-12 space-y-6 sm:mt-16">
+                    <Card className="relative overflow-hidden rounded-[2rem] border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-6 shadow-lg sm:rounded-[2.5rem] sm:p-10">
+                        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-orange-200/40 blur-3xl" />
+                        <div className="relative space-y-6">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
+                                    <Utensils size={22} />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-700">Made for your appetite</p>
+                                    <h3 className="mt-1 text-2xl font-black uppercase leading-tight tracking-tight text-slate-950 sm:text-3xl">
+                                        Make it your own
+                                    </h3>
+                                    <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
+                                        {product.description || 'Choose your favourite extras and build your meal just the way you like it.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                <span className="rounded-full border border-orange-200 bg-white/80 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-orange-800">
+                                    {product.category || (product.is_snack ? 'Snack' : 'Street food')}
+                                </span>
+                                {typeof product.prep_time === 'number' && product.prep_time > 0 && (
+                                    <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-white/80 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-amber-800">
+                                        <Flame size={12} /> Ready in about {product.prep_time} min
+                                    </span>
+                                )}
+                            </div>
+
+                            {product.ingredients && product.ingredients.length > 0 && (
+                                <div className="border-t border-orange-100 pt-5">
+                                    <p className="mb-3 text-[9px] font-black uppercase tracking-[0.25em] text-slate-400">What goes into it</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {product.ingredients.map(ingredient => (
+                                            <span key={ingredient} className="rounded-full border border-white bg-white/90 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-sm">
+                                                {ingredient}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="rounded-2xl border border-orange-100 bg-white/80 p-4 sm:p-5">
+                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Your custom extras</p>
+                                {selectedFoodAddonIds.length > 0 ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {foodAddons
+                                            .filter(addon => selectedFoodAddonIds.includes(addon.id))
+                                            .map(addon => (
+                                                <span key={addon.id} className="rounded-full bg-orange-100 px-3 py-1.5 text-[10px] font-black text-orange-800">
+                                                    {addon.name}
+                                                </span>
+                                            ))}
+                                    </div>
+                                ) : (
+                                    <p className="mt-2 text-sm font-medium text-slate-600">
+                                        Pick sauces, toppings, and other meal extras in the order panel.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            ) : (
             <div className="mt-24 space-y-16">
                 <div className="bg-white p-10 sm:p-12 rounded-[3rem] space-y-8 relative overflow-hidden border border-slate-200/80 shadow-xl">
                     <p className="text-[10px] font-black uppercase tracking-[0.4em] text-primary flex items-center gap-3">
@@ -469,6 +545,7 @@ export default function ProductDetailClient({
                     </div>
                 </div>
             </div>
+            )}
         </div>
 
         {/* RIGHT: STICKY PURCHASE TERMINAL */}
@@ -485,7 +562,7 @@ export default function ProductDetailClient({
                                         <Star key={i} size={14} className={cn(i < Math.round(reviewStats.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-100")} />
                                     ))}
                                 </>
-                            ) : <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Be the first to rate this drink</span>}
+                            ) : <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Be the first to rate this {isFoodProduct ? 'meal' : 'drink'}</span>}
                         </div>
                         {reviewStats.count > 0 && (
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
@@ -497,7 +574,7 @@ export default function ProductDetailClient({
 
                 <div className="space-y-3 min-w-0">
                     <div className="flex flex-wrap items-baseline gap-4">
-                        <span className="text-5xl font-black text-foreground tracking-tighter shrink-0">{formatPrice(product.price)}</span>
+                        <span className="text-5xl font-black text-foreground tracking-tighter shrink-0">{formatPrice(selectedVariantPrice)}</span>
                         {isSale && <span className="text-2xl text-slate-300 line-through font-bold shrink-0">{formatPrice(Number(product.old_price))}</span>}
                     </div>
                     {isSale && (
@@ -526,7 +603,7 @@ export default function ProductDetailClient({
                 )}
 
                 <div className="space-y-6">
-                    <label className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 ml-1 italic">Select Configuration</label>
+                    <label className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 ml-1 italic">{isFoodProduct ? 'Choose your portion' : 'Select Configuration'}</label>
                     <div className="grid grid-cols-2 gap-4">
                         {product.sizes?.map(size => {
                             const isSelected = selectedVariant === size;
@@ -542,29 +619,49 @@ export default function ProductDetailClient({
                                     )}
                                 >
                                     <span className={cn("text-[10px] font-black uppercase tracking-widest", isSelected ? "text-brand-red" : "text-slate-400")}>{size}</span>
-                                    <span className={cn("text-base font-black tracking-tight", isSelected ? "text-foreground" : "text-slate-500")}>{formatPrice(product.price)}</span>
+                                    <span className={cn("text-base font-black tracking-tight", isSelected ? "text-foreground" : "text-slate-500")}>{formatPrice(getVariantPrice(product.price, product.variant_prices, size))}</span>
                                     {isSelected && <Check size={14} className="absolute top-4 right-4 text-brand-red" />}
                                 </button>
                             );
                         }) || (
                             <button className="p-6 rounded-[2rem] border-2 border-brand-red bg-rose-50 shadow-xl text-left flex flex-col gap-1.5">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-brand-red">{product.size_label || 'Standard'}</span>
-                                <span className="text-base font-black tracking-tight">{formatPrice(product.price)}</span>
+                                <span className="text-base font-black tracking-tight">{formatPrice(selectedVariantPrice)}</span>
                             </button>
                         )}
                     </div>
                 </div>
 
-                {(product.is_bite || product.is_snack) && (
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Add meal extras</label>
+                {isFoodProduct && (
+                    <div className="overflow-hidden rounded-[2rem] border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-5 shadow-sm sm:p-6">
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white shadow-md shadow-orange-500/20">
+                                    <Utensils size={18} />
+                                </div>
+                                <div>
+                                    <p className="text-[9px] font-black uppercase tracking-[0.25em] text-orange-700">Make it yours</p>
+                                    <h2 className="mt-1 text-lg font-black uppercase tracking-tight text-slate-950">Add your extras</h2>
+                                    <p className="mt-1 text-xs leading-relaxed text-slate-600">Pick sauces and toppings for your meal.</p>
+                                </div>
+                            </div>
+                            {selectedFoodAddonIds.length > 0 && (
+                                <span className="shrink-0 rounded-full bg-orange-100 px-3 py-1.5 text-[9px] font-black uppercase text-orange-800">
+                                    {selectedFoodAddonIds.length} picked
+                                </span>
+                            )}
+                        </div>
                         {foodAddonError && <p role="status" className="rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">{foodAddonError}</p>}
                         {foodAddonsLoading ? (
-                            <p className="text-sm text-slate-500">Loading meal extras…</p>
+                            <div role="status" className="flex items-center gap-2 rounded-2xl bg-white/80 p-4 text-sm font-medium text-slate-600">
+                                <Loader2 size={16} className="animate-spin text-orange-600" /> Loading today&apos;s extras…
+                            </div>
                         ) : foodAddons.length === 0 ? (
-                            <p className="text-sm text-slate-500">No meal extras are currently available.</p>
+                            <p className="rounded-2xl border border-white bg-white/80 p-4 text-sm leading-relaxed text-slate-600">
+                                No extras are on the menu right now. You can order this meal just as it is.
+                            </p>
                         ) : (
-                            <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-2.5 sm:grid-cols-2">
                                 {foodAddons.map(addon => {
                                     const selected = selectedFoodAddonIds.includes(addon.id);
                                     return (
@@ -574,21 +671,30 @@ export default function ProductDetailClient({
                                             aria-pressed={selected}
                                             onClick={() => setSelectedFoodAddonIds(current => selected ? current.filter(id => id !== addon.id) : [...current, addon.id])}
                                             className={cn(
-                                                'flex items-center justify-between gap-3 rounded-2xl border-2 p-4 text-left transition-colors',
-                                                selected ? 'border-brand-red bg-rose-50' : 'border-slate-100 bg-white hover:border-slate-300'
+                                                'flex min-h-16 items-center justify-between gap-3 rounded-2xl border-2 p-3.5 text-left transition-all active:scale-[0.98]',
+                                                selected ? 'border-orange-400 bg-white shadow-md shadow-orange-900/5' : 'border-white bg-white/75 hover:border-orange-200 hover:bg-white'
                                             )}
                                         >
-                                            <span className="flex items-center gap-2 text-xs font-black uppercase">
-                                                <span className={cn('flex h-5 w-5 items-center justify-center rounded border text-[10px]', selected ? 'border-brand-red bg-brand-red text-white' : 'border-slate-300')}>
-                                                    {selected ? '✓' : ''}
+                                            <span className="flex min-w-0 items-center gap-2.5 text-xs font-black uppercase">
+                                                <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border text-[10px]', selected ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-200 bg-white text-transparent')}>
+                                                    <Check size={14} strokeWidth={3} />
                                                 </span>
-                                                {addon.name}
+                                                <span className="truncate">{addon.name}</span>
                                             </span>
-                                            <span className="shrink-0 text-xs font-black text-primary">+{formatPrice(Number(addon.price))}</span>
+                                            <span className="shrink-0 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-black text-orange-800">
+                                                +{formatPrice(Number(addon.price))}
+                                            </span>
                                         </button>
                                     );
                                 })}
                             </div>
+                        )}
+                        {selectedFoodAddonIds.length > 0 && (
+                            <p className="mt-4 border-t border-orange-100 pt-3 text-right text-xs font-bold text-orange-900">
+                                Extras added: {formatPrice(foodAddons
+                                    .filter(addon => selectedFoodAddonIds.includes(addon.id))
+                                    .reduce((sum, addon) => sum + Number(addon.price), 0))}
+                            </p>
                         )}
                     </div>
                 )}
@@ -625,7 +731,7 @@ export default function ProductDetailClient({
                             disabled={isAdding || ((product.is_bite || product.is_snack) && foodAddonsLoading) || (product.stock !== undefined && product.stock === 0)}
                             className="flex-1 h-24 rounded-[2.5rem] bg-primary text-white font-black uppercase tracking-[0.3em] text-sm shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all group border-none"
                         >
-                            {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? <><Check size={20} className="mr-2" /> In Bag</> : <>Add {quantity} &bull; {formatPrice((product.price + foodAddons.filter(addon => selectedFoodAddonIds.includes(addon.id)).reduce((sum, addon) => sum + Number(addon.price), 0)) * quantity)}</>}
+                            {isAdding ? <Loader2 className="animate-spin" /> : justAdded ? <><Check size={20} className="mr-2" /> In Bag</> : <>Add {quantity} &bull; {formatPrice((selectedVariantPrice + foodAddons.filter(addon => selectedFoodAddonIds.includes(addon.id)).reduce((sum, addon) => sum + Number(addon.price), 0)) * quantity)}</>}
                         </Button>
                         <button
                             onClick={() => {
@@ -708,11 +814,12 @@ export default function ProductDetailClient({
                                         addBundleToCart(activeBundleItems.map(p => ({
                                             id: p.id,
                                             name: p.name,
-                                            price: p.price,
-                                            base_price: p.price,
+                                            price: getVariantPrice(p.price, p.variant_prices, getBundleVariant(p)),
+                                            base_price: getVariantPrice(p.price, p.variant_prices, getBundleVariant(p)),
                                             image: normalizeImage(p.image || p.image_url),
                                             quantity: 1,
-                                            category: p.category
+                                            category: p.category,
+                                            size: getBundleVariant(p)
                                         })));
                                         alert("Bundle established in your bag!");
                                     }}
@@ -730,7 +837,7 @@ export default function ProductDetailClient({
 
       </Card>
 
-      <div className="max-w-6xl w-full grid lg:grid-cols-12 gap-10 items-stretch px-4">
+      {!isFoodProduct && <div className="max-w-6xl w-full grid lg:grid-cols-12 gap-10 items-stretch px-4">
             <div className="lg:col-span-4 h-full flex flex-col gap-10">
                 <ProductDNACard
                     dna={sensoryDNA}
@@ -765,9 +872,9 @@ export default function ProductDetailClient({
                     glassware={product.beverage_specs?.perfect_serve?.glassware || "Highball Glass"}
                 />
             </div>
-        </div>
+        </div>}
 
-      <div className="max-w-6xl w-full mt-16 space-y-10 px-4">
+      {!isFoodProduct && <div className="max-w-6xl w-full mt-16 space-y-10 px-4">
           <div className="flex items-center gap-4 px-10">
               <div className="h-px flex-1 bg-slate-200" />
               <h2 className="text-xs font-black uppercase tracking-[0.6em] text-slate-400">Tactical Inquiries</h2>
@@ -788,7 +895,7 @@ export default function ProductDetailClient({
                     </Card>
                 ))}
           </div>
-      </div>
+      </div>}
 
         {isLightboxOpen && (
             <div className="fixed inset-0 z-[5000] bg-white/95 backdrop-blur-2xl flex flex-col animate-in fade-in duration-300">
@@ -892,7 +999,7 @@ export default function ProductDetailClient({
             >
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
-                  <h2 id="share-product-title" className="text-xl font-black uppercase tracking-tight text-slate-900">Share this drink</h2>
+                  <h2 id="share-product-title" className="text-xl font-black uppercase tracking-tight text-slate-900">Share this {isFoodProduct ? 'meal' : 'drink'}</h2>
                   <p className="mt-1 text-sm text-slate-500">Share a trackable product link with your friends.</p>
                 </div>
                 <button
