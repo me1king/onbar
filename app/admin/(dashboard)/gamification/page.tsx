@@ -48,21 +48,18 @@ const DEFAULTS = {
     missions: [
         { type: 'buy-mixers', label: 'Buy Any Mixer', xp: 100, target: 2 },
         { type: 'review-product', label: 'Review Beverage', xp: 50, target: 5 },
-        { type: 'watch-video', label: 'Watch Tasting Video', xp: 30, target: 1 },
         { type: 'refer-friend', label: 'Refer Friend', xp: 200, target: 1 },
-        { type: 'wishlist-items', label: 'Wishlist 5 Items', xp: 40, target: 5 },
-        { type: 'share-product', label: 'Share Product', xp: 25, target: 1 },
     ],
     rewards: {
         crate_probabilities: [
-            { label: '50 XP', chance: 40, value: 50, type: 'xp' },
-            { label: '100 XP', chance: 30, value: 100, type: 'xp' },
+            { label: '50 Points', chance: 40, value: 50, type: 'xp' },
+            { label: '100 Points', chance: 30, value: 100, type: 'xp' },
             { label: 'KSh 100 Coupon', chance: 20, value: 100, type: 'voucher' },
             { label: 'Free Delivery', chance: 10, value: 0, type: 'perk' },
         ],
         spin_probabilities: [
-            { label: '10 XP', chance: 50, value: 10, type: 'xp' },
-            { label: '100 XP', chance: 25, value: 100, type: 'xp' },
+            { label: '10 Points', chance: 50, value: 10, type: 'xp' },
+            { label: '100 Points', chance: 25, value: 100, type: 'xp' },
             { label: 'Free Shipping', chance: 15, value: 0, type: 'perk' },
             { label: 'KSh 500 Coupon', chance: 5, value: 500, type: 'voucher' },
             { label: 'Mystery Prize', chance: 5, value: 0, type: 'mystery' },
@@ -131,6 +128,10 @@ export default function AdminGamificationPage() {
                         ...DEFAULTS,
                         ...result.config,
                         points: { ...DEFAULTS.points, ...result.config.points },
+                        missions: Array.isArray(result.config.missions)
+                            ? result.config.missions.filter((mission: { type?: string }) =>
+                                DEFAULTS.missions.some(verified => verified.type === mission.type))
+                            : DEFAULTS.missions,
                         streak: { ...DEFAULTS.streak, ...result.config.streak },
                         rewards: { ...DEFAULTS.rewards, ...result.config.rewards }
                     });
@@ -240,7 +241,7 @@ export default function AdminGamificationPage() {
                                     />
                                 </div>
                                 <div className="space-y-2 text-left">
-                                    <label className="text-[10px] font-black uppercase text-slate-400">Daily Visit XP</label>
+                                    <label className="text-[10px] font-black uppercase text-slate-400">Daily Visit Points</label>
                                     <Input
                                         type="number"
                                         value={config.streak.xp_per_day}
@@ -387,7 +388,7 @@ export default function AdminGamificationPage() {
                                              }} className="h-12 rounded-xl bg-white border-none font-black text-xs" />
                                          </div>
                                          <div className="space-y-2 text-left">
-                                             <label className="text-[8px] font-black uppercase text-slate-400">XP Reward</label>
+                                             <label className="text-[8px] font-black uppercase text-slate-400">Point Reward</label>
                                              <Input type="number" value={m.xp} onChange={e => {
                                                  const newMissions = [...config.missions];
                                                  newMissions[i].xp = Number(e.target.value);

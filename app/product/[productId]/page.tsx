@@ -191,7 +191,7 @@ export default function Product() {
     }
   };
 
-  const toggleWishlist = async () => {
+  const toggleWishlist = () => {
     if (isInWishlist(product.id)) {
       removeFromWishlist(product.id);
     } else {
@@ -203,24 +203,6 @@ export default function Product() {
         rating: product.rating,
       });
 
-      // Update Mission
-      if (user && supabase) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session || session.user.id !== user.id) return;
-          const response = await fetch('/api/member/gamification', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${session.access_token}`
-              },
-              body: JSON.stringify({
-                  userId: user.id,
-                  action: 'update-mission-progress',
-                  payload: { missionType: 'wishlist-items', increment: 1 }
-              }),
-          });
-          if (!response.ok) console.error('Could not update wishlist mission:', await response.text());
-      }
     }
   };
 

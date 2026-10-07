@@ -30,7 +30,7 @@ export async function POST(request: Request) {
         const body = await request.json() as {
             userId?: unknown;
             action?: unknown;
-            payload?: { type?: unknown; missionType?: unknown; increment?: unknown };
+            payload?: { type?: unknown; missionType?: unknown; reviewId?: unknown };
         };
         if (body.userId !== undefined && body.userId !== user.id) {
             return NextResponse.json({ error: 'You can only update your own account.' }, { status: 403 });
@@ -41,9 +41,11 @@ export async function POST(request: Request) {
             case 'claim-daily-reward':
                 return NextResponse.json({ error: 'Use the loyalty rewards endpoint to claim daily rewards.' }, { status: 410 });
             case 'update-mission-progress':
-                return NextResponse.json(
-                    { error: "Mission progress is temporarily disabled until actions can be verified server-side." },
-                    { status: 501 }
+                return await handleUpdateMissionProgress(
+                    clients.database,
+                    user.id,
+                    body.payload?.missionType,
+                    body.payload?.reviewId
                 );
             case 'sync-all-stats':
                 return await handleSyncAllStats(clients.database, user.id);
@@ -117,6 +119,42 @@ async function handleUpdateStreak(database: SupabaseClient, userId: string) {
     }
 
     return NextResponse.json({ ok: true, newStreak, pointsAwarded: points });
+}
+
+async function handleUpdateMissionProgress(
+    database: SupabaseClient,
+    userId: string,
+    missionTypeValue: unknown,
+    reviewIdValue: unknown
+) {
+    if (missionTypeValue !== 'review-product') {
+        return NextResponse.json(
+            { error: 'This mission action is not yet connected to a verifiable server event.' },
+            { status: 409 }
+        );
+    }
+    const reviewId = Number(reviewIdValue);
+    if (!Number.isSafeInteger(reviewId) || reviewId <= 0) {
+        return NextResponse.json({ error: 'A saved review is required for this mission.' }, { status: 400 });
+    }
+
+    const { data: review, error: reviewError } = await database
+        .from('reviews')
+        .select('id, customer_user_id')
+        .eq('id', reviewId)
+        .maybeSingle();
+    if (reviewError) throw reviewError;
+    if (!review || review.customer_user_id !== userId) {
+        return NextResponse.json({ error: 'Review not found for this member.' }, { status: 404 });
+    }
+
+    const { data, error } = await database.rpc('record_loyalty_mission_event', {
+        profile_id_input: userId,
+        mission_type_input: 'review-product',
+        source_key_input: `review:${review.id}`
+    });
+    if (error) throw error;
+    return NextResponse.json({ ok: true, ...data?.[0] });
 }
 
 async function handleSyncAllStats(database: SupabaseClient, userId: string) {

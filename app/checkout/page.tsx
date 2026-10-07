@@ -669,47 +669,7 @@ function CheckoutContent() {
     const client = supabase;
     if (user && client) {
         try {
-            // Grant Achievements
             await runPostCheckoutAudit(user.id, total);
-
-            // 1.5 Update Mission Progress
-            try {
-                const { data: { session } } = await client.auth.getSession();
-                // Buy Accessory Mission
-                await fetch('/api/member/gamification', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': session ? `Bearer ${session.access_token}` : ''
-                    },
-                    body: JSON.stringify({
-                        userId: user.id,
-                        action: 'update-mission-progress',
-                        payload: { missionType: 'buy-accessory', increment: 1 }
-                    }),
-                });
-
-                // Refer Friend Mission for the Referrer
-                if (referralCode) {
-                    const { data: referrer } = await client.from('profiles').select('id').eq('referral_code', referralCode).single();
-                    if (referrer) {
-                        await fetch('/api/member/gamification', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': session ? `Bearer ${session.access_token}` : ''
-                            },
-                            body: JSON.stringify({
-                                userId: referrer.id,
-                                action: 'update-mission-progress',
-                                payload: { missionType: 'refer-friend', increment: 1 }
-                            }),
-                        });
-                    }
-                }
-            } catch (err) {
-                console.warn("Mission tracking failed", err);
-            }
         } catch (err) {
             console.error("Loyalty update error:", err);
         }

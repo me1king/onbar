@@ -133,7 +133,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                   body: JSON.stringify({
                       userId: user.id,
                       action: 'update-mission-progress',
-                      payload: { missionType: 'review-product', increment: 1 }
+                      payload: { missionType: 'review-product', reviewId: result.id }
                   }),
               });
           } catch (err) {

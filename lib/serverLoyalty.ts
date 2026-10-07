@@ -60,7 +60,7 @@ export async function processOrderLoyalty(
   const earnedPoints = Math.floor(eligibleSpend * earnPercent / 100);
   await apply(order.user_id, earnedPoints, `Earned from order #${order.id}`, `order:${order.id}:earn`);
 
-  if (order.referred_by_code && referralBonus > 0) {
+  if (order.referred_by_code) {
     const { data: referrer, error: referrerError } = await database
       .from('profiles')
       .select('id')
@@ -71,6 +71,24 @@ export async function processOrderLoyalty(
     if (referrer) {
       await apply(order.user_id, referralBonus, 'Referral welcome bonus', `referral-welcome:${order.user_id}`);
       await apply(referrer.id, referralBonus, `Referral bonus for member ${order.user_id}`, `referral:${referrer.id}:${order.user_id}`);
+      await recordMissionEvent(database, referrer.id, 'refer-friend', `order:${order.id}`);
+    }
+  }
+
+  const { data: orderItems, error: orderItemsError } = await database
+    .from('order_items')
+    .select('product_id')
+    .eq('order_id', order.id);
+  if (orderItemsError) throw orderItemsError;
+  const productIds = [...new Set((orderItems || []).map(item => Number(item.product_id)).filter(Number.isSafeInteger))];
+  if (productIds.length > 0) {
+    const { data: products, error: productsError } = await database
+      .from('products')
+      .select('id, category')
+      .in('id', productIds);
+    if (productsError) throw productsError;
+    if ((products || []).some(product => String(product.category || '').toLowerCase().includes('mixer'))) {
+      await recordMissionEvent(database, order.user_id, 'buy-mixers', `order:${order.id}`);
     }
   }
 
@@ -81,4 +99,27 @@ export async function processOrderLoyalty(
     .single();
   if (profileError) throw profileError;
   return { earnedPoints, balance: Number(profile.loyalty_points || 0) };
+}
+
+async function recordMissionEvent(
+  database: SupabaseClient,
+  profileId: string,
+  missionType: string,
+  sourceKey: string
+) {
+  const { data: mission, error: missionError } = await database
+    .from('mission_definitions')
+    .select('id')
+    .eq('id', missionType)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (missionError) throw missionError;
+  if (!mission) return;
+
+  const { error } = await database.rpc('record_loyalty_mission_event', {
+    profile_id_input: profileId,
+    mission_type_input: missionType,
+    source_key_input: sourceKey
+  });
+  if (error) throw error;
 }

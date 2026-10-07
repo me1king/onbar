@@ -113,6 +113,7 @@ export async function POST(request: Request) {
       comment,
       photo_urls: photoUrls,
       user_id: userId,
+      customer_user_id: userId,
       is_verified_owner: false,
       is_hidden: false
     })

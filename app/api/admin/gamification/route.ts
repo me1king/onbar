@@ -30,6 +30,8 @@ const DEFAULT_CONFIG = {
   }
 };
 
+const VERIFIED_MISSION_TYPES = new Set(['buy-mixers', 'review-product', 'refer-friend']);
+
 function getDatabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -86,6 +88,7 @@ function validateConfig(value: unknown) {
     && Array.isArray(missions) && missions.length <= 100
     && missions.every(mission => typeof mission.type === 'string'
       && /^[a-z0-9-]{1,80}$/i.test(mission.type)
+      && VERIFIED_MISSION_TYPES.has(mission.type)
       && typeof mission.label === 'string' && mission.label.trim().length > 0 && mission.label.length <= 120
       && Number.isSafeInteger(mission.target) && mission.target > 0 && mission.target <= 100000
       && Number.isSafeInteger(mission.xp) && mission.xp >= 0 && mission.xp <= 100000)

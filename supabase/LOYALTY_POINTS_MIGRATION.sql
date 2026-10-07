@@ -110,6 +110,14 @@ CREATE TABLE IF NOT EXISTS public.user_missions (
     PRIMARY KEY (user_id, mission_type)
 );
 
+CREATE TABLE IF NOT EXISTS public.loyalty_mission_events (
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    mission_type TEXT NOT NULL REFERENCES public.mission_definitions(id) ON DELETE CASCADE,
+    source_key TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, mission_type, source_key)
+);
+
 ALTER TABLE public.mission_definitions ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.mission_definitions FROM anon, authenticated;
 GRANT SELECT ON public.mission_definitions TO authenticated;
@@ -127,6 +135,10 @@ DROP POLICY IF EXISTS user_missions_read_own ON public.user_missions;
 CREATE POLICY user_missions_read_own ON public.user_missions
     FOR SELECT TO authenticated
     USING (user_id = auth.uid());
+
+ALTER TABLE public.loyalty_mission_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.loyalty_mission_events FROM anon, authenticated;
+GRANT ALL ON public.loyalty_mission_events TO service_role;
 
 ALTER TABLE public.achievements ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.achievements FROM anon, authenticated;
@@ -182,11 +194,14 @@ INSERT INTO public.mission_definitions (id, label, target_count, xp_reward)
 VALUES
     ('buy-mixers', 'Buy Any Mixer', 2, 100),
     ('review-product', 'Review Beverage', 5, 50),
-    ('watch-video', 'Watch Tasting Video', 1, 30),
-    ('refer-friend', 'Refer Friend', 1, 200),
-    ('wishlist-items', 'Wishlist 5 Items', 5, 40),
-    ('share-product', 'Share Product', 1, 25)
+    ('refer-friend', 'Refer Friend', 1, 200)
 ON CONFLICT (id) DO NOTHING;
+
+UPDATE public.mission_definitions
+   SET is_active = false,
+       updated_at = now()
+ WHERE id NOT IN ('buy-mixers', 'review-product', 'refer-friend')
+   AND is_active = true;
 
 ALTER TABLE public.loyalty_config ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.loyalty_config FROM anon, authenticated;
@@ -451,13 +466,111 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.record_loyalty_mission_event(
+    profile_id_input UUID,
+    mission_type_input TEXT,
+    source_key_input TEXT
+)
+RETURNS TABLE (progress INTEGER, completed BOOLEAN, points_awarded INTEGER, balance INTEGER, applied BOOLEAN)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    mission_definition public.mission_definitions%ROWTYPE;
+    current_progress INTEGER := 0;
+    current_completed BOOLEAN := false;
+    current_balance INTEGER;
+    next_progress INTEGER;
+    inserted_count INTEGER;
+BEGIN
+    IF profile_id_input IS NULL
+        OR length(trim(mission_type_input)) = 0
+        OR length(trim(source_key_input)) = 0 THEN
+        RAISE EXCEPTION 'A member, mission, and verified event are required.';
+    END IF;
+
+    SELECT p.loyalty_points
+      INTO current_balance
+      FROM public.profiles p
+     WHERE p.id = profile_id_input
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Member profile not found.';
+    END IF;
+
+    SELECT *
+      INTO mission_definition
+      FROM public.mission_definitions
+     WHERE id = mission_type_input
+       AND is_active = true;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Mission definition not found or inactive.';
+    END IF;
+
+    SELECT um.progress, um.is_completed
+      INTO current_progress, current_completed
+      FROM public.user_missions um
+     WHERE um.user_id = profile_id_input
+       AND um.mission_type = mission_type_input
+     FOR UPDATE;
+    current_progress := COALESCE(current_progress, 0);
+    current_completed := COALESCE(current_completed, false);
+
+    INSERT INTO public.loyalty_mission_events (user_id, mission_type, source_key)
+    VALUES (profile_id_input, mission_type_input, trim(source_key_input))
+    ON CONFLICT DO NOTHING;
+    GET DIAGNOSTICS inserted_count = ROW_COUNT;
+
+    IF inserted_count = 0 OR current_completed THEN
+        RETURN QUERY SELECT
+            current_progress,
+            current_completed,
+            0,
+            current_balance,
+            false;
+        RETURN;
+    END IF;
+
+    next_progress := LEAST(mission_definition.target_count, current_progress + 1);
+    current_completed := next_progress >= mission_definition.target_count;
+
+    INSERT INTO public.user_missions (user_id, mission_type, progress, is_completed, updated_at)
+    VALUES (profile_id_input, mission_type_input, next_progress, current_completed, now())
+    ON CONFLICT (user_id, mission_type) DO UPDATE
+        SET progress = EXCLUDED.progress,
+            is_completed = EXCLUDED.is_completed,
+            updated_at = EXCLUDED.updated_at;
+
+    IF current_completed AND mission_definition.xp_reward > 0 THEN
+        SELECT result.balance
+          INTO current_balance
+          FROM public.apply_loyalty_points(
+              profile_id_input,
+              mission_definition.xp_reward,
+              'Completed mission: ' || mission_definition.label,
+              'mission:' || profile_id_input::TEXT || ':' || mission_type_input
+          ) AS result;
+    END IF;
+
+    RETURN QUERY SELECT
+        next_progress,
+        current_completed,
+        CASE WHEN current_completed THEN mission_definition.xp_reward ELSE 0 END,
+        current_balance,
+        true;
+END;
+$$;
+
 REVOKE ALL ON FUNCTION public.apply_loyalty_points(UUID, INTEGER, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.redeem_loyalty_points(UUID, INTEGER, TEXT, NUMERIC) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.claim_loyalty_daily_reward(UUID, TEXT, TEXT, INTEGER, INTEGER, TEXT, INTEGER, NUMERIC) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.unlock_loyalty_achievement(UUID, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.record_loyalty_mission_event(UUID, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_loyalty_points(UUID, INTEGER, TEXT, TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION public.redeem_loyalty_points(UUID, INTEGER, TEXT, NUMERIC) TO service_role;
 GRANT EXECUTE ON FUNCTION public.claim_loyalty_daily_reward(UUID, TEXT, TEXT, INTEGER, INTEGER, TEXT, INTEGER, NUMERIC) TO service_role;
 GRANT EXECUTE ON FUNCTION public.unlock_loyalty_achievement(UUID, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.record_loyalty_mission_event(UUID, TEXT, TEXT) TO service_role;
 
 NOTIFY pgrst, 'reload schema';
