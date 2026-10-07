@@ -1,5 +1,6 @@
 -- Loyalty points balances, auditable transactions, reward configuration,
 -- and atomic redemption/award operations.
+-- Run the complete migration from the first line after the core schema is installed.
 
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS loyalty_points INTEGER NOT NULL DEFAULT 0;
@@ -101,6 +102,19 @@ CREATE TABLE IF NOT EXISTS public.mission_definitions (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+INSERT INTO public.mission_definitions (id, label, target_count, xp_reward)
+VALUES
+    ('buy-mixers', 'Buy Any Mixer', 2, 100),
+    ('review-product', 'Review Beverage', 5, 50),
+    ('refer-friend', 'Refer Friend', 1, 200)
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE public.mission_definitions
+   SET is_active = false,
+       updated_at = now()
+ WHERE id NOT IN ('buy-mixers', 'review-product', 'refer-friend')
+   AND is_active = true;
+
 CREATE TABLE IF NOT EXISTS public.user_missions (
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     mission_type TEXT NOT NULL REFERENCES public.mission_definitions(id) ON DELETE CASCADE,
@@ -189,19 +203,6 @@ VALUES (
     }'::JSONB
 )
 ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.mission_definitions (id, label, target_count, xp_reward)
-VALUES
-    ('buy-mixers', 'Buy Any Mixer', 2, 100),
-    ('review-product', 'Review Beverage', 5, 50),
-    ('refer-friend', 'Refer Friend', 1, 200)
-ON CONFLICT (id) DO NOTHING;
-
-UPDATE public.mission_definitions
-   SET is_active = false,
-       updated_at = now()
- WHERE id NOT IN ('buy-mixers', 'review-product', 'refer-friend')
-   AND is_active = true;
 
 ALTER TABLE public.loyalty_config ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.loyalty_config FROM anon, authenticated;
