@@ -102,6 +102,13 @@ CREATE TABLE IF NOT EXISTS public.mission_definitions (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.mission_definitions
+    ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS target_count INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS xp_reward INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
 INSERT INTO public.mission_definitions (id, label, target_count, xp_reward)
 VALUES
     ('buy-mixers', 'Buy Any Mixer', 2, 100),
