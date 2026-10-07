@@ -22,6 +22,16 @@ export interface StoreSettings {
         hero_starting_price: number;
         hero_badge_text: string;
         hero_visual_label?: string;
+        hero_title_line1?: string;
+        hero_title_line2?: string;
+        hero_subtitle?: string;
+        featured_product_id?: number | null;
+        primary_cta_label?: string;
+        primary_cta_href?: string;
+        secondary_cta_label?: string;
+        secondary_cta_href?: string;
+        browse_link_label?: string;
+        categories?: { label: string; href: string }[];
     };
     catalog: {
         categories: { id: string; label: string }[];
@@ -116,14 +126,29 @@ export const DEFAULT_SETTINGS: StoreSettings = {
     branding: {
         owner_name: "Online Bar Team",
         portfolio_url: "#",
-        hero_title: "Premium Vintages. Chilled Spirits.",
-        hero_subtitle: "Experience authentic vintages and premium spirits curated for excellence."
+        hero_title: "Make tonight. A good one.",
+        hero_subtitle: "Find something for the table, the celebration, or a gift worth sending. Browse the live menu and choose what suits your night."
     },
     homepage: {
         hero_image_url: "",
         hero_starting_price: 2500,
-        hero_badge_text: "The Premium Bar is Open",
-        hero_visual_label: "Online Bar Selection"
+        hero_badge_text: "Nairobi drinks, snacks & gifting",
+        hero_visual_label: "Online Bar Selection",
+        hero_title_line1: "Make tonight",
+        hero_title_line2: "a good one.",
+        hero_subtitle: "Find something for the table, the celebration, or a gift worth sending. Browse the live menu and choose what suits your night.",
+        featured_product_id: null,
+        primary_cta_label: "Explore the menu",
+        primary_cta_href: "/shop",
+        secondary_cta_label: "Send a gift",
+        secondary_cta_href: "/gifting",
+        browse_link_label: "Find your kind of night",
+        categories: [
+            { label: "Spirits", href: "/shop/category/spirits" },
+            { label: "Wine", href: "/shop/category/wine" },
+            { label: "Beer", href: "/shop/category/beer" },
+            { label: "Snacks", href: "/bites" }
+        ]
     },
     catalog: {
         categories: [
@@ -196,7 +221,8 @@ export function useSettings() {
             try {
                 const { data } = await supabase
                     .from('settings')
-                    .select('*');
+                    .select('*')
+                    .eq('is_published', true);
 
                 if (data && data.length > 0) {
                     const newSettings = { ...DEFAULT_SETTINGS };

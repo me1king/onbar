@@ -50,7 +50,27 @@ const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAre
 const DEFAULTS = {
     contact: { whatsapp: "254769345599", email: "support@onlinebar.co.ke", address: "Nairobi, Kenya" },
     branding: { owner_name: "Online Bar Team", portfolio_url: "#", hero_title: "Premium Vintages. Chilled Spirits.", hero_subtitle: "Experience authentic vintages and premium spirits curated for excellence.", logo_url: "", favicon_url: "" },
-    homepage: { hero_image_url: "", hero_starting_price: 2500, hero_badge_text: "The Premium Bar is Open", hero_visual_label: "Online Bar Selection" },
+    homepage: {
+        hero_image_url: "",
+        hero_starting_price: 2500,
+        hero_badge_text: "Nairobi drinks, snacks & gifting",
+        hero_visual_label: "Online Bar Selection",
+        hero_title_line1: "Make tonight",
+        hero_title_line2: "a good one.",
+        hero_subtitle: "Find something for the table, the celebration, or a gift worth sending. Browse the live menu and choose what suits your night.",
+        featured_product_id: null as number | null,
+        primary_cta_label: "Explore the menu",
+        primary_cta_href: "/shop",
+        secondary_cta_label: "Send a gift",
+        secondary_cta_href: "/gifting",
+        browse_link_label: "Find your kind of night",
+        categories: [
+            { label: "Spirits", href: "/shop/category/spirits" },
+            { label: "Wine", href: "/shop/category/wine" },
+            { label: "Beer", href: "/shop/category/beer" },
+            { label: "Snacks", href: "/bites" }
+        ]
+    },
     shipping: { nairobi_cbd_label: "Nairobi CBD / Local", nairobi_cbd: 0, nairobi_outskirts_label: "Nairobi Outskirts", nairobi_outskirts: 300, upcountry_label: "Upcountry / Major Towns", upcountry: 500 },
     logistics: { dispatch_zones: ["CBD", "Westlands", "Kilimani", "Lavington", "Kileleshwa", "Karen", "Langata", "South C", "South B", "Embakasi", "Roysambu", "Kasarani", "Kahawa", "Githurai", "Zimmerman", "Utawala", "Syokimau", "Kitengela", "Rongai", "Ngong", "Kikuyu", "Thika Road", "Mombasa Road"] },
     catalog: { categories: [{ id: 'wine', label: 'Vintages' }, { id: 'spirits', label: 'Premium Spirits' }, { id: 'snacks', label: 'Late Night Snacks' }, { id: 'beer', label: 'Chilled Beers' }, { id: 'mixers', label: 'Mixers' }] },
@@ -95,6 +115,12 @@ interface IntegrationNode {
     last_tested_at?: string;
 }
 
+interface HomepageProduct {
+    id: number;
+    name: string;
+    stock: number | null;
+}
+
 export default function AdminSettingsPage() {
     const { email } = useAdmin();
     const [loading, setLoading] = useState(true);
@@ -104,6 +130,7 @@ export default function AdminSettingsPage() {
     const [contact, setContact] = useState(DEFAULTS.contact);
     const [branding, setBranding] = useState(DEFAULTS.branding);
     const [homepage, setHomepage] = useState(DEFAULTS.homepage);
+    const [homepageProducts, setHomepageProducts] = useState<HomepageProduct[]>([]);
     const [shipping, setShipping] = useState(DEFAULTS.shipping);
     const [logistics, setLogistics] = useState(DEFAULTS.logistics);
     const [catalog, setCatalog] = useState(DEFAULTS.catalog);
@@ -151,7 +178,8 @@ export default function AdminSettingsPage() {
         if (!supabase) return;
         setLoading(true);
         try {
-            const { data: settingsData } = await supabase.from('settings').select('*');
+            const { data: settingsData, error: settingsError } = await supabase.from('settings').select('*');
+            if (settingsError) throw settingsError;
             if (settingsData && settingsData.length > 0) {
                 settingsData.forEach((item: { key: string; value: Record<string, unknown> }) => {
                     if (item.key === 'contact') setContact(item.value as typeof DEFAULTS.contact);
@@ -162,7 +190,13 @@ export default function AdminSettingsPage() {
                         if (val.favicon_url) setFaviconPreview(val.favicon_url);
                     }
                     if (item.key === 'homepage') {
-                        setHomepage(item.value as typeof DEFAULTS.homepage);
+                        setHomepage({
+                            ...DEFAULTS.homepage,
+                            ...item.value,
+                            categories: Array.isArray(item.value.categories)
+                                ? item.value.categories as typeof DEFAULTS.homepage.categories
+                                : DEFAULTS.homepage.categories
+                        });
                         const val = item.value as typeof DEFAULTS.homepage;
                         if (val.hero_image_url) setHeroPreview(val.hero_image_url);
                     }
@@ -180,12 +214,22 @@ export default function AdminSettingsPage() {
                 });
             }
 
+            const { data: productData, error: productsError } = await supabase
+                .from('products')
+                .select('id, name, stock')
+                .gt('stock', 0)
+                .order('name');
+            if (productsError) throw productsError;
+            setHomepageProducts(productData || []);
+
             // Fetch Integrations
-            const { data: integrationData } = await supabase.from('integration_nodes').select('*');
+            const { data: integrationData, error: integrationsError } = await supabase.from('integration_nodes').select('*');
+            if (integrationsError) throw integrationsError;
             if (integrationData) setIntegrations(integrationData);
 
         } catch (err) {
             console.error(err);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not load settings or homepage products.' });
         } finally {
             setLoading(false);
         }
@@ -208,6 +252,18 @@ export default function AdminSettingsPage() {
 
     const handleSave = async (key: string, value: unknown, publish: boolean = true) => {
         if (!supabase) return;
+        if (key === 'homepage') {
+            const homepageValue = value as typeof homepage;
+            const links = [
+                homepageValue.primary_cta_href,
+                homepageValue.secondary_cta_href,
+                ...(homepageValue.categories || []).map(category => category.href)
+            ];
+            if (links.some(href => !href.startsWith('/') || href.startsWith('//'))) {
+                setMessage({ type: 'error', text: 'Homepage links must be internal paths beginning with /.' });
+                return;
+            }
+        }
         setSavingKey(key);
         setMessage(null);
 
@@ -535,20 +591,79 @@ export default function AdminSettingsPage() {
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Main Headline</label>
                                             <Input
-                                                value={branding.hero_title}
-                                                onChange={e => setBranding({...branding, hero_title: e.target.value})}
+                                                value={homepage.hero_title_line1}
+                                                onChange={e => setHomepage({...homepage, hero_title_line1: e.target.value})}
                                                 className="h-14 rounded-2xl bg-secondary border-border font-black text-lg text-foreground"
                                             />
-                                            <p className="text-[7px] font-bold text-primary uppercase italic px-1">* PRO TIP: Use a &quot;.&quot; to split colors. (e.g., &quot;Premium Vintages. Chilled Spirits.&quot;)</p>
+                                            <p className="text-[7px] font-bold text-primary uppercase italic px-1">First line of the live homepage headline.</p>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Subtitle Mission</label>
+                                            <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Second Headline Line</label>
                                             <Input
-                                                value={branding.hero_subtitle}
-                                                onChange={e => setBranding({...branding, hero_subtitle: e.target.value})}
-                                                className="h-14 rounded-2xl bg-secondary border-border font-medium text-foreground"
+                                                value={homepage.hero_title_line2}
+                                                onChange={e => setHomepage({...homepage, hero_title_line2: e.target.value})}
+                                                className="h-14 rounded-2xl bg-secondary border-border font-black text-lg text-foreground"
                                             />
                                         </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Subtitle</label>
+                                        <Input
+                                            value={homepage.hero_subtitle}
+                                            onChange={e => setHomepage({...homepage, hero_subtitle: e.target.value})}
+                                            className="h-14 rounded-2xl bg-secondary border-border font-medium text-foreground"
+                                        />
+                                    </div>
+
+                                    <div className="grid sm:grid-cols-2 gap-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Primary Button Label</label>
+                                            <Input value={homepage.primary_cta_label} onChange={e => setHomepage({...homepage, primary_cta_label: e.target.value})} className="h-14 rounded-2xl bg-secondary border-border font-bold text-foreground" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Primary Button Path</label>
+                                            <Input value={homepage.primary_cta_href} onChange={e => setHomepage({...homepage, primary_cta_href: e.target.value})} className="h-14 rounded-2xl bg-secondary border-border font-bold text-foreground" placeholder="/shop" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Gift Button Label</label>
+                                            <Input value={homepage.secondary_cta_label} onChange={e => setHomepage({...homepage, secondary_cta_label: e.target.value})} className="h-14 rounded-2xl bg-secondary border-border font-bold text-foreground" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Gift Button Path</label>
+                                            <Input value={homepage.secondary_cta_href} onChange={e => setHomepage({...homepage, secondary_cta_href: e.target.value})} className="h-14 rounded-2xl bg-secondary border-border font-bold text-foreground" placeholder="/gifting" />
+                                        </div>
+                                        <div className="space-y-2 sm:col-span-2">
+                                            <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Browse Categories Link Label</label>
+                                            <Input value={homepage.browse_link_label} onChange={e => setHomepage({...homepage, browse_link_label: e.target.value})} className="h-14 rounded-2xl bg-secondary border-border font-bold text-foreground" />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Homepage Category Cards</label>
+                                        {homepage.categories.map((category, index) => (
+                                            <div key={`${index}-${category.href}`} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                                                <Input aria-label={`Category ${index + 1} label`} value={category.label} onChange={e => setHomepage({...homepage, categories: homepage.categories.map((item, itemIndex) => itemIndex === index ? {...item, label: e.target.value} : item)})} className="h-12 rounded-xl bg-secondary border-border font-bold text-foreground" placeholder="Category label" />
+                                                <Input aria-label={`Category ${index + 1} path`} value={category.href} onChange={e => setHomepage({...homepage, categories: homepage.categories.map((item, itemIndex) => itemIndex === index ? {...item, href: e.target.value} : item)})} className="h-12 rounded-xl bg-secondary border-border font-bold text-foreground" placeholder="/shop/category/wine" />
+                                                <Button type="button" variant="outline" aria-label={`Remove category ${category.label}`} onClick={() => setHomepage({...homepage, categories: homepage.categories.filter((_, itemIndex) => itemIndex !== index)})} className="h-12 rounded-xl"><Trash2 className="h-4 w-4" /></Button>
+                                            </div>
+                                        ))}
+                                        <Button type="button" variant="outline" onClick={() => setHomepage({...homepage, categories: [...homepage.categories, { label: '', href: '/shop' }]})} className="rounded-xl"><Plus className="mr-2 h-4 w-4" /> Add Category</Button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Featured Product</label>
+                                        <select
+                                            value={homepage.featured_product_id ?? ''}
+                                            onChange={e => setHomepage({...homepage, featured_product_id: e.target.value ? Number(e.target.value) : null})}
+                                            className="h-14 w-full rounded-2xl border border-border bg-secondary px-4 font-bold text-foreground"
+                                        >
+                                            <option value="">Automatically feature newest in-stock product</option>
+                                            {homepage.featured_product_id !== null && !homepageProducts.some(product => product.id === homepage.featured_product_id) && (
+                                                <option value={homepage.featured_product_id} disabled>Selected product is unavailable or out of stock (ID {homepage.featured_product_id})</option>
+                                            )}
+                                            {homepageProducts.map(product => <option key={product.id} value={product.id}>{product.name} (ID {product.id})</option>)}
+                                        </select>
                                     </div>
 
                                     <div className="space-y-2">
@@ -1569,13 +1684,14 @@ export default function AdminSettingsPage() {
                                     <Image src={heroPreview} fill alt="Hero Preview" className="absolute inset-0 w-full h-full object-cover opacity-20" />
                                 )}
                                 <div className="relative z-10 space-y-4 text-left">
+                                    <p className="text-[8px] font-black uppercase tracking-widest text-primary">{homepage.hero_badge_text}</p>
                                     <h4 className="text-2xl font-black uppercase tracking-tighter text-foreground leading-[0.9] break-words text-left">
-                                        {branding.hero_title.split('.')[0]}.<br/>
-                                        <span style={{ color: theme.primary }} className="italic">{branding.hero_title.split('.')[1] || ''}</span>
+                                        {homepage.hero_title_line1}.<br/>
+                                        <span style={{ color: theme.primary }} className="italic">{homepage.hero_title_line2}</span>
                                     </h4>
-                                    <p className="text-[10px] text-muted-foreground font-medium leading-relaxed italic line-clamp-2 px-4 text-left">{branding.hero_subtitle}</p>
+                                    <p className="text-[10px] text-muted-foreground font-medium leading-relaxed italic line-clamp-2 px-4 text-left">{homepage.hero_subtitle}</p>
                                     <div className="pt-4 text-left">
-                                        <button style={{ backgroundColor: theme.primary }} className="px-6 py-2.5 rounded-full text-white font-black uppercase text-[8px] tracking-widest shadow-xl shadow-primary/20">Order Now</button>
+                                        <button style={{ backgroundColor: theme.primary }} className="px-6 py-2.5 rounded-full text-white font-black uppercase text-[8px] tracking-widest shadow-xl shadow-primary/20">{homepage.primary_cta_label}</button>
                                     </div>
                                 </div>
                             </div>

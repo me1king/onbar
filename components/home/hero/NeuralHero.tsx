@@ -7,6 +7,7 @@ import { ArrowDown, ArrowRight, Gift, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatPrice, normalizeImage } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
+import { useSettings } from '@/lib/useSettings';
 
 interface FeaturedProduct {
     id: number;
@@ -16,28 +17,29 @@ interface FeaturedProduct {
     category: string | null;
 }
 
-const categories = [
-    { label: 'Spirits', href: '/shop/category/spirits' },
-    { label: 'Wine', href: '/shop/category/wine' },
-    { label: 'Beer', href: '/shop/category/beer' },
-    { label: 'Snacks', href: '/bites' },
-];
-
 export default function NeuralHero() {
     const [featured, setFeatured] = React.useState<FeaturedProduct | null>(null);
     const [imageFailed, setImageFailed] = React.useState(false);
+    const { settings, loading: settingsLoading } = useSettings();
+    const homepage = settings.homepage;
 
     React.useEffect(() => {
         let active = true;
         async function loadFeaturedProduct() {
+            if (settingsLoading) return;
+            setFeatured(null);
+            setImageFailed(false);
             if (!supabase) return;
-            const { data, error } = await supabase
+            let query = supabase
                 .from('products')
                 .select('id, name, price, image_url, category')
-                .gt('stock', 0)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .gt('stock', 0);
+            if (homepage.featured_product_id) {
+                query = query.eq('id', homepage.featured_product_id);
+            } else {
+                query = query.order('created_at', { ascending: false }).limit(1);
+            }
+            const { data, error } = await query.maybeSingle();
             if (error) {
                 console.error('Could not load the homepage product feature:', error);
                 return;
@@ -46,9 +48,17 @@ export default function NeuralHero() {
         }
         void loadFeaturedProduct();
         return () => { active = false; };
-    }, []);
+    }, [homepage.featured_product_id, settingsLoading]);
 
-    const imageUrl = featured?.image_url ? normalizeImage(featured.image_url) : '';
+    const imageUrl = homepage.hero_image_url
+        ? normalizeImage(homepage.hero_image_url)
+        : featured?.image_url ? normalizeImage(featured.image_url) : '';
+    const categories = homepage.categories ?? [
+            { label: 'Spirits', href: '/shop/category/spirits' },
+            { label: 'Wine', href: '/shop/category/wine' },
+            { label: 'Beer', href: '/shop/category/beer' },
+            { label: 'Snacks', href: '/bites' }
+        ];
 
     return (
         <div className="overflow-hidden">
@@ -60,34 +70,34 @@ export default function NeuralHero() {
                     <div className="min-w-0 space-y-7 sm:space-y-9">
                         <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-amber-300/70 bg-white/80 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-800 shadow-sm sm:text-xs sm:tracking-[0.22em]">
                             <Sparkles aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-500" />
-                            Nairobi drinks, snacks & gifting
+                            {homepage.hero_badge_text || 'Nairobi drinks, snacks & gifting'}
                         </div>
 
                         <div className="max-w-3xl">
                             <h1 className="text-pretty break-words text-5xl font-black uppercase leading-[0.94] tracking-[-0.055em] text-slate-950 sm:text-6xl md:text-7xl xl:text-8xl">
-                                Make tonight
-                                <span className="mt-1 block text-primary">a good one.</span>
+                                {homepage.hero_title_line1 || 'Make tonight'}
+                                <span className="mt-1 block text-primary">{homepage.hero_title_line2 || 'a good one.'}</span>
                             </h1>
                             <p className="mt-6 max-w-xl text-pretty text-base font-medium leading-relaxed text-slate-600 sm:text-lg md:text-xl">
-                                Find something for the table, the celebration, or a gift worth sending. Browse the live menu and choose what suits your night.
+                                {homepage.hero_subtitle || 'Find something for the table, the celebration, or a gift worth sending. Browse the live menu and choose what suits your night.'}
                             </p>
                         </div>
 
                         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                            <Link href="/shop" className="w-full sm:w-auto">
+                            <Link href={homepage.primary_cta_href || '/shop'} className="w-full sm:w-auto">
                                 <Button className="h-14 w-full rounded-2xl bg-slate-950 px-7 text-sm font-black uppercase tracking-wider text-white hover:bg-primary sm:h-16 sm:px-9">
-                                    Explore the menu <ArrowRight className="ml-3 h-5 w-5" />
+                                    {homepage.primary_cta_label || 'Explore the menu'} <ArrowRight className="ml-3 h-5 w-5" />
                                 </Button>
                             </Link>
-                            <Link href="/gifting" className="w-full sm:w-auto">
+                            <Link href={homepage.secondary_cta_href || '/gifting'} className="w-full sm:w-auto">
                                 <Button variant="outline" className="h-14 w-full rounded-2xl border-slate-300 bg-white/80 px-7 text-sm font-black uppercase tracking-wider text-slate-800 hover:border-primary hover:text-primary sm:h-16 sm:px-8">
-                                    <Gift className="mr-2 h-4 w-4" /> Send a gift
+                                    <Gift className="mr-2 h-4 w-4" /> {homepage.secondary_cta_label || 'Send a gift'}
                                 </Button>
                             </Link>
                         </div>
 
                         <a href="#home-categories" className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 transition hover:text-primary">
-                            Find your kind of night <ArrowDown aria-hidden="true" className="h-4 w-4" />
+                            {homepage.browse_link_label || 'Find your kind of night'} <ArrowDown aria-hidden="true" className="h-4 w-4" />
                         </a>
                     </div>
 
