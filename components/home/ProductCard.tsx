@@ -7,7 +7,6 @@ import {
     Check,
     Heart,
     Loader2,
-    Plus,
     ImageIcon,
     MessageSquare,
     Star,
@@ -181,21 +180,6 @@ export default function ProductCard({ product, userTier = 'Explorer' }: { produc
                     </>
                 )}
             </div>
-
-            {/* Floating +Add Control */}
-            {!isLocked && isBiteOpen && (product.stock || 0) > 0 && (
-                <button
-                    onClick={handleAddToCart}
-                    disabled={isAdding}
-                    className={cn(
-                        "absolute right-2.5 top-2.5 z-30 h-8 px-2.5 rounded-lg font-black uppercase text-[9px] tracking-widest flex items-center gap-1.5 transition-all duration-300 shadow-xl sm:right-4 sm:top-4 sm:h-10 sm:rounded-xl sm:px-4 sm:text-[10px] sm:gap-2",
-                        justAdded ? "bg-emerald-500 text-white" : "bg-slate-900 text-white hover:bg-primary opacity-100 translate-y-0"
-                    )}
-                >
-                    {isAdding ? <Loader2 size={12} className="animate-spin" /> : justAdded ? <Check size={12} /> : <Plus size={12} />}
-                    {justAdded ? 'Added' : 'Add'}
-                </button>
-            )}
 
             <Link href={`/shop/${product.id}`} prefetch={true} className="relative z-10 block h-full w-full">
                 {!imageError ? (
