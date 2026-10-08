@@ -12,25 +12,44 @@ interface FunnelStep {
     color: string;
 }
 
+const isCount = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
 export default function CustomerJourney() {
     const [funnel, setFunnel] = React.useState<FunnelStep[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState('');
 
     const fetchFunnel = React.useCallback(async () => {
+        setError('');
         try {
-            const res = await fetch('/api/admin/intelligence/funnel');
-            const data = await res.json();
+            const res = await fetch('/api/admin/intelligence/funnel', { cache: 'no-store' });
+            const data = await res.json() as {
+                discovery?: unknown;
+                browse?: unknown;
+                cart?: unknown;
+                conversion?: unknown;
+                error?: string;
+            };
+            if (!res.ok) throw new Error(data.error || 'Funnel analytics could not be loaded.');
 
-            if (data) {
+            if (isCount(data.discovery)
+                && isCount(data.browse)
+                && isCount(data.cart)
+                && isCount(data.conversion)) {
                 setFunnel([
                     { step: 'Discovery', count: data.discovery, icon: MousePointer2, color: 'indigo' },
                     { step: 'Browse', count: data.browse, icon: Users, color: 'emerald' },
                     { step: 'Cart', count: data.cart, icon: ShoppingBag, color: 'primary' },
                     { step: 'Conversion', count: data.conversion, icon: CheckCircle2, color: 'rose' }
                 ]);
+            } else {
+                throw new Error('Funnel analytics returned an incomplete response.');
             }
         } catch (err) {
             console.error("Funnel fetch failure:", err);
+            setFunnel([]);
+            setError(err instanceof Error ? err.message : 'Funnel analytics could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -43,6 +62,16 @@ export default function CustomerJourney() {
     }, [fetchFunnel]);
 
     if (loading) return <div className="h-64 bg-slate-50 rounded-[3rem] animate-pulse flex items-center justify-center"><Loader2 className="animate-spin text-slate-200" /></div>;
+    if (error) return <Card className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800" role="alert">{error}</Card>;
+    const largestReduction = funnel.slice(1).reduce<{ from: string; to: string; percent: number } | null>((largest, item, index) => {
+        const previous = funnel[index].count;
+        if (previous === 0 || item.count >= previous) return largest;
+        const percent = Number((100 - (item.count / previous * 100)).toFixed(1));
+        return !largest || percent > largest.percent
+            ? { from: funnel[index].step, to: item.step, percent }
+            : largest;
+    }, null);
+    const hasFunnelActivity = funnel.some(item => item.count > 0);
 
     return (
         <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-12 text-left">
@@ -92,13 +121,14 @@ export default function CustomerJourney() {
             </div>
 
             <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 space-y-4">
-                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1 text-left">AI Recommendation</h4>
+                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1 text-left">{hasFunnelActivity ? 'Observed Count Reduction' : 'No Funnel Activity Yet'}</h4>
                 <p className="text-sm font-medium italic text-slate-600 leading-relaxed text-left">
-                    &quot;Based on live telemetry, the bottleneck is in the **Browse → Cart** phase. Recommend optimizing product page CTAs and testing chilled delivery badge placement.&quot;
+                    {largestReduction
+                        ? `Largest reduction in raw counts: ${largestReduction.from} to ${largestReduction.to} (${largestReduction.percent}%). These are event and order totals, not unique visitors, so this is not a measured user drop-off.`
+                        : hasFunnelActivity
+                            ? 'No adjacent stage has a lower raw count. These are event and order totals, not unique visitors or a measured conversion funnel.'
+                            : 'No tracked events or delivered orders were recorded in the last 30 days. Confirm analytics consent and event writes; zero does not by itself mean the journey is healthy.'}
                 </p>
-                <div className="flex gap-2 pt-2">
-                    <button className="text-[9px] font-black text-primary uppercase underline underline-offset-4">Run Optimization Test →</button>
-                </div>
             </div>
         </Card>
     );
