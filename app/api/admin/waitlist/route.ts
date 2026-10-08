@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     console.error('[AdminWaitlist] Could not load waitlist data:', error);
     return NextResponse.json({
       error: missingMigration(error)
-        ? 'Run waitlist-site/supabase/WAITLIST_SITE_MIGRATION.sql after DEMAND_INTELLIGENCE_MIGRATION.sql, then refresh.'
+        ? 'Run supabase/WAITLIST_SITE_MIGRATION.sql from the WAITLIST repository after DEMAND_INTELLIGENCE_MIGRATION.sql, then refresh.'
         : 'Waitlist data could not be loaded. Check Supabase connectivity and permissions.'
     }, { status: 503 });
   }
