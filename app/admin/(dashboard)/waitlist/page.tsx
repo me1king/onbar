@@ -67,7 +67,28 @@ interface WaitlistSiteContent {
   hero_image_path: string | null;
   hero_image_alt: string;
   age_group_tracks: Record<string, { title: string; path: string; url: string }>;
+  launch_at: string | null;
+  tokens_per_referral: number;
   updated_at: string;
+}
+interface WaitlistSiteReward {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string | null;
+  image_path: string | null;
+  token_cost: number;
+  is_active: boolean;
+  sort_order: number;
+}
+interface WaitlistRewardClaim {
+  id: string;
+  referrer_id: string;
+  reward_id: string;
+  tokens_spent: number;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  member?: { full_name: string | null; email: string } | null;
 }
 
 const ageGroups = [
@@ -112,6 +133,11 @@ export default function WaitlistPage() {
   const [uploadingSiteImage, setUploadingSiteImage] = useState(false);
   const [uploadingTrack, setUploadingTrack] = useState<string | null>(null);
   const [trackTitles, setTrackTitles] = useState<Record<string, string>>({});
+  const [siteRewards, setSiteRewards] = useState<WaitlistSiteReward[]>([]);
+  const [rewardClaims, setRewardClaims] = useState<WaitlistRewardClaim[]>([]);
+  const [newReward, setNewReward] = useState({ name: '', description: '', token_cost: 10 });
+  const [savingRewardId, setSavingRewardId] = useState<string | null>(null);
+  const [reviewingClaimId, setReviewingClaimId] = useState<string | null>(null);
 
   const canView = role === 'owner' || role === 'admin'
     || permissions.can_manage_communications || permissions.can_manage_customer_care;
@@ -140,9 +166,11 @@ export default function WaitlistPage() {
     if (!canManageSite) return;
     void fetch('/api/admin/waitlist-site', { cache: 'no-store' })
       .then(async response => {
-        const result = await response.json() as { content?: WaitlistSiteContent; error?: string };
+        const result = await response.json() as { content?: WaitlistSiteContent; rewards?: WaitlistSiteReward[]; claims?: WaitlistRewardClaim[]; error?: string };
         if (!response.ok || !result.content) throw new Error(result.error || 'Website content could not be loaded.');
         setSiteContent(result.content);
+        setSiteRewards(result.rewards || []);
+        setRewardClaims(result.claims || []);
       })
       .catch(cause => {
         console.error('[AdminWaitlistSite] Could not load website settings:', cause);
@@ -226,6 +254,90 @@ export default function WaitlistPage() {
     }
   };
 
+  const saveReward = async (reward: Partial<WaitlistSiteReward> & Pick<WaitlistSiteReward, 'name' | 'description' | 'token_cost' | 'is_active' | 'sort_order'>) => {
+    setSavingRewardId(reward.id || 'new');
+    setSiteContentError('');
+    setSiteContentNotice('');
+    try {
+      const response = await fetch('/api/admin/waitlist-site', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_reward', reward })
+      });
+      const result = await response.json() as { reward?: WaitlistSiteReward; error?: string };
+      if (!response.ok || !result.reward) throw new Error(result.error || 'Souvenir details could not be saved.');
+      setSiteRewards(current => current.some(item => item.id === result.reward!.id)
+        ? current.map(item => item.id === result.reward!.id ? result.reward! : item)
+        : [...current, result.reward!].sort((a, b) => a.sort_order - b.sort_order));
+      if (!reward.id) setNewReward({ name: '', description: '', token_cost: 10 });
+      setSiteContentNotice('Souvenir saved. Upload an image to make the prize visible on the standalone site.');
+      return result.reward;
+    } catch (cause) {
+      setSiteContentError(cause instanceof Error ? cause.message : 'Souvenir details could not be saved.');
+      return null;
+    } finally {
+      setSavingRewardId(null);
+    }
+  };
+
+  const uploadRewardImage = async (reward: WaitlistSiteReward, file: File | undefined) => {
+    if (!file) return;
+    setSavingRewardId(reward.id);
+    setSiteContentError('');
+    setSiteContentNotice('');
+    try {
+      const form = new FormData();
+      form.append('kind', 'reward');
+      form.append('rewardId', reward.id);
+      form.append('file', file);
+      const response = await fetch('/api/admin/waitlist-site', { method: 'POST', body: form });
+      const result = await response.json() as { reward?: WaitlistSiteReward; error?: string };
+      if (!response.ok || !result.reward) throw new Error(result.error || 'Souvenir image could not be uploaded.');
+      setSiteRewards(current => current.map(item => item.id === reward.id ? result.reward! : item));
+      setSiteContentNotice(`Image published for ${reward.name}.`);
+    } catch (cause) {
+      setSiteContentError(cause instanceof Error ? cause.message : 'Souvenir image could not be uploaded.');
+    } finally {
+      setSavingRewardId(null);
+    }
+  };
+
+  const deleteReward = async (reward: WaitlistSiteReward) => {
+    setSiteContentError('');
+    setSiteContentNotice('');
+    try {
+      const response = await fetch('/api/admin/waitlist-site', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_reward', id: reward.id })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Souvenir could not be removed.');
+      setSiteRewards(current => current.filter(item => item.id !== reward.id));
+    } catch (cause) {
+      setSiteContentError(cause instanceof Error ? cause.message : 'Souvenir could not be removed.');
+    }
+  };
+
+  const decideRewardClaim = async (claim: WaitlistRewardClaim, decision: 'approved' | 'rejected') => {
+    setReviewingClaimId(claim.id);
+    setSiteContentError('');
+    try {
+      const response = await fetch('/api/admin/waitlist-site', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'claim_status', id: claim.id, status: decision })
+      });
+      const result = await response.json() as { claim?: WaitlistRewardClaim; error?: string };
+      if (!response.ok || !result.claim) throw new Error(result.error || 'Redemption could not be reviewed.');
+      setRewardClaims(current => current.map(item => item.id === claim.id ? result.claim! : item));
+    } catch (cause) {
+      setSiteContentError(cause instanceof Error ? cause.message : 'Redemption could not be reviewed.');
+    } finally {
+      setReviewingClaimId(null);
+    }
+  };
+
   const updateStatus = async (contact: WaitlistContact, nextStatus: WaitlistStatus) => {
     setSavingId(contact.id);
     setError('');
@@ -285,6 +397,11 @@ export default function WaitlistPage() {
               <label className="text-xs font-bold text-slate-700">Benefit two<input required maxLength={60} value={siteContent.benefit_two} onChange={event => setSiteContent({ ...siteContent, benefit_two: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-slate-700">Benefit three<input required maxLength={60} value={siteContent.benefit_three} onChange={event => setSiteContent({ ...siteContent, benefit_three: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-slate-700">Hero image description<input required maxLength={180} value={siteContent.hero_image_alt} onChange={event => setSiteContent({ ...siteContent, hero_image_alt: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <div className="grid gap-3 rounded-xl border border-rose-100 bg-rose-50/50 p-4 sm:grid-cols-2 lg:col-span-2">
+                <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Waitlist countdown &amp; invite rewards</h3><p className="mt-1 text-xs text-slate-500">The launch time drives the standalone site countdown and the installable phone dashboard. Every new, valid referral earns this many tokens.</p></div>
+                <label className="text-xs font-bold text-slate-700">Launch date and time<input type="datetime-local" value={siteContent.launch_at ? new Date(new Date(siteContent.launch_at).getTime() - new Date(siteContent.launch_at).getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : ''} onChange={event => setSiteContent({ ...siteContent, launch_at: event.target.value ? new Date(event.target.value).toISOString() : null })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Tokens per successful referral<input type="number" min={1} max={1000} required value={siteContent.tokens_per_referral} onChange={event => setSiteContent({ ...siteContent, tokens_per_referral: Number(event.target.value) })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal" /></label>
+              </div>
               <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
                 <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">
                   <Upload size={15} />{uploadingSiteImage ? 'Uploading…' : siteContent.hero_image_url ? 'Replace hero image' : 'Upload hero image'}
@@ -313,6 +430,52 @@ export default function WaitlistPage() {
               </div>
             </form>
           )}
+        </section>
+      )}
+
+      {canManageSite && (
+        <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <ImageIcon size={19} className="mt-1 text-primary" />
+            <div><h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Waitlist phone widget &amp; souvenirs</h2><p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-500">Choose the launch countdown above, upload the actual souvenirs/prizes people can earn, and set token prices. The standalone site includes an installable home-screen dashboard with a live countdown and referral/token totals.</p></div>
+          </div>
+          <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[1fr_1.5fr_150px_auto] sm:items-end" onSubmit={event => { event.preventDefault(); void saveReward({ ...newReward, is_active: true, sort_order: siteRewards.length }); }}>
+            <label className="text-xs font-bold text-slate-700">Souvenir / prize name<input required maxLength={100} value={newReward.name} onChange={event => setNewReward({ ...newReward, name: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal" /></label>
+            <label className="text-xs font-bold text-slate-700">What they could win<input maxLength={300} value={newReward.description} onChange={event => setNewReward({ ...newReward, description: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal" /></label>
+            <label className="text-xs font-bold text-slate-700">Tokens to request<input type="number" min={1} max={1000000} required value={newReward.token_cost} onChange={event => setNewReward({ ...newReward, token_cost: Number(event.target.value) })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal" /></label>
+            <button type="submit" disabled={savingRewardId !== null} className="min-h-10 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white disabled:opacity-50">{savingRewardId === 'new' ? 'Saving…' : 'Add souvenir'}</button>
+          </form>
+          {!siteRewards.length ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No souvenirs are published yet. Add the real prize details and an image above to show people what they can earn.</p> : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {siteRewards.map(reward => <article key={reward.id} className="space-y-3 rounded-xl border border-slate-200 p-4">
+                {reward.image_url && <div role="img" aria-label={reward.name} className="h-36 rounded-lg bg-cover bg-center" style={{ backgroundImage: `url("${reward.image_url.replaceAll('"', '%22')}")` }} />}
+                <label className="block text-xs font-bold text-slate-700">Prize name<input maxLength={100} value={reward.name} onChange={event => setSiteRewards(current => current.map(item => item.id === reward.id ? { ...item, name: event.target.value } : item))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal" /></label>
+                <label className="block text-xs font-bold text-slate-700">Prize details<input maxLength={300} value={reward.description} onChange={event => setSiteRewards(current => current.map(item => item.id === reward.id ? { ...item, description: event.target.value } : item))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal" /></label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-xs font-bold text-slate-700">Token cost<input type="number" min={1} max={1000000} value={reward.token_cost} onChange={event => setSiteRewards(current => current.map(item => item.id === reward.id ? { ...item, token_cost: Number(event.target.value) } : item))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal" /></label>
+                  <label className="text-xs font-bold text-slate-700">Display order<input type="number" min={0} max={10000} value={reward.sort_order} onChange={event => setSiteRewards(current => current.map(item => item.id === reward.id ? { ...item, sort_order: Number(event.target.value) } : item))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal" /></label>
+                </div>
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700"><input type="checkbox" checked={reward.is_active} onChange={event => setSiteRewards(current => current.map(item => item.id === reward.id ? { ...item, is_active: event.target.checked } : item))} />Published on standalone site</label>
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><Upload size={13} />{savingRewardId === reward.id ? 'Uploading…' : reward.image_url ? 'Replace image' : 'Upload prize image'}<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" disabled={savingRewardId !== null} className="sr-only" onChange={event => { void uploadRewardImage(reward, event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
+                  <button type="button" onClick={() => void saveReward(reward)} disabled={savingRewardId !== null} className="min-h-9 rounded-lg bg-primary px-3 text-xs font-bold text-white disabled:opacity-50">{savingRewardId === reward.id ? 'Saving…' : 'Save prize'}</button>
+                  <button type="button" onClick={() => void deleteReward(reward)} className="min-h-9 rounded-lg border border-rose-200 px-3 text-xs font-bold text-rose-700">Remove</button>
+                </div>
+              </article>)}
+            </div>
+          )}
+          <div className="border-t border-slate-100 pt-4">
+            <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Souvenir redemption requests</h3>
+            <p className="mt-1 text-xs text-slate-500">Pending requests reserve the member’s tokens. Approving fulfils a request; rejecting releases the reserved tokens back to their balance.</p>
+            {!rewardClaims.length ? <p className="mt-3 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No souvenir requests yet.</p> : (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {rewardClaims.map(claim => <li key={claim.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
+                  <span><b className="text-slate-900">{siteRewards.find(reward => reward.id === claim.reward_id)?.name || 'Souvenir'}</b><span className="ml-2 text-slate-500">{claim.tokens_spent} tokens · {date(claim.created_at)} · {claim.status}</span><span className="mt-1 block text-slate-600">{claim.member?.full_name || 'Waitlist member'} · {claim.member?.email || 'Member contact unavailable'}</span></span>
+                  {claim.status === 'pending' && <span className="flex gap-2"><button type="button" disabled={reviewingClaimId === claim.id} onClick={() => void decideRewardClaim(claim, 'approved')} className="rounded-lg bg-emerald-700 px-3 py-2 font-bold text-white disabled:opacity-50">Approve</button><button type="button" disabled={reviewingClaimId === claim.id} onClick={() => void decideRewardClaim(claim, 'rejected')} className="rounded-lg border border-rose-200 px-3 py-2 font-bold text-rose-700 disabled:opacity-50">Reject</button></span>}
+                </li>)}
+              </ul>
+            )}
+          </div>
         </section>
       )}
 

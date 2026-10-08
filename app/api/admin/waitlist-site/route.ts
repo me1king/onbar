@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 
 const BUCKET = 'waitlist-site-images';
 const AUDIO_BUCKET = 'waitlist-site-audio';
+const REWARD_BUCKET = 'waitlist-site-rewards';
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const AGE_GROUPS = new Set(['18_20', '21_24', '25_34', '35_44', '45_plus']);
@@ -21,7 +22,9 @@ const audioExtensions: Record<string, string> = {
   'audio/ogg': 'ogg',
   'audio/mp4': 'm4a'
 };
-const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,updated_at';
+const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,launch_at,tokens_per_referral,updated_at';
+const rewardFields = 'id,name,description,image_url,image_path,token_cost,is_active,sort_order,created_at,updated_at';
+const claimFields = 'id,referrer_id,reward_id,tokens_spent,status,created_at,updated_at';
 
 function getDatabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -77,7 +80,28 @@ export async function GET() {
     console.error('[AdminWaitlistSite] Could not load published website content:', error);
     return NextResponse.json({ error: 'Apply waitlist-site/supabase/WAITLIST_SITE_MIGRATION.sql to enable website content management.' }, { status: 503 });
   }
-  return NextResponse.json({ content: data }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  const [rewards, claims] = await Promise.all([
+    database.from('waitlist_site_rewards').select(rewardFields).order('sort_order').order('created_at'),
+    database.from('waitlist_reward_claims').select(claimFields).order('created_at', { ascending: false }).limit(100)
+  ]);
+  if (rewards.error || claims.error) {
+    console.error('[AdminWaitlistSite] Could not load reward/widget settings:', rewards.error || claims.error);
+    return NextResponse.json({ error: 'Souvenir and widget controls could not be loaded. Apply the waitlist site migration.' }, { status: 503 });
+  }
+  const memberIds = [...new Set((claims.data || []).map(claim => claim.referrer_id))];
+  const members = memberIds.length
+    ? await database.from('market_waitlist').select('id,full_name,email').in('id', memberIds)
+    : { data: [], error: null };
+  if (members.error) {
+    console.error('[AdminWaitlistSite] Could not load redemption member details:', members.error);
+    return NextResponse.json({ error: 'Souvenir request member details could not be loaded.' }, { status: 503 });
+  }
+  const memberById = new Map((members.data || []).map(member => [member.id, member]));
+  const claimsWithMember = (claims.data || []).map(claim => ({
+    ...claim,
+    member: memberById.get(claim.referrer_id) || null
+  }));
+  return NextResponse.json({ content: data, rewards: rewards.data || [], claims: claimsWithMember }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
 export async function PATCH(request: Request) {
@@ -91,6 +115,72 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'A valid website content update is required.' }, { status: 400 });
   }
 
+  const database = getDatabase();
+  if (!database) return NextResponse.json({ error: 'Waitlist site storage is not configured.' }, { status: 503 });
+  if (body.action === 'save_reward') {
+    const reward = body.reward && typeof body.reward === 'object' ? body.reward as Record<string, unknown> : {};
+    const name = typeof reward.name === 'string' ? reward.name.trim() : '';
+    const description = typeof reward.description === 'string' ? reward.description.trim() : '';
+    const tokenCost = reward.token_cost;
+    const sortOrder = reward.sort_order;
+    if (!name || name.length > 100 || description.length > 300
+      || !Number.isSafeInteger(tokenCost) || Number(tokenCost) < 1 || Number(tokenCost) > 1_000_000
+      || !Number.isSafeInteger(sortOrder) || Number(sortOrder) < 0 || Number(sortOrder) > 10_000
+      || typeof reward.is_active !== 'boolean') {
+      return NextResponse.json({ error: 'Enter a souvenir name, description, valid token cost and display order.' }, { status: 400 });
+    }
+    const values = {
+      name, description, token_cost: Number(tokenCost), sort_order: Number(sortOrder),
+      is_active: reward.is_active, updated_at: new Date().toISOString()
+    };
+    const id = typeof reward.id === 'string' && /^[0-9a-f-]{36}$/i.test(reward.id) ? reward.id : null;
+    const result = id
+      ? await database.from('waitlist_site_rewards').update(values).eq('id', id).select(rewardFields).maybeSingle()
+      : await database.from('waitlist_site_rewards').insert(values).select(rewardFields).single();
+    if (result.error || !result.data) {
+      console.error('[AdminWaitlistSite] Could not save souvenir:', result.error);
+      return NextResponse.json({ error: 'The souvenir could not be saved.' }, { status: 503 });
+    }
+    return NextResponse.json({ reward: result.data }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+  if (body.action === 'delete_reward') {
+    const id = typeof body.id === 'string' && /^[0-9a-f-]{36}$/i.test(body.id) ? body.id : '';
+    if (!id) return NextResponse.json({ error: 'Choose a valid souvenir.' }, { status: 400 });
+    const { data: reward, error: readError } = await database.from('waitlist_site_rewards')
+      .select('image_path').eq('id', id).maybeSingle();
+    if (readError) {
+      console.error('[AdminWaitlistSite] Could not load souvenir before removal:', readError);
+      return NextResponse.json({ error: 'The souvenir could not be loaded for removal.' }, { status: 503 });
+    }
+    const { error } = await database.from('waitlist_site_rewards').delete().eq('id', id);
+    if (error) {
+      console.error('[AdminWaitlistSite] Could not remove souvenir:', error);
+      return NextResponse.json({ error: 'This souvenir cannot be removed; it may already have a redemption request. Deactivate it instead.' }, { status: 409 });
+    }
+    if (reward?.image_path) {
+      const { error: cleanupError } = await database.storage.from(REWARD_BUCKET).remove([reward.image_path]);
+      if (cleanupError) console.error('[AdminWaitlistSite] Could not remove deleted souvenir image:', cleanupError);
+    }
+    return NextResponse.json({ success: true }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+  if (body.action === 'claim_status') {
+    const id = typeof body.id === 'string' && /^[0-9a-f-]{36}$/i.test(body.id) ? body.id : '';
+    if (!id || !['approved', 'rejected'].includes(String(body.status))) {
+      return NextResponse.json({ error: 'Choose a valid redemption and decision.' }, { status: 400 });
+    }
+    const { data, error } = await database.from('waitlist_reward_claims')
+      .update({ status: body.status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('status', 'pending')
+      .select(claimFields)
+      .maybeSingle();
+    if (error || !data) {
+      console.error('[AdminWaitlistSite] Could not review souvenir redemption:', error);
+      return NextResponse.json({ error: 'This pending redemption could not be updated; refresh and check its status.' }, { status: error ? 503 : 409 });
+    }
+    return NextResponse.json({ claim: data }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   const limits: Record<string, number> = {
     eyebrow: 80, headline: 120, intro: 500, benefit_one: 60, benefit_two: 60, benefit_three: 60, hero_image_alt: 180
   };
@@ -101,10 +191,19 @@ export async function PATCH(request: Request) {
     }
     updates[field] = (body[field] as string).trim();
   }
-  const database = getDatabase();
-  if (!database) return NextResponse.json({ error: 'Waitlist site storage is not configured.' }, { status: 503 });
+  if (!Number.isSafeInteger(body.tokens_per_referral)
+    || Number(body.tokens_per_referral) < 1 || Number(body.tokens_per_referral) > 1000) {
+    return NextResponse.json({ error: 'Tokens per successful referral must be between 1 and 1,000.' }, { status: 400 });
+  }
+  let launchAt: string | null = null;
+  if (body.launch_at !== null && body.launch_at !== '') {
+    if (typeof body.launch_at !== 'string' || !Number.isFinite(Date.parse(body.launch_at))) {
+      return NextResponse.json({ error: 'Enter a valid launch date and time.' }, { status: 400 });
+    }
+    launchAt = new Date(body.launch_at).toISOString();
+  }
   const { data, error } = await database.from('waitlist_site_content')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...updates, launch_at: launchAt, tokens_per_referral: Number(body.tokens_per_referral), updated_at: new Date().toISOString() })
     .eq('id', 'default')
     .select(contentFields)
     .single();
@@ -195,6 +294,61 @@ export async function POST(request: Request) {
       if (cleanupError) console.error('[AdminWaitlistSite] Could not remove replaced age-group track:', cleanupError);
     }
     return NextResponse.json({ content: data }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
+  if (form.get('kind') === 'reward') {
+    const rewardId = form.get('rewardId');
+    if (typeof rewardId !== 'string' || !/^[0-9a-f-]{36}$/i.test(rewardId)) {
+      return NextResponse.json({ error: 'Save the souvenir before uploading its image.' }, { status: 400 });
+    }
+    const extension = extensions[file.type];
+    if (!extension) return NextResponse.json({ error: 'Only JPG, PNG, WebP, or AVIF souvenir images are supported.' }, { status: 400 });
+    if (file.size === 0 || file.size > MAX_IMAGE_BYTES) {
+      return NextResponse.json({ error: 'The souvenir image must be greater than 0 bytes and no larger than 6 MB.' }, { status: 400 });
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!validImageSignature(file.type, bytes)) return NextResponse.json({ error: 'The image contents do not match the selected file type.' }, { status: 400 });
+
+    const { data: current, error: readError } = await database.from('waitlist_site_rewards')
+      .select('image_path').eq('id', rewardId).maybeSingle();
+    if (readError || !current) {
+      console.error('[AdminWaitlistSite] Could not load souvenir before image upload:', readError);
+      return NextResponse.json({ error: 'The saved souvenir could not be found.' }, { status: 404 });
+    }
+    const path = `souvenirs/${rewardId}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await database.storage.from(REWARD_BUCKET).upload(path, bytes, {
+      contentType: file.type,
+      upsert: false
+    });
+    if (uploadError) {
+      console.error('[AdminWaitlistSite] Could not upload souvenir image:', uploadError);
+      return NextResponse.json({
+        error: uploadError.message.toLowerCase().includes('bucket not found')
+          ? `The ${REWARD_BUCKET} storage bucket is missing. Apply the waitlist site migration.`
+          : 'The souvenir image could not be uploaded.'
+      }, { status: 503 });
+    }
+    const imageUrl = database.storage.from(REWARD_BUCKET).getPublicUrl(path).data.publicUrl;
+    const { data, error: saveError } = await database.from('waitlist_site_rewards')
+      .update({ image_url: imageUrl, image_path: path, updated_at: new Date().toISOString() })
+      .eq('id', rewardId)
+      .select(rewardFields)
+      .single();
+    if (saveError) {
+      const { error: cleanupError } = await database.storage.from(REWARD_BUCKET).remove([path]);
+      if (cleanupError) console.error('[AdminWaitlistSite] Could not clean up unlinked souvenir image:', cleanupError);
+      console.error('[AdminWaitlistSite] Could not publish souvenir image:', saveError);
+      return NextResponse.json({ error: 'The image uploaded but could not be linked to the souvenir.' }, { status: 503 });
+    }
+    if (current.image_path && current.image_path !== path) {
+      const { error: cleanupError } = await database.storage.from(REWARD_BUCKET).remove([current.image_path]);
+      if (cleanupError) console.error('[AdminWaitlistSite] Could not remove replaced souvenir image:', cleanupError);
+    }
+    return NextResponse.json({ reward: data }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
+  if (form.get('kind') && form.get('kind') !== 'hero') {
+    return NextResponse.json({ error: 'Choose a valid waitlist image type.' }, { status: 400 });
   }
 
   const extension = extensions[file.type];
