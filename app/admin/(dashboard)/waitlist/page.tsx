@@ -24,6 +24,7 @@ interface WaitlistContact {
   whatsapp_consent: boolean;
   preferred_contact_method: string | null;
   product_interests: string[];
+  reward_path: 'wine' | 'adventure' | 'music' | null;
   order_frequency: string | null;
   age_group: string | null;
   age_confirmed: boolean;
@@ -47,6 +48,7 @@ interface WaitlistStats {
   areas: Array<{ country: string; county: string; city: string; area: string; total: number; inArea: number }>;
   interests: Array<{ name: string; count: number }>;
   ageGroups: Array<{ group: string; label: string; count: number }>;
+  rewardPaths: Array<{ path: string; label: string; count: number }>;
 }
 interface WaitlistResponse {
   contacts: WaitlistContact[];
@@ -520,14 +522,27 @@ export default function WaitlistPage() {
           )}
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Product demand</h2>
-          <p className="mt-1 text-xs text-slate-500">Selections by waitlist members.</p>
+          <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Member interests</h2>
+          <p className="mt-1 text-xs text-slate-500">Product selections by waitlist members.</p>
           {!stats?.interests?.length ? <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No product preferences recorded yet.</p> : (
             <ul className="mt-4 space-y-3">{stats.interests.slice(0, 8).map(item => (
               <li key={item.name} className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">{item.name}</span><b className="text-slate-950">{count(item.count)}</b></li>
             ))}</ul>
           )}
         </article>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Chosen experiences</h2>
+        <p className="mt-1 text-xs text-slate-500">Reward path selected at signup.</p>
+        <ul className="mt-4 grid gap-3 sm:grid-cols-3">
+          {(stats?.rewardPaths || []).map(path => (
+            <li key={path.path} className="rounded-xl bg-slate-50 p-4">
+              <span className="text-xs font-bold text-slate-500">{path.label}</span>
+              <b className="mt-2 block text-2xl text-slate-950">{loading ? '—' : count(path.count)}</b>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -542,8 +557,8 @@ export default function WaitlistPage() {
         </div>
         {loading && !data ? <p className="p-10 text-center text-sm text-slate-500">Loading signups…</p>
           : !data?.contacts.length ? <p className="p-10 text-center text-sm text-slate-500">No signups match these filters.</p>
-            : <div className="overflow-x-auto"><table className="w-full min-w-[1080px] text-left text-xs">
-              <thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500"><tr>{['Person & area','Consent','Interests & frequency','Age group & check','Attribution','Joined','Status'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
+            : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-xs">
+              <thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500"><tr>{['Person & area','Consent','Interests & frequency','Reward path','Age group & check','Attribution','Joined','Status'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
               <tbody className="divide-y divide-slate-100">{data.contacts.map(contact => (
                 <tr key={contact.id} className="align-top">
                   <td className="max-w-[220px] px-3 py-4">
@@ -556,6 +571,7 @@ export default function WaitlistPage() {
                   </td>
                   <td className="px-3 py-4"><div className="space-y-1.5">{[['Email', contact.email_updates_consent],['SMS', contact.sms_consent],['WhatsApp', contact.whatsapp_consent]].map(([label, allowed]) => <p key={String(label)} className={allowed ? 'font-bold text-emerald-700' : 'text-slate-400'}>{allowed ? '✓' : '—'} {String(label)}</p>)}</div><p className="mt-2 text-slate-500">Preferred: {contact.preferred_contact_method || 'No preference'}</p></td>
                   <td className="max-w-[190px] px-3 py-4"><p className="leading-relaxed text-slate-700">{contact.product_interests?.join(', ') || 'Not provided'}</p><p className="mt-2 text-slate-500">{contact.order_frequency?.replace('_', ' ') || 'Frequency not provided'}</p></td>
+                  <td className="max-w-[170px] px-3 py-4 text-slate-700">{contact.reward_path === 'wine' ? 'Wine & good living' : contact.reward_path === 'adventure' ? 'Adventure & experiences' : contact.reward_path === 'music' ? 'Music & madness' : 'Not selected'}</td>
                   <td className="px-3 py-4"><b className="mb-1 block text-slate-800">{ageGroups.find(group => group.id === contact.age_group)?.label ? `Age ${ageGroups.find(group => group.id === contact.age_group)?.label}` : 'Age group not provided'}</b>{contact.age_confirmed ? <span className="inline-flex items-center gap-1 font-bold text-emerald-700"><Check size={13} /> 18+ confirmed</span> : <span className="font-bold text-amber-700">Not recorded</span>}<p className="mt-1 text-slate-500">{date(contact.age_confirmed_at)}</p></td>
                   <td className="max-w-[160px] px-3 py-4 text-slate-600"><p>{contact.source || 'direct'}</p>{contact.campaign && <p className="mt-1">Campaign: {contact.campaign}</p>}{contact.referred_by_code && <p className="mt-1">Referred: {contact.referred_by_code}</p>}{contact.referral_code && <p className="mt-1">Invite: {contact.referral_code}</p>}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>

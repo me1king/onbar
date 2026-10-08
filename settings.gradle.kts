@@ -24,4 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "the app"
 include(":app_android")
+include(":waitlist-android")
  

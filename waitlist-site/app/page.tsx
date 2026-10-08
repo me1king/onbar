@@ -24,8 +24,27 @@ const frequencies = [
   ['depends', 'It depends']
 ];
 
-type SignupResult = { success?: boolean; serviceAreaStatus?: 'in_area' | 'outside_area' | 'unknown'; referralCode?: string; error?: string };
+type SignupResult = { success?: boolean; serviceAreaStatus?: 'in_area' | 'outside_area' | 'unknown'; referralCode?: string; trackingAvailable?: boolean; demoMode?: boolean; error?: string };
 type Location = { country: string; county: string; city: string; area: string; verified: boolean; accuracy: number | null };
+type Reward = { id: string; name: string; description: string; image_url: string | null; token_cost: number; is_active: boolean; sort_order: number };
+type RewardPath = 'wine' | 'adventure' | 'music';
+type ReferralStats = { referrals: number; tokensEarned: number; tokensAvailable: number };
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
+declare global {
+  interface Window {
+    OnlineBarNative?: {
+      saveMemberProgress: (referralCode: string, rewardPath: RewardPath) => void;
+    };
+  }
+}
+const rewardPaths: { id: RewardPath; title: string; subtitle: string; description: string; icon: string }[] = [
+  { id: 'wine', title: 'Wine & good living', subtitle: 'AN INVITATION WORTH KEEPING', description: 'A chance to enjoy wine-tasting experiences, special invitations and curated gifts.', icon: '🍷' },
+  { id: 'adventure', title: 'Adventure & experiences', subtitle: 'YOUR ADVENTURE. OUR TREAT.', description: 'Bring a friend, choose an experience and we may cover the adventure and create a complimentary gift around it.', icon: '🌍' },
+  { id: 'music', title: 'Music & madness', subtitle: 'SOUL FEST, ON US', description: 'A chance to win Soul Fest tickets and special access.', icon: '🎟️' }
+];
 type SiteContent = {
   eyebrow: string;
   headline: string;
@@ -35,6 +54,9 @@ type SiteContent = {
   benefit_three: string;
   hero_image_url: string | null;
   hero_image_alt: string;
+  launch_at: string | null;
+  tokens_per_referral: number;
+  rewards: Reward[];
   age_group_tracks: Record<string, { title: string; url: string }>;
 };
 const ageGroups = [
@@ -53,6 +75,13 @@ const defaultSiteContent: SiteContent = {
   benefit_three: 'Area-first delivery',
   hero_image_url: null,
   hero_image_alt: 'Online Bar early access',
+  launch_at: null,
+  tokens_per_referral: 25,
+  rewards: [
+    { id: 'launch-bundle', name: 'Launch bundle', description: 'Priority access to the first delivery window and a surprise freebie when we launch.', image_url: null, token_cost: 25, is_active: true, sort_order: 1 },
+    { id: 'vip-night', name: 'VIP night', description: 'Reserve a limited release tasting pack and be first in line for bar-night drops.', image_url: null, token_cost: 60, is_active: true, sort_order: 2 },
+    { id: 'goodies-drop', name: 'Goodies drop', description: 'A curated mix of premium cocktail add-ons and delivery extras.', image_url: null, token_cost: 90, is_active: true, sort_order: 3 }
+  ],
   age_group_tracks: {}
 };
 
@@ -78,6 +107,7 @@ export default function Home() {
   const [consents, setConsents] = useState({ email: false, sms: false, whatsapp: false });
   const [preferredContactMethod, setPreferredContactMethod] = useState<'email' | 'sms' | 'whatsapp' | ''>('');
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+  const [rewardPath, setRewardPath] = useState<RewardPath | ''>('');
   const [frequency, setFrequency] = useState('');
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [website, setWebsite] = useState('');
@@ -85,7 +115,20 @@ export default function Home() {
   const [error, setError] = useState('');
   const [serviceAreaStatus, setServiceAreaStatus] = useState<SignupResult['serviceAreaStatus']>('unknown');
   const [referralCode, setReferralCode] = useState('');
+  const [referralStats, setReferralStats] = useState<ReferralStats | null>(null);
+  const [trackingAvailable, setTrackingAvailable] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
+  const [shareNotice, setShareNotice] = useState('');
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareLink, setShareLink] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const shareDialogCloseRef = useRef<HTMLButtonElement>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installNotice, setInstallNotice] = useState('');
+  const [isInstalled, setIsInstalled] = useState(false);
   const [gpsStatus, setGpsStatus] = useState('');
+  const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, live: false });
+  const [launchMessage, setLaunchMessage] = useState('LAUNCH DATE TO BE ANNOUNCED');
 
   useEffect(() => {
     void fetch('/api/content', { cache: 'no-store' })
@@ -108,7 +151,110 @@ export default function Home() {
   const resolvedCity = location.city === 'Other' ? customCity.trim() : location.city;
   const updatesAllowed = consents.email || consents.sms || consents.whatsapp;
   const selectedAgeGroup = ageGroups.find(group => group.id === ageGroup);
+  const shareVariant = ageGroup === '45_plus'
+    ? 'whisper'
+    : ageGroup === '18_20' || ageGroup === '21_24'
+      ? 'buzz'
+      : 'friend';
+  const shareLabel = shareVariant === 'whisper'
+    ? 'Whisper to a friend'
+    : shareVariant === 'buzz'
+      ? 'Share the buzz'
+      : 'Tell a friend';
   const currentAgeTrack = ageGroup ? siteContent.age_group_tracks[ageGroup] : undefined;
+  const selectedRewardPath = rewardPaths.find(path => path.id === rewardPath);
+  const activeRewards = (siteContent.rewards || defaultSiteContent.rewards)
+    .filter(reward => reward.is_active)
+    .sort((a, b) => a.token_cost - b.token_cost);
+  const tokensAvailable = referralStats?.tokensAvailable ?? 0;
+  const nextReward = activeRewards.find(reward => tokensAvailable < reward.token_cost);
+  const friendsToNextReward = nextReward && siteContent.tokens_per_referral > 0
+    ? Math.ceil((nextReward.token_cost - tokensAvailable) / siteContent.tokens_per_referral)
+    : 0;
+
+  useEffect(() => {
+    const installed = window.matchMedia('(display-mode: standalone)').matches
+      || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+    setIsInstalled(installed);
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const onAppInstalled = () => {
+      setIsInstalled(true);
+      setInstallPrompt(null);
+      setInstallNotice('Online Bar is on your home screen. Tap it anytime to check your launch progress.');
+    };
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    window.addEventListener('appinstalled', onAppInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', onAppInstalled);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!shareDialogOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShareDialogOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    shareDialogCloseRef.current?.focus();
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [shareDialogOpen]);
+
+  useEffect(() => {
+    if (!referralCode || !trackingAvailable) return;
+    const loadReferralStats = async () => {
+      try {
+        const response = await fetch('/api/waitlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'referral_stats', referralCode })
+        });
+        const result = await response.json() as { stats?: ReferralStats; error?: string };
+        if (!response.ok || !result.stats) throw new Error(result.error || 'Referral progress could not be loaded.');
+        setReferralStats(result.stats);
+      } catch (cause) {
+        console.error('[WaitlistSite] Could not load referral progress:', cause);
+        setTrackingAvailable(false);
+      }
+    };
+    void loadReferralStats();
+  }, [referralCode, trackingAvailable]);
+
+  useEffect(() => {
+    if (!siteContent.launch_at) {
+      setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, live: false });
+      return;
+    }
+    const target = new Date(siteContent.launch_at).getTime();
+    if (Number.isNaN(target)) {
+      setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, live: false });
+      return;
+    }
+    const tick = () => {
+      const diff = Math.max(0, target - Date.now());
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diff / (1000 * 60)) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+      setCountdown({ days, hours, minutes, seconds, live: diff > 0 });
+      if (diff <= 0) setLaunchMessage('YOU MADE IT. WE’RE LIVE.');
+      else if (days === 0) {
+        const isTomorrow = new Date(target).toDateString() !== new Date().toDateString();
+        setLaunchMessage(isTomorrow ? 'TOMORROW. 🔥' : 'LAUNCH DAY. YOU MADE IT. 🔥');
+      }
+      else if (days <= 3) setLaunchMessage(`${days} DAYS. YOUR FRIENDS ARE JOINING.`);
+      else if (days <= 7) setLaunchMessage(`${days} DAYS. DON’T MISS THIS.`);
+      else if (days <= 14) setLaunchMessage('YOU’RE GETTING CLOSE…');
+      else if (days >= 30) setLaunchMessage('THE WAIT BEGINS 👀');
+      else setLaunchMessage('THE COUNTDOWN IS ON 👀');
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [siteContent.launch_at]);
 
   const enterSite = () => {
     if (!selectedAgeGroup || !adultConfirmedAtEntry) return;
@@ -184,6 +330,10 @@ export default function Home() {
       setError('Select at least one update channel so we know where to send your early-access invitation.');
       return;
     }
+    if (!rewardPath) {
+      setError('Choose the experience you’re most excited about.');
+      return;
+    }
     if (hasPhoneConsent && !phone.trim()) {
       setError('Add a phone number for SMS or WhatsApp updates, or deselect those channels.');
       return;
@@ -219,6 +369,7 @@ export default function Home() {
           whatsappConsent: consents.whatsapp,
           preferredContactMethod,
           productInterests: selectedInterests,
+          rewardPath,
           orderFrequency: frequency,
           ageGroup,
           ageConfirmed,
@@ -233,6 +384,11 @@ export default function Home() {
       if (!response.ok) throw new Error(result.error || 'Your signup could not be saved.');
       setServiceAreaStatus(result.serviceAreaStatus || 'unknown');
       setReferralCode(result.referralCode || '');
+      setTrackingAvailable(result.trackingAvailable !== false);
+      setDemoMode(result.demoMode === true);
+      if (result.trackingAvailable && !result.demoMode && result.referralCode) {
+        window.OnlineBarNative?.saveMemberProgress(result.referralCode, rewardPath);
+      }
       setStep(3);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Your signup could not be saved. Please try again.');
@@ -265,17 +421,60 @@ export default function Home() {
       : [...current, interest]);
   };
 
-  const share = async () => {
+  const addToHomeScreen = async () => {
+    try {
+      if (installPrompt) {
+        await installPrompt.prompt();
+        const choice = await installPrompt.userChoice;
+        setInstallPrompt(null);
+        setInstallNotice(choice.outcome === 'accepted'
+          ? 'Added to your home screen. Open Online Bar anytime to check your live countdown and progress.'
+          : 'No worries. You can add Online Bar to your home screen later from your browser menu.');
+        return;
+      }
+      setInstallNotice(/iphone|ipad|ipod/i.test(navigator.userAgent)
+        ? 'In Safari, tap Share, then “Add to Home Screen” to keep a shortcut to your live launch tracker.'
+        : 'Open your browser menu and choose “Install app” or “Add to Home screen” for a shortcut to your live launch tracker.');
+    } catch (cause) {
+      console.error('[WaitlistSite] Could not install the launch tracker:', cause);
+      setInstallNotice('The install prompt could not be opened. Use your browser menu to add this page to your home screen.');
+    }
+  };
+
+  const openShareChooser = () => {
+    const variant = shareVariant;
+    setShareNotice('');
     const url = new URL(window.location.href);
     if (referralCode) url.searchParams.set('ref', referralCode);
+    const text = variant === 'buzz'
+      ? `Share the buzz: join me on the Online Bar early-access list and help us launch. My invite: ${url.toString()}`
+      : variant === 'whisper'
+        ? `A little whisper for you: join me on the Online Bar early-access list. My invite: ${url.toString()}`
+        : `Tell a friend to join the Online Bar early-access waitlist. My invite: ${url.toString()}`;
+    setShareLink(url.toString());
+    setShareMessage(text);
+    setShareDialogOpen(true);
+  };
+
+  const copyShareMessage = async () => {
     try {
-      if (navigator.share) await navigator.share({ title: 'Online Bar early access', text: 'Join me on the Online Bar early-access list.', url: url.toString() });
-      else {
-        await navigator.clipboard.writeText(url.toString());
-        setGpsStatus('Your invite link was copied.');
-      }
+      await navigator.clipboard.writeText(shareMessage);
+      setShareNotice('Your invite message and personal link are copied and ready to share.');
     } catch (cause) {
-      if (cause instanceof Error && cause.name !== 'AbortError') setGpsStatus('We could not share the link from this browser.');
+      console.error('[WaitlistSite] Could not copy the invite message:', cause);
+      setShareNotice('We could not copy the invite. Allow clipboard access or copy your invite link manually.');
+    }
+  };
+
+  const shareToApp = async (app: 'instagram' | 'snapchat') => {
+    const appUrl = app === 'instagram' ? 'https://www.instagram.com/' : 'https://www.snapchat.com/';
+    window.open(appUrl, '_blank', 'noopener,noreferrer');
+    try {
+      await navigator.clipboard.writeText(shareMessage);
+      setShareNotice(`Your invite is copied. Paste it into your ${app === 'instagram' ? 'Instagram message or story' : 'Snapchat chat'} to share.`);
+    } catch (cause) {
+      console.error(`[WaitlistSite] Could not copy the invite for ${app}:`, cause);
+      setShareNotice(`Copy your invite link here, then paste it into ${app === 'instagram' ? 'Instagram' : 'Snapchat'}.`);
     }
   };
 
@@ -345,6 +544,24 @@ export default function Home() {
               <label>Email address<input required type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" maxLength={254} /></label>
               <label>Phone number <span className="optional">OPTIONAL UNLESS YOU CHOOSE SMS / WHATSAPP</span><input type="tel" autoComplete="tel" value={phone} onChange={event => setPhone(event.target.value)} placeholder="+254 7XX XXX XXX" maxLength={32} /></label>
               <p className="inline-note">Age range selected: {selectedAgeGroup?.label}. Your age range is used for launch planning and personalized music.</p>
+              <fieldset className="reward-path-fieldset">
+                <legend>What are you here for? <span className="optional">CHOOSE YOUR EXPERIENCE</span></legend>
+                <div className="reward-path-grid">
+                  {rewardPaths.map(path => (
+                    <button
+                      type="button"
+                      key={path.id}
+                      className={`reward-path-option${rewardPath === path.id ? ' selected' : ''}`}
+                      aria-pressed={rewardPath === path.id}
+                      onClick={() => setRewardPath(path.id)}
+                    >
+                      <span className="reward-path-icon" aria-hidden="true">{path.icon}</span>
+                      <strong>{path.title}</strong>
+                      <small>{path.description}</small>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
               <fieldset><legend>How may we send your early-access update?</legend>
                 {(['email', 'sms', 'whatsapp'] as const).map(channel => <label className="check-row" key={channel}><input type="checkbox" checked={consents[channel]} onChange={event => setConsents(current => ({ ...current, [channel]: event.target.checked }))} /><span>{channel === 'email' ? 'Email' : channel === 'sms' ? 'SMS' : 'WhatsApp'} updates</span></label>)}
               </fieldset>
@@ -363,18 +580,122 @@ export default function Home() {
 
       {step === 3 && (
         <section className="success-card">
-          <div className="success-icon">✦</div><p className="eyebrow">YOU’RE ON THE LIST</p><h1>You’re in.<br /><em>Cheers.</em></h1>
-          <p className="success-copy">{serviceAreaStatus === 'in_area'
-            ? `Good news — ${resolvedArea}, ${resolvedCity} is in our current launch coverage. We’re getting ready to serve your area, so stay on the list and watch for your launch and early-access update.`
-            : serviceAreaStatus === 'outside_area'
-              ? `We’re not serving ${resolvedArea}, ${resolvedCity} just yet, but we’re coming soon. We’ve recorded your area${landmark.trim() ? ` near ${landmark.trim()}` : ''} to help us plan where to expand next, and we’ll keep you posted.`
-              : `We’ve recorded demand for ${resolvedArea}, ${resolvedCity}${landmark.trim() ? ` near ${landmark.trim()}` : ''}. We’re still confirming launch coverage, and we’ll share an update as soon as we know more.`}</p>
-          <p className="success-copy">You’re now on the Online Bar early-access list. Keep an eye on the contact channel(s) you selected for your update.</p>
-          {referralCode && <p className="referral">YOUR INVITE CODE <b>{referralCode}</b></p>}
-          <button className="button button-primary" onClick={share}>Invite a friend <span>↗</span></button>
+            <div className="success-icon">✦</div><p className="eyebrow">{demoMode ? 'PREVIEW MODE' : 'YOU’RE ON THE LIST'}</p><h1>{demoMode ? <>Preview<br /><em>ready.</em></> : <>You’re in.<br /><em>Cheers.</em></>}</h1>
+            {demoMode && <p className="demo-notice" role="status">This is a preview: your details and invite code were not saved. Connect the waitlist database to accept signups and track real referrals.</p>}
+            {!demoMode && <p className="success-copy">{serviceAreaStatus === 'in_area'
+              ? `Good news — ${resolvedArea}, ${resolvedCity} is in our current launch coverage. We’re getting ready to serve your area, so stay on the list and watch for your launch and early-access update.`
+              : serviceAreaStatus === 'outside_area'
+                ? `We’re not serving ${resolvedArea}, ${resolvedCity} just yet, but we’re coming soon. We’ve recorded your area${landmark.trim() ? ` near ${landmark.trim()}` : ''} to help us plan where to expand next, and we’ll keep you posted.`
+                : `We’ve recorded demand for ${resolvedArea}, ${resolvedCity}${landmark.trim() ? ` near ${landmark.trim()}` : ''}. We’re still confirming launch coverage, and we’ll share an update as soon as we know more.`}</p>}
+            {!demoMode && <p className="success-copy">You’re now on the Online Bar early-access list. You’ll get first dibs on launch-day surprises, priority delivery access, and early-access perks as soon as we open nearby.</p>}
+          <div className="success-grid">
+            <div className="perk-card">
+              <p className="mini-label">WHAT EARLY ACCESS GETS YOU</p>
+              {selectedRewardPath && <div className="chosen-path"><span>{selectedRewardPath.icon}</span><div><strong>{selectedRewardPath.subtitle}</strong><small>{selectedRewardPath.description}</small></div></div>}
+              <ul>
+                <li>Priority launch access in your area.</li>
+                <li>Curated experiences and launch surprises aligned with your interests.</li>
+                <li>Earn {siteContent.tokens_per_referral} tokens for each friend who joins through your link.</li>
+              </ul>
+            </div>
+            <div className="widget-card">
+              <p className="mini-label">YOUR LAUNCH TRACKER</p>
+              <strong className="launch-message">{launchMessage}</strong>
+              <div className="countdown-row">
+                <span>{siteContent.launch_at ? countdown.days : '—'}</span><small>days</small>
+                <span>{siteContent.launch_at ? countdown.hours : '—'}</span><small>hrs</small>
+                <span>{siteContent.launch_at ? countdown.minutes : '—'}</span><small>min</small>
+                <span>{siteContent.launch_at ? countdown.seconds : '—'}</span><small>sec</small>
+              </div>
+              <div className="widget-metrics">
+                <div><strong>{trackingAvailable ? referralStats?.referrals ?? '…' : '—'}</strong><small>friends joined</small></div>
+                <div><strong>{trackingAvailable ? referralStats?.tokensEarned ?? '…' : '—'}</strong><small>tokens earned</small></div>
+              </div>
+              {nextReward && <p className="next-unlock"><span>NEXT UNLOCK</span><strong>{nextReward.name}</strong><small>{trackingAvailable && referralStats ? `${friendsToNextReward} successful ${friendsToNextReward === 1 ? 'referral' : 'referrals'} to go` : `${nextReward.token_cost} tokens`}</small></p>}
+              <p className="widget-note">{trackingAvailable
+                ? `Each successful referral earns ${siteContent.tokens_per_referral} tokens. Your balance updates as friends join.`
+                : 'Live referral tracking will appear when this waitlist is connected to its member database.'}</p>
+              <button type="button" className="button button-outline install-button" onClick={() => void addToHomeScreen()}>
+                {isInstalled ? 'Open from your home screen' : 'Add launch tracker to home screen'} <span>↗</span>
+              </button>
+              <p className="install-disclaimer">Adds a shortcut to your live tracker. Countdown and progress refresh when you open it; the web app cannot show a live counter inside your phone’s native widget area.</p>
+              {installNotice && <p className="inline-note" role="status">{installNotice}</p>}
+            </div>
+          </div>
+          {referralCode && !demoMode && <p className="referral">YOUR INVITE CODE <b>{referralCode}</b></p>}
+          <div className="share-actions">
+            <button type="button" className="button button-primary" disabled={demoMode} onClick={openShareChooser}>{shareLabel} <span>↗</span></button>
+          </div>
+          {shareNotice && <p className="inline-note" role="status">{shareNotice}</p>}
+          <div className="rewards-panel">
+            <p className="mini-label">SOUVENIRS TO EARN</p>
+            <div className="reward-list">
+              {(siteContent.rewards || defaultSiteContent.rewards).slice(0, 3).map(reward => (
+                <div key={reward.id} className="reward-item">
+                  <div className="reward-image" style={reward.image_url ? { backgroundImage: `url("${reward.image_url.replaceAll('"', '%22')}")` } : undefined}>{!reward.image_url && reward.name.slice(0, 1).toUpperCase()}</div>
+                  <div>
+                    <strong>{reward.name}</strong>
+                    <small>{reward.description}</small>
+                    <span>{reward.token_cost} tokens</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
       )}
       </>}
+      {shareDialogOpen && (
+        <div className="share-dialog-backdrop" onClick={() => setShareDialogOpen(false)}>
+          <section
+            aria-labelledby="share-dialog-title"
+            aria-modal="true"
+            className="share-dialog"
+            onClick={event => event.stopPropagation()}
+            role="dialog"
+          >
+            <button
+              aria-label="Close sharing options"
+              className="share-dialog-close"
+              onClick={() => setShareDialogOpen(false)}
+              ref={shareDialogCloseRef}
+              type="button"
+            >×</button>
+            <p className="mini-label">PASS THE GOOD TIMES ON</p>
+            <h2 id="share-dialog-title">{shareLabel}</h2>
+            <p className="share-dialog-copy">Choose where to send your personal invite. Your referral link stays attached.</p>
+            <div className="share-platform-grid">
+              <a href={`https://wa.me/?text=${encodeURIComponent(shareMessage)}`} rel="noreferrer" target="_blank">WhatsApp</a>
+              <button onClick={() => void shareToApp('instagram')} type="button">Instagram</button>
+              <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareMessage)}`} rel="noreferrer" target="_blank">X</a>
+              <button onClick={() => void shareToApp('snapchat')} type="button">Snapchat</button>
+              <a href={`https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareLabel)}`} rel="noreferrer" target="_blank">Telegram</a>
+              <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareLink)}`} rel="noreferrer" target="_blank">Facebook</a>
+              <a href={`mailto:?subject=${encodeURIComponent('Join me on Online Bar early access')}&body=${encodeURIComponent(shareMessage)}`}>Email</a>
+              <a href={`sms:?body=${encodeURIComponent(shareMessage)}`}>Text message</a>
+              {typeof navigator !== 'undefined' && navigator.share && (
+                <button
+                  className="share-platform-more"
+                  onClick={async () => {
+                    try {
+                      await navigator.share({ title: 'Online Bar early access', text: shareMessage, url: shareLink });
+                    } catch (cause) {
+                      if (cause instanceof Error && cause.name !== 'AbortError') {
+                        console.error('[WaitlistSite] Could not open the device share sheet:', cause);
+                        setShareNotice('Your device sharing menu could not be opened. Choose an app above or copy your invite.');
+                      }
+                    }
+                  }}
+                  type="button"
+                >More apps…</button>
+              )}
+              <button className="share-platform-copy" onClick={() => void copyShareMessage()} type="button">Copy invite</button>
+            </div>
+            <p className="share-dialog-footnote">Instagram and Snapchat need you to paste the copied invite into your message or story. “More apps” opens the sharing options supported by your phone.</p>
+            {shareNotice && <p className="inline-note" role="status">{shareNotice}</p>}
+          </section>
+        </div>
+      )}
       <footer className="site-footer"><span>ONLINE BAR</span><span>GOOD TIMES, DELIVERED.</span><a href="https://onlinebar.co.ke/privacy">PRIVACY</a></footer>
     </main>
   );

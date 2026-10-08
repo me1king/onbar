@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Online Bar maskable icon">
+  <rect width="512" height="512" rx="132" fill="#D91C1C"/>
+  <rect x="76" y="76" width="360" height="360" rx="88" fill="#F9F4EC" fill-opacity="0.18"/>
+  <path d="M172 362V150h76c50 0 80 29 80 74 0 43-30 74-80 74h-28v64h-48zm48-90h28c24 0 33-13 33-31 0-18-9-31-33-31h-28v62z" fill="#F9F4EC"/>
+  <path d="M298 150h40l58 212h-46l-9-37h-48l-9 37h-46l58-212zm24 130h18l-9-41-9 41z" fill="#F9F4EC"/>
+</svg>

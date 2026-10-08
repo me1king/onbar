@@ -7,6 +7,11 @@ const allowedInterests = new Set([
   'Spirits', 'Wine', 'Beer', 'Champagne', 'Cocktails', 'Mixers',
   'Gift boxes', 'Snacks', 'Something else'
 ]);
+const rewardPathLabels: Record<string, string> = {
+  wine: 'Wine & good living',
+  adventure: 'Adventure & experiences',
+  music: 'Music & madness'
+};
 const areas = [
   { country: 'Kenya', county: 'Nairobi', city: 'Nairobi', area: 'CBD', latitude: -1.2864, longitude: 36.8172 },
   { country: 'Kenya', county: 'Nairobi', city: 'Nairobi', area: 'Westlands', latitude: -1.2673, longitude: 36.8101 },
@@ -33,6 +38,7 @@ const areas = [
 ];
 
 const attempts = new Map<string, { since: number; count: number }>();
+const demoSignups = new Map<string, { city: string; area: string; referralCode: string; serviceAreaStatus: 'in_area' | 'outside_area' | 'unknown'; }>();
 const maxAttempts = 12;
 const windowMs = 15 * 60 * 1000;
 const defaultLaunchAreas = [
@@ -62,6 +68,7 @@ type SignupBody = {
   whatsappConsent?: unknown;
   preferredContactMethod?: unknown;
   productInterests?: unknown;
+  rewardPath?: unknown;
   orderFrequency?: unknown;
   ageConfirmed?: unknown;
   ageGroup?: unknown;
@@ -167,6 +174,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The submitted details were invalid.' }, { status: 400 });
   }
 
+  if (body.action === 'referral_stats') {
+    const referralCode = text(body.referralCode, 40);
+    if (!/^[a-z0-9-]{4,40}$/i.test(referralCode)) {
+      return NextResponse.json({ error: 'Enter a valid invite code.' }, { status: 400 });
+    }
+    const database = createDatabase();
+    if (!database) {
+      return NextResponse.json({ error: 'Live referral tracking is unavailable until waitlist storage is configured.' }, { status: 503 });
+    }
+    const { data: referrer, error: referrerError } = await database.from('market_waitlist')
+      .select('id')
+      .eq('referral_code', referralCode)
+      .limit(1)
+      .maybeSingle();
+    if (referrerError) {
+      console.error('[Waitlist] Could not look up the referral code:', referrerError);
+      return NextResponse.json({ error: 'Referral progress is temporarily unavailable.' }, { status: 503 });
+    }
+    if (!referrer) return NextResponse.json({ error: 'That invite code could not be found.' }, { status: 404 });
+    const [{ data: credits, error: creditsError }, { data: claims, error: claimsError }] = await Promise.all([
+      database.from('waitlist_referral_credits')
+        .select('id,token_amount', { count: 'exact' })
+        .eq('referrer_id', referrer.id),
+      database.from('waitlist_reward_claims')
+        .select('tokens_spent')
+        .eq('referrer_id', referrer.id)
+        .in('status', ['pending', 'approved'])
+    ]);
+    if (creditsError || claimsError) {
+      console.error('[Waitlist] Could not load referral progress:', creditsError || claimsError);
+      return NextResponse.json({ error: 'Referral progress is temporarily unavailable.' }, { status: 503 });
+    }
+    const earned = (credits || []).reduce((total, credit) => total + Number(credit.token_amount || 0), 0);
+    const spent = (claims || []).reduce((total, claim) => total + Number(claim.tokens_spent || 0), 0);
+    return NextResponse.json({
+      stats: {
+        referrals: credits?.length || 0,
+        tokensEarned: earned,
+        tokensAvailable: Math.max(0, earned - spent)
+      }
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   if (body.action === 'resolve') {
     const latitude = Number(body.latitude);
     const longitude = Number(body.longitude);
@@ -211,6 +261,9 @@ export async function POST(request: Request) {
   const interests = Array.isArray(body.productInterests)
     ? body.productInterests.filter((value): value is string => typeof value === 'string' && allowedInterests.has(value)).slice(0, 9)
     : [];
+  const rewardPath = typeof body.rewardPath === 'string' && Object.hasOwn(rewardPathLabels, body.rewardPath)
+    ? body.rewardPath
+    : '';
   const frequency = text(body.orderFrequency, 30);
   const ageGroup = text(body.ageGroup, 20);
   const validAgeGroups = new Set(['18_20', '21_24', '25_34', '35_44', '45_plus']);
@@ -245,9 +298,22 @@ export async function POST(request: Request) {
   if (!validAgeGroups.has(ageGroup)) {
     return NextResponse.json({ error: 'Choose an adult age range to join the list.' }, { status: 400 });
   }
+  if (!rewardPath) {
+    return NextResponse.json({ error: 'Choose the experience you are most excited about.' }, { status: 400 });
+  }
 
   const database = createDatabase();
-  if (!database) return missingDatabaseConfiguration();
+  if (!database) {
+    const serviceAreaStatus = defaultLaunchAreas.some(value => value.toLowerCase() === area.toLowerCase())
+      ? 'in_area'
+      : 'outside_area';
+    const existing = demoSignups.get(email);
+    const referralCode = existing?.referralCode || `OB-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    demoSignups.set(email, { city, area, referralCode, serviceAreaStatus });
+    return NextResponse.json({ success: true, serviceAreaStatus, referralCode, trackingAvailable: false, demoMode: true }, {
+      headers: { 'Cache-Control': 'no-store' }
+    });
+  }
   let serviceAreaStatus: 'in_area' | 'outside_area' | 'unknown';
   try {
     serviceAreaStatus = await resolveServiceArea(database, area);
@@ -293,6 +359,7 @@ export async function POST(request: Request) {
     whatsapp_consent_at: whatsappConsent ? now : null,
     preferred_contact_method: contactMethod || null,
     product_interests: interests,
+    reward_path: rewardPath,
     order_frequency: frequency || null,
     age_group: ageGroup,
     age_confirmed: true,
@@ -321,7 +388,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: 'Your signup could not be saved. Please try again.' }, { status: 503 });
   }
-  return NextResponse.json({ success: true, serviceAreaStatus, referralCode: newReferralCode }, {
+  return NextResponse.json({ success: true, serviceAreaStatus, referralCode: newReferralCode, trackingAvailable: true }, {
     headers: { 'Cache-Control': 'no-store' }
   });
 }

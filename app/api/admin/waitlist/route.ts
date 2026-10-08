@@ -7,7 +7,7 @@ import { isSameOriginRequest } from '@/lib/adminAccess.server';
 export const dynamic = 'force-dynamic';
 
 const statuses = ['WAITLIST', 'INVITED', 'NOTIFIED', 'CONVERTED', 'UNSUBSCRIBED'] as const;
-const fields = 'id,full_name,email,phone,country,county,city,area,landmark,location_verified,location_accuracy_m,service_area_status,email_updates_consent,email_updates_consent_at,sms_consent,sms_consent_at,whatsapp_consent,whatsapp_consent_at,preferred_contact_method,product_interests,order_frequency,age_group,age_confirmed,age_confirmed_at,referral_code,referred_by_code,campaign,landing_page,consent_version,source,status,notified_at,created_at,updated_at,unsubscribed_at';
+const fields = 'id,full_name,email,phone,country,county,city,area,landmark,location_verified,location_accuracy_m,service_area_status,email_updates_consent,email_updates_consent_at,sms_consent,sms_consent_at,whatsapp_consent,whatsapp_consent_at,preferred_contact_method,product_interests,reward_path,order_frequency,age_group,age_confirmed,age_confirmed_at,referral_code,referred_by_code,campaign,landing_page,consent_version,source,status,notified_at,created_at,updated_at,unsubscribed_at';
 
 async function authorize() {
   const cookieStore = await cookies();
@@ -30,7 +30,7 @@ function getDatabase() {
 
 function missingMigration(error: { code?: string; message?: string }) {
   return error.code === '42703' || error.code === 'PGRST204' || error.code === 'PGRST202'
-    || /get_waitlist_intelligence|full_name|service_area_status|market_waitlist/i.test(error.message || '');
+    || /get_waitlist_intelligence|full_name|service_area_status|reward_path|market_waitlist/i.test(error.message || '');
 }
 
 export async function GET(request: Request) {
