@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Card } from '@/components/ui/card';
 import { Truck, Wine, DollarSign, Users, Bot, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -9,11 +8,11 @@ import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 
 interface CommandStats {
-    revenue: number;
-    orders: number;
-    users: number;
-    riders: number;
-    shops: number;
+    revenue: number | null;
+    orders: number | null;
+    users: number | null;
+    riders: number | null;
+    shops: number | null;
     automation: number | null;
     demand_hotspot: string | null;
 }
@@ -26,60 +25,21 @@ export default function OperatingBrainHUD() {
 
     React.useEffect(() => {
         async function fetchCommandData() {
-            if (!supabase) {
-                setLoadError('Supabase is not configured. Dashboard metrics are unavailable.');
-                setLoading(false);
-                return;
-            }
             try {
-                const [ordersRes, usersRes, ridersRes, shopsRes, revenueRes] = await Promise.all([
-                    supabase.from('orders').select('id', { count: 'exact' }),
-                    supabase.from('profiles').select('id', { count: 'exact' }),
-                    supabase.from('rider_status').select('id', { count: 'exact' }).eq('status', 'Online'),
-                    supabase.from('suppliers').select('id', { count: 'exact' }).eq('is_active', true),
-                    supabase.from('financial_ledger').select('amount').eq('entry_type', 'REVENUE')
-                ]);
-                const metricResults = [
-                    ['orders', ordersRes],
-                    ['profiles', usersRes],
-                    ['rider_status', ridersRes],
-                    ['suppliers', shopsRes],
-                    ['financial_ledger', revenueRes]
-                ] as const;
-                for (const [table, result] of metricResults) {
-                    if (result.error) {
-                        throw new Error(`Could not load ${table}: ${result.error.message}`);
-                    }
+                const response = await fetch('/api/admin/operating-brain', { cache: 'no-store' });
+                const result = await response.json() as {
+                    stats?: CommandStats;
+                    errors?: Record<string, string>;
+                    error?: string;
+                };
+                if (!response.ok || !result.stats) {
+                    throw new Error(result.error || 'Dashboard metrics could not be loaded.');
                 }
-
-                const [autoRes, buzzRes] = await Promise.all([
-                    supabase.from('system_autonomous_state').select('is_autonomous'),
-                    supabase.from('buzz_posts').select('area_zone').in('status', ['LIVE', 'TRENDING'])
-                ]);
-                if (autoRes.error) throw new Error(`Could not load system_autonomous_state: ${autoRes.error.message}`);
-                if (buzzRes.error) throw new Error(`Could not load buzz_posts: ${buzzRes.error.message}`);
-
-                const autoStates = autoRes.data || [];
-                const automation = autoStates.length > 0
-                    ? Number(((autoStates.filter(state => state.is_autonomous).length / autoStates.length) * 100).toFixed(1))
-                    : null;
-                const postsByArea = new Map<string, number>();
-                for (const post of buzzRes.data || []) {
-                    const area = post.area_zone?.trim();
-                    if (area) postsByArea.set(area, (postsByArea.get(area) || 0) + 1);
-                }
-                const demandHotspot = [...postsByArea.entries()].sort((first, second) => second[1] - first[1])[0]?.[0] || null;
-
-                setStats({
-                    revenue: (revenueRes.data || []).reduce((sum, entry) => sum + Number(entry.amount), 0),
-                    orders: ordersRes.count ?? 0,
-                    users: usersRes.count ?? 0,
-                    riders: ridersRes.count ?? 0,
-                    shops: shopsRes.count ?? 0,
-                    automation,
-                    demand_hotspot: demandHotspot
-                });
-                setLoadError(null);
+                setStats(result.stats);
+                const errors = Object.entries(result.errors || {});
+                setLoadError(errors.length
+                    ? errors.map(([metric, message]) => `${metric}: ${message}`).join(' · ')
+                    : null);
             } catch (error) {
                 console.error('Could not load operating dashboard metrics:', error);
                 setStats(null);
@@ -89,26 +49,13 @@ export default function OperatingBrainHUD() {
             }
         }
 
-        fetchCommandData();
-
-        if (!supabase) return;
-
-        const channelId = `command-hud-sync-${Math.random().toString(36).substring(7)}`;
-        const channel = supabase.channel(channelId)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCommandData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'financial_ledger' }, fetchCommandData)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'rider_status' }, fetchCommandData)
-            .subscribe();
-
-        return () => {
-            if (supabase) {
-                supabase.removeChannel(channel);
-            }
-        };
+        void fetchCommandData();
+        const refreshTimer = window.setInterval(() => void fetchCommandData(), 60_000);
+        return () => window.clearInterval(refreshTimer);
     }, []);
 
     const nodes = [
-        { label: 'Revenue', val: stats ? (stats.revenue > 999 ? `KSh ${(stats.revenue / 1000).toFixed(1)}K` : `KSh ${stats.revenue.toLocaleString()}`) : '—', icon: DollarSign, color: 'primary', href: '/admin/finance' },
+        { label: 'Revenue', val: stats?.revenue === null || !stats ? '—' : stats.revenue > 999 ? `KSh ${(stats.revenue / 1000).toFixed(1)}K` : `KSh ${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'primary', href: '/admin/finance' },
         { label: 'Top Buzz Area', val: stats?.demand_hotspot || 'No recorded posts', icon: Zap, color: 'rose', href: '/admin/buzz' },
         { label: 'Patrons', val: stats?.users ?? '—', icon: Users, color: 'emerald', href: '/admin/customers' },
         { label: 'Runners', val: stats?.riders ?? '—', icon: Truck, color: 'amber', href: '/admin/dispatch' },

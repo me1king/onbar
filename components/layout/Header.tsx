@@ -671,6 +671,30 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
             );
           })}
         </nav>
+        <nav
+          className="-mx-2 mt-2 flex items-center gap-1 overflow-x-auto border-t border-slate-100 px-2 pt-1 no-scrollbar sm:-mx-6 sm:px-6 lg:hidden"
+          role="navigation"
+          aria-label="Shop categories"
+        >
+          {catalogNavItems.map(({ href, label }) => {
+            const active = pathname === href || (label === "Gifts" && pathname === "/gifting");
+            return (
+              <Link
+                key={`mobile-${href}`}
+                href={href}
+                prefetch
+                aria-current={active ? "page" : undefined}
+                className={`shrink-0 border-b-2 px-3 py-2.5 text-[11px] font-semibold transition-colors ${
+                  active
+                    ? "border-rose-600 text-rose-600"
+                    : "border-transparent text-slate-800 hover:text-rose-600"
+                }`}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
 
         {/* Mobile Search Overlay */}
         {isSearchOpen && (
