@@ -39,16 +39,25 @@ export default function OperatingBrainHUD() {
                     supabase.from('suppliers').select('id', { count: 'exact' }).eq('is_active', true),
                     supabase.from('financial_ledger').select('amount').eq('entry_type', 'REVENUE')
                 ]);
-                for (const result of [ordersRes, usersRes, ridersRes, shopsRes, revenueRes]) {
-                    if (result.error) throw result.error;
+                const metricResults = [
+                    ['orders', ordersRes],
+                    ['profiles', usersRes],
+                    ['rider_status', ridersRes],
+                    ['suppliers', shopsRes],
+                    ['financial_ledger', revenueRes]
+                ] as const;
+                for (const [table, result] of metricResults) {
+                    if (result.error) {
+                        throw new Error(`Could not load ${table}: ${result.error.message}`);
+                    }
                 }
 
                 const [autoRes, buzzRes] = await Promise.all([
                     supabase.from('system_autonomous_state').select('is_autonomous'),
                     supabase.from('buzz_posts').select('area_zone').in('status', ['LIVE', 'TRENDING'])
                 ]);
-                if (autoRes.error) throw autoRes.error;
-                if (buzzRes.error) throw buzzRes.error;
+                if (autoRes.error) throw new Error(`Could not load system_autonomous_state: ${autoRes.error.message}`);
+                if (buzzRes.error) throw new Error(`Could not load buzz_posts: ${buzzRes.error.message}`);
 
                 const autoStates = autoRes.data || [];
                 const automation = autoStates.length > 0

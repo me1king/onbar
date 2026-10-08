@@ -32,7 +32,7 @@ async function getRevenueTotal(database: SupabaseClient, start: string, end: str
 
     for (let offset = 0; offset < MAX_REVENUE_ROWS; offset += PAGE_SIZE) {
         const { data, error } = await database
-            .from('ledger_entries')
+            .from('financial_ledger')
             .select('amount')
             .eq('entry_type', 'REVENUE')
             .gte('created_at', start)

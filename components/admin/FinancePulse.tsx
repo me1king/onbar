@@ -14,11 +14,14 @@ export default function FinancePulse() {
         fees: 0
     });
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState('');
 
     const fetchLedger = React.useCallback(async () => {
         if (!supabase) return;
+        setLoadError('');
         try {
-            const { data } = await supabase.from('ledger_entries').select('amount, entry_type');
+            const { data, error } = await supabase.from('financial_ledger').select('amount, entry_type');
+            if (error) throw error;
             if (data) {
                 const gross = data.filter(e => e.entry_type === 'REVENUE').reduce((sum, e) => sum + Number(e.amount), 0);
                 const cost = data.filter(e => e.entry_type === 'COST').reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
@@ -32,6 +35,9 @@ export default function FinancePulse() {
                     fees
                 });
             }
+        } catch (error) {
+            console.error('[FinancePulse] Could not load financial ledger:', error);
+            setLoadError(error instanceof Error ? error.message : 'Financial ledger could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -56,6 +62,8 @@ export default function FinancePulse() {
                     </div>
                 </div>
             </div>
+
+            {loadError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Financial data unavailable: {loadError}</p>}
 
             <div className="space-y-8">
                 <div className="flex justify-between items-end pb-8 border-b border-slate-50">
