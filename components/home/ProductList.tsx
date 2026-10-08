@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import ProductCard from './ProductCard';
 import { OB_OS } from '@/lib/onlineBarOS';
@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Product as CatalogProduct } from '@/types/product';
 import { getStartingPrice } from '@/lib/productPricing';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import { isAllowed } from '@/lib/consentService';
 
 type Product = CatalogProduct;
 
@@ -50,6 +51,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
 
   const [error, setError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(24);
+  const lastTrackedSearchRef = useRef<string | null>(null);
 
   useEffect(() => {
     async function fetchInitialData() {
@@ -217,31 +219,42 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
   // 3. 🚀 [MASTER_OS] Track Search & Discovery
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
-        if (!supabase) return;
+        const query = searchQuery.trim().replace(/\s+/g, ' ').slice(0, 80);
+        if (!supabase || !isAllowed('analytics')) return;
+        if (query.length < 2 || query.includes('@') || /^[+0-9() .-]{7,}$/.test(query)) {
+          lastTrackedSearchRef.current = null;
+          return;
+        }
+        if (lastTrackedSearchRef.current === query) return;
         const { data: { session } } = await supabase.auth.getSession();
-        const anonId = localStorage.getItem('ob_anonymous_id');
+        let anonId: string | null = null;
+        try {
+            anonId = localStorage.getItem('ob_anonymous_id');
+        } catch (error) {
+            console.warn('[SearchAnalytics] Could not read anonymous analytics ID:', error);
+        }
 
-        if (searchQuery.trim().length >= 2 || activeCategory !== 'all') {
-            const resultsCount = filteredProducts.length;
+        const resultsCount = filteredProducts.length;
+        lastTrackedSearchRef.current = query;
 
-            // 🚀 [MASTER_OS] Track Search Intent
-            await OB_OS.track('SEARCH_SUBMITTED', {
+        await OB_OS.track('SEARCH_SUBMITTED', {
+            userId: session?.user?.id,
+            anonymousId: anonId || undefined,
+            details: {
+                query,
+                analytics_consent: true,
+                category: activeCategory,
+                brand: selectedBrand,
+                results_count: resultsCount
+            }
+        });
+
+        if (resultsCount === 0 && query.length >= 3) {
+            await OB_OS.track('ZERO_RESULTS', {
                 userId: session?.user?.id,
                 anonymousId: anonId || undefined,
-                details: {
-                    query: searchQuery,
-                    category: activeCategory,
-                    brand: selectedBrand,
-                    results_count: resultsCount
-                }
+                details: { query, path: window.location.pathname, analytics_consent: true }
             });
-
-            // Log Zero Results Gap
-            if (resultsCount === 0 && searchQuery.trim().length >= 3) {
-                await OB_OS.track('ZERO_RESULTS', {
-                    details: { query: searchQuery, path: window.location.pathname }
-                });
-            }
         }
     }, 1000); // 1s debounce to avoid spamming the log
 

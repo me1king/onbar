@@ -14,15 +14,32 @@ export async function POST(request: Request) {
 
         const { nodeId, secretKey, apiKey } = (await request.json()) as { nodeId: string; secretKey?: string; apiKey?: string };
 
-        if (!nodeId) {
+        if (typeof nodeId !== 'string' || !nodeId.trim()) {
             return NextResponse.json({ error: "Node ID is required" }, { status: 400 });
         }
 
-        let isHealthy = true;
+        const normalizedNodeId = nodeId.trim().toUpperCase();
+        if (['WHATSAPP', 'META', 'TIKTOK', 'GOOGLE'].includes(normalizedNodeId)) {
+            return NextResponse.json({
+                success: false,
+                error: `${normalizedNodeId} OAuth and live connection checks are not implemented.`
+            }, { status: 501 });
+        }
+        if (normalizedNodeId === 'MPESA') {
+            return NextResponse.json({
+                success: false,
+                error: 'M-Pesa live credential verification is not implemented.'
+            }, { status: 501 });
+        }
+        if (!['PAYSTACK', 'GOOGLE_MAPS', 'MAPS'].includes(normalizedNodeId)) {
+            return NextResponse.json({ error: `Unsupported integration: ${nodeId}` }, { status: 400 });
+        }
+
+        let isHealthy = false;
         let message = `${nodeId} Gateway Handshake Active.`;
 
         // 1. Live Handshake Tests
-        switch (nodeId.toUpperCase()) {
+        switch (normalizedNodeId) {
             case 'PAYSTACK': {
                 const key = secretKey || process.env.PAYSTACK_SECRET_KEY;
                 if (key) {
@@ -31,18 +48,14 @@ export async function POST(request: Request) {
                             headers: { 'Authorization': `Bearer ${key}` }
                         });
                         isHealthy = res.ok;
-                        message = isHealthy ? 'Paystack Gateway Active. M-Pesa & Card Checkout Verified!' : 'Paystack Secret Key Invalid.';
+                        message = isHealthy ? 'Paystack API key verified.' : 'Paystack Secret Key Invalid.';
                     } catch {
                         isHealthy = false;
                         message = 'Paystack Connection Timeout.';
                     }
                 } else {
-                    message = 'Paystack Gateway Ready. Enter Secret Key to activate live payments.';
+                    message = 'Paystack connection not verified. Enter a secret key to test the live gateway.';
                 }
-                break;
-            }
-            case 'MPESA': {
-                message = 'M-Pesa Daraja Express Gateway Verified. STK Push & Callbacks Active!';
                 break;
             }
             case 'GOOGLE_MAPS':
@@ -53,18 +66,14 @@ export async function POST(request: Request) {
                         const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=Nairobi&key=${key}`);
                         const data = await res.json();
                         isHealthy = data.status === 'OK' || data.status === 'ZERO_RESULTS';
-                        message = isHealthy ? 'Google Maps API Verified. Dispatch & Routing Active!' : `Google Maps API Error (${data.status}).`;
+                        message = isHealthy ? 'Google Maps API key verified.' : `Google Maps API Error (${data.status}).`;
                     } catch {
                         isHealthy = false;
                         message = 'Google Maps Connection Error.';
                     }
                 } else {
-                    message = 'Google Maps Gateway Ready. Enter API Key to enable live routing.';
+                    message = 'Google Maps connection not verified. Enter an API key to test the live service.';
                 }
-                break;
-            }
-            default: {
-                message = `${nodeId} Gateway Link Verified.`;
                 break;
             }
         }

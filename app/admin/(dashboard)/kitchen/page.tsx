@@ -46,7 +46,7 @@ export default function KitchenCommandHUD() {
     // Admin order access goes through the server so database RLS stays enabled.
     const fetchKitchenTickets = React.useCallback(async () => {
         try {
-            const response = await fetch('/api/admin/kitchen/orders', { cache: 'no-store' });
+            const response = await fetch('/api/admin/kitchen/orders?department=food', { cache: 'no-store' });
             const result = await response.json() as {
                 orders?: Array<{
                     id: number;
@@ -54,11 +54,25 @@ export default function KitchenCommandHUD() {
                     created_at: string | null;
                     note: string | null;
                     order_items: Array<{
+                        id: number;
                         product_id: number | null;
                         quantity: number | null;
                         size: string | null;
                         addons: unknown;
-                        products: { name: string } | Array<{ name: string }> | null;
+                        status: string | null;
+                        products: {
+                            name: string | null;
+                            category: string | null;
+                            sub_category: string | null;
+                            is_bite: boolean | null;
+                            is_snack: boolean | null;
+                        } | Array<{
+                            name: string | null;
+                            category: string | null;
+                            sub_category: string | null;
+                            is_bite: boolean | null;
+                            is_snack: boolean | null;
+                        }> | null;
                     }> | null;
                 }>;
                 error?: string;
@@ -85,9 +99,9 @@ export default function KitchenCommandHUD() {
                                 : []
                         };
                     });
-                    const normalizedStatus = String(ord.status || '').toUpperCase();
-                    const stage: KdsTicket['stage'] = normalizedStatus === 'PREPARING' ? 'PREPARING'
-                        : normalizedStatus === 'PACKED' ? 'PACKED'
+                    const itemStatuses = rawItems.map(item => String(item.status || '').toUpperCase());
+                    const stage: KdsTicket['stage'] = itemStatuses.length > 0 && itemStatuses.every(status => status === 'PACKED') ? 'PACKED'
+                        : itemStatuses.some(status => status === 'PREPARING') ? 'PREPARING'
                         : 'QUEUED';
                     const createdAt = ord.created_at ? new Date(ord.created_at) : null;
 

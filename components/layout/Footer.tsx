@@ -8,7 +8,13 @@ import {
   Phone,
   Zap,
   ShieldCheck,
-  Loader2
+  Loader2,
+  Camera,
+  Share2,
+  Play,
+  Music,
+  Ghost,
+  AtSign
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -17,6 +23,7 @@ import { Input } from "../ui/input";
 import { Separator } from "../ui/separator";
 import { useSettings, type StoreSettings } from "@/lib/useSettings";
 import { cn } from "@/lib/utils";
+import { phoneCallHref, socialProfileHref, type SocialPlatform } from "@/lib/contactLinks";
 
 export default function Footer({ initialSettings }: { initialSettings?: StoreSettings }) {
   const { settings: hookSettings, loading } = useSettings();
@@ -109,6 +116,14 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
       ],
     },
   ];
+  const socialPlatforms: { id: SocialPlatform; label: string; icon: typeof Camera }[] = [
+    { id: 'instagram', label: 'Instagram', icon: Camera },
+    { id: 'facebook', label: 'Facebook', icon: Share2 },
+    { id: 'x', label: 'X', icon: AtSign },
+    { id: 'tiktok', label: 'TikTok', icon: Music },
+    { id: 'snapchat', label: 'Snapchat', icon: Ghost },
+    { id: 'youtube', label: 'YouTube', icon: Play }
+  ];
 
   return (
     <footer className="border-t border-border bg-background pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0">
@@ -175,11 +190,47 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
                 </div>
                 <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium">
                   <Phone className="h-4 w-4 text-primary" />
-                  <span>+{loading ? '...' : (settings?.contact?.whatsapp || '254700000000')}</span>
+                  {loading ? <span>...</span> : (
+                    <a href={phoneCallHref(settings?.contact?.whatsapp) || undefined} className="hover:text-primary hover:underline" aria-label="Call Online Bar">
+                      {settings?.contact?.whatsapp?.startsWith('+') ? '' : '+'}{settings?.contact?.whatsapp || '254700000000'}
+                    </a>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium">
                   <Mail className="h-4 w-4 text-primary" />
                   <span>{loading ? '...' : (settings?.contact?.email || 'support@onlinebar.co.ke')}</span>
+                </div>
+              </div>
+              <div className="mt-7">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-foreground">Follow Online Bar</p>
+                <div className="flex flex-wrap gap-2">
+                  {socialPlatforms.map(({ id, label, icon: Icon }) => {
+                    const href = socialProfileHref(id, settings?.social_links?.[id]);
+                    return href ? (
+                      <a
+                        key={id}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Online Bar on ${label}`}
+                        title={label}
+                        className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-slate-600 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="text-[9px] font-black uppercase">{label}</span>
+                      </a>
+                    ) : (
+                      <span
+                        key={id}
+                        aria-label={`${label} link not configured`}
+                        title={`Add the ${label} profile URL in Admin Settings → SEO & Social.`}
+                        className="flex h-10 items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 text-slate-300"
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="text-[9px] font-black uppercase">{label}</span>
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </div>

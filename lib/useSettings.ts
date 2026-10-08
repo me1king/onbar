@@ -65,6 +65,7 @@ export interface StoreSettings {
         facebook: string;
         x: string;
         youtube: string;
+        snapchat: string;
     };
     store_info: {
         name: string;
@@ -189,7 +190,8 @@ export const DEFAULT_SETTINGS: StoreSettings = {
         tiktok: "",
         facebook: "",
         x: "",
-        youtube: ""
+        youtube: "",
+        snapchat: ""
     },
     store_info: {
         name: "ONLINE BAR",

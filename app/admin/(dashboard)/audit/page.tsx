@@ -23,11 +23,39 @@ import { useAdmin } from '@/context/AdminContext';
 interface AuditLog {
   id: string;
   staff_email: string;
+  actor_type?: string | null;
+  actor_label?: string | null;
+  actor_role?: string | null;
   action: string;
+  outcome?: string | null;
   details: Record<string, unknown> | null;
+  resource_type?: string | null;
+  resource_id?: string | null;
+  old_value?: unknown;
+  new_value?: unknown;
+  event_hash?: string | null;
   ip_address?: string;
   device_info?: string;
   created_at: string;
+}
+
+function elapsedSincePreviousEvent(current: AuditLog, previous?: AuditLog) {
+  if (
+    !previous
+    || current.resource_type !== 'order'
+    || current.resource_id !== previous.resource_id
+  ) return null;
+
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((Date.parse(current.created_at) - Date.parse(previous.created_at)) / 1000)
+  );
+  const hours = Math.floor(elapsedSeconds / 3600);
+  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+  const seconds = elapsedSeconds % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 interface LogDetails {
@@ -183,10 +211,13 @@ export default function AdminAuditPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchLogs = async () => {
+  const fetchLogs = async (query = '') => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/audit-logs', { cache: 'no-store' });
+      const params = new URLSearchParams();
+      if (query.trim()) params.set('q', query.trim());
+      const suffix = params.size ? `?${params.toString()}` : '';
+      const response = await fetch(`/api/admin/audit-logs${suffix}`, { cache: 'no-store' });
       const result = await response.json() as { logs?: AuditLog[]; error?: string };
       if (!response.ok) throw new Error(result.error || 'Audit logs could not be loaded.');
       setLogs(result.logs || []);
@@ -209,20 +240,6 @@ export default function AdminAuditPage() {
     fetchLogs();
   }, []);
 
-  const clearLogs = async () => {
-      if (!confirm("Clear all audit history? This cannot be undone.")) return;
-      try {
-          const response = await fetch('/api/admin/audit-logs', { method: 'DELETE' });
-          const result = await response.json() as { error?: string };
-          if (!response.ok) throw new Error(result.error || 'Could not clear audit history.');
-          setLogs([]);
-          alert("Audit Node Purged Successfully.");
-      } catch (err) {
-          console.error('Could not clear audit logs:', err);
-          alert(err instanceof Error ? err.message : 'Could not clear audit history.');
-      }
-  };
-
   const runNuclearPing = async () => {
       try {
           const response = await fetch('/api/admin/audit-logs', { method: 'POST' });
@@ -235,10 +252,36 @@ export default function AdminAuditPage() {
       }
   };
 
+  const verifyAuditChain = async () => {
+      try {
+          const response = await fetch('/api/admin/audit-logs?verify=true', { cache: 'no-store' });
+          const result = await response.json() as {
+            integrity?: { valid?: boolean; checked_events?: number; broken_event_id?: string | null };
+            error?: string;
+          };
+          if (!response.ok) throw new Error(result.error || 'Audit integrity check failed.');
+          if (!result.integrity) throw new Error('The integrity check returned no result.');
+          if (result.integrity.valid) {
+            alert(`Audit chain verified: ${result.integrity.checked_events ?? 0} events checked.`);
+          } else {
+            alert(`Audit chain integrity failure after ${result.integrity.checked_events ?? 0} events. First broken event: ${result.integrity.broken_event_id || 'unknown'}.`);
+          }
+      } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Unknown error.';
+          alert(`Audit integrity check failed.\nMessage: ${message}`);
+      }
+  };
+
   const filteredLogs = logs.filter(l =>
     (l.staff_email || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
-    (l.action || '').toLowerCase().includes((searchQuery || '').toLowerCase())
+    (l.action || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
+    (l.resource_id || '').toLowerCase().includes((searchQuery || '').toLowerCase())
   );
+  const orderTimeline = filteredLogs.length > 0
+    && filteredLogs.every(log =>
+      log.resource_type === 'order'
+      && log.resource_id === filteredLogs[0].resource_id
+    );
 
   if (role !== 'owner' && !permissions.can_view_audit_logs) {
       return (
@@ -265,12 +308,10 @@ export default function AdminAuditPage() {
             <Button onClick={runNuclearPing} variant="outline" className="rounded-xl h-12 px-6 border-primary/20 bg-primary/5 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all shadow-sm">
                 Test Uplink
             </Button>
-            {role === 'owner' && (
-                <Button onClick={clearLogs} variant="outline" className="rounded-xl h-12 px-6 border-rose-100 text-rose-500 hover:bg-rose-50 font-black uppercase text-[10px]">
-                    Purge History
-                </Button>
-            )}
-            <Button onClick={fetchLogs} variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest">
+            <Button onClick={verifyAuditChain} variant="outline" className="rounded-xl h-12 px-6 border-emerald-200 bg-emerald-50 text-emerald-700 font-black uppercase text-[10px] tracking-widest">
+                <ShieldCheck className="h-4 w-4 mr-2" /> Verify Chain
+            </Button>
+            <Button onClick={() => fetchLogs(searchQuery)} variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest">
                 <RefreshCcw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} /> Sync Node
             </Button>
         </div>
@@ -280,10 +321,20 @@ export default function AdminAuditPage() {
           <Input
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search by admin email or action..."
+            onKeyDown={e => {
+              if (e.key === 'Enter') fetchLogs(searchQuery);
+            }}
+            placeholder="Investigate by order ID, staff email, or action..."
             className="h-14 rounded-2xl border-slate-100 bg-white pl-12 text-sm font-medium shadow-sm"
           />
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+          <Button
+            onClick={() => fetchLogs(searchQuery)}
+            disabled={loading}
+            className="absolute right-2 top-1/2 h-10 -translate-y-1/2 rounded-xl px-5 text-[10px] font-black uppercase tracking-widest"
+          >
+            Investigate
+          </Button>
       </div>
 
       <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden">
@@ -300,12 +351,16 @@ export default function AdminAuditPage() {
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
                   <p className="text-[10px] font-black uppercase text-slate-300 tracking-widest">Retrieving Logs...</p>
               </div>
-          ) : logs.length === 0 ? (
+          ) : filteredLogs.length === 0 ? (
               <div className="p-32 text-center flex flex-col items-center gap-6">
                   <div className="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center text-slate-100"><ShieldCheck className="h-10 w-10" /></div>
                   <div className="space-y-2">
-                      <p className="text-lg font-black text-slate-300 uppercase tracking-tight italic">No activity recorded yet.</p>
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">If you have performed actions, check your Uplink Status.</p>
+                      <p className="text-lg font-black text-slate-300 uppercase tracking-tight italic">
+                        {searchQuery ? 'No matching activity found.' : 'No activity recorded yet.'}
+                      </p>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                        {searchQuery ? 'Try a different order ID, staff email, or action.' : 'If you have performed actions, check your Uplink Status.'}
+                      </p>
                   </div>
               </div>
           ) : (
@@ -321,17 +376,21 @@ export default function AdminAuditPage() {
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                          {filteredLogs.map(log => (
+                          {filteredLogs.map((log, index) => {
+                            const elapsed = orderTimeline
+                              ? elapsedSincePreviousEvent(log, filteredLogs[index + 1])
+                              : null;
+                            return (
                               <tr key={log.id} className="hover:bg-slate-50/50 transition-colors group">
                                   <td className="whitespace-nowrap px-6 py-8">
                                       <div className="flex items-center gap-4">
                                           <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-white font-black text-[10px] shadow-lg shadow-primary/20 transition-transform group-hover:scale-110">
-                                              {(log?.staff_email?.substring(0, 2) || 'AD').toUpperCase()}
+                                              {(log?.actor_label?.substring(0, 2) || log?.staff_email?.substring(0, 2) || 'AD').toUpperCase()}
                                           </div>
                                           <div>
-                                              <span className="font-black text-foreground uppercase text-[11px] block whitespace-nowrap">{log.staff_email || 'System'}</span>
+                                              <span className="font-black text-foreground uppercase text-[11px] block whitespace-nowrap">{log.actor_label || log.staff_email || log.actor_type || 'System'}</span>
                                               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1.5 block whitespace-nowrap">
-                                                  {log.ip_address || '0.0.0.0'} &bull; {log.device_info || 'Unknown'}
+                                                  {log.actor_type || 'staff'} · {log.ip_address || '0.0.0.0'} &bull; {log.device_info || 'Unknown'}
                                               </span>
                                           </div>
                                       </div>
@@ -340,30 +399,53 @@ export default function AdminAuditPage() {
                                       <span className="text-[10px] font-black text-primary uppercase bg-primary/5 px-4 py-2 rounded-xl border border-primary/10 whitespace-nowrap shadow-sm">
                                           {(log?.action || 'ACTIVITY').replace(/_/g, ' ')}
                                       </span>
+                                      <span className="mt-2 block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                          {log.actor_role || 'staff'} · {log.outcome || 'SUCCESS'}
+                                      </span>
                                   </td>
                                   <td className="px-6 py-8 min-w-[300px]">
                                       <div className="max-w-md break-words">
                                           <DetailRenderer log={log} />
+                                          {log.resource_id && (
+                                            <p className="mt-2 text-[10px] font-bold uppercase text-slate-500">
+                                              {log.resource_type || 'Resource'} #{log.resource_id}
+                                            </p>
+                                          )}
+                                          {(log.old_value !== null && log.old_value !== undefined
+                                            || log.new_value !== null && log.new_value !== undefined) && (
+                                            <p className="mt-1 break-words text-[10px] text-slate-500">
+                                              Before: {JSON.stringify(log.old_value)} → After: {JSON.stringify(log.new_value)}
+                                            </p>
+                                          )}
+                                          <p className="mt-1 font-mono text-[8px] uppercase tracking-wider text-emerald-600">
+                                            {log.event_hash ? `Hash chained · ${log.event_hash.slice(0, 12)}` : 'Legacy event · no hash'}
+                                          </p>
                                       </div>
                                   </td>
                                   <td className="whitespace-nowrap px-6 py-8 text-right">
                                       <p className="text-xs font-black text-foreground uppercase tracking-tighter">{log?.created_at ? new Date(log.created_at).toLocaleTimeString() : 'N/A'}</p>
                                       <p className="text-[9px] font-bold text-slate-400 uppercase">{log?.created_at ? new Date(log.created_at).toLocaleDateString() : 'N/A'}</p>
+                                      {elapsed && <p className="mt-1 text-[9px] font-bold text-amber-600">Elapsed: {elapsed}</p>}
                                   </td>
                               </tr>
-                          ))}
+                            );
+                          })}
                       </tbody>
                   </table>
               </div>
               <div className="space-y-3 p-4 md:hidden">
-                  {filteredLogs.map(log => (
+                  {filteredLogs.map((log, index) => {
+                    const elapsed = orderTimeline
+                      ? elapsedSincePreviousEvent(log, filteredLogs[index + 1])
+                      : null;
+                    return (
                       <article key={log.id} className="min-w-0 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                           <div className="flex min-w-0 items-start justify-between gap-3">
                               <div className="flex min-w-0 items-center gap-3">
                                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-[10px] font-black text-white">
-                                      {(log.staff_email?.substring(0, 2) || 'AD').toUpperCase()}
+                                      {(log.actor_label?.substring(0, 2) || log.staff_email?.substring(0, 2) || 'AD').toUpperCase()}
                                   </div>
-                                  <p className="min-w-0 break-words text-xs font-black text-foreground">{log.staff_email || 'System'}</p>
+                                  <p className="min-w-0 break-words text-xs font-black text-foreground">{log.actor_label || log.staff_email || log.actor_type || 'System'}</p>
                               </div>
                               <time className="shrink-0 text-right text-[10px] font-bold leading-relaxed text-slate-400">
                                   {log.created_at ? new Date(log.created_at).toLocaleString() : 'N/A'}
@@ -372,14 +454,29 @@ export default function AdminAuditPage() {
                           <p className="mt-3 inline-flex max-w-full rounded-lg border border-primary/10 bg-primary/5 px-3 py-1.5 text-[10px] font-black uppercase text-primary">
                               {(log.action || 'ACTIVITY').replace(/_/g, ' ')}
                           </p>
+                          <p className="mt-1 text-[9px] font-bold uppercase text-slate-400">
+                              {log.actor_type || log.actor_role || 'staff'} · {log.outcome || 'SUCCESS'}
+                              {log.resource_id ? ` · ${log.resource_type || 'resource'} #${log.resource_id}` : ''}
+                          </p>
+                          {elapsed && <p className="mt-2 text-[10px] font-bold text-amber-600">Elapsed since previous event: {elapsed}</p>}
                           <div className="mt-3 min-w-0 break-words">
                               <DetailRenderer log={log} />
+                              {(log.old_value !== null && log.old_value !== undefined
+                                || log.new_value !== null && log.new_value !== undefined) && (
+                                <p className="mt-2 break-words text-[10px] text-slate-500">
+                                  Before: {JSON.stringify(log.old_value)} → After: {JSON.stringify(log.new_value)}
+                                </p>
+                              )}
                           </div>
+                          <p className="mt-2 font-mono text-[8px] uppercase tracking-wider text-emerald-600">
+                            {log.event_hash ? `Hash chained · ${log.event_hash.slice(0, 12)}` : 'Legacy event · no hash'}
+                          </p>
                           <p className="mt-3 break-words text-[9px] font-medium text-slate-400">
                               {log.ip_address || '0.0.0.0'} · {log.device_info || 'Unknown'}
                           </p>
                       </article>
-                  ))}
+                    );
+                  })}
               </div>
               </>
           )}

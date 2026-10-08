@@ -34,6 +34,7 @@ interface BiteProduct {
     status: string;
     image_url: string;
     category: string;
+    sub_category?: string | null;
     description?: string;
     pairing_suggestions?: string[];
     is_available_now?: boolean;
@@ -47,6 +48,9 @@ interface FoodAddon {
     price: number;
     is_active: boolean;
 }
+
+const FOOD_SUBCATEGORIES = ['Street Food', 'Burgers & Wings', 'Meals & Sides'];
+const SNACK_SUBCATEGORIES = ['Crisps', 'Chocolate', 'Nuts', 'Healthy'];
 
 interface OrderTimelineItem {
     id: string;
@@ -75,6 +79,7 @@ export default function BiteCommandCenter() {
     const [newFood, setNewFood] = React.useState({
         name: '',
         category: '',
+        sub_category: '',
         price: '',
         stock: '',
         image_url: '',
@@ -125,18 +130,31 @@ export default function BiteCommandCenter() {
         }
 
         try {
-            const response = await fetch('/api/admin/kitchen/orders', { cache: 'no-store' });
+            const response = await fetch('/api/admin/kitchen/orders?department=food', { cache: 'no-store' });
             const result = await response.json() as {
-                orders?: Array<{ id: number; total_price: number | null; status: string | null; created_at: string | null }>;
+                orders?: Array<{
+                    id: number;
+                    total_price: number | null;
+                    status: string | null;
+                    created_at: string | null;
+                    order_items?: Array<{
+                        quantity: number | null;
+                        products: { name: string | null } | Array<{ name: string | null }> | null;
+                    }> | null;
+                }>;
                 error?: string;
             };
             if (!response.ok) throw new Error(result.error || 'Kitchen orders could not be loaded.');
             const orderRecords = result.orders || [];
             setTimeline(orderRecords.slice(0, 5).map(ord => {
                 const status = String(ord.status || 'Unknown');
+                const itemSummary = (ord.order_items || []).map(item => {
+                    const product = Array.isArray(item.products) ? item.products[0] : item.products;
+                    return `${product?.name || 'Food item'} × ${item.quantity || 1}`;
+                }).join(', ');
                 return {
                     id: `#${ord.id}`,
-                    items: `Order #${ord.id}`,
+                    items: itemSummary || `Food order #${ord.id}`,
                     statusText: `Status: ${status} • Value: ${ord.total_price == null ? 'Not recorded' : formatPrice(Number(ord.total_price))}`,
                     timeLabel: ord.created_at ? new Date(ord.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Time not recorded',
                     badgeColor: status.toUpperCase() === 'PREPARING' ? 'bg-amber-500 text-white' : status.toUpperCase() === 'PACKED' ? 'bg-indigo-500 text-white' : 'bg-slate-500 text-white'
@@ -237,6 +255,7 @@ export default function BiteCommandCenter() {
             const payload = {
                 name: newFood.name.trim(),
                 category: newFood.category,
+                sub_category: newFood.sub_category || null,
                 is_bite: newFood.category === 'Food',
                 is_snack: newFood.category === 'Snacks',
                 price: Number(newFood.price),
@@ -259,6 +278,7 @@ export default function BiteCommandCenter() {
             setNewFood({
                 name: '',
                 category: '',
+                sub_category: '',
                 price: '',
                 stock: '',
                 image_url: '',
@@ -613,7 +633,7 @@ export default function BiteCommandCenter() {
                                     <label className="text-[10px] font-black uppercase text-slate-400">Category</label>
                                     <select
                                         value={newFood.category}
-                                        onChange={e => setNewFood({ ...newFood, category: e.target.value })}
+                                        onChange={e => setNewFood({ ...newFood, category: e.target.value, sub_category: '' })}
                                         className="w-full rounded-xl h-12 bg-slate-50 border-none px-3 text-xs font-bold"
                                     >
                                         <option value="">Select a category</option>
@@ -634,6 +654,21 @@ export default function BiteCommandCenter() {
                                         className="rounded-xl h-12 bg-slate-50 border-none"
                                     />
                                 </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase text-slate-400">Menu section</label>
+                                <select
+                                    value={newFood.sub_category}
+                                    onChange={e => setNewFood({ ...newFood, sub_category: e.target.value })}
+                                    disabled={!newFood.category}
+                                    className="w-full rounded-xl h-12 bg-slate-50 border-none px-3 text-xs font-bold disabled:opacity-50"
+                                >
+                                    <option value="">Choose a menu section (optional)</option>
+                                    {(newFood.category === 'Food' ? FOOD_SUBCATEGORIES : SNACK_SUBCATEGORIES)
+                                        .map(section => <option key={section} value={section}>{section}</option>)}
+                                </select>
+                                <p className="text-[10px] text-slate-400">Food items appear in Street Food; snacks appear in the separate Munchies menu.</p>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

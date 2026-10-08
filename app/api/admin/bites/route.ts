@@ -37,7 +37,7 @@ export async function GET() {
   const { data, error } = await access.database
     .from('products')
     .select('*')
-    .or('is_bite.eq.true,is_snack.eq.true,category.ilike.%snack%,category.ilike.%munch%')
+    .or('is_bite.eq.true,is_snack.eq.true,category.ilike.%food%,category.ilike.%street%,category.ilike.%meal%,category.ilike.%snack%,category.ilike.%munch%')
     .order('name');
   if (error) {
     console.error('[AdminBites] Could not load food products:', error);
@@ -79,6 +79,7 @@ export async function POST(request: Request) {
     ...product,
     name: product.name.trim(),
     category: product.category.trim(),
+    sub_category: typeof product.sub_category === 'string' ? product.sub_category.trim() || null : null,
     price,
     stock,
     is_snack: product.category.trim().toLowerCase() === 'snacks',

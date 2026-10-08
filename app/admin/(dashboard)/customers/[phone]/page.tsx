@@ -24,7 +24,28 @@ import dynamic from 'next/dynamic';
 
 const SessionForensics = dynamic(() => import('@/components/admin/SessionForensics'), { ssr: false });
 
+function normalizeCustomerPhone(value: string | null | undefined) {
+    const digits = value?.replace(/\D/g, '') || '';
+    if (digits.startsWith('254') && digits.length >= 12) return digits.slice(3);
+    if (digits.startsWith('0') && digits.length >= 10) return digits.slice(1);
+    return digits;
+}
+
+function customerPhoneVariants(value: string) {
+    const digits = value.replace(/\D/g, '');
+    const variants = new Set([value.trim(), digits]);
+    if (digits.startsWith('0') && digits.length >= 10) {
+        variants.add(`254${digits.slice(1)}`);
+        variants.add(`+254${digits.slice(1)}`);
+    } else if (digits.startsWith('254') && digits.length >= 12) {
+        variants.add(`0${digits.slice(3)}`);
+        variants.add(`+${digits}`);
+    }
+    return Array.from(variants).filter(Boolean);
+}
+
 interface Customer360 {
+    isRegistered: boolean;
     profile: {
         id: string;
         public_id: string;
@@ -92,7 +113,12 @@ export default function CustomerProfilePage() {
     const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null);
 
     const fetchCustomerData = React.useCallback(async () => {
-        if (!supabase || !phone) return;
+        if (!phone) return;
+        if (!supabase) {
+            setNotFound(true);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         setNotFound(false);
 
@@ -101,30 +127,87 @@ export default function CustomerProfilePage() {
         }, 3000);
 
         try {
-            // 1. Fetch Core Profile
-            const { data: profile } = await supabase.from('profiles').select('*').eq('phone_number', phone).maybeSingle();
-            if (!profile) {
+            const lookupPhones = customerPhoneVariants(phone);
+
+            const { data: profiles, error: profileError } = await supabase
+                .from('profiles')
+                .select('*')
+                .in('phone_number', lookupPhones);
+            if (profileError) throw profileError;
+            const profile = profiles?.find(candidate => normalizeCustomerPhone(candidate.phone_number) === normalizeCustomerPhone(phone)) || null;
+
+            const orderPhones = new Set(lookupPhones);
+            if (profile?.phone_number) {
+                for (const variant of customerPhoneVariants(profile.phone_number)) orderPhones.add(variant);
+            }
+            const { data: customerOrders, error: ordersError } = await supabase
+                .from('orders')
+                .select('*, order_items(*)')
+                .in('customer_phone', Array.from(orderPhones))
+                .order('created_at', { ascending: false });
+            if (ordersError) throw ordersError;
+            const matchingOrders = (customerOrders || []).filter(order =>
+                normalizeCustomerPhone(order.customer_phone) === normalizeCustomerPhone(phone)
+            );
+
+            if (!profile && matchingOrders.length === 0) {
                 setNotFound(true);
                 clearTimeout(failsafeTimer);
                 setLoading(false);
                 return;
             }
 
-            // 2. Fetch Intelligence & Commercial Data
-            const [intRes, sessRes, ordersRes, prefRes, aggRes] = await Promise.all([
-                supabase.from('customer_intelligence').select('*').eq('user_id', (profile as { id: string }).id).maybeSingle(),
-                supabase.from('customer_sessions').select('*').eq('user_id', (profile as { id: string }).id).order('created_at', { ascending: false }).limit(5),
-                supabase.from('orders').select('*, order_items(*)').eq('customer_phone', phone).order('created_at', { ascending: false }),
-                supabase.from('customer_product_preferences').select('*').eq('user_id', (profile as { id: string }).id),
-                supabase.from('customer_aggregate_metrics').select('*').eq('user_id', (profile as { id: string }).id).maybeSingle()
-            ]);
+            const registeredProfile = profile as typeof profile & {
+                id: string;
+                full_name: string | null;
+                phone_number: string | null;
+            } | null;
+            const [intRes, sessRes, prefRes, aggRes] = registeredProfile
+                ? await Promise.all([
+                    supabase.from('customer_intelligence').select('*').eq('user_id', registeredProfile.id).maybeSingle(),
+                    supabase.from('customer_sessions').select('*').eq('user_id', registeredProfile.id).order('created_at', { ascending: false }).limit(5),
+                    supabase.from('customer_product_preferences').select('*').eq('user_id', registeredProfile.id),
+                    supabase.from('customer_aggregate_metrics').select('*').eq('user_id', registeredProfile.id).maybeSingle()
+                ])
+                : [{ data: null }, { data: [] }, { data: [] }, { data: null }];
+
+            const lifetimeValue = matchingOrders.reduce((total, order) => total + Number(order.total_price || 0), 0);
+            const resolvedProfile = registeredProfile || {
+                id: '',
+                public_id: 'GUEST',
+                full_name: matchingOrders[0]?.customer_name || `Guest ${phone}`,
+                phone_number: matchingOrders[0]?.customer_phone || phone,
+                email: '',
+                address: '',
+                created_at: matchingOrders[matchingOrders.length - 1]?.created_at || new Date().toISOString(),
+                status_flag: 'Guest',
+                lifetime_value: lifetimeValue,
+                total_orders: matchingOrders.length
+            };
 
             setData({
-                profile,
-                aggregate: aggRes.data || { total_sessions: 0, total_active_time_sec: 0, total_pages_viewed: 0, total_clicks: 0, total_rage_clicks: 0, total_dead_clicks: 0, top_traffic_source: 'N/A', preferred_device: 'N/A', most_visited_category: 'N/A', most_searched_term: 'N/A' },
+                isRegistered: Boolean(registeredProfile),
+                profile: resolvedProfile,
+                aggregate: aggRes.data || {
+                    total_sessions: 0,
+                    total_active_time_sec: 0,
+                    total_pages_viewed: 0,
+                    total_products_viewed: 0,
+                    total_clicks: 0,
+                    avg_scroll_depth: 0,
+                    total_cart_additions: 0,
+                    total_cart_removals: 0,
+                    total_checkouts_started: 0,
+                    total_rage_clicks: 0,
+                    total_dead_clicks: 0,
+                    top_traffic_source: 'N/A',
+                    preferred_device: 'N/A',
+                    most_visited_category: 'N/A',
+                    most_searched_term: 'N/A'
+                },
                 intelligence: intRes.data || { intent_score: 0, churn_risk_score: 0, predicted_next_action: 'Intelligence node initializing...' },
                 sessions: sessRes.data || [],
-                orders: ordersRes.data || [],
+                orders: matchingOrders,
                 preferences: prefRes.data || [],
                 interactions: []
             });
@@ -185,14 +268,14 @@ export default function CustomerProfilePage() {
                 </Button>
                 <div className="flex-1">
                     <div className="flex items-center gap-3 mb-1">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-[7px] font-black uppercase tracking-widest">{profile.public_id || 'OB-OS-NODE'}</span>
+                        <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white text-[7px] font-black uppercase tracking-widest">{profile.public_id || (data.isRegistered ? 'OB-OS-NODE' : 'GUEST')}</span>
                         <span className={cn(
                             "px-2 py-0.5 rounded-md text-[7px] font-black uppercase tracking-widest",
                             profile.status_flag === 'Active' ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-400"
                         )}>{profile.status_flag}</span>
-                        <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em]">Customer since {new Date(profile.created_at).toLocaleDateString()}</p>
+                        <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em]">{data.isRegistered ? 'Customer since' : 'First order'} {new Date(profile.created_at).toLocaleDateString()}</p>
                     </div>
-                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">{profile.full_name}</h1>
+                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">{profile.full_name || `Guest ${profile.phone_number}`}</h1>
                 </div>
                 <div className="flex gap-2">
                     <Button className="h-12 px-6 rounded-xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20">

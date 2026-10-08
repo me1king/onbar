@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import { isMealProduct } from '@/lib/productDepartment';
 
 interface BiteItem {
     id: number | string;
@@ -28,6 +29,7 @@ interface BiteItem {
     price: number;
     image_url: string;
     category: string;
+    sub_category?: string | null;
     description?: string;
     prep_time?: number;
     spice_level?: number;
@@ -41,14 +43,16 @@ interface FoodAddon {
     price: number;
 }
 
-const CATEGORIES = ['All', 'Hot Right Now', 'Street Bites', 'Burgers & Wings', 'Drink Pairings'];
+const CATEGORIES = ['All Food', 'Street Food', 'Burgers & Wings', 'Meals & Sides'];
+const STREET_FOOD_PATTERN = /\b(smocha|smokie|rolex|chapati|mandazi|samosa|bhajia|viazi|mutura|mishkaki|nyama choma|street food|street bite)\b/i;
+const BURGER_PATTERN = /\b(burger|wings)\b/i;
 
 export default function BiteCommandPage() {
     const [bites, setBites] = useState<BiteItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [addError, setAddError] = useState<string | null>(null);
-    const [activeCat, setActiveCat] = useState('All');
+    const [activeCat, setActiveCat] = useState('All Food');
     const [addedId, setAddedId] = useState<number | string | null>(null);
     const [selectedBite, setSelectedBite] = useState<BiteItem | null>(null);
     const [addons, setAddons] = useState<FoodAddon[]>([]);
@@ -57,6 +61,14 @@ export default function BiteCommandPage() {
     const [addonsLoading, setAddonsLoading] = useState(true);
 
     const { addToCart } = useCart();
+    const foodCategories = React.useMemo(() => {
+        const categories = new Map(CATEGORIES.map(category => [category.toLowerCase(), category]));
+        bites.forEach(bite => {
+            const category = bite.sub_category?.trim();
+            if (category) categories.set(category.toLowerCase(), category);
+        });
+        return Array.from(categories.values());
+    }, [bites]);
 
     useEffect(() => {
         async function fetchAddons() {
@@ -96,12 +108,14 @@ export default function BiteCommandPage() {
                 const { data, error: fetchError } = await supabase
                     .from('products')
                     .select('*')
-                    .or('is_snack.eq.true,is_bite.eq.true');
+                    .or('is_bite.eq.true,category.ilike.%food%,category.ilike.%street%,category.ilike.%meal%');
 
                 if (fetchError) {
                     throw fetchError;
                 }
-                setBites(((data || []) as unknown as BiteItem[]).filter(isStorefrontProductVisible));
+                setBites(((data || []) as unknown as BiteItem[])
+                    .filter(isStorefrontProductVisible)
+                    .filter(isMealProduct));
             } catch (e) {
                 console.error('Error loading bites:', e);
                 setBites([]);
@@ -159,9 +173,13 @@ export default function BiteCommandPage() {
         setSelectedBite(null);
     };
 
-    const filteredBites = bites.filter(b => {
-        if (activeCat === 'All') return true;
-        return (b.category || '').toLowerCase().includes(activeCat.toLowerCase());
+    const filteredBites = bites.filter(bite => {
+        if (activeCat === 'All Food') return true;
+        if (bite.sub_category?.trim().toLowerCase() === activeCat.toLowerCase()) return true;
+        const details = `${bite.name} ${bite.category} ${bite.sub_category || ''} ${bite.description || ''}`;
+        if (activeCat === 'Street Food') return STREET_FOOD_PATTERN.test(details);
+        if (activeCat === 'Burgers & Wings') return BURGER_PATTERN.test(details);
+        return !STREET_FOOD_PATTERN.test(details) && !BURGER_PATTERN.test(details);
     });
 
     return (
@@ -238,7 +256,7 @@ export default function BiteCommandPage() {
                             Bite <span className="text-primary italic">Command.</span>
                         </h1>
                         <p className="text-slate-500 font-medium text-base sm:text-lg italic leading-relaxed">
-                            Fresh hot bites and street food, available for ordering.
+                            Smocha, rolex, and fresh street-food favorites. Customize your meal, then add it to the same bag as your drinks.
                         </p>
                     </div>
                 </div>
@@ -249,17 +267,17 @@ export default function BiteCommandPage() {
             {/* CATEGORY TABS */}
             <div className="sticky top-16 bg-white/95 backdrop-blur-xl z-40 border-b border-slate-200/80 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
-                    <label htmlFor="bite-category" className="sr-only">Filter bites by category</label>
+                    <label htmlFor="bite-category" className="sr-only">Filter food by category</label>
                     <select
                         id="bite-category"
                         value={activeCat}
                         onChange={event => setActiveCat(event.target.value)}
                         className="w-full min-w-0 rounded-full border border-slate-200 bg-slate-100 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 sm:hidden"
                     >
-                        {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        {foodCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                     </select>
                     <div className="hidden sm:flex gap-3 overflow-x-auto no-scrollbar">
-                        {CATEGORIES.map(cat => (
+                        {foodCategories.map(cat => (
                             <button
                                 key={cat}
                                 onClick={() => setActiveCat(cat)}
@@ -285,7 +303,7 @@ export default function BiteCommandPage() {
                 {loading ? (
                     <div className="py-2 sm:py-32 flex flex-col items-center justify-center gap-4">
                         <Loader2 className="animate-spin text-primary" size={48} />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Deploying 20-Minute Fast Food Menu...</p>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Loading the street-food menu...</p>
                     </div>
                 ) : error ? (
                     <div role="alert" className="px-4 py-0 sm:py-32 text-center text-rose-600">
@@ -294,10 +312,16 @@ export default function BiteCommandPage() {
                 ) : filteredBites.length === 0 ? (
                     <div className="px-4 py-0 sm:py-32 text-center text-slate-400 space-y-4">
                         <Utensils size={56} className="mx-auto opacity-30" />
-                        <p className="text-sm font-black uppercase tracking-widest italic">{activeCat === 'All' ? 'No bites are currently available.' : 'No bites matched this filter. Select All.'}</p>
-                        {activeCat !== 'All' && (
-                            <Button onClick={() => setActiveCat('All')} className="rounded-xl bg-primary text-white font-black uppercase text-xs px-6 py-3">
-                                Show All Bites
+                        <p className="text-sm font-black uppercase tracking-widest italic">
+                            {bites.length === 0
+                                ? 'Street food is being prepared. Check back soon.'
+                                : activeCat === 'All Food'
+                                    ? 'No street-food items are currently available.'
+                                    : `No food matched ${activeCat}.`}
+                        </p>
+                        {activeCat !== 'All Food' && bites.length > 0 && (
+                            <Button onClick={() => setActiveCat('All Food')} className="rounded-xl bg-primary text-white font-black uppercase text-xs px-6 py-3">
+                                Show All Food
                             </Button>
                         )}
                     </div>

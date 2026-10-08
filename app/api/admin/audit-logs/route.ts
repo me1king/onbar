@@ -35,23 +35,67 @@ export async function GET(request: Request) {
     const result = await getAuditClient();
     if ('response' in result) return result.response;
 
-    const actorId = new URL(request.url).searchParams.get('actorId');
+    const searchParams = new URL(request.url).searchParams;
+    if (searchParams.get('verify') === 'true') {
+        const { data, error } = await result.client.rpc('verify_audit_log_chain');
+        if (error) {
+            console.error('[AdminAudit] Could not verify the audit hash chain:', error);
+            return NextResponse.json({ error: `Could not verify audit integrity: ${error.message}` }, { status: 500 });
+        }
+        return NextResponse.json({ integrity: data }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+    const actorId = searchParams.get('actorId');
+    const resourceId = searchParams.get('resourceId')?.trim();
+    const resourceType = searchParams.get('resourceType')?.trim();
+    const action = searchParams.get('action')?.trim();
+    const search = searchParams.get('q')?.trim();
     if (actorId && !/^[0-9a-f-]{36}$/i.test(actorId)) {
         return NextResponse.json({ error: 'A valid staff actor ID is required.' }, { status: 400 });
     }
+    if (
+        (resourceId && resourceId.length > 200)
+        || (resourceType && !/^[a-z0-9_-]{1,100}$/i.test(resourceType))
+        || (action && !/^[a-z0-9_-]{1,100}$/i.test(action))
+        || (search && search.length > 100)
+    ) {
+        return NextResponse.json({ error: 'Audit search filters are invalid.' }, { status: 400 });
+    }
     let query = result.client
         .from('audit_logs')
-        .select('id, staff_email, actor_id, action, details, resource_type, resource_id, old_value, new_value, correlation_id, request_id, ip_address, device_info, created_at')
+        .select('id, staff_email, actor_id, actor_type, actor_label, actor_role, action, outcome, details, resource_type, resource_id, old_value, new_value, previous_hash, event_hash, correlation_id, request_id, ip_address, device_info, created_at')
         .order('created_at', { ascending: false })
         .limit(200);
     if (actorId) query = query.eq('actor_id', actorId);
+    if (resourceId) query = query.eq('resource_id', resourceId);
+    if (resourceType) query = query.eq('resource_type', resourceType);
+    if (action) query = query.eq('action', action);
+    if (search) {
+        const safeSearch = search.replace(/[^a-zA-Z0-9@._:+\- ]/g, '').trim();
+        if (safeSearch) {
+            const pattern = `%${safeSearch}%`;
+            query = query.or(`staff_email.ilike.${pattern},action.ilike.${pattern},resource_id.ilike.${pattern}`);
+        }
+    }
     const { data, error } = await query;
 
     if (error) {
         console.error('[AdminAudit] Could not load audit logs:', error);
         return NextResponse.json({ error: `Could not load audit logs: ${error.message}` }, { status: 500 });
     }
-    return NextResponse.json({ logs: data || [] });
+    return NextResponse.json({ logs: data || [] }, { headers: { 'Cache-Control': 'no-store' } });
+}
+
+function redactSensitiveAuditFields(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(redactSensitiveAuditFields);
+    if (typeof value !== 'object' || value === null) return value;
+
+    return Object.fromEntries(
+        Object.entries(value).flatMap(([key, child]) =>
+            /password|token|secret|authorization|cookie|session|pin|cvv|card.?number|payment.?credential/i.test(key)
+                ? []
+                : [[key, redactSensitiveAuditFields(child)]]
+        )
+    );
 }
 
 export async function POST(request: Request) {
@@ -121,18 +165,37 @@ export async function POST(request: Request) {
         const { data: staff } = await client.from('staff').select('id').eq('email', email).maybeSingle();
         actorId = staff?.id || null;
     }
+    const details = body.details && typeof body.details === 'object' && !Array.isArray(body.details)
+        ? body.details as Record<string, unknown>
+        : {};
+    const inferredResourceType = body.action.toUpperCase().includes('ORDER')
+        ? 'order'
+        : body.action.toUpperCase().includes('PRODUCT')
+            ? 'product'
+            : null;
+    const inferredResourceId = typeof details.id === 'string' || typeof details.id === 'number'
+        ? String(details.id)
+        : null;
     const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
         || request.headers.get('x-real-ip')?.trim()
         || 'unknown';
     const { error } = await client.from('audit_logs').insert({
         staff_email: email,
         actor_id: actorId,
+        actor_type: 'staff',
+        actor_label: email,
+        actor_role: session.role,
         action: body.action,
-        details: body.details ?? {},
-        resource_type: typeof body.resource?.type === 'string' ? body.resource.type.slice(0, 100) : null,
-        resource_id: typeof body.resource?.id === 'string' ? body.resource.id.slice(0, 200) : null,
-        old_value: body.diff?.old ?? null,
-        new_value: body.diff?.new ?? null,
+        outcome: 'SUCCESS',
+        details: redactSensitiveAuditFields(details),
+        resource_type: typeof body.resource?.type === 'string'
+            ? body.resource.type.slice(0, 100)
+            : inferredResourceType,
+        resource_id: typeof body.resource?.id === 'string'
+            ? body.resource.id.slice(0, 200)
+            : inferredResourceId,
+        old_value: redactSensitiveAuditFields(body.diff?.old ?? null),
+        new_value: redactSensitiveAuditFields(body.diff?.new ?? null),
         correlation_id: crypto.randomUUID(),
         request_id: crypto.randomUUID(),
         ip_address: ipAddress.slice(0, 100),
@@ -142,21 +205,6 @@ export async function POST(request: Request) {
     if (error) {
         console.error('[AdminAudit] Could not record audit event:', error);
         return NextResponse.json({ error: `Could not record audit event: ${error.message}` }, { status: 500 });
-    }
-    return NextResponse.json({ success: true });
-}
-
-export async function DELETE() {
-    const result = await getAuditClient(true);
-    if ('response' in result) return result.response;
-
-    const { error } = await result.client
-        .from('audit_logs')
-        .delete()
-        .neq('action', 'NUCLEAR_RESET');
-    if (error) {
-        console.error('[AdminAudit] Could not clear audit logs:', error);
-        return NextResponse.json({ error: `Could not clear audit logs: ${error.message}` }, { status: 500 });
     }
     return NextResponse.json({ success: true });
 }

@@ -44,7 +44,9 @@ export default function AnalyticsTracker() {
                 }
 
                 // 3. Track Event
-                OB_OS.track('USER_LOGIN', { userId: session.user.id });
+                if (isAllowed('analytics')) {
+                    OB_OS.track('USER_LOGIN', { userId: session.user.id });
+                }
             }
         });
 
@@ -79,7 +81,7 @@ export default function AnalyticsTracker() {
         }
 
         async function trackPage() {
-            if (!supabase) return;
+            if (!supabase || !isAllowed('analytics')) return;
 
             try {
                 const { data: { session } } = await supabase.auth.getSession();
@@ -171,7 +173,10 @@ export default function AnalyticsTracker() {
 
                 const query = searchParams?.get('q');
                 if (query) {
-                    await OB_OS.track('SEARCH', { ...commonProps, details: { query } });
+                    await OB_OS.track('SEARCH', {
+                        ...commonProps,
+                        details: { query, analytics_consent: true }
+                    });
                 }
             } catch (err: unknown) {
                 console.warn("[Analytics] Tracking sequence interrupted:", err);
@@ -180,7 +185,7 @@ export default function AnalyticsTracker() {
 
         return () => {
             const dwellTime = Date.now() - startTimeRef.current;
-            if (dwellTime > 1000) {
+            if (isAllowed('analytics') && dwellTime > 1000) {
                 OB_OS.track('TIME_ON_PAGE', {
                     details: {
                         url: pathname,
@@ -323,6 +328,7 @@ export default function AnalyticsTracker() {
         let ticking = false;
 
         const handleScroll = () => {
+            if (!isAllowed('analytics')) return;
             if (!ticking) {
                 window.requestAnimationFrame(() => {
                     const h = document.documentElement,
@@ -356,6 +362,7 @@ export default function AnalyticsTracker() {
 
         const observer = new IntersectionObserver(
             (entries) => {
+                if (!isAllowed('analytics')) return;
                 entries.forEach((entry) => {
                     if (entry.isIntersecting) {
                         const sectionId = entry.target.id || entry.target.getAttribute('data-section');

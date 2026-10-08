@@ -232,7 +232,13 @@ export default function AdminOrdersPage() {
           if (directError) throw directError;
       }
 
-      await logAuditAction(email, 'UPDATE_ORDER_STATUS', { id: orderId, newStatus: status });
+      await logAuditAction(
+        email,
+        'UPDATE_ORDER_STATUS',
+        { id: orderId, newStatus: status },
+        { type: 'order', id: String(orderId) },
+        { old: oldStatus ?? null, new: status }
+      );
 
       let loyaltyWarning = '';
       if (status === 'Delivered' && oldStatus !== 'Delivered' && orderToUpdate?.order_items) {

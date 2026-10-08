@@ -133,7 +133,13 @@ export default function Product() {
         const saved = localStorage.getItem('ob_recent_views');
         let views = saved ? JSON.parse(saved) : [];
         views = views.filter((v: Record<string, unknown>) => v.id !== liveProduct.id);
-        views.unshift({ id: liveProduct.id, name: liveProduct.name, image: normalizeImage(liveProduct.image_url || liveProduct.image) });
+        views.unshift({
+            id: liveProduct.id,
+            name: liveProduct.name,
+            image: normalizeImage(liveProduct.image_url || liveProduct.image),
+            category: liveProduct.category || 'Uncategorized',
+            viewedAt: new Date().toISOString()
+        });
         localStorage.setItem('ob_recent_views', JSON.stringify(views.slice(0, 10)));
     }
   }, [liveProduct]);

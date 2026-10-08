@@ -98,6 +98,9 @@ export async function GET() {
 
 async function saveProduct(database: SupabaseClient, id: number | null, product: ProductPayload) {
     const payload = { ...product };
+    if (typeof payload.category === 'string' && /\b(souvenir|souvenirs|merchandise)\b/i.test(payload.category)) {
+        payload.is_souvenir = true;
+    }
 
     while (true) {
         const result = id === null

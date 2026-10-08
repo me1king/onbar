@@ -207,11 +207,13 @@ export default function AdminLayoutClient({
     ]},
     { group: 'INTELLIGENCE', items: [
       { name: 'Bar Analytics', href: '/admin/analytics', icon: Activity, permission: 'can_view_revenue' },
+      { name: 'Customer Economics', href: '/admin/customer-intelligence', icon: Users, permission: 'can_view_revenue' },
       { name: 'Demand Intelligence', href: '/admin/demand', icon: MapPin, permission: 'can_view_revenue' },
       { name: 'Behavioral OS', href: '/admin/behavior', icon: Target, permission: 'can_view_revenue' },
       { name: 'AI Shift Log', href: '/admin/messages?filter=ai', icon: Bot, permission: 'can_manage_customer_care' },
     ]},
     { group: 'ENTERPRISE', items: [
+      { name: 'Launch Readiness', href: '/admin/launch', icon: ShieldCheck, minRole: 'admin' },
       { name: 'Staff Control', href: '/admin/staff', icon: ShieldCheck, minRole: 'owner' },
       { name: 'Audit Logs', href: '/admin/audit', icon: HistoryIcon, permission: 'can_view_audit_logs' },
       { name: 'Security Hub', href: '/admin/security', icon: SecurityIcon, permission: 'can_manage_settings' },

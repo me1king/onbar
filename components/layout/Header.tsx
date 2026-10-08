@@ -24,6 +24,22 @@ interface RecentView {
   id: number;
   name: string;
   image: string;
+  category?: string;
+  viewedAt?: string;
+}
+
+function getRecentViewLabel(viewedAt?: string) {
+  if (!viewedAt) return 'View time not recorded';
+  const timestamp = new Date(viewedAt).getTime();
+  if (!Number.isFinite(timestamp)) return 'View time not recorded';
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (elapsedMinutes < 1) return 'Viewed just now';
+  if (elapsedMinutes < 60) return `Viewed ${elapsedMinutes}m ago`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `Viewed ${elapsedHours}h ago`;
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  if (elapsedDays < 7) return `Viewed ${elapsedDays}d ago`;
+  return `Viewed ${new Date(timestamp).toLocaleDateString()}`;
 }
 
 interface NotificationNode {
@@ -372,6 +388,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
   const navItems = [
     { href: "/shop", label: "Menu" },
     { href: "/beverages", label: "Beverages" },
+    { href: "/bites", label: "Street Food" },
     { href: "/souvenirs", label: "Souvenirs" },
     { href: "/shop/snacks", label: "Munchies" },
     { href: "/shop/category/sale", label: "Deals" },
@@ -442,7 +459,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
             {/* Discovery Hub (Focus but no query) - Mega Menu Style */}
             {isSearchFocused && searchQuery.length === 0 && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-[800px] max-w-[95vw] bg-white/90 backdrop-blur-2xl rounded-[3rem] shadow-2xl border border-slate-50 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500 p-10 z-[70] ring-1 ring-primary/5">
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-[800px] max-w-[95vw] bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500 p-10 z-[70] ring-1 ring-primary/5">
                     <div className="grid grid-cols-12 gap-12">
                         <div className="col-span-7 space-y-8">
                             <div>
@@ -478,7 +495,9 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                                             </div>
                                             <div className="min-w-0">
                                                 <p className="text-[10px] font-black uppercase text-foreground truncate group-hover:text-primary transition-colors">{item.name}</p>
-                                                <p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5 tracking-tighter">Viewed Just Now</p>
+                                                <p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5 tracking-tighter">
+                                                    {item.category || 'Category not recorded'} · {getRecentViewLabel(item.viewedAt)}
+                                                </p>
                                             </div>
                                         </Link>
                                     )) : (
@@ -500,7 +519,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
 
             {/* Search Results Dropdown (Wider & Frosted) */}
             {searchResults.length > 0 && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-[700px] max-w-[95vw] bg-white/90 backdrop-blur-2xl rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 p-6 z-[70]">
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-[700px] max-w-[95vw] bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 p-6 z-[70]">
                     <div className="p-4 border-b border-slate-50 flex items-center justify-between mb-4">
                         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Payload matches</p>
                         <span className="text-[9px] font-black uppercase bg-primary/10 text-primary px-3 py-1 rounded-full border border-primary/20">{searchResults.length} Units Found</span>
@@ -726,7 +745,12 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 p-1">
                                             <Image src={item.image} alt="" width={32} height={32} className="max-h-full w-auto object-contain" />
                                         </div>
-                                        <span className="truncate text-[9px] font-black uppercase text-foreground">{item.name}</span>
+                                        <span className="min-w-0 truncate text-[9px] font-black uppercase text-foreground">
+                                            <span className="block truncate">{item.name}</span>
+                                            <span className="mt-0.5 block truncate text-[8px] font-bold tracking-wide text-slate-400">
+                                                {item.category || 'Category not recorded'} · {getRecentViewLabel(item.viewedAt)}
+                                            </span>
+                                        </span>
                                     </Link>
                                 ))}
                             </div>

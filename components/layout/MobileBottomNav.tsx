@@ -10,7 +10,8 @@ import {
     User,
     Flame,
     Wine,
-    Gift
+    Gift,
+    Utensils
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
     { label: 'Home', icon: Home, href: '/' },
     { label: 'Shop', icon: Search, href: '/shop' },
     { label: 'Drinks', icon: Wine, href: '/beverages' },
+    { label: 'Food', icon: Utensils, href: '/bites' },
     { label: 'Souvenirs', icon: Gift, href: '/souvenirs' },
     { label: 'My Night', icon: Flame, href: '/buzz?planner=true' },
     { label: 'Munchies', icon: Cookie, href: '/shop/snacks' },

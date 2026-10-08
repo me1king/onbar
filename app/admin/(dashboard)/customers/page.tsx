@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
+import { phoneCallHref } from '@/lib/contactLinks';
 import dynamic from 'next/dynamic';
 
 const CustomerLocationsMap = dynamic(() => import('@/components/admin/customers/CustomerLocationsMap'), { ssr: false });
@@ -363,13 +364,15 @@ export default function AdminCustomersPage() {
                     </td>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-3">
-                        <button
-                            onClick={(e) => { e.stopPropagation(); window.open(`tel:${customer.phone}`, '_self'); }}
+                        <a
+                            href={phoneCallHref(customer.phone) || undefined}
+                            onClick={e => e.stopPropagation()}
                             className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center hover:bg-primary hover:text-white transition-all shadow-sm"
                             title="Call Customer"
+                            aria-label={`Call ${customer.name}`}
                         >
                             <Phone className="h-3.5 w-3.5" />
-                        </button>
+                        </a>
                         <span className="font-bold text-slate-500 text-xs">
                           {role === 'owner' ? customer.phone : `${customer.phone.substring(0, 4)}****${customer.phone.substring(customer.phone.length - 2)}`}
                         </span>

@@ -22,6 +22,7 @@ import {
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useSettings } from "@/lib/useSettings";
+import { phoneCallHref } from "@/lib/contactLinks";
 
 export default function Contact() {
   const { settings, loading } = useSettings();
@@ -385,7 +386,7 @@ export default function Contact() {
                   className="h-16 px-10 rounded-2xl bg-white text-primary hover:bg-slate-50 font-black uppercase tracking-widest text-xs shadow-xl shadow-black/10"
                   asChild
                 >
-                    <a href={loading ? "#" : `tel:+${settings.contact.whatsapp}`}>
+                    <a href={loading ? undefined : phoneCallHref(settings.contact.whatsapp) || undefined}>
                         <Phone className="h-4 w-4 mr-2" />
                         Call Us Now
                     </a>

@@ -38,7 +38,9 @@ import {
     GlassWater,
     MessageSquare,
     Music,
-    Mail
+    Mail,
+    Ghost,
+    Play
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,7 +79,7 @@ const DEFAULTS = {
     promotions: { flash_sale_text: 'Happy Hour: 20% OFF Select Spirits!', discount_percent: 20, is_active: true, flash_sale_end: '' },
     theme_config: { primary: "#F5A000", secondary: "#0F172A", accent: "#F5A000", custom_css: "" },
     seo_config: { title: "Online Bar | Premium Drinks", description: "Premium wine, spirits and snacks delivery in Nairobi.", keywords: "Wine delivery, Whiskey Nairobi, Late night snacks, Kenya Bar", og_image: "" },
-    social_links: { instagram: "", tiktok: "", facebook: "", x: "", youtube: "" },
+    social_links: { instagram: "", tiktok: "", facebook: "", x: "", youtube: "", snapchat: "" },
     store_info: { name: "ONLINE BAR", hours: "24/7 Dispatch", google_maps: "", footer_copy: "© 2026 Online Bar™" },
     ai_config: {
         build_setup_limit: 5000,
@@ -107,13 +109,6 @@ const DEFAULTS = {
 };
 
 type TabId = 'identity' | 'homepage' | 'promotions' | 'theme' | 'seo' | 'ops' | 'catalog' | 'ai' | 'onboarding' | 'integrations' | 'features' | 'advanced';
-
-interface IntegrationNode {
-    id: string;
-    label: string;
-    status: 'Connected' | 'Not Connected' | 'Error';
-    last_tested_at?: string;
-}
 
 interface HomepageProduct {
     id: number;
@@ -157,9 +152,7 @@ export default function AdminSettingsPage() {
         fraud_shield_enabled: true
     });
 
-    // New Integrations State
-    const [integrations, setIntegrations] = useState<IntegrationNode[]>([]);
-    const [isTestingConnection, setIsTestingConnection] = useState<string | null>(null);
+    const [expandedIntegration, setExpandedIntegration] = useState<string | null>(null);
 
     const [activeTab, setActiveTab] = useState<TabId>('identity');
 
@@ -221,11 +214,6 @@ export default function AdminSettingsPage() {
                 .order('name');
             if (productsError) throw productsError;
             setHomepageProducts(productData || []);
-
-            // Fetch Integrations
-            const { data: integrationData, error: integrationsError } = await supabase.from('integration_nodes').select('*');
-            if (integrationsError) throw integrationsError;
-            if (integrationData) setIntegrations(integrationData);
 
         } catch (err) {
             console.error(err);
@@ -348,6 +336,32 @@ export default function AdminSettingsPage() {
         }
     };
 
+    const saveSeoAndSocialSettings = async () => {
+        if (!supabase) {
+            setMessage({ type: 'error', text: 'Supabase is not connected. SEO and social links were not saved.' });
+            return;
+        }
+        setSavingKey('seo');
+        setMessage(null);
+        try {
+            const updatedAt = new Date().toISOString();
+            const { error } = await supabase.from('settings').upsert([
+                { key: 'seo_config', value: seo, is_published: true, updated_at: updatedAt },
+                { key: 'social_links', value: social, is_published: true, updated_at: updatedAt }
+            ], { onConflict: 'key' });
+            if (error) throw error;
+
+            await logAuditAction(email, 'UPDATE_SETTINGS', { keys: ['seo_config', 'social_links'], published: true });
+            setMessage({ type: 'success', text: 'SEO metadata and social profile links are saved and live.' });
+            setTimeout(() => setMessage(null), 5000);
+        } catch (err) {
+            console.error('SEO and social settings save failed:', err);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'SEO and social links could not be saved.' });
+        } finally {
+            setSavingKey(null);
+        }
+    };
+
     const handlePublishAll = async () => {
         if (!supabase) return;
         if ([shipping.nairobi_cbd, shipping.nairobi_outskirts, shipping.upcountry].some(fee => !Number.isSafeInteger(fee) || fee < 0)) {
@@ -422,30 +436,26 @@ export default function AdminSettingsPage() {
                         <RefreshCcw className="h-4 w-4 mr-2" /> Sync Records
                     </Button>
                     <Button
-                        disabled={savingKey !== null}
+                        disabled={savingKey !== null || activeTab === 'integrations'}
                         onClick={() => {
                             if (activeTab === 'identity') handleSave('branding', branding, true);
                             else if (activeTab === 'homepage') handleSave('homepage', homepage, true);
                             else if (activeTab === 'promotions') handleSave('promotions', promotions, true);
                             else if (activeTab === 'theme') handleSave('theme_config', theme, true);
-                            else if (activeTab === 'seo') handleSave('seo_config', seo, true);
+                            else if (activeTab === 'seo') saveSeoAndSocialSettings();
                             else if (activeTab === 'ops') {
                                 saveOperationsSettings();
                             }
                             else if (activeTab === 'catalog') handleSave('catalog', catalog, true);
                             else if (activeTab === 'ai') handleSave('ai_config', aiConfig, true);
                             else if (activeTab === 'onboarding') handleSave('onboarding_config', onboarding, true);
-                            else if (activeTab === 'integrations') {
-                                setMessage({ type: 'success', text: "Integration credentials synchronized with secure vault." });
-                                setTimeout(() => setMessage(null), 3000);
-                            }
                             else if (activeTab === 'features') handleSave('features', features, true);
                             else if (activeTab === 'advanced') handleSave('theme_config', theme, true);
                         }}
                         className="rounded-xl h-12 px-6 bg-primary text-white font-black uppercase text-[10px] tracking-widest hover:bg-primary/90 transition-all active:scale-95 shadow-xl shadow-primary/20"
                     >
                         {savingKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                        {savingKey ? 'Saving…' : 'Sync Changes'}
+                        {savingKey ? 'Saving…' : activeTab === 'integrations' ? 'Setup required' : 'Sync Changes'}
                     </Button>
                 </div>
             </header>
@@ -899,6 +909,8 @@ export default function AdminSettingsPage() {
                                         { id: 'tiktok', icon: GlassWater, label: 'TikTok URL' },
                                         { id: 'facebook', icon: Share2, label: 'Facebook Page' },
                                         { id: 'x', icon: Globe, label: 'X (Twitter)' },
+                                        { id: 'snapchat', icon: Ghost, label: 'Snapchat URL' },
+                                        { id: 'youtube', icon: Play, label: 'YouTube URL' },
                                     ].map(item => (
                                         <div key={item.id} className="space-y-2 text-left">
                                             <label className="text-[10px] font-black uppercase text-muted-foreground flex items-center gap-2">
@@ -907,6 +919,18 @@ export default function AdminSettingsPage() {
                                             <Input value={(social as Record<string, string>)[item.id]} onChange={e => setSocial({...social, [item.id]: e.target.value})} className="h-12 rounded-xl bg-secondary border-border text-[10px] font-bold text-foreground" />
                                         </div>
                                     ))}
+                                </div>
+                                <div className="flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                                    <p className="text-xs leading-relaxed text-slate-500">Only valid profile URLs are linked on the public footer. Leave a field empty to show it as not configured.</p>
+                                    <Button
+                                        type="button"
+                                        disabled={savingKey !== null}
+                                        onClick={saveSeoAndSocialSettings}
+                                        className="h-11 shrink-0 rounded-xl bg-primary px-6 text-[9px] font-black uppercase tracking-widest text-white"
+                                    >
+                                        {savingKey === 'seo' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                        Save Social Links
+                                    </Button>
                                 </div>
                             </Card>
                         </div>
@@ -1304,10 +1328,11 @@ export default function AdminSettingsPage() {
                                         </h2>
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Configure Paystack (Card/M-Pesa) & M-Pesa Express Daraja Credentials</p>
                                     </div>
-                                    <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-emerald-50 text-emerald-600 border border-emerald-200">
-                                        CHECKOUT READY
+                                    <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200">
+                                        CREDENTIALS REQUIRED
                                     </span>
                                 </div>
+                                <p className="text-xs text-slate-500 leading-relaxed">Keys entered here are used only for a connection test and are not saved. Configure server-side environment variables for persistent payment credentials.</p>
 
                                 <div className="grid lg:grid-cols-2 gap-8">
                                     {/* Paystack Node */}
@@ -1325,7 +1350,7 @@ export default function AdminSettingsPage() {
                                                             body: JSON.stringify({ nodeId: 'PAYSTACK', secretKey: gatewaysConfig.paystack_secret_key })
                                                         });
                                                         const data = await res.json();
-                                                        alert(data.message || 'Paystack Verified!');
+                                                        alert(data.message || data.error || (data.success ? 'Paystack verified.' : 'Paystack connection was not verified.'));
                                                     } catch (err) { alert(`Paystack Error: ${err}`); }
                                                 }}
                                                 className="h-8 px-3 rounded-xl border-slate-200 text-slate-600 text-[8px] font-black uppercase hover:bg-emerald-50 hover:text-emerald-600"
@@ -1375,7 +1400,7 @@ export default function AdminSettingsPage() {
                                                             body: JSON.stringify({ nodeId: 'MPESA' })
                                                         });
                                                         const data = await res.json();
-                                                        alert(data.message || 'M-Pesa Verified!');
+                                                        alert(data.message || data.error || (data.success ? 'M-Pesa verified.' : 'M-Pesa connection was not verified.'));
                                                     } catch (err) { alert(`M-Pesa Error: ${err}`); }
                                                 }}
                                                 className="h-8 px-3 rounded-xl border-slate-200 text-slate-600 text-[8px] font-black uppercase hover:bg-emerald-50 hover:text-emerald-600"
@@ -1441,7 +1466,7 @@ export default function AdminSettingsPage() {
                                                     body: JSON.stringify({ nodeId: 'GOOGLE_MAPS', apiKey: gatewaysConfig.google_maps_api_key })
                                                 });
                                                 const data = await res.json();
-                                                alert(data.message || 'Google Maps Verified!');
+                                                alert(data.message || data.error || (data.success ? 'Google Maps verified.' : 'Google Maps connection was not verified.'));
                                             } catch (err) { alert(`Maps Error: ${err}`); }
                                         }}
                                         className="h-9 px-4 rounded-xl border-slate-200 text-slate-600 text-[9px] font-black uppercase hover:bg-rose-50 hover:text-rose-600"
@@ -1463,130 +1488,85 @@ export default function AdminSettingsPage() {
                             </Card>
 
                             {/* 3. WHATSAPP & META PROTOCOL CONTROL DRAWERS */}
-                            <Card className="p-8 sm:p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-6 text-left">
-                                <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                            <Card className="p-6 sm:p-8 rounded-[2rem] bg-white border border-slate-100 shadow-sm space-y-5 text-left">
+                                <div className="border-b border-slate-100 pb-4">
                                     <div className="flex items-center gap-3">
                                         <MessageSquare className="h-6 w-6 text-emerald-600" />
                                         <div>
-                                            <h3 className="text-lg font-black uppercase text-foreground">WhatsApp Business Cloud API Protocol Drawer</h3>
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Permanent System Access Token & Webhook Dispatcher</p>
+                                            <h3 className="text-lg font-black uppercase text-foreground leading-snug">WhatsApp Business Webhook</h3>
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Inbound verification endpoint</p>
                                         </div>
                                     </div>
-                                    <Button
-                                        type="button"
-                                        onClick={() => alert("WhatsApp Test Dispatch Message sent to +2547***! Response: 200 OK")}
-                                        className="h-9 px-4 rounded-xl bg-emerald-600 text-white text-[9px] font-black uppercase hover:bg-emerald-700 shadow-md"
-                                    >
-                                        Send Test WhatsApp Message
-                                    </Button>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4 text-xs font-mono">
+                                <div className="grid sm:grid-cols-2 gap-4 text-xs font-mono">
                                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                        <p className="text-[8px] font-black text-slate-400 uppercase font-sans">Meta Phone Number ID</p>
-                                        <p className="font-bold text-foreground mt-0.5">PNID-10928374192</p>
+                                        <p className="text-[8px] font-black text-slate-400 uppercase font-sans">Supported behavior</p>
+                                        <p className="font-bold text-foreground mt-1 leading-relaxed">Webhook verification only</p>
                                     </div>
                                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                        <p className="text-[8px] font-black text-slate-400 uppercase font-sans">HTTPS Webhook Listener</p>
-                                        <p className="font-bold text-emerald-600 mt-0.5 truncate">https://onlinebar.co.ke/api/webhooks/whatsapp</p>
+                                        <p className="text-[8px] font-black text-slate-400 uppercase font-sans">Webhook endpoint path</p>
+                                        <p className="font-bold text-emerald-600 mt-1 break-all">/api/webhooks/whatsapp</p>
                                     </div>
                                 </div>
+                                <p className="text-xs text-slate-500 leading-relaxed">Outgoing WhatsApp messages, provider credentials, and delivery testing are not implemented here. No test message has been sent.</p>
                             </Card>
 
                             {/* 3. SOCIAL & MESSAGING NODES GRID */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {[
-                                    { id: 'WHATSAPP', label: 'WhatsApp Business', icon: MessageSquare, color: 'emerald', type: 'Credentials' },
-                                    { id: 'META', label: 'Meta (IG & FB)', icon: Share2, color: 'primary', type: 'OAuth' },
-                                    { id: 'TIKTOK', label: 'TikTok Creator', icon: Music, color: 'slate', type: 'OAuth' },
-                                    { id: 'GOOGLE', label: 'YouTube / Google Ads', icon: Mail, color: 'rose', type: 'OAuth' },
-                                ].map((node) => {
-                                    const isActive = integrations.find(i => i.id === node.id)?.status === 'Connected';
-                                    return (
-                                        <Card key={node.id} className={cn(
-                                            "p-8 rounded-[2.5rem] border space-y-6 group shadow-lg transition-all text-left relative overflow-hidden",
-                                            isActive
-                                                ? "bg-white border-primary/20 shadow-primary/5 hover:border-primary/40"
-                                                : "bg-slate-900 border-slate-800 text-slate-100 shadow-2xl hover:border-amber-500/40"
-                                        )}>
-                                            <div className="flex justify-between items-start relative z-10">
-                                                <div className="flex items-center gap-4">
-                                                    <div className={cn(
-                                                        "h-12 w-12 rounded-2xl flex items-center justify-center shadow-inner transition-transform group-hover:scale-110 shrink-0",
-                                                        isActive
-                                                            ? (node.color === 'emerald' ? "bg-emerald-50 text-emerald-500" :
-                                                               node.color === 'primary' ? "bg-primary/10 text-primary" :
-                                                               node.color === 'rose' ? "bg-rose-50 text-rose-500" : "bg-slate-100 text-slate-700")
-                                                            : "bg-slate-800 border border-slate-700 text-amber-400"
-                                                    )}>
-                                                        <node.icon size={24} />
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <h3 className={cn("text-base sm:text-lg font-black uppercase tracking-tighter truncate", isActive ? "text-foreground" : "text-slate-100")}>{node.label}</h3>
-                                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{node.type} Protocol</p>
-                                                    </div>
-                                                </div>
-                                                <span className={cn(
-                                                    "px-3 py-1 rounded-full text-[8px] font-black uppercase border tracking-widest flex items-center gap-1.5 shrink-0",
-                                                    isActive
-                                                        ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-                                                        : "bg-amber-500/20 text-amber-400 border-amber-500/30 font-extrabold"
-                                                )}>
-                                                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", isActive ? "bg-emerald-500 animate-pulse" : "bg-amber-400 animate-ping")} />
-                                                    {isActive ? 'GRID LINKED' : 'STANDBY NODE'}
-                                                </span>
-                                            </div>
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                                {[
+                                                    { id: 'WHATSAPP', label: 'WhatsApp Business', icon: MessageSquare, type: 'Webhook', note: 'Inbound webhook verification is available. Outbound messaging and credential management are not wired in this admin yet.' },
+                                                    { id: 'META', label: 'Meta (IG & FB)', icon: Share2, type: 'OAuth', note: 'Meta OAuth, token storage, and publishing are not configured yet.' },
+                                                    { id: 'TIKTOK', label: 'TikTok Creator', icon: Music, type: 'OAuth', note: 'TikTok OAuth, token storage, and publishing are not configured yet.' },
+                                                    { id: 'GOOGLE', label: 'YouTube / Google Ads', icon: Mail, type: 'OAuth', note: 'Google OAuth, token storage, and publishing are not configured yet.' },
+                                                ].map((node) => (
+                                                        <Card key={node.id} className="p-5 sm:p-6 rounded-[2rem] border space-y-5 group shadow-lg transition-all text-left relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 border-slate-700 text-slate-100 hover:border-amber-500/50 hover:shadow-amber-950/20">
+                                                            <div className="space-y-4 relative z-10 min-w-0">
+                                                                <div className="flex items-start gap-3 min-w-0">
+                                                                    <div className="h-11 w-11 rounded-2xl flex items-center justify-center bg-slate-800 border border-slate-700 text-amber-400 shadow-inner transition-transform group-hover:scale-110 shrink-0">
+                                                                        <node.icon size={21} />
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1 pt-0.5">
+                                                                        <h3 className="text-sm sm:text-base font-black uppercase tracking-normal leading-snug break-words text-white">{node.label}</h3>
+                                                                        <p className="mt-1 text-[9px] font-bold text-slate-400 uppercase tracking-[0.16em]">{node.type} integration</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                    <p className="min-w-0 flex-1 text-xs text-slate-300 leading-relaxed">{node.note}</p>
+                                                                    <span className="px-2.5 py-1 rounded-full text-[8px] font-black uppercase border tracking-wider flex items-center gap-1.5 shrink-0 bg-amber-500/10 text-amber-300 border-amber-400/30">
+                                                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+                                                                        Setup required
+                                                                    </span>
+                                                                </div>
+                                                            </div>
 
-                                            <div className="pt-4 border-t border-slate-800/40 flex gap-2 relative z-10">
-                                                <Button className={cn(
-                                                    "flex-1 h-12 rounded-xl font-black uppercase text-[9px] tracking-widest shadow-lg active:scale-95 transition-all",
-                                                    isActive ? "bg-primary text-white shadow-primary/20" : "bg-amber-500 text-slate-950 hover:bg-amber-400 font-black shadow-amber-500/20"
-                                                )}>
-                                                    {isActive ? 'Manage Protocol' : 'Authorize Protocol'}
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    disabled={isTestingConnection === node.id}
-                                                    onClick={async () => {
-                                                        setIsTestingConnection(node.id);
-                                                        try {
-                                                            const res = await fetch('/api/admin/integrations/verify', {
-                                                                method: 'POST',
-                                                                headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ nodeId: node.id })
-                                                            });
-                                                            const data = await res.json();
-                                                            if (data.success) {
-                                                                alert(`${node.label} healthy!`);
-                                                                fetchSettings();
-                                                            } else {
-                                                                throw new Error(data.error || 'Verification failed');
-                                                            }
-                                                        } catch (err: unknown) {
-                                                            alert(`Link Failure: ${(err as Error).message}`);
-                                                        } finally {
-                                                            setIsTestingConnection(null);
-                                                        }
-                                                    }}
-                                                    className={cn(
-                                                        "h-12 w-12 rounded-xl border transition-all shrink-0",
-                                                        isActive ? "border-slate-200 text-slate-400 hover:text-primary" : "border-slate-700 text-slate-300 hover:text-amber-400 bg-slate-800"
-                                                    )}
-                                                >
-                                                    {isTestingConnection === node.id ? <Loader2 className="animate-spin h-4 w-4" /> : <Activity className="h-4 w-4" />}
-                                                </Button>
-                                            </div>
-                                        </Card>
-                                    );
-                                })}
+                                                            <div className="pt-4 border-t border-slate-700/80 relative z-10">
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    aria-expanded={expandedIntegration === node.id}
+                                                                    onClick={() => setExpandedIntegration(current => current === node.id ? null : node.id)}
+                                                                    className="w-full h-11 rounded-xl border-slate-600 bg-slate-800/70 text-slate-100 font-black uppercase text-[9px] tracking-widest hover:bg-slate-700 hover:text-white"
+                                                                >
+                                                                    {expandedIntegration === node.id ? 'Hide setup details' : 'View setup details'}
+                                                                </Button>
+                                                                {expandedIntegration === node.id && (
+                                                                    <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-xs text-slate-300 leading-relaxed animate-in fade-in duration-200">
+                                                                        <p className="font-bold text-white">This connection is not active.</p>
+                                                                        <p className="mt-1">{node.note} No authorization or successful connection is being reported by this screen.</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </Card>
+                                                ))}
                             </div>
 
                             <div className="p-8 rounded-[3rem] bg-amber-50 border border-amber-100 flex items-start gap-4 text-left">
                                 <ShieldAlert className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />
                                 <div className="space-y-1">
                                     <p className="text-xs font-black uppercase text-amber-700">Credential Hygiene</p>
-                                    <p className="text-[10px] text-amber-600 font-medium leading-relaxed italic">
-                                        &quot;API Secrets are encrypted at rest and never transmitted to the client in plaintext. We recommend rotating your WhatsApp Access Token every 60 days to maintain grid security.&quot;
+                                    <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
+                                        Do not paste provider secrets into this screen. Server-side credential storage and social OAuth flows must be configured before these connections can be activated.
                                     </p>
                                 </div>
                             </div>
@@ -1700,9 +1680,8 @@ export default function AdminSettingsPage() {
                 </div>
             </div>
 
-            {/* STICKY CMS ACTION BAR */}
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-8 duration-1000 w-full max-w-4xl px-4 text-left">
-                <div className="bg-background/80 backdrop-blur-xl p-4 rounded-[2.5rem] shadow-2xl flex items-center gap-3 border border-border text-left">
+            <div className="mt-10 w-full max-w-4xl mx-auto px-4 text-left">
+                <div className="bg-background/95 backdrop-blur-xl p-4 rounded-[2rem] shadow-2xl flex items-center gap-3 border border-border text-left">
                     <Button
                         disabled={savingKey !== null}
                         onClick={handlePublishAll}

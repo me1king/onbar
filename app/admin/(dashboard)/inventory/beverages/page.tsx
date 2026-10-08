@@ -26,6 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
+import { isBeverageInventoryProduct } from '@/lib/productDepartment';
 import Image from 'next/image';
 
 interface BeverageNode {
@@ -40,6 +41,9 @@ interface BeverageNode {
     is_ice_cold?: boolean;
     temperature_celsius?: number;
     is_available_now?: boolean;
+    is_bite?: boolean;
+    is_snack?: boolean;
+    is_souvenir?: boolean;
     image_url?: string;
     image?: string;
 }
@@ -95,14 +99,9 @@ export default function BeverageCommandAdmin() {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            const alcoholicCategories = ['whiskey', 'whisky', 'wine', 'spirits', 'champagne', 'vodka', 'gin', 'rum', 'tequila', 'cognac', 'liquor', 'cellar', 'snacks'];
-            const nonAlcoholicBevs = ((data || []) as BeverageNode[]).filter(b => {
-                const cat = (b.category || '').toLowerCase();
-                const subCat = (b.sub_category || '').toLowerCase();
-                return !alcoholicCategories.some(a => cat.includes(a) || subCat.includes(a));
-            });
-            setBeverages(nonAlcoholicBevs);
-            setStockDrafts(Object.fromEntries(nonAlcoholicBevs.map(beverage => [String(beverage.id), String(beverage.stock ?? 0)])));
+            const beverageProducts = ((data || []) as BeverageNode[]).filter(isBeverageInventoryProduct);
+            setBeverages(beverageProducts);
+            setStockDrafts(Object.fromEntries(beverageProducts.map(beverage => [String(beverage.id), String(beverage.stock ?? 0)])));
         } catch (err) {
             console.error('Error loading beverages:', err);
             setBeverages([]);

@@ -20,6 +20,7 @@ import { useRouter } from 'next/navigation';
 import ProductCard from '@/components/home/ProductCard';
 import { Product } from '@/types/product';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import { isSnackProduct } from '@/lib/productDepartment';
 
 const SUBCATS = [
     { label: 'Trending', icon: Flame },
@@ -44,7 +45,10 @@ export default function SnackShopPage() {
                 return;
             }
 
-            let query = supabase.from('products').select('*').eq('is_snack', true);
+            let query = supabase
+                .from('products')
+                .select('*')
+                .or('is_snack.eq.true,category.ilike.%snack%,category.ilike.%munch%');
 
             if (activeSub !== 'Trending') {
                 query = query.eq('sub_category', activeSub);
@@ -53,7 +57,9 @@ export default function SnackShopPage() {
             try {
                 const { data, error } = await query.order('created_at', { ascending: false });
                 if (error) throw error;
-                setProducts(((data as unknown as Product[]) || []).filter(isStorefrontProductVisible));
+                setProducts(((data as unknown as Product[]) || [])
+                    .filter(isStorefrontProductVisible)
+                    .filter(isSnackProduct));
             } catch (error) {
                 console.error('Could not load snacks:', error);
                 setProducts([]);
@@ -144,15 +150,15 @@ export default function SnackShopPage() {
                                 <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-600"><Clock className="h-6 w-6" /></div>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Speed Protocol</span>
                             </div>
-                            <h2 className="text-5xl font-black uppercase tracking-tighter leading-none">Ready in <br/> <span className="text-primary italic">20 Minutes</span></h2>
+                            <h2 className="text-5xl font-black uppercase tracking-tighter leading-none">Pair it with <br/> <span className="text-primary italic">Street Food</span></h2>
                             <p className="text-lg font-medium text-slate-500 italic max-w-sm">
-                                &quot;Tactical dispatch active. Your bites arrive while your drinks are still chilled to the core.&quot;
+                                &quot;Build one bag with food and snacks, then place everything together at checkout.&quot;
                             </p>
                             <Button
                                 onClick={() => router.push('/bites')}
                                 className="h-16 px-10 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest hover:bg-primary/90 transition-all shadow-xl active:scale-95 border-none"
                             >
-                                Start Fast Order
+                                Order Street Food
                             </Button>
                         </div>
                         <div className="hidden md:flex justify-center">
