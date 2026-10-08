@@ -1,0 +1,411 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
+import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, RefreshCw, Save, Search, Upload, Users } from 'lucide-react';
+import { useAdmin } from '@/context/AdminContext';
+
+type WaitlistStatus = 'WAITLIST' | 'INVITED' | 'NOTIFIED' | 'CONVERTED' | 'UNSUBSCRIBED';
+interface WaitlistContact {
+  id: string;
+  full_name: string | null;
+  email: string;
+  phone: string | null;
+  country: string;
+  county: string;
+  city: string;
+  area: string;
+  landmark: string | null;
+  location_verified: boolean;
+  location_accuracy_m: number | null;
+  service_area_status: 'in_area' | 'outside_area' | 'unknown';
+  email_updates_consent: boolean;
+  sms_consent: boolean;
+  whatsapp_consent: boolean;
+  preferred_contact_method: string | null;
+  product_interests: string[];
+  order_frequency: string | null;
+  age_group: string | null;
+  age_confirmed: boolean;
+  age_confirmed_at: string | null;
+  referral_code: string | null;
+  referred_by_code: string | null;
+  campaign: string | null;
+  landing_page: string | null;
+  source: string;
+  status: WaitlistStatus;
+  created_at: string;
+}
+interface WaitlistStats {
+  total: number;
+  inArea: number;
+  outsideArea: number;
+  unknownArea: number;
+  emailOptIns: number;
+  smsOptIns: number;
+  whatsappOptIns: number;
+  areas: Array<{ country: string; county: string; city: string; area: string; total: number; inArea: number }>;
+  interests: Array<{ name: string; count: number }>;
+  ageGroups: Array<{ group: string; label: string; count: number }>;
+}
+interface WaitlistResponse {
+  contacts: WaitlistContact[];
+  stats: WaitlistStats;
+  page: number;
+  hasMore: boolean;
+  error?: string;
+}
+interface WaitlistSiteContent {
+  id: string;
+  eyebrow: string;
+  headline: string;
+  intro: string;
+  benefit_one: string;
+  benefit_two: string;
+  benefit_three: string;
+  hero_image_url: string | null;
+  hero_image_path: string | null;
+  hero_image_alt: string;
+  age_group_tracks: Record<string, { title: string; path: string; url: string }>;
+  updated_at: string;
+}
+
+const ageGroups = [
+  { id: '18_20', label: '18–20' },
+  { id: '21_24', label: '21–24' },
+  { id: '25_34', label: '25–34' },
+  { id: '35_44', label: '35–44' },
+  { id: '45_plus', label: '45+' }
+];
+
+const statusLabels: Record<WaitlistStatus, string> = {
+  WAITLIST: 'New',
+  INVITED: 'Invited',
+  NOTIFIED: 'Notified',
+  CONVERTED: 'Converted',
+  UNSUBSCRIBED: 'Unsubscribed'
+};
+
+function count(value: number | undefined) {
+  return new Intl.NumberFormat('en-KE').format(value || 0);
+}
+
+function date(value: string | null) {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'Unknown' : parsed.toLocaleString('en-KE');
+}
+
+export default function WaitlistPage() {
+  const { role, permissions } = useAdmin();
+  const [data, setData] = useState<WaitlistResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [page, setPage] = useState(0);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [siteContent, setSiteContent] = useState<WaitlistSiteContent | null>(null);
+  const [siteContentError, setSiteContentError] = useState('');
+  const [siteContentNotice, setSiteContentNotice] = useState('');
+  const [savingSiteContent, setSavingSiteContent] = useState(false);
+  const [uploadingSiteImage, setUploadingSiteImage] = useState(false);
+  const [uploadingTrack, setUploadingTrack] = useState<string | null>(null);
+  const [trackTitles, setTrackTitles] = useState<Record<string, string>>({});
+
+  const canView = role === 'owner' || role === 'admin'
+    || permissions.can_manage_communications || permissions.can_manage_customer_care;
+  const canManageSite = role === 'owner' || role === 'admin' || permissions.can_manage_settings;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({ page: String(page), status, search });
+      const response = await fetch(`/api/admin/waitlist?${params}`, { cache: 'no-store' });
+      const result = await response.json() as WaitlistResponse;
+      if (!response.ok) throw new Error(result.error || 'Waitlist data could not be loaded.');
+      setData(result);
+    } catch (cause) {
+      console.error('[AdminWaitlist] Could not load early-access list:', cause);
+      setError(cause instanceof Error ? cause.message : 'Waitlist data could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, search, status]);
+
+  useEffect(() => { if (canView) void load(); }, [canView, load]);
+
+  useEffect(() => {
+    if (!canManageSite) return;
+    void fetch('/api/admin/waitlist-site', { cache: 'no-store' })
+      .then(async response => {
+        const result = await response.json() as { content?: WaitlistSiteContent; error?: string };
+        if (!response.ok || !result.content) throw new Error(result.error || 'Website content could not be loaded.');
+        setSiteContent(result.content);
+      })
+      .catch(cause => {
+        console.error('[AdminWaitlistSite] Could not load website settings:', cause);
+        setSiteContentError(cause instanceof Error ? cause.message : 'Website content could not be loaded.');
+      });
+  }, [canManageSite]);
+
+  const topAreas = useMemo(() => (data?.stats.areas || []).slice(0, 5), [data]);
+
+  const saveSiteContent = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!siteContent) return;
+    setSavingSiteContent(true);
+    setSiteContentError('');
+    setSiteContentNotice('');
+    try {
+      const response = await fetch('/api/admin/waitlist-site', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(siteContent)
+      });
+      const result = await response.json() as { content?: WaitlistSiteContent; error?: string };
+      if (!response.ok || !result.content) throw new Error(result.error || 'Website content could not be saved.');
+      setSiteContent(result.content);
+      setSiteContentNotice('Published. The standalone site will show these updates shortly.');
+    } catch (cause) {
+      console.error('[AdminWaitlistSite] Could not save website content:', cause);
+      setSiteContentError(cause instanceof Error ? cause.message : 'Website content could not be saved.');
+    } finally {
+      setSavingSiteContent(false);
+    }
+  };
+
+  const uploadSiteImage = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingSiteImage(true);
+    setSiteContentError('');
+    setSiteContentNotice('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch('/api/admin/waitlist-site', { method: 'POST', body: form });
+      const result = await response.json() as { content?: WaitlistSiteContent; error?: string };
+      if (!response.ok || !result.content) throw new Error(result.error || 'Website image could not be uploaded.');
+      setSiteContent(result.content);
+      setSiteContentNotice('Hero image uploaded and published.');
+    } catch (cause) {
+      console.error('[AdminWaitlistSite] Could not upload website hero image:', cause);
+      setSiteContentError(cause instanceof Error ? cause.message : 'Website image could not be uploaded.');
+    } finally {
+      setUploadingSiteImage(false);
+    }
+  };
+
+  const uploadAgeGroupTrack = async (ageGroup: string, file: File | undefined) => {
+    if (!file) return;
+    const title = trackTitles[ageGroup]?.trim();
+    if (!title) {
+      setSiteContentError(`Enter a track name for age ${ageGroups.find(group => group.id === ageGroup)?.label || ageGroup}.`);
+      return;
+    }
+    setUploadingTrack(ageGroup);
+    setSiteContentError('');
+    setSiteContentNotice('');
+    try {
+      const form = new FormData();
+      form.append('kind', 'music');
+      form.append('ageGroup', ageGroup);
+      form.append('title', title);
+      form.append('file', file);
+      const response = await fetch('/api/admin/waitlist-site', { method: 'POST', body: form });
+      const result = await response.json() as { content?: WaitlistSiteContent; error?: string };
+      if (!response.ok || !result.content) throw new Error(result.error || 'Age-group music could not be uploaded.');
+      setSiteContent(result.content);
+      setSiteContentNotice(`Music published for age ${ageGroups.find(group => group.id === ageGroup)?.label || ageGroup}.`);
+    } catch (cause) {
+      console.error('[AdminWaitlistSite] Could not upload age-group music:', cause);
+      setSiteContentError(cause instanceof Error ? cause.message : 'Age-group music could not be uploaded.');
+    } finally {
+      setUploadingTrack(null);
+    }
+  };
+
+  const updateStatus = async (contact: WaitlistContact, nextStatus: WaitlistStatus) => {
+    setSavingId(contact.id);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/waitlist', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: contact.id, status: nextStatus })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Signup status could not be updated.');
+      await load();
+    } catch (cause) {
+      console.error('[AdminWaitlist] Could not update signup:', cause);
+      setError(cause instanceof Error ? cause.message : 'Signup status could not be updated.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  if (!canView) return (
+    <main className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center">
+      <AlertTriangle className="h-10 w-10 text-rose-500" />
+      <h1 className="mt-4 text-2xl font-black text-slate-950">Waitlist access required</h1>
+      <p className="mt-2 text-sm text-slate-600">Only administrators and authorized customer communications managers can view signup contact details.</p>
+    </main>
+  );
+
+  const stats = data?.stats;
+  return (
+    <main className="min-h-screen space-y-6 bg-slate-50 p-4 sm:p-6 lg:p-8">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-primary"><MapPin size={14} /> Pre-launch · consent-respecting market demand</p>
+          <h1 className="mt-2 text-3xl font-black uppercase tracking-tight text-slate-950">Early Access Waitlist</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">Signups from the standalone early-access site and storefront waitlist. Exact GPS coordinates are never stored.</p>
+        </div>
+        <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-10 items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 sm:self-auto"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+      </header>
+
+      {error && <div role="alert" className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><AlertTriangle size={18} className="shrink-0" />{error}</div>}
+
+      {canManageSite && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-start gap-3">
+            <ImageIcon size={19} className="mt-1 text-primary" />
+            <div><h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Standalone site content</h2><p className="mt-1 text-xs text-slate-500">Manage the copy and hero image shown on the separately hosted early-access website.</p></div>
+          </div>
+          {siteContentError && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{siteContentError}</p>}
+          {siteContentNotice && <p role="status" className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">{siteContentNotice}</p>}
+          {!siteContent ? <p className="text-sm text-slate-500">Loading website content…</p> : (
+            <form className="grid gap-4 lg:grid-cols-2" onSubmit={saveSiteContent}>
+              <label className="text-xs font-bold text-slate-700">Eyebrow<input required maxLength={80} value={siteContent.eyebrow} onChange={event => setSiteContent({ ...siteContent, eyebrow: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-700">Headline<input required maxLength={120} value={siteContent.headline} onChange={event => setSiteContent({ ...siteContent, headline: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-700 lg:col-span-2">Introduction<textarea required maxLength={500} rows={3} value={siteContent.intro} onChange={event => setSiteContent({ ...siteContent, intro: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-200 p-3 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-700">Benefit one<input required maxLength={60} value={siteContent.benefit_one} onChange={event => setSiteContent({ ...siteContent, benefit_one: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-700">Benefit two<input required maxLength={60} value={siteContent.benefit_two} onChange={event => setSiteContent({ ...siteContent, benefit_two: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-700">Benefit three<input required maxLength={60} value={siteContent.benefit_three} onChange={event => setSiteContent({ ...siteContent, benefit_three: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-700">Hero image description<input required maxLength={180} value={siteContent.hero_image_alt} onChange={event => setSiteContent({ ...siteContent, hero_image_alt: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
+                <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                  <Upload size={15} />{uploadingSiteImage ? 'Uploading…' : siteContent.hero_image_url ? 'Replace hero image' : 'Upload hero image'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" disabled={uploadingSiteImage} className="sr-only" onChange={event => { void uploadSiteImage(event.target.files?.[0]); event.currentTarget.value = ''; }} />
+                </label>
+                <span className="text-xs text-slate-500">JPG, PNG, WebP or AVIF · maximum 6 MB</span>
+                {siteContent.hero_image_url && <div role="img" aria-label={siteContent.hero_image_alt} className="h-16 w-24 rounded-lg bg-cover bg-center" style={{ backgroundImage: `url("${siteContent.hero_image_url.replaceAll('"', '%22')}")` }} />}
+                <button type="submit" disabled={savingSiteContent || uploadingSiteImage} className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-50"><Save size={15} />{savingSiteContent ? 'Publishing…' : 'Publish copy'}</button>
+              </div>
+              <div className="grid gap-3 border-t border-slate-100 pt-4 lg:col-span-2">
+                <div><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Age-group background music</h3><p className="mt-1 text-xs text-slate-500">Upload music you own or are licensed to use. Visitors choose an adult age range and explicitly enter before a track plays. MP3, WAV, OGG or M4A · maximum 10 MB.</p></div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {ageGroups.map(group => {
+                    const track = siteContent.age_group_tracks?.[group.id];
+                    return <div key={group.id} className="rounded-xl border border-slate-200 p-3">
+                      <p className="text-xs font-black text-slate-800">Age {group.label}</p>
+                      {track && <p className="mt-1 truncate text-xs text-slate-500">Current: {track.title}</p>}
+                      <label className="mt-2 block text-[10px] font-bold text-slate-600">Track name<input maxLength={100} value={trackTitles[group.id] ?? track?.title ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [group.id]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
+                      <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">
+                        <Upload size={13} />{uploadingTrack === group.id ? 'Uploading…' : track ? 'Replace track' : 'Upload track'}
+                        <input type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a" disabled={uploadingTrack !== null} className="sr-only" onChange={event => { void uploadAgeGroupTrack(group.id, event.target.files?.[0]); event.currentTarget.value = ''; }} />
+                      </label>
+                    </div>;
+                  })}
+                </div>
+              </div>
+            </form>
+          )}
+        </section>
+      )}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Waitlist summary">
+        {[
+          { label: 'Total signups', value: stats?.total, icon: Users },
+          { label: 'In configured area', value: stats?.inArea, icon: MapPin },
+          { label: 'Outside area', value: stats?.outsideArea, icon: MapPin },
+          { label: 'Email updates', value: stats?.emailOptIns, icon: Mail },
+          { label: 'SMS updates', value: stats?.smsOptIns, icon: MessageCircle },
+          { label: 'WhatsApp updates', value: stats?.whatsappOptIns, icon: MessageCircle }
+        ].map(metric => (
+          <article key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2"><p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{metric.label}</p><metric.icon size={15} className="text-primary" /></div>
+            <p className="mt-3 text-2xl font-black text-slate-950">{loading ? '—' : count(metric.value)}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Adult age groups</h2>
+        <p className="mt-1 text-xs text-slate-500">Age bands reported by waitlist members. No birth dates are collected; this page has no under-18 audience segment.</p>
+        <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {ageGroups.map(group => {
+            const total = data?.stats.ageGroups?.find(item => item.group === group.id)?.count || 0;
+            return <li key={group.id} className="rounded-xl bg-slate-50 p-4"><span className="text-xs font-bold text-slate-500">Age {group.label}</span><b className="mt-2 block text-2xl text-slate-950">{loading ? '—' : count(total)}</b></li>;
+          })}
+        </ul>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Demand by area</h2>
+          <p className="mt-1 text-xs text-slate-500">Coverage means the area matched configured launch zones at the time of signup; unknown means no coverage list was configured.</p>
+          {!topAreas.length ? <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No area signups recorded.</p> : (
+            <ul className="mt-4 space-y-2">{topAreas.map(item => (
+              <li key={`${item.country}-${item.county}-${item.city}-${item.area}`} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+                <span className="min-w-0"><b className="block truncate text-sm text-slate-900">{item.city} · {item.area}</b><small className="text-slate-500">{item.county} County · {count(item.inArea)} in configured area</small></span>
+                <strong className="rounded-full bg-emerald-100 px-3 py-1 text-sm text-emerald-900">{count(item.total)}</strong>
+              </li>
+            ))}</ul>
+          )}
+        </article>
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Product demand</h2>
+          <p className="mt-1 text-xs text-slate-500">Selections by waitlist members.</p>
+          {!stats?.interests?.length ? <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No product preferences recorded yet.</p> : (
+            <ul className="mt-4 space-y-3">{stats.interests.slice(0, 8).map(item => (
+              <li key={item.name} className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">{item.name}</span><b className="text-slate-950">{count(item.count)}</b></li>
+            ))}</ul>
+          )}
+        </article>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-end sm:justify-between">
+          <div><h2 className="text-lg font-black uppercase tracking-tight text-slate-950">Waitlist signups</h2><p className="mt-1 text-xs text-slate-500">Review contact consent before contacting anyone. Signup does not count as permission for unselected channels.</p></div>
+          <div className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_180px]">
+            <label className="relative"><span className="sr-only">Search waitlist</span><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="Search name, area, contact" className="min-h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm" /></label>
+            <select aria-label="Filter by signup status" value={status} onChange={event => { setStatus(event.target.value); setPage(0); }} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+              <option value="all">All statuses</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+        </div>
+        {loading && !data ? <p className="p-10 text-center text-sm text-slate-500">Loading signups…</p>
+          : !data?.contacts.length ? <p className="p-10 text-center text-sm text-slate-500">No signups match these filters.</p>
+            : <div className="overflow-x-auto"><table className="w-full min-w-[1080px] text-left text-xs">
+              <thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500"><tr>{['Person & area','Consent','Interests & frequency','Age group & check','Attribution','Joined','Status'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
+              <tbody className="divide-y divide-slate-100">{data.contacts.map(contact => (
+                <tr key={contact.id} className="align-top">
+                  <td className="max-w-[220px] px-3 py-4">
+                    <b className="block text-slate-950">{contact.full_name || 'Name not provided'}</b>
+                    <a href={`mailto:${encodeURIComponent(contact.email)}`} className="mt-1 block break-all text-primary hover:underline">{contact.email}</a>
+                    {contact.phone && <a href={`tel:${encodeURIComponent(contact.phone)}`} className="mt-1 block text-slate-600 hover:underline">{contact.phone}</a>}
+                    <span className="mt-2 block font-semibold text-slate-700">{contact.city} · {contact.area}</span>
+                    <span className="text-slate-500">{contact.county}, {contact.country}{contact.landmark ? ` · ${contact.landmark}` : ''}</span>
+                    <span className={`mt-2 inline-block rounded-full px-2 py-1 text-[9px] font-black uppercase ${contact.service_area_status === 'in_area' ? 'bg-emerald-100 text-emerald-800' : contact.service_area_status === 'outside_area' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>{contact.service_area_status.replace('_', ' ')}{contact.location_verified ? ' · GPS matched' : ' · manual'}</span>
+                  </td>
+                  <td className="px-3 py-4"><div className="space-y-1.5">{[['Email', contact.email_updates_consent],['SMS', contact.sms_consent],['WhatsApp', contact.whatsapp_consent]].map(([label, allowed]) => <p key={String(label)} className={allowed ? 'font-bold text-emerald-700' : 'text-slate-400'}>{allowed ? '✓' : '—'} {String(label)}</p>)}</div><p className="mt-2 text-slate-500">Preferred: {contact.preferred_contact_method || 'No preference'}</p></td>
+                  <td className="max-w-[190px] px-3 py-4"><p className="leading-relaxed text-slate-700">{contact.product_interests?.join(', ') || 'Not provided'}</p><p className="mt-2 text-slate-500">{contact.order_frequency?.replace('_', ' ') || 'Frequency not provided'}</p></td>
+                  <td className="px-3 py-4"><b className="mb-1 block text-slate-800">{ageGroups.find(group => group.id === contact.age_group)?.label ? `Age ${ageGroups.find(group => group.id === contact.age_group)?.label}` : 'Age group not provided'}</b>{contact.age_confirmed ? <span className="inline-flex items-center gap-1 font-bold text-emerald-700"><Check size={13} /> 18+ confirmed</span> : <span className="font-bold text-amber-700">Not recorded</span>}<p className="mt-1 text-slate-500">{date(contact.age_confirmed_at)}</p></td>
+                  <td className="max-w-[160px] px-3 py-4 text-slate-600"><p>{contact.source || 'direct'}</p>{contact.campaign && <p className="mt-1">Campaign: {contact.campaign}</p>}{contact.referred_by_code && <p className="mt-1">Referred: {contact.referred_by_code}</p>}{contact.referral_code && <p className="mt-1">Invite: {contact.referral_code}</p>}</td>
+                  <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>
+                  <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
+                </tr>
+              ))}</tbody>
+            </table></div>}
+        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+          <button type="button" onClick={() => setPage(current => Math.max(0, current - 1))} disabled={page === 0 || loading} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-40">Previous</button>
+          <span className="text-xs text-slate-500">Page {page + 1}</span>
+          <button type="button" onClick={() => setPage(current => current + 1)} disabled={!data?.hasMore || loading} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold disabled:opacity-40">Next</button>
+        </div>
+      </section>
+    </main>
+  );
+}

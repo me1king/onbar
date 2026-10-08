@@ -47,7 +47,8 @@ import {
   Coffee,
   Camera as CameraIcon,
   MapPin,
-  PackageSearch
+  PackageSearch,
+  UserRoundPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -182,6 +183,7 @@ export default function AdminLayoutClient({
     ]},
     { group: 'PATRONS', items: [
       { name: 'Directory', href: '/admin/customers', icon: Users, permission: 'can_manage_communications' },
+      { name: 'Early Access Waitlist', href: '/admin/waitlist', icon: UserRoundPlus, permission: 'can_manage_communications' },
       { name: 'WhatsApp Command', href: '/admin/communications/whatsapp', icon: MessageCircle, permission: 'can_manage_communications' },
       { name: 'Message Command', href: '/admin/communications/command', icon: MessageSquare, permission: 'can_manage_communications' },
       { name: 'Popup Manager', href: '/admin/communications/popups', icon: Bell, permission: 'can_manage_communications' },
@@ -227,6 +229,8 @@ export default function AdminLayoutClient({
           if (!role) return false;
           if (isOwner) return true;
           if ('minRole' in item && item.minRole === 'viewer') return true;
+          if (item.href === '/admin/waitlist'
+            && (permissions.can_manage_communications || permissions.can_manage_customer_care)) return true;
           if (item.permission && permissions && permissions[item.permission as keyof Permissions]) return true;
           if ('minRole' in item && item.minRole === 'admin') return isAdmin;
           if ('minRole' in item && item.minRole === 'owner') return isOwner;
