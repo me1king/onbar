@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { normalizeShippingSettings } from '@/lib/useSettings';
+import { DEFAULT_CATALOG_NAVIGATION, normalizeCatalogNavigation, normalizeShippingSettings } from '@/lib/useSettings';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 import {
@@ -29,6 +29,9 @@ import {
     Rocket,
     Trash2,
     Plus,
+    MoveUp,
+    MoveDown,
+    EyeOff,
     UserPlus,
     DollarSign,
     Home as HomeIcon,
@@ -75,7 +78,10 @@ const DEFAULTS = {
     },
     shipping: { nairobi_cbd_label: "Nairobi CBD / Local", nairobi_cbd: 0, nairobi_outskirts_label: "Nairobi Outskirts", nairobi_outskirts: 300, upcountry_label: "Upcountry / Major Towns", upcountry: 500 },
     logistics: { dispatch_zones: ["CBD", "Westlands", "Kilimani", "Lavington", "Kileleshwa", "Karen", "Langata", "South C", "South B", "Embakasi", "Roysambu", "Kasarani", "Kahawa", "Githurai", "Zimmerman", "Utawala", "Syokimau", "Kitengela", "Rongai", "Ngong", "Kikuyu", "Thika Road", "Mombasa Road"] },
-    catalog: { categories: [{ id: 'wine', label: 'Vintages' }, { id: 'spirits', label: 'Premium Spirits' }, { id: 'snacks', label: 'Late Night Snacks' }, { id: 'beer', label: 'Chilled Beers' }, { id: 'mixers', label: 'Mixers' }, { id: 'extras', label: 'Extras' }] },
+    catalog: {
+        categories: [{ id: 'wine', label: 'Vintages' }, { id: 'spirits', label: 'Premium Spirits' }, { id: 'snacks', label: 'Late Night Snacks' }, { id: 'beer', label: 'Chilled Beers' }, { id: 'mixers', label: 'Mixers' }, { id: 'extras', label: 'Extras' }],
+        navigation: DEFAULT_CATALOG_NAVIGATION.map(item => ({ ...item }))
+    },
     promotions: { flash_sale_text: 'Happy Hour: 20% OFF Select Spirits!', discount_percent: 20, is_active: true, flash_sale_end: '' },
     theme_config: { primary: "#F5A000", secondary: "#0F172A", accent: "#F5A000", custom_css: "" },
     seo_config: { title: "Online Bar | Premium Drinks", description: "Premium wine, spirits and snacks delivery in Nairobi.", keywords: "Wine delivery, Whiskey Nairobi, Late night snacks, Kenya Bar", og_image: "" },
@@ -195,7 +201,16 @@ export default function AdminSettingsPage() {
                     }
                     if (item.key === 'shipping') setShipping(normalizeShippingSettings(item.value));
                     if (item.key === 'logistics') setLogistics(item.value as typeof DEFAULTS.logistics);
-                    if (item.key === 'catalog') setCatalog(item.value as typeof DEFAULTS.catalog);
+                    if (item.key === 'catalog') {
+                        setCatalog({
+                            ...DEFAULTS.catalog,
+                            ...item.value,
+                            categories: Array.isArray(item.value.categories)
+                                ? item.value.categories as typeof DEFAULTS.catalog.categories
+                                : DEFAULTS.catalog.categories,
+                            navigation: normalizeCatalogNavigation(item.value.navigation)
+                        });
+                    }
                     if (item.key === 'promotions') setPromotions(item.value as typeof DEFAULTS.promotions);
                     if (item.key === 'theme_config') setTheme(item.value as typeof DEFAULTS.theme_config);
                     if (item.key === 'seo_config') setSeo(item.value as typeof DEFAULTS.seo_config);
@@ -240,6 +255,13 @@ export default function AdminSettingsPage() {
 
     const handleSave = async (key: string, value: unknown, publish: boolean = true) => {
         if (!supabase) return;
+        if (key === 'catalog') {
+            const catalogValue = value as typeof catalog;
+            if (catalogValue.navigation.some(item => !item.label.trim())) {
+                setMessage({ type: 'error', text: 'Give every category tab a name before saving.' });
+                return;
+            }
+        }
         if (key === 'homepage') {
             const homepageValue = value as typeof homepage;
             const links = [
@@ -939,6 +961,102 @@ export default function AdminSettingsPage() {
                     {/* CATALOG TAB */}
                     {activeTab === 'catalog' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
+                            <Card className="rounded-[3rem] border border-slate-100 p-6 sm:p-10 bg-white shadow-sm space-y-6 text-left">
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><Wine className="h-5 w-5 text-primary" /> Storefront Category Bar</h2>
+                                        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">Control the tabs shown across the top of the shop. Rename them, hide ones you do not need, or move them up and down. The link for each category stays safely connected.</p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        disabled={savingKey !== null}
+                                        onClick={() => handleSave('catalog', catalog, true)}
+                                        className="h-11 shrink-0 rounded-xl bg-primary px-5 text-[9px] font-black uppercase tracking-widest text-white"
+                                    >
+                                        {savingKey === 'catalog' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                        Save Category Bar
+                                    </Button>
+                                </div>
+
+                                <div aria-label="Live category bar preview" className="flex gap-1 overflow-x-auto border-y border-slate-100 py-3">
+                                    {catalog.navigation.filter(item => item.enabled).map(item => (
+                                        <span key={item.id} className="shrink-0 border-b-2 border-rose-600 px-3 py-2 text-xs font-semibold text-slate-800">{item.label}</span>
+                                    ))}
+                                    {catalog.navigation.every(item => !item.enabled) && <span className="px-3 py-2 text-xs text-slate-400">All category tabs are hidden.</span>}
+                                </div>
+
+                                <div className="space-y-2">
+                                    {catalog.navigation.map((item, index) => (
+                                        <div key={item.id} className={cn(
+                                            "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border p-3 sm:p-4",
+                                            item.enabled ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-70"
+                                        )}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-6 text-center text-xs font-bold text-slate-400">{index + 1}</span>
+                                                <div className="flex flex-col">
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Move ${item.label} up`}
+                                                        disabled={index === 0}
+                                                        onClick={() => setCatalog(current => {
+                                                            const navigation = [...current.navigation];
+                                                            [navigation[index - 1], navigation[index]] = [navigation[index], navigation[index - 1]];
+                                                            return { ...current, navigation };
+                                                        })}
+                                                        className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30"
+                                                    ><MoveUp size={14} /></button>
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Move ${item.label} down`}
+                                                        disabled={index === catalog.navigation.length - 1}
+                                                        onClick={() => setCatalog(current => {
+                                                            const navigation = [...current.navigation];
+                                                            [navigation[index], navigation[index + 1]] = [navigation[index + 1], navigation[index]];
+                                                            return { ...current, navigation };
+                                                        })}
+                                                        className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30"
+                                                    ><MoveDown size={14} /></button>
+                                                </div>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <Input
+                                                    aria-label={`${item.id} category tab label`}
+                                                    maxLength={40}
+                                                    value={item.label}
+                                                    onChange={event => setCatalog(current => ({
+                                                        ...current,
+                                                        navigation: current.navigation.map((entry, entryIndex) => entryIndex === index
+                                                            ? { ...entry, label: event.target.value }
+                                                            : entry)
+                                                    }))}
+                                                    className="h-11 rounded-xl bg-slate-50 font-semibold text-foreground"
+                                                />
+                                                <p className="mt-1 truncate px-1 text-[10px] text-slate-400">{item.href}</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                aria-pressed={item.enabled}
+                                                aria-label={`${item.enabled ? 'Hide' : 'Show'} ${item.label} tab`}
+                                                onClick={() => setCatalog(current => ({
+                                                    ...current,
+                                                    navigation: current.navigation.map((entry, entryIndex) => entryIndex === index
+                                                        ? { ...entry, enabled: !entry.enabled }
+                                                        : entry)
+                                                }))}
+                                                className={cn(
+                                                    "flex h-10 items-center gap-2 rounded-xl px-3 text-[9px] font-black uppercase tracking-wide transition-colors",
+                                                    item.enabled ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                                                )}
+                                            >
+                                                {item.enabled ? <Eye size={15} /> : <EyeOff size={15} />}
+                                                <span className="hidden sm:inline">{item.enabled ? 'Visible' : 'Hidden'}</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-slate-500">Changes appear in the desktop and mobile category bars after you save. Category links are fixed so customers always land on the correct page.</p>
+                            </Card>
+
                             <Card className="rounded-[3rem] border border-slate-100 p-10 bg-white shadow-sm space-y-8 text-left">
                                 <div className="flex justify-between items-center text-left">
                                     <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><Wine className="h-5 w-5 text-primary" /> Menu Manager</h2>

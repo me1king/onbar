@@ -3,6 +3,56 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
+export interface CatalogNavigationItem {
+    id: string;
+    label: string;
+    href: string;
+    enabled: boolean;
+}
+
+export const DEFAULT_CATALOG_NAVIGATION: CatalogNavigationItem[] = [
+    { id: 'whiskey', label: 'Whisky', href: '/shop/category/whiskey', enabled: true },
+    { id: 'wine', label: 'Wine', href: '/shop/category/wine', enabled: true },
+    { id: 'beer', label: 'Beers', href: '/shop/category/beer', enabled: true },
+    { id: 'champagne', label: 'Champagne', href: '/shop/category/champagne', enabled: true },
+    { id: 'liqueur', label: 'Liqueur', href: '/shop/category/liqueur', enabled: true },
+    { id: 'tequila', label: 'Tequila', href: '/shop/category/tequila', enabled: true },
+    { id: 'gin', label: 'Gin', href: '/shop/category/gin', enabled: true },
+    { id: 'cognac', label: 'Cognac', href: '/shop/category/cognac', enabled: true },
+    { id: 'brandy', label: 'Brandy', href: '/shop/category/brandy', enabled: true },
+    { id: 'vodka', label: 'Vodka', href: '/shop/category/vodka', enabled: true },
+    { id: 'rum', label: 'Rum', href: '/shop/category/rum', enabled: true },
+    { id: 'extras', label: 'Extras', href: '/extras', enabled: true },
+    { id: 'gifts', label: 'Gifts', href: '/shop/category/gifts', enabled: true }
+];
+
+export function normalizeCatalogNavigation(value: unknown): CatalogNavigationItem[] {
+    const defaults = DEFAULT_CATALOG_NAVIGATION;
+    if (!Array.isArray(value)) return defaults.map(item => ({ ...item }));
+
+    const defaultById = new Map(defaults.map(item => [item.id, item]));
+    const seen = new Set<string>();
+    const normalized = value.flatMap((entry): CatalogNavigationItem[] => {
+        if (typeof entry !== 'object' || entry === null) return [];
+        const saved = entry as Record<string, unknown>;
+        if (typeof saved.id !== 'string' || seen.has(saved.id)) return [];
+        const fallback = defaultById.get(saved.id);
+        if (!fallback) return [];
+        seen.add(saved.id);
+        const label = typeof saved.label === 'string' ? saved.label.trim().slice(0, 40) : '';
+        return [{
+            ...fallback,
+            label: label || fallback.label,
+            enabled: typeof saved.enabled === 'boolean' ? saved.enabled : fallback.enabled
+        }];
+    });
+
+    for (const item of defaults) {
+        if (!seen.has(item.id)) normalized.push({ ...item });
+    }
+    return normalized;
+}
+
 export interface StoreSettings {
     contact: {
         whatsapp: string;
@@ -35,6 +85,7 @@ export interface StoreSettings {
     };
     catalog: {
         categories: { id: string; label: string }[];
+        navigation: CatalogNavigationItem[];
     };
     shipping: {
         nairobi_cbd_label: string;
@@ -160,7 +211,8 @@ export const DEFAULT_SETTINGS: StoreSettings = {
             { id: 'mixers', label: 'Mixers' },
             { id: 'essentials', label: 'Bar Essentials' },
             { id: 'extras', label: 'Extras' }
-        ]
+        ],
+        navigation: DEFAULT_CATALOG_NAVIGATION.map(item => ({ ...item }))
     },
     shipping: {
         nairobi_cbd_label: "Nairobi CBD / Local",
@@ -233,7 +285,11 @@ export function useSettings() {
                         if (item.key === 'contact') newSettings.contact = { ...newSettings.contact, ...item.value };
                         if (item.key === 'branding') newSettings.branding = { ...newSettings.branding, ...item.value };
                         if (item.key === 'homepage') newSettings.homepage = { ...newSettings.homepage, ...item.value };
-                        if (item.key === 'catalog') newSettings.catalog = { ...newSettings.catalog, ...item.value };
+                        if (item.key === 'catalog') newSettings.catalog = {
+                            ...newSettings.catalog,
+                            ...item.value,
+                            navigation: normalizeCatalogNavigation(item.value.navigation)
+                        };
                         if (item.key === 'shipping') newSettings.shipping = normalizeShippingSettings(item.value);
                         if (item.key === 'logistics') newSettings.logistics = { ...newSettings.logistics, ...item.value };
                         if (item.key === 'theme_config') newSettings.theme_config = { ...newSettings.theme_config, ...item.value };

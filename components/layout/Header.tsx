@@ -11,7 +11,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { formatPrice, cn, normalizeImage } from "@/lib/utils";
-import { useSettings, type StoreSettings } from "@/lib/useSettings";
+import { normalizeCatalogNavigation, useSettings, type StoreSettings } from "@/lib/useSettings";
 
 interface SearchResult {
   id: number;
@@ -397,21 +397,8 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
     { href: "/blog", label: "Mixology" },
     { href: "/track", label: "Track" }
   ];
-  const catalogNavItems = [
-    { href: "/shop/category/whiskey", label: "Whisky" },
-    { href: "/shop/category/wine", label: "Wine" },
-    { href: "/shop/category/beer", label: "Beers" },
-    { href: "/shop/category/champagne", label: "Champagne" },
-    { href: "/shop/category/liqueur", label: "Liqueur" },
-    { href: "/shop/category/tequila", label: "Tequila" },
-    { href: "/shop/category/gin", label: "Gin" },
-    { href: "/shop/category/cognac", label: "Cognac" },
-    { href: "/shop/category/brandy", label: "Brandy" },
-    { href: "/shop/category/vodka", label: "Vodka" },
-    { href: "/shop/category/rum", label: "Rum" },
-    { href: "/extras", label: "Extras" },
-    { href: "/shop/category/gifts", label: "Gifts" }
-  ];
+  const catalogNavItems = normalizeCatalogNavigation(settings.catalog?.navigation)
+    .filter(item => item.enabled);
 
   return (
     <header
@@ -653,11 +640,11 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
           role="navigation"
           aria-label="Shop categories"
         >
-          {catalogNavItems.map(({ href, label }) => {
-            const active = pathname === href || (label === "Gifts" && pathname === "/gifting");
+          {catalogNavItems.map(({ id, href, label }) => {
+            const active = pathname === href || (id === "gifts" && pathname === "/gifting");
             return (
               <Link
-                key={href}
+                key={id}
                 href={href}
                 prefetch
                 className={`shrink-0 border-b-2 px-2.5 py-2 text-[11px] font-semibold transition-colors xl:px-3 ${
@@ -676,11 +663,11 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
           role="navigation"
           aria-label="Shop categories"
         >
-          {catalogNavItems.map(({ href, label }) => {
-            const active = pathname === href || (label === "Gifts" && pathname === "/gifting");
+          {catalogNavItems.map(({ id, href, label }) => {
+            const active = pathname === href || (id === "gifts" && pathname === "/gifting");
             return (
               <Link
-                key={`mobile-${href}`}
+                key={`mobile-${id}`}
                 href={href}
                 prefetch
                 aria-current={active ? "page" : undefined}
