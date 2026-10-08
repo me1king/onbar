@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,7 @@ const initialForm = {
   name: '',
   brand: '',
   category: 'wine',
+  sub_category: '',
   sku: '',
   model_number: '',
   price: '',
@@ -119,6 +121,7 @@ interface Product {
   low_stock_alert?: number;
   warehouse_location?: string;
   category: string;
+  sub_category?: string;
   variant_prices?: Record<string, number>;
   sale_end_date?: string;
   featured_rank?: number;
@@ -167,7 +170,11 @@ export default function AdminUploadPage() {
 function UploadContent() {
   const { role, email, permissions } = useAdmin();
   const { settings } = useSettings();
-  const [form, setForm] = useState(initialForm);
+  const searchParams = useSearchParams();
+  const categoryScope = searchParams.get('category')?.trim().toLowerCase() || '';
+  const isExtrasPage = categoryScope === 'extras';
+  const scopedInitialForm = { ...initialForm, category: categoryScope || initialForm.category };
+  const [form, setForm] = useState(scopedInitialForm);
   const [variantStock, setVariantStock] = useState<Record<string, string>>({});
   const [variantPrices, setVariantPrices] = useState<Record<string, string>>({});
   const [beverageSpecs, setBeverageSpecs] = useState<{ key: string, value: string }[]>([]);
@@ -184,6 +191,15 @@ function UploadContent() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isVisionScanning, setIsVisionScanning] = useState(false);
   const [imageAudits, setImageAudits] = useState<Record<string, ImageAuditResult>>({});
+  const visibleProducts = useMemo(
+      () => categoryScope
+          ? products.filter(product => product.category.toLowerCase().includes(categoryScope))
+          : products,
+      [categoryScope, products]
+  );
+  const categoryOptions = settings.catalog.categories.some(category => category.id.toLowerCase() === 'extras')
+      ? settings.catalog.categories
+      : [...settings.catalog.categories, { id: 'extras', label: 'Extras' }];
 
   // Section States
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -249,6 +265,10 @@ function UploadContent() {
   };
 
   const canManageInventory = role === 'admin' || role === 'owner' || permissions.can_manage_inventory;
+
+  useEffect(() => {
+    if (!editingId) setForm(prev => ({ ...prev, category: categoryScope || initialForm.category }));
+  }, [categoryScope, editingId]);
 
   const fetchProducts = async () => {
     if (!supabase) return;
@@ -396,6 +416,7 @@ function UploadContent() {
       manufacturer: product.manufacturer || '',
       glassware: product.beverage_specs?.glassware || 'Highball Glass',
       category: product.category || 'wine',
+      sub_category: product.sub_category || '',
       sku: product.sku || '',
       price: String(product.price ?? ''),
       cost_price: String(product.cost_price ?? ''),
@@ -438,7 +459,7 @@ function UploadContent() {
   const cancelEditing = () => {
     selectedImagePreviews.forEach(URL.revokeObjectURL);
     setEditingId(null);
-    setForm(initialForm);
+    setForm(scopedInitialForm);
     setVariantStock({});
     setVariantPrices({});
     setBeverageSpecs([]);
@@ -518,8 +539,9 @@ function UploadContent() {
           stock: Object.values(vStock).reduce((a, b) => a + b, 0),
           variant_stock: vStock,
           variant_prices: vPrices,
-          beverage_specs: specs,
-          category: form.category,
+          beverage_specs: isExtrasPage ? {} : specs,
+          category: isExtrasPage ? 'extras' : form.category,
+          sub_category: form.sub_category.trim() || null,
           is_featured: form.is_featured,
           is_snack: form.is_snack,
           hide_product: form.hide_product,
@@ -612,7 +634,7 @@ function UploadContent() {
   };
 
   const generateSupplierPO = () => {
-    const low = products.filter(p => p.stock <= 5);
+    const low = visibleProducts.filter(p => p.stock <= 5);
     const doc = new jsPDF();
     doc.text('Online Bar Purchase Order', 14, 20);
     autoTable(doc, {
@@ -632,12 +654,14 @@ function UploadContent() {
             <div className="relative z-10 space-y-2 text-left">
                 <div className="flex items-center gap-3">
                     <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Cellar Master</span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{isExtrasPage ? 'Extras Studio' : 'Cellar Master'}</span>
                 </div>
                 <h1 className="text-4xl font-black tracking-tighter text-foreground uppercase leading-none">
-                  {editingId ? 'Refine Product' : 'Inventory Master'}
+                  {editingId ? 'Refine Product' : isExtrasPage ? 'Extras Inventory' : 'Inventory Master'}
                 </h1>
-                <p className="text-slate-500 text-sm font-medium italic">Deploy premium beverage inventory to the online bar.</p>
+                <p className="text-slate-500 text-sm font-medium italic">
+                    {isExtrasPage ? 'Upload and manage extras, add product photos, and organize them by storefront type.' : 'Deploy premium beverage inventory to the online bar.'}
+                </p>
             </div>
 
             {message && (
@@ -690,9 +714,14 @@ function UploadContent() {
                           <div className="grid sm:grid-cols-2 gap-6">
                               <div className="space-y-2 text-left">
                                   <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Category</label>
-                                <select name="category" value={form.category} onChange={handleInputChange} className="w-full h-14 rounded-2xl border border-slate-100 bg-slate-50 px-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-primary">
-                                    {settings.catalog.categories.map(cat => <option key={cat.id} value={cat.id}>{cat.label}</option>)}
+                                <select name="category" value={form.category} onChange={handleInputChange} disabled={isExtrasPage} className="w-full h-14 rounded-2xl border border-slate-100 bg-slate-50 px-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-70">
+                                    {categoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.label}</option>)}
                                 </select>
+                              </div>
+                              <div className="space-y-2 text-left">
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Storefront Type / Subcategory</label>
+                                  <Input name="sub_category" value={form.sub_category} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50" placeholder="e.g. Corkscrews & Bottle Openers" />
+                                  <p className="px-1 text-xs text-slate-400">This creates the type filter on the Extras storefront page.</p>
                               </div>
                               <div className="space-y-2 text-left flex items-end gap-2">
                                   <div className="flex-1 space-y-2">
@@ -721,6 +750,7 @@ function UploadContent() {
                   )}
               </Card>
 
+              {!isExtrasPage && <>
               {/* BEVERAGE SPECS & ORIGIN NODE */}
               <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
                   <button type="button" onClick={() => toggleSection('beverageSpecs')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
@@ -788,6 +818,7 @@ function UploadContent() {
                       </CardContent>
                   )}
               </Card>
+              </>}
 
               {/* PRICING & ECONOMICS */}
               <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
@@ -1288,13 +1319,13 @@ function UploadContent() {
               <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[800px] sticky top-8">
                   <div className="p-8 border-b border-slate-50 flex items-center justify-between">
                       <div>
-                          <h2 className="text-xl font-black text-foreground uppercase tracking-tighter leading-none">Cellar Inventory</h2>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2">{products.length} Nodes Online</p>
+                          <h2 className="text-xl font-black text-foreground uppercase tracking-tighter leading-none">{isExtrasPage ? 'Extras Inventory' : 'Cellar Inventory'}</h2>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2">{visibleProducts.length} Products</p>
                       </div>
                       <button onClick={fetchProducts} className="text-slate-300 hover:text-primary transition-colors"><RefreshCcw size={16} /></button>
                   </div>
                   <div className="flex-1 overflow-y-auto divide-y divide-slate-50 no-scrollbar">
-                      {products.map(p => (
+                      {visibleProducts.map(p => (
                           <div key={p.id} onClick={() => startEditing(p)} className={cn("p-6 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-all group", editingId === p.id && "bg-primary/5 border-l-4 border-primary shadow-inner")}>
                               <div className="flex items-center gap-4 min-w-0">
                                   <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 p-1 flex items-center justify-center shrink-0">
@@ -1303,7 +1334,7 @@ function UploadContent() {
                                   <div className="min-w-0">
                                       <p className="text-xs font-black uppercase truncate text-foreground group-hover:text-primary transition-colors">{p.name}</p>
                                       <div className="flex items-center gap-2">
-                                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">{p.stock} Units • {p.category}</p>
+                                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">{p.stock} Units • {p.sub_category || p.category}</p>
                                           {p.is_snack && <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-500 text-[7px] font-black uppercase">Munchie</span>}
                                       </div>
                                   </div>
@@ -1318,8 +1349,8 @@ function UploadContent() {
 
         <div className="pt-8">
             <TacticalEventFeed
-                title="Cellar Hub Real-time Stock Stream"
-                subtitle="Live Inventory Ingestion & Stock Rebalance Telemetry"
+                title={isExtrasPage ? 'Extras Real-time Stock Stream' : 'Cellar Hub Real-time Stock Stream'}
+                subtitle={isExtrasPage ? 'Live Extras Ingestion & Stock Rebalance Telemetry' : 'Live Inventory Ingestion & Stock Rebalance Telemetry'}
             />
         </div>
       </div>

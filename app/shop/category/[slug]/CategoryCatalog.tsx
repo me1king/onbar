@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import ProductCard from '@/components/home/ProductCard';
 import { Product } from '@/types/product';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import { getStartingPrice } from '@/lib/productPricing';
 
 type SortOrder = 'recommended' | 'price-ascending' | 'price-descending';
 
@@ -18,13 +19,17 @@ export default function CategoryCatalog({
   products: Product[];
   error: string | null;
 }) {
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [typesOpen, setTypesOpen] = useState(true);
   const [selectedType, setSelectedType] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('recommended');
 
   const types = useMemo(
-    () => Array.from(new Set(products.map(product => product.sub_category?.trim()).filter((type): type is string => Boolean(type)))).sort((a, b) => a.localeCompare(b)),
+    () => Array.from(new Set(products
+      .filter(isStorefrontProductVisible)
+      .map(product => product.sub_category?.trim())
+      .filter((type): type is string => Boolean(type))))
+      .sort((a, b) => a.localeCompare(b)),
     [products]
   );
 
@@ -35,33 +40,30 @@ export default function CategoryCatalog({
       : [...availableProducts];
 
     if (sortOrder === 'price-ascending') {
-      filtered.sort((a, b) => Number(a.price) - Number(b.price));
+      filtered.sort((a, b) => getStartingPrice(a.price, a.variant_prices, a.sizes) - getStartingPrice(b.price, b.variant_prices, b.sizes));
     } else if (sortOrder === 'price-descending') {
-      filtered.sort((a, b) => Number(b.price) - Number(a.price));
+      filtered.sort((a, b) => getStartingPrice(b.price, b.variant_prices, b.sizes) - getStartingPrice(a.price, a.variant_prices, a.sizes));
     }
     return filtered;
   }, [products, selectedType, sortOrder]);
 
   return (
     <main className="min-h-screen bg-[#edf5fc] pb-24 text-foreground">
-      <section className="mx-2 mt-2 flex min-h-56 items-center justify-center rounded-2xl bg-white px-4 py-12 text-center sm:mx-4 sm:min-h-64 sm:rounded-3xl">
+      <section className="mx-2 mt-2 flex min-h-56 items-center justify-center rounded-2xl bg-white px-4 py-12 text-center sm:min-h-56 sm:rounded-3xl">
         <div>
           <h1 className="text-4xl font-black tracking-tight text-slate-900 sm:text-5xl md:text-6xl">
-            {title} <span className="bg-gradient-to-r from-slate-900 to-rose-700 bg-clip-text text-transparent">brands &amp; prices in Kenya</span>
+            {title} <span className="bg-gradient-to-r from-slate-900 to-rose-700 bg-clip-text text-transparent">delivery Nairobi</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-sm font-medium text-slate-500 sm:text-base">
-            Browse our current {title.toLowerCase()} selection and find the right bottle for your occasion.
-          </p>
         </div>
       </section>
 
-      <nav aria-label="Breadcrumb" className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-3 text-sm text-slate-500 sm:px-6 lg:px-8">
+      <nav aria-label="Breadcrumb" className="mx-auto flex max-w-none items-center gap-2 px-2 py-1 text-sm text-slate-500 sm:px-3">
         <Link href="/" className="hover:text-primary">Home</Link>
         <ChevronRight aria-hidden="true" size={15} />
         <span aria-current="page" className="capitalize">{title}</span>
       </nav>
 
-      <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-none px-2 pt-6 sm:px-2">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-300/70 py-4">
           <button
             type="button"
@@ -103,12 +105,12 @@ export default function CategoryCatalog({
               <ChevronDown aria-hidden="true" size={16} className={typesOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
             </button>
             {typesOpen && (
-              <div className="mt-3 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-3 md:grid-cols-4">
                 <button
                   type="button"
                   aria-pressed={!selectedType}
                   onClick={() => setSelectedType('')}
-                  className={`min-h-10 rounded-full px-4 text-sm transition-colors ${!selectedType ? 'bg-rose-700 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                  className={`min-h-10 px-2 text-left text-sm transition-colors ${!selectedType ? 'font-semibold text-rose-700' : 'text-rose-600 hover:text-rose-800'}`}
                 >
                   All types
                 </button>
@@ -118,7 +120,7 @@ export default function CategoryCatalog({
                     key={type}
                     aria-pressed={selectedType === type}
                     onClick={() => setSelectedType(current => current === type ? '' : type)}
-                    className={`min-h-10 rounded-full px-4 text-sm transition-colors ${selectedType === type ? 'bg-rose-700 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                    className={`min-h-10 px-2 text-left text-sm transition-colors ${selectedType === type ? 'font-semibold text-rose-700' : 'text-rose-600 hover:text-rose-800'}`}
                   >
                     {type}
                   </button>

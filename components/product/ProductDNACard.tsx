@@ -77,13 +77,20 @@ export default function ProductDNACard({ dna, origin, style, abv, verification }
                 {[
                     { label: 'Body', value: dna.body },
                     { label: 'Sweetness', value: dna.sweetness },
+                    { label: 'Acidity', value: dna.acidity },
                     { label: 'Oak', value: dna.oak },
                     { label: 'Smoke', value: dna.smoke },
                     { label: 'Intensity', value: dna.intensity }
                 ].map(metric => (
                     <div key={metric.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
                         <p className="text-[8px] font-black uppercase text-slate-400">{metric.label}</p>
-                        <p className="mt-1 text-sm font-black text-foreground">{metric.value}<span className="ml-0.5 text-[9px] text-slate-400">/100</span></p>
+                        <p className="mt-1 text-sm font-black text-foreground">
+                            {typeof metric.value === 'number' ? (
+                                <>{metric.value}<span className="ml-0.5 text-[9px] text-slate-400">/100</span></>
+                            ) : (
+                                <span className="text-xs text-slate-400">Not scored</span>
+                            )}
+                        </p>
                     </div>
                 ))}
             </div>

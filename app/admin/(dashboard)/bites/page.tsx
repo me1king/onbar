@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
     Utensils,
@@ -14,6 +13,7 @@ import {
     X,
     CheckCircle2,
     Truck,
+    Cookie,
     ImagePlus,
     Pencil,
     ToggleLeft,
@@ -37,6 +37,8 @@ interface BiteProduct {
     description?: string;
     pairing_suggestions?: string[];
     is_available_now?: boolean;
+    is_bite?: boolean;
+    is_snack?: boolean;
 }
 
 interface FoodAddon {
@@ -56,6 +58,7 @@ interface OrderTimelineItem {
 
 export default function BiteCommandCenter() {
     const [bites, setBites] = React.useState<BiteProduct[]>([]);
+    const [menuSection, setMenuSection] = React.useState<'food' | 'snacks'>('food');
     const [timeline, setTimeline] = React.useState<OrderTimelineItem[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -83,6 +86,17 @@ export default function BiteCommandCenter() {
         () => imageFile ? URL.createObjectURL(imageFile) : null,
         [imageFile]
     );
+    const foodProducts = React.useMemo(() => bites.filter(product => {
+        const category = String(product.category || '').toLowerCase();
+        return !category.includes('snack') && !category.includes('munch')
+            && !(product.is_snack === true && product.is_bite !== true);
+    }), [bites]);
+    const snackProducts = React.useMemo(() => bites.filter(product => {
+        const category = String(product.category || '').toLowerCase();
+        return category.includes('snack') || category.includes('munch')
+            || (product.is_snack === true && product.is_bite !== true);
+    }), [bites]);
+    const visibleProducts = menuSection === 'food' ? foodProducts : snackProducts;
 
     React.useEffect(() => {
         return () => {
@@ -98,33 +112,26 @@ export default function BiteCommandCenter() {
     });
 
     const fetchBites = React.useCallback(async () => {
-        if (!supabase) {
-            setError('Supabase is not configured. Food and order data are unavailable.');
-            setBites([]);
-            setTimeline([]);
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         setError(null);
         try {
-            const { data, error: productsError } = await supabase
-                .from('products')
-                .select('*')
-                .or('is_bite.eq.true,is_snack.eq.true')
-                .order('name');
+            const response = await fetch('/api/admin/bites', { cache: 'no-store' });
+            const result = await response.json() as { products?: BiteProduct[]; error?: string };
+            if (!response.ok) throw new Error(result.error || 'Food products could not be loaded.');
+            setBites(result.products || []);
+        } catch (err) {
+            console.error("Bite product load failed:", err);
+            setError(err instanceof Error ? err.message : 'Unable to load food products.');
+        }
 
-            if (productsError) throw productsError;
-            setBites((data || []) as BiteProduct[]);
-
-            const { data: ordData, error: ordersError } = await supabase
-                .from('orders')
-                .select('id, total_price, status, created_at')
-                .order('created_at', { ascending: false })
-                .limit(50);
-            if (ordersError) throw ordersError;
-
-            const orderRecords = ordData || [];
+        try {
+            const response = await fetch('/api/admin/kitchen/orders', { cache: 'no-store' });
+            const result = await response.json() as {
+                orders?: Array<{ id: number; total_price: number | null; status: string | null; created_at: string | null }>;
+                error?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Kitchen orders could not be loaded.');
+            const orderRecords = result.orders || [];
             setTimeline(orderRecords.slice(0, 5).map(ord => {
                 const status = String(ord.status || 'Unknown');
                 return {
@@ -142,10 +149,9 @@ export default function BiteCommandCenter() {
                 kitchenLoad: 'Unavailable'
             });
         } catch (err) {
-            console.error("Bite Link Failure:", err);
-            setBites([]);
+            console.error("Bite order load failed:", err);
             setTimeline([]);
-            setError(err instanceof Error ? err.message : 'Unable to load food and order data.');
+            setError(current => current || (err instanceof Error ? err.message : 'Unable to load kitchen orders.'));
         } finally {
             setLoading(false);
         }
@@ -167,43 +173,40 @@ export default function BiteCommandCenter() {
     React.useEffect(() => {
         fetchBites();
         fetchAddons();
-
-        if (supabase) {
-            const channel = supabase
-                .channel('realtime_admin_bites')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
-                    fetchBites();
-                })
-                .subscribe();
-
-            return () => {
-                if (supabase) supabase.removeChannel(channel);
-            };
-        }
+        const refresh = window.setInterval(fetchBites, 30000);
+        return () => window.clearInterval(refresh);
     }, [fetchBites, fetchAddons]);
 
     const toggleAvailability = async (id: number | string, current: boolean) => {
-        if (!supabase) return;
         const status = current ? 'Draft' : 'Live';
-        const { error: updateError } = await supabase.from('products').update({
-            status,
-            is_available_now: !current
-        }).eq('id', id);
-        if (updateError) {
-            alert(`Unable to update product status: ${updateError.message}`);
-        } else {
-            setBites(bites.map(b => b.id === id ? { ...b, status, is_available_now: !current } : b));
+        try {
+            const response = await fetch('/api/admin/bites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, status })
+            });
+            const result = await response.json() as { product?: BiteProduct; error?: string };
+            if (!response.ok || !result.product) throw new Error(result.error || 'Product availability could not be changed.');
+            const updatedProduct = result.product;
+            setBites(currentBites => currentBites.map(b => b.id === id ? updatedProduct : b));
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Unable to update product status.');
         }
     };
 
     const handleDelete = async (id: number | string) => {
-        if (!supabase) return;
         if (!confirm('Are you sure you want to remove this food item from the menu?')) return;
-        const { error: deleteError } = await supabase.from('products').delete().eq('id', id);
-        if (deleteError) {
-            alert(`Unable to remove food item: ${deleteError.message}`);
-        } else {
+        try {
+            const response = await fetch('/api/admin/bites', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Food product could not be deleted.');
             setBites(bites.filter(b => b.id !== id));
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Unable to remove food item.');
         }
     };
 
@@ -213,11 +216,6 @@ export default function BiteCommandCenter() {
             alert('Please provide a name, category, price, and stock quantity.');
             return;
         }
-        if (!supabase) {
-            alert('Supabase is not configured. The food item was not saved.');
-            return;
-        }
-
         setIsSubmitting(true);
         const pairings = newFood.pairing_suggestions.split(',').map(s => s.trim()).filter(Boolean);
         let uploadedPath: string | null = null;
@@ -239,20 +237,24 @@ export default function BiteCommandCenter() {
             const payload = {
                 name: newFood.name.trim(),
                 category: newFood.category,
+                is_bite: newFood.category === 'Food',
+                is_snack: newFood.category === 'Snacks',
                 price: Number(newFood.price),
                 stock: Number(newFood.stock),
                 image_url: imageUrl || null,
                 description: newFood.description.trim() || null,
                 pairing_suggestions: pairings,
-                is_snack: true,
-                is_bite: true,
                 status: 'Live',
                 is_available_now: true
             };
-            const { data, error: insertError } = await supabase.from('products').insert([payload]).select().single();
-            if (insertError) throw new Error(`Error adding food item: ${insertError.message}`);
-            if (!data) throw new Error('Food item was not returned after saving.');
-            setBites([data as BiteProduct, ...bites]);
+            const response = await fetch('/api/admin/bites', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ product: payload })
+            });
+            const result = await response.json() as { product?: BiteProduct; error?: string };
+            if (!response.ok || !result.product) throw new Error(result.error || 'Food item could not be saved.');
+            setBites([result.product, ...bites]);
             setIsAddModalOpen(false);
             setNewFood({
                 name: '',
@@ -446,18 +448,78 @@ export default function BiteCommandCenter() {
             {/* LIVE MENU GRID */}
             <section className="space-y-8 relative z-10">
                 <div className="flex justify-between items-center px-1 sm:px-6">
-                    <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Food Menu</h2>
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-primary">Menu control</p>
+                        <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Food &amp; Snacks</h2>
+                    </div>
                 </div>
 
                 {error && <p role="alert" className="mx-6 rounded-xl bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</p>}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="tablist" aria-label="Menu section">
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={menuSection === 'food'}
+                        onClick={() => setMenuSection('food')}
+                        className={cn(
+                            "flex min-h-24 items-center justify-between rounded-3xl border p-5 text-left transition-all",
+                            menuSection === 'food'
+                                ? "border-orange-300 bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg shadow-orange-200"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-orange-200"
+                        )}
+                    >
+                        <span className="flex items-center gap-4">
+                            <span className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", menuSection === 'food' ? "bg-white/20" : "bg-orange-50 text-orange-600")}>
+                                <Utensils size={23} />
+                            </span>
+                            <span>
+                                <span className="block text-sm font-black uppercase tracking-wider">Food menu</span>
+                                <span className={cn("mt-1 block text-xs font-medium", menuSection === 'food' ? "text-white/80" : "text-slate-500")}>Meals and prepared dishes</span>
+                            </span>
+                        </span>
+                        <span className="rounded-full bg-black/10 px-3 py-1 text-sm font-black tabular-nums">{foodProducts.length}</span>
+                    </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={menuSection === 'snacks'}
+                        onClick={() => setMenuSection('snacks')}
+                        className={cn(
+                            "flex min-h-24 items-center justify-between rounded-3xl border p-5 text-left transition-all",
+                            menuSection === 'snacks'
+                                ? "border-amber-300 bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 shadow-lg shadow-amber-200"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-amber-200"
+                        )}
+                    >
+                        <span className="flex items-center gap-4">
+                            <span className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", menuSection === 'snacks' ? "bg-white/30" : "bg-amber-50 text-amber-600")}>
+                                <Cookie size={23} />
+                            </span>
+                            <span>
+                                <span className="block text-sm font-black uppercase tracking-wider">Snack bar</span>
+                                <span className={cn("mt-1 block text-xs font-medium", menuSection === 'snacks' ? "text-amber-950/70" : "text-slate-500")}>Quick bites and munchies</span>
+                            </span>
+                        </span>
+                        <span className="rounded-full bg-black/10 px-3 py-1 text-sm font-black tabular-nums">{snackProducts.length}</span>
+                    </button>
+                </div>
+                <div className={cn(
+                    "flex items-center gap-3 rounded-2xl border px-5 py-4",
+                    menuSection === 'food' ? "border-orange-100 bg-orange-50/70" : "border-amber-100 bg-amber-50/70"
+                )}>
+                    {menuSection === 'food' ? <Utensils className="text-orange-600" size={20} /> : <Cookie className="text-amber-600" size={20} />}
+                    <p className="text-sm font-bold text-slate-700">
+                        {menuSection === 'food' ? 'Food menu' : 'Snack bar'} <span className="font-medium text-slate-500">· {visibleProducts.length} products · manage availability and stock below</span>
+                    </p>
+                </div>
                 <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4 sm:gap-6">
                     {loading ? (
                         <div className="col-span-full py-40 text-center opacity-20"><Loader2 className="animate-spin mx-auto text-primary" size={48} /></div>
-                    ) : bites.length === 0 ? (
+                    ) : visibleProducts.length === 0 ? (
                         <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-                            No food products found. Add a food product to get started.
+                            No {menuSection === 'food' ? 'food' : 'snack'} products yet. Use “Add Food Item” to add one to this section.
                         </div>
-                    ) : bites.map(bite => (
+                    ) : visibleProducts.map(bite => (
                         <Card key={bite.id} className="min-w-0 p-4 sm:p-6 lg:p-8 rounded-3xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md hover:shadow-2xl transition-all duration-300 flex flex-col group text-left">
                             <div className="relative aspect-[4/3] w-full rounded-2xl sm:rounded-[2rem] bg-slate-50 border border-slate-100 overflow-hidden mb-5 sm:mb-6 shadow-inner">
                                 {bite.image_url ? (
@@ -555,8 +617,8 @@ export default function BiteCommandCenter() {
                                         className="w-full rounded-xl h-12 bg-slate-50 border-none px-3 text-xs font-bold"
                                     >
                                         <option value="">Select a category</option>
-                                        <option value="Food">Food</option>
-                                        <option value="Snacks">Snacks</option>
+                                        <option value="Food">Food menu</option>
+                                        <option value="Snacks">Snack bar</option>
                                     </select>
                                 </div>
 

@@ -157,7 +157,8 @@ export const DEFAULT_SETTINGS: StoreSettings = {
             { id: 'snacks', label: 'Late Night Snacks' },
             { id: 'beer', label: 'Chilled Beers' },
             { id: 'mixers', label: 'Mixers' },
-            { id: 'essentials', label: 'Bar Essentials' }
+            { id: 'essentials', label: 'Bar Essentials' },
+            { id: 'extras', label: 'Extras' }
         ]
     },
     shipping: {

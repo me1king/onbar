@@ -13,7 +13,6 @@ import {
   MapPin,
   Calendar
 } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
 import { formatPrice, cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -82,27 +81,17 @@ export default function AdminCustomersPage() {
 
   React.useEffect(() => {
     async function loadCustomers() {
-      if (!supabase) {
-        setLocationError('Database is not connected.');
-        setIsLoading(false);
-        return;
-      }
-
       try {
-        const [ordersRes, profilesRes] = await Promise.all([
-          supabase.from('orders').select('id, user_id, customer_name, customer_phone, total_price, created_at, referred_by_code, latitude, longitude').order('created_at', { ascending: false }),
-          supabase.from('profiles').select('id, phone_number, referral_code, full_name, birth_date, address, segment, lifetime_value, total_orders, last_purchase_at, latitude, longitude')
-        ]);
-
-        if (ordersRes.error) {
-          console.error('Error loading customer orders:', ordersRes.error);
-        }
-        else if (ordersRes.data) setOrders(ordersRes.data as OrderRecord[]);
-        if (profilesRes.error) console.error('Error loading customer profiles:', profilesRes.error);
-        else if (profilesRes.data) setProfiles(profilesRes.data as CustomerProfile[]);
-        const locationErrors = [ordersRes.error?.message, profilesRes.error?.message]
-          .filter((message): message is string => Boolean(message));
-        if (locationErrors.length) setLocationError(locationErrors.join(' '));
+        const response = await fetch('/api/admin/customers', { cache: 'no-store' });
+        const result = await response.json() as {
+          orders?: OrderRecord[];
+          profiles?: CustomerProfile[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(result.error || 'Customer data could not be loaded.');
+        setOrders(result.orders || []);
+        setProfiles(result.profiles || []);
+        setLocationError(null);
       } catch (err) {
         console.error('Error loading customers:', err);
         setLocationError(err instanceof Error ? err.message : 'An unexpected error occurred while loading customer locations.');
@@ -112,7 +101,7 @@ export default function AdminCustomersPage() {
     }
 
     loadCustomers();
-  }, [role]);
+  }, []);
 
   const customerLocations = React.useMemo(() => {
     const locations = new Map<string, { latitude: number | null; longitude: number | null }>();

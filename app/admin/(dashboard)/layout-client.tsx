@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
@@ -76,6 +76,7 @@ export default function AdminLayoutClient({
 }: AdminLayoutClientProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -156,6 +157,7 @@ export default function AdminLayoutClient({
     ]},
     { group: 'INVENTORY', items: [
       { name: 'Cellar Hub', href: '/admin/upload', icon: Wine, permission: 'can_manage_inventory' },
+      { name: 'Extras Studio', href: '/admin/upload?category=extras', icon: PackageSearch, permission: 'can_manage_inventory' },
       { name: 'Beverage Vault', href: '/admin/inventory/beverages', icon: Coffee, permission: 'can_manage_inventory' },
       { name: 'Product Forge', href: '/admin/forge', icon: Zap, permission: 'can_manage_inventory' },
       { name: 'Bite Command', href: '/admin/bites', icon: Utensils, permission: 'can_manage_inventory' },
@@ -232,6 +234,12 @@ export default function AdminLayoutClient({
 
   const isActive = (href: string) => {
     if (href === '/admin') return pathname === '/admin';
+    if (href === '/admin/upload?category=extras') {
+      return pathname === '/admin/upload' && searchParams.get('category') === 'extras';
+    }
+    if (href === '/admin/upload') {
+      return pathname === '/admin/upload' && searchParams.get('category') !== 'extras';
+    }
     return pathname?.startsWith(href) || false;
   };
 

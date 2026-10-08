@@ -31,6 +31,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         query = query.or('is_on_offer.eq.true,old_price.not.is.null,category.eq.sale,category.eq.deals');
       } else if (categorySlug === 'featured') {
         query = query.eq('is_featured', true);
+      } else if (categorySlug === 'gifts') {
+        query = query.or('is_souvenir.eq.true,category.ilike.%gift%,category.ilike.%souvenir%,sub_category.ilike.%gift%');
       } else {
         query = query.ilike('category', `%${categorySlug}%`);
       }

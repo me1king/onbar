@@ -47,20 +47,25 @@ import PerfectServeCommerce from './PerfectServeCommerce';
 import DossierEditorialHub from './DossierEditorialHub';
 import AuthenticitySentinel from './AuthenticitySentinel';
 
-type SensoryProfile = Pick<SensoryDNA, 'body' | 'sweetness' | 'oak' | 'smoke' | 'intensity'>;
+type SensoryProfile = Partial<Pick<SensoryDNA, 'body' | 'sweetness' | 'acidity' | 'oak' | 'smoke' | 'intensity'>>;
 
 function getSensoryProfile(source: Partial<SensoryDNA> | Record<string, number> | null | undefined): SensoryProfile | null {
     if (!source) return null;
-    const profile: SensoryProfile = {
-        body: Number(source.body),
-        sweetness: Number(source.sweetness ?? ('sweet' in source ? source.sweet : undefined)),
-        oak: Number(source.oak),
-        smoke: Number(source.smoke),
-        intensity: Number(source.intensity)
-    };
-    return Object.values(profile).every(value => Number.isFinite(value) && value >= 0 && value <= 100)
-        ? profile
-        : null;
+    const values: Array<[keyof SensoryProfile, unknown]> = [
+        ['body', source.body],
+        ['sweetness', source.sweetness ?? ('sweet' in source ? source.sweet : undefined)],
+        ['acidity', source.acidity],
+        ['oak', source.oak],
+        ['smoke', source.smoke],
+        ['intensity', source.intensity]
+    ];
+    const profile: SensoryProfile = {};
+    for (const [key, value] of values) {
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100) {
+            profile[key] = value;
+        }
+    }
+    return Object.keys(profile).length > 0 ? profile : null;
 }
 
 interface FoodAddon {

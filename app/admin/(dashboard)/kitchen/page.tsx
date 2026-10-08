@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Loader2,
     Play,
@@ -44,24 +43,30 @@ export default function KitchenCommandHUD() {
     const [loading, setLoading] = React.useState(true);
     const [loadError, setLoadError] = React.useState<string | null>(null);
 
-    // Fetch live kitchen tickets from Supabase
+    // Admin order access goes through the server so database RLS stays enabled.
     const fetchKitchenTickets = React.useCallback(async () => {
-        if (!supabase) {
-            setTickets([]);
-            setLoadError('Supabase is not configured. Kitchen orders are unavailable.');
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('orders')
-                .select('id, status, created_at, note, order_items(product_id, quantity, size, addons, products(name))')
-                .order('created_at', { ascending: true });
-            if (error) throw error;
+            const response = await fetch('/api/admin/kitchen/orders', { cache: 'no-store' });
+            const result = await response.json() as {
+                orders?: Array<{
+                    id: number;
+                    status: string | null;
+                    created_at: string | null;
+                    note: string | null;
+                    order_items: Array<{
+                        product_id: number | null;
+                        quantity: number | null;
+                        size: string | null;
+                        addons: unknown;
+                        products: { name: string } | Array<{ name: string }> | null;
+                    }> | null;
+                }>;
+                error?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Kitchen orders could not be loaded.');
 
             const now = Date.now();
-            const dbTickets: KdsTicket[] = (data || [])
+            const dbTickets: KdsTicket[] = (result.orders || [])
                 .filter(ord => ['pending', 'paid', 'created', 'preparing', 'packed'].includes(String(ord.status || '').toLowerCase()))
                 .map(ord => {
                     const rawItems = ord.order_items || [];
@@ -110,13 +115,8 @@ export default function KitchenCommandHUD() {
 
     React.useEffect(() => {
         fetchKitchenTickets();
-
-        if (supabase) {
-            const channel = supabase.channel('realtime_kds_tickets')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchKitchenTickets)
-                .subscribe();
-            return () => { if (supabase) supabase.removeChannel(channel); };
-        }
+        const refresh = window.setInterval(fetchKitchenTickets, 15000);
+        return () => window.clearInterval(refresh);
     }, [fetchKitchenTickets]);
 
     // Animated Prep Countdown Timer (1s Interval)
@@ -134,13 +134,21 @@ export default function KitchenCommandHUD() {
         if (currentStage === 'PACKED') return;
         const nextStage: KdsTicket['stage'] = currentStage === 'QUEUED' ? 'PREPARING' : 'PACKED';
 
-        if (!supabase) return;
-        const { error } = await supabase.from('orders').update({ status: nextStage }).eq('id', ticketId);
-        if (error) {
-            setLoadError(`Order ${ticketId} was not updated: ${error.message}`);
+        try {
+            const response = await fetch('/api/admin/kitchen/orders', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: ticketId, status: nextStage })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Order status could not be updated.');
+            setLoadError(null);
+            setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, stage: nextStage } : t));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Order status could not be updated.';
+            setLoadError(message);
             return;
         }
-        setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, stage: nextStage } : t));
     };
 
     const formatTimer = (totalSeconds: number) => {

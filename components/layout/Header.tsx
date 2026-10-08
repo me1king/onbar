@@ -375,9 +375,25 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
     { href: "/souvenirs", label: "Souvenirs" },
     { href: "/shop/snacks", label: "Munchies" },
     { href: "/shop/category/sale", label: "Deals" },
+    { href: "/shop/category/gifts", label: "Gifts" },
     { href: "/buzz?planner=true", label: "Build My Night" },
     { href: "/blog", label: "Mixology" },
     { href: "/track", label: "Track" }
+  ];
+  const catalogNavItems = [
+    { href: "/shop/category/whiskey", label: "Whisky" },
+    { href: "/shop/category/wine", label: "Wine" },
+    { href: "/shop/category/beer", label: "Beers" },
+    { href: "/shop/category/champagne", label: "Champagne" },
+    { href: "/shop/category/liqueur", label: "Liqueur" },
+    { href: "/shop/category/tequila", label: "Tequila" },
+    { href: "/shop/category/gin", label: "Gin" },
+    { href: "/shop/category/cognac", label: "Cognac" },
+    { href: "/shop/category/brandy", label: "Brandy" },
+    { href: "/shop/category/vodka", label: "Vodka" },
+    { href: "/shop/category/rum", label: "Rum" },
+    { href: "/extras", label: "Extras" },
+    { href: "/shop/category/gifts", label: "Gifts" }
   ];
 
   return (
@@ -406,27 +422,6 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
               )}
             </Link>
 
-            <nav
-              className="hidden 2xl:flex items-center space-x-0.5 min-w-0"
-              role="navigation"
-              aria-label="Main navigation"
-            >
-              {navItems.map(({ href, label }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  prefetch={true}
-                  data-behavior-id={`nav.${label.toLowerCase().replace(' ', '_')}`}
-                  className={`px-2.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-200 whitespace-nowrap ${
-                    pathname === href
-                      ? "bg-primary/10 text-primary shadow-sm"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                </Link>
-              ))}
-            </nav>
           </div>
 
           {/* Search Bar */}
@@ -537,7 +532,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
           <div className="flex items-center gap-1.5 max-[430px]:gap-1 sm:gap-3">
             <button
               onClick={() => setIsMobileOpen(!isMobileOpen)}
-              className="2xl:hidden p-1.5 max-[430px]:p-1 max-[360px]:p-1 sm:p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
+              className="lg:hidden p-1.5 max-[430px]:p-1 max-[360px]:p-1 sm:p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
               aria-label="Toggle Menu"
             >
               {isMobileOpen ? <X className="h-5 w-5 text-slate-600" /> : <Menu className="h-5 w-5 text-slate-600" />}
@@ -634,6 +629,30 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
           </div>
         </div>
 
+        <nav
+          className="mt-3 hidden items-center gap-1 overflow-x-auto border-t border-slate-100 pt-2 no-scrollbar lg:flex"
+          role="navigation"
+          aria-label="Shop categories"
+        >
+          {catalogNavItems.map(({ href, label }) => {
+            const active = pathname === href || (label === "Gifts" && pathname === "/gifting");
+            return (
+              <Link
+                key={href}
+                href={href}
+                prefetch
+                className={`shrink-0 border-b-2 px-2.5 py-2 text-[11px] font-semibold transition-colors xl:px-3 ${
+                  active
+                    ? "border-rose-600 text-rose-600"
+                    : "border-transparent text-slate-800 hover:text-rose-600"
+                }`}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+
         {/* Mobile Search Overlay */}
         {isSearchOpen && (
           <div className="lg:hidden mt-3 animate-in slide-in-from-top-4 duration-300 relative">
@@ -719,7 +738,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
         )}
 
         {isMobileOpen && (
-          <nav className="2xl:hidden mt-4 bg-slate-50 rounded-3xl p-4 sm:p-6 animate-in zoom-in-95 duration-200 shadow-xl border border-slate-100 pb-safe" role="navigation">
+          <nav className="lg:hidden mt-4 bg-slate-50 rounded-3xl p-4 sm:p-6 animate-in zoom-in-95 duration-200 shadow-xl border border-slate-100 pb-safe" role="navigation">
             <div className="mb-3 grid grid-cols-2 gap-2">
               <button
                 onClick={() => {
