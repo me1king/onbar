@@ -157,6 +157,7 @@ export default function WaitlistPage() {
   const [savingSiteContent, setSavingSiteContent] = useState(false);
   const [uploadingSiteImage, setUploadingSiteImage] = useState(false);
   const [uploadingTrack, setUploadingTrack] = useState<string | null>(null);
+  const [trackUploadErrors, setTrackUploadErrors] = useState<Record<string, string>>({});
   const [trackTitles, setTrackTitles] = useState<Record<string, string>>({});
   const [siteRewards, setSiteRewards] = useState<WaitlistSiteReward[]>([]);
   const [rewardClaims, setRewardClaims] = useState<WaitlistRewardClaim[]>([]);
@@ -270,9 +271,12 @@ export default function WaitlistPage() {
     if (!file) return;
     const title = trackTitles[ageGroup]?.trim();
     if (!title) {
-      setSiteContentError(`Enter a track name for age ${ageGroups.find(group => group.id === ageGroup)?.label || ageGroup}.`);
+      const message = `Enter a track name for age ${ageGroups.find(group => group.id === ageGroup)?.label || ageGroup}.`;
+      setTrackUploadErrors(current => ({ ...current, [ageGroup]: message }));
+      setSiteContentError(message);
       return;
     }
+    setTrackUploadErrors(current => ({ ...current, [ageGroup]: '' }));
     setUploadingTrack(ageGroup);
     setSiteContentError('');
     setSiteContentNotice('');
@@ -304,8 +308,10 @@ export default function WaitlistPage() {
           ? `UPLOAD SAVED, BUT NOT LIVE — “${savedTrack.title}” is saved for age ${label}, but the live waitlist site does not have this assignment. Make sure both deployments use the same Supabase project. Do not upload it again.`
           : `UPLOAD SAVED — “${savedTrack.title}” is assigned to age ${label}, but the live waitlist site could not be checked. Check the public site connection before treating it as live.`);
     } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Age-group music could not be uploaded.';
       console.error('[AdminWaitlistSite] Could not upload age-group music:', cause);
-      setSiteContentError(cause instanceof Error ? cause.message : 'Age-group music could not be uploaded.');
+      setTrackUploadErrors(current => ({ ...current, [ageGroup]: message }));
+      setSiteContentError(message);
     } finally {
       setUploadingTrack(null);
     }
@@ -491,11 +497,13 @@ export default function WaitlistPage() {
                       </div>}
                       {!track && <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-500">NO SONG UPLOADED for this age group.</p>}
                       <label className="mt-2 block text-[10px] font-bold text-slate-600">Track name<input maxLength={100} value={trackTitles[group.id] ?? track?.title ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [group.id]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
+                      {!track && trackTitles[group.id]?.trim() && <p className="mt-1 text-[10px] font-semibold text-amber-800">Name entered only — select the audio file below to upload this song.</p>}
                       <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">
-                        <Upload size={13} />{uploadingTrack === group.id ? 'Uploading & publishing…' : track ? 'Replace track' : 'Upload track'}
+                        <Upload size={13} />{uploadingTrack === group.id ? 'Uploading & publishing…' : track ? 'Choose replacement audio' : 'Choose audio file to upload'}
                         <input type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a" disabled={uploadingTrack !== null} className="sr-only" onChange={event => { void uploadAgeGroupTrack(group.id, event.target.files?.[0]); event.currentTarget.value = ''; }} />
                       </label>
                       {uploadingTrack === group.id && <p role="status" className="mt-2 text-xs text-slate-500">Uploading the file and publishing it to the waitlist site. Keep this page open.</p>}
+                      {trackUploadErrors[group.id] && <p role="alert" className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-semibold text-rose-800">{trackUploadErrors[group.id]}</p>}
                     </div>;
                   })}
                 </div>

@@ -18,9 +18,13 @@ const extensions: Record<string, string> = {
 };
 const audioExtensions: Record<string, string> = {
   'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/x-mpeg': 'mp3',
   'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
   'audio/ogg': 'ogg',
-  'audio/mp4': 'm4a'
+  'audio/mp4': 'm4a',
+  'audio/x-m4a': 'm4a'
 };
 const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,launch_at,tokens_per_referral,updated_at';
 const rewardFields = 'id,name,description,image_url,image_path,token_cost,is_active,sort_order,created_at,updated_at';
@@ -274,17 +278,25 @@ export async function POST(request: Request) {
   if (form.get('kind') === 'music') {
     const ageGroup = form.get('ageGroup');
     const title = typeof form.get('title') === 'string' ? String(form.get('title')).trim().slice(0, 100) : '';
-    const audioExtension = audioExtensions[file.type];
+    const audioType = file.type.toLowerCase();
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    const audioExtension = audioExtensions[audioType]
+      || (fileExtension && ['mp3', 'wav', 'ogg', 'm4a'].includes(fileExtension) ? fileExtension : undefined);
+    const canonicalAudioType = audioExtension === 'mp3' ? 'audio/mpeg'
+      : audioExtension === 'wav' ? 'audio/wav'
+        : audioExtension === 'ogg' ? 'audio/ogg'
+          : audioExtension === 'm4a' ? 'audio/mp4'
+            : '';
     if (typeof ageGroup !== 'string' || !AGE_GROUPS.has(ageGroup)) {
       return NextResponse.json({ error: 'Choose a valid adult age group for this track.' }, { status: 400 });
     }
     if (!title) return NextResponse.json({ error: 'Enter a track name.' }, { status: 400 });
-    if (!audioExtension) return NextResponse.json({ error: 'Only MP3, WAV, OGG, or M4A audio files are supported.' }, { status: 400 });
+    if (!audioExtension || !canonicalAudioType) return NextResponse.json({ error: 'Only MP3, WAV, OGG, or M4A audio files are supported.' }, { status: 400 });
     if (file.size === 0 || file.size > MAX_AUDIO_BYTES) {
       return NextResponse.json({ error: 'Audio must be greater than 0 bytes and no larger than 10 MB.' }, { status: 400 });
     }
     const audioBytes = new Uint8Array(await file.arrayBuffer());
-    if (!validAudioSignature(file.type, audioBytes)) {
+    if (!validAudioSignature(canonicalAudioType, audioBytes)) {
       return NextResponse.json({ error: 'The audio contents do not match the selected file type.' }, { status: 400 });
     }
 
@@ -298,7 +310,7 @@ export async function POST(request: Request) {
     }
     const path = `music/${ageGroup}/${crypto.randomUUID()}.${audioExtension}`;
     const { error: uploadError } = await database.storage.from(AUDIO_BUCKET).upload(path, audioBytes, {
-      contentType: file.type,
+      contentType: canonicalAudioType,
       upsert: false
     });
     if (uploadError) {
