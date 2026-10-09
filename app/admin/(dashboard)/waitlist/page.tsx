@@ -489,10 +489,15 @@ export default function WaitlistPage() {
           <h1 className="mt-2 text-3xl font-black uppercase tracking-tight text-slate-950">Early Access Waitlist</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">Signups from the standalone early-access site and storefront waitlist. Exact GPS coordinates are never stored.</p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-10 items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50 sm:self-auto"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {canManageSite && <a href="#waitlist-genre-music" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white hover:opacity-90"><Upload size={15} /> Upload songs</a>}
+          <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+        </div>
       </header>
 
       {error && <div role="alert" className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><AlertTriangle size={18} className="shrink-0" />{error}</div>}
+
+      {canView && !canManageSite && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">You can view waitlist signups, but uploading songs and editing the standalone site requires an owner/admin account or the <code className="font-bold">can_manage_settings</code> permission.</div>}
 
       {canManageSite && (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -531,8 +536,8 @@ export default function WaitlistPage() {
                 {siteContent.hero_image_url && <div role="img" aria-label={siteContent.hero_image_alt} className="h-16 w-24 rounded-lg bg-cover bg-center" style={{ backgroundImage: `url("${siteContent.hero_image_url.replaceAll('"', '%22')}")` }} />}
                 <button type="submit" disabled={savingSiteContent || uploadingSiteImage} className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-50"><Save size={15} />{savingSiteContent ? 'Publishing…' : 'Publish copy'}</button>
               </div>
-              <div className="grid gap-3 border-t border-slate-100 pt-4 lg:col-span-2">
-                <div><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Age-group background music</h3><p className="mt-1 text-xs text-slate-500">Upload music you own or are licensed to use. Visitors choose an adult age range and explicitly enter before a track plays. MP3, WAV, OGG or M4A · maximum 10 MB.</p></div>
+              <div id="waitlist-age-music" className="scroll-mt-6 grid gap-3 border-t border-slate-100 pt-4 lg:col-span-2">
+                <div><h3 className="text-sm font-black uppercase tracking-wide text-slate-900">Upload songs by age group</h3><p className="mt-1 text-xs text-slate-500">Upload music you own or are licensed to use. Visitors choose an adult age range and explicitly enter before a track plays. MP3, WAV, OGG or M4A · maximum 10 MB.</p></div>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {ageGroups.map(group => {
                     const track = siteContent.age_group_tracks?.[group.id];
@@ -560,8 +565,8 @@ export default function WaitlistPage() {
                   })}
                 </div>
               </div>
-              <div className="grid gap-3 border-t border-slate-100 pt-4 lg:col-span-2">
-                <div><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Music by genre</h3><p className="mt-1 text-xs text-slate-500">Upload a licensed song for each style. Visitors can choose a genre at the age gate and hear that genre’s track. If no genre track is available, they can use the existing age-group mix.</p></div>
+              <div id="waitlist-genre-music" className="scroll-mt-6 grid gap-3 border-t border-slate-100 pt-4 lg:col-span-2">
+                <div><h3 className="text-sm font-black uppercase tracking-wide text-slate-900">Upload songs by genre</h3><p className="mt-1 text-xs text-slate-500">Upload a licensed song for each style. Visitors can choose a genre at the age gate and hear that genre’s track. If no genre track is available, they can use the existing age-group mix.</p></div>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {musicGenres.map(genre => {
                     const track = siteContent.genre_tracks?.[genre.id];
