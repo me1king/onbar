@@ -15,7 +15,7 @@ export async function GET() {
   if (!database) return NextResponse.json({ error: 'Dashboard data is not configured.' }, { status: 503 });
 
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [orders, products, ledger, riders] = await Promise.all([
+  const [orders, initialProducts, ledger, riders] = await Promise.all([
     database.from('orders')
       .select('id, total_price, status, created_at, order_items(product_id, unit_cost, quantity)')
       .gte('created_at', since)
@@ -24,6 +24,11 @@ export async function GET() {
     database.from('financial_ledger').select('id, amount, entry_type, created_at').gte('created_at', since),
     database.from('rider_status').select('id, rider_name, status, battery_level').neq('status', 'Offline')
   ]);
+  let products = initialProducts;
+  if (products.error?.code === '42703' && /warehouse_location/i.test(products.error.message)) {
+    console.warn('[AdminDashboard] products.warehouse_location is not installed; loading dashboard inventory without warehouse labels.');
+    products = await database.from('products').select('id, stock, name, price, image_url, cost_price, category');
+  }
   const queryError = orders.error || products.error || ledger.error || riders.error;
   if (queryError) {
     console.error('[AdminDashboard] Could not load dashboard data:', queryError);

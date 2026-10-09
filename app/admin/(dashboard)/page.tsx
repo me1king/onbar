@@ -457,7 +457,7 @@ export default function AdminDashboard() {
                                   </div>
                                   <div className="min-w-0">
                                       <p className="text-[11px] font-black text-foreground uppercase truncate tracking-tight">{p.name}</p>
-                                      <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">{p.warehouse_location || 'Cellar Hub'}</p>
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">{p.warehouse_location || 'Location not configured'}</p>
                                       <p className="text-[10px] font-bold text-rose-500 uppercase mt-1 tracking-widest">Only {p.stock} remain</p>
                                   </div>
                               </div>

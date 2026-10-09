@@ -1937,7 +1937,10 @@ $$;
 ALTER TABLE public.products
     ADD COLUMN IF NOT EXISTS size_label TEXT,
     ADD COLUMN IF NOT EXISTS is_ice_cold BOOLEAN NOT NULL DEFAULT false,
-    ADD COLUMN IF NOT EXISTS temperature_celsius NUMERIC(5,2);
+    ADD COLUMN IF NOT EXISTS temperature_celsius NUMERIC(5,2),
+    ADD COLUMN IF NOT EXISTS warehouse_location TEXT;
+
+NOTIFY pgrst, 'reload schema';
 
 -- ===== MOBILE_WIDGETS_MIGRATION.sql =====
 CREATE TABLE IF NOT EXISTS public.mobile_app_widgets (
