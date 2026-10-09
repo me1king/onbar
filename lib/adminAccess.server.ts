@@ -35,7 +35,21 @@ export function isSameOriginRequest(request: Request): boolean {
   if (!origin) return false;
 
   try {
-    return new URL(origin).origin === new URL(request.url).origin;
+    const requestUrl = new URL(request.url);
+    const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+    const host = forwardedHost || request.headers.get('host') || requestUrl.host;
+    const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+    const protocol = forwardedProtocol ? `${forwardedProtocol.replace(/:$/, '')}:` : requestUrl.protocol;
+    if (!['http:', 'https:'].includes(protocol)) return false;
+
+    const originUrl = new URL(origin);
+    return originUrl.protocol === protocol
+      && originUrl.host.toLowerCase() === host.toLowerCase()
+      && !originUrl.username
+      && !originUrl.password
+      && originUrl.pathname === '/'
+      && !originUrl.search
+      && !originUrl.hash;
   } catch {
     return false;
   }
