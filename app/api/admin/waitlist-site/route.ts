@@ -10,6 +10,7 @@ const REWARD_BUCKET = 'waitlist-site-rewards';
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const AGE_GROUPS = new Set(['18_20', '21_24', '25_34', '35_44', '45_plus']);
+const MUSIC_GENRES = new Set(['reggae', 'genge', 'gengetone', 'soul', 'rnb', 'classic', 'love_romance', 'afrobeats', 'hip_hop', 'pop', 'other']);
 const extensions: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -26,11 +27,12 @@ const audioExtensions: Record<string, string> = {
   'audio/mp4': 'm4a',
   'audio/x-m4a': 'm4a'
 };
-const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,launch_at,tokens_per_referral,updated_at';
+const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,genre_tracks,launch_at,tokens_per_referral,updated_at';
 const rewardFields = 'id,name,description,image_url,image_path,token_cost,is_active,sort_order,created_at,updated_at';
 const claimFields = 'id,referrer_id,reward_id,tokens_spent,status,created_at,updated_at';
 
-async function checkTracksOnPublicSite(tracks: Record<string, { title: string; url: string }>) {
+async function checkTracksOnPublicSite(tracks: Record<string, { title: string; url: string }>, assignment: 'age_group_tracks' | 'genre_tracks') {
+  if (Object.keys(tracks).length === 0) return { available: false, confirmed: {} as Record<string, boolean> };
   const baseUrl = (process.env.WAITLIST_PUBLIC_URL?.trim() || 'https://theewaitlist.vercel.app').replace(/\/+$/, '');
   try {
     const response = await fetch(`${baseUrl}/api/content?track_check=${crypto.randomUUID()}`, {
@@ -39,9 +41,12 @@ async function checkTracksOnPublicSite(tracks: Record<string, { title: string; u
     });
     if (!response.ok) return { available: false, confirmed: {} as Record<string, boolean> };
     const result = await response.json() as {
-      content?: { age_group_tracks?: Record<string, { title?: string; url?: string }> };
+      content?: {
+        age_group_tracks?: Record<string, { title?: string; url?: string }>;
+        genre_tracks?: Record<string, { title?: string; url?: string }>;
+      };
     };
-    const publishedTracks = result.content?.age_group_tracks || {};
+    const publishedTracks = result.content?.[assignment] || {};
     return {
       available: true,
       confirmed: Object.fromEntries(
@@ -142,7 +147,18 @@ export async function GET(request: Request) {
       typeof entry[1]?.title === 'string' && typeof entry[1]?.url === 'string'
     )
   );
-  const publicSiteCheck = await checkTracksOnPublicSite(tracksToCheck);
+  const genreTracks = data.genre_tracks && typeof data.genre_tracks === 'object'
+    ? data.genre_tracks as Record<string, { title?: unknown; url?: unknown }>
+    : {};
+  const genreTracksToCheck = Object.fromEntries(
+    Object.entries(genreTracks).filter((entry): entry is [string, { title: string; url: string }] =>
+      typeof entry[1]?.title === 'string' && typeof entry[1]?.url === 'string'
+    )
+  );
+  const [publicSiteCheck, publicGenreCheck] = await Promise.all([
+    checkTracksOnPublicSite(tracksToCheck, 'age_group_tracks'),
+    checkTracksOnPublicSite(genreTracksToCheck, 'genre_tracks')
+  ]);
   const memberById = new Map((members.data || []).map(member => [member.id, member]));
   const claimsWithMember = (claims.data || []).map(claim => ({
     ...claim,
@@ -158,7 +174,7 @@ export async function GET(request: Request) {
       : null,
     analyticsDays: days,
     publicSiteCheckAvailable: publicSiteCheck.available,
-    publicSiteConfirmed: publicSiteCheck.confirmed
+    publicSiteConfirmed: { ...publicSiteCheck.confirmed, ...publicGenreCheck.confirmed }
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
@@ -288,7 +304,10 @@ export async function POST(request: Request) {
   const file = form.get('file');
   if (!(file instanceof File)) return NextResponse.json({ error: 'Choose an image file to upload.' }, { status: 400 });
   if (form.get('kind') === 'music') {
+    const musicType = form.get('musicType') === 'genre' ? 'genre' : 'age';
     const ageGroup = form.get('ageGroup');
+    const genre = form.get('genre');
+    const musicKey = musicType === 'genre' ? genre : ageGroup;
     const title = typeof form.get('title') === 'string' ? String(form.get('title')).trim().slice(0, 100) : '';
     const audioType = file.type.toLowerCase();
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
@@ -299,8 +318,8 @@ export async function POST(request: Request) {
         : audioExtension === 'ogg' ? 'audio/ogg'
           : audioExtension === 'm4a' ? 'audio/mp4'
             : '';
-    if (typeof ageGroup !== 'string' || !AGE_GROUPS.has(ageGroup)) {
-      return NextResponse.json({ error: 'Choose a valid adult age group for this track.' }, { status: 400 });
+    if (typeof musicKey !== 'string' || !(musicType === 'genre' ? MUSIC_GENRES : AGE_GROUPS).has(musicKey)) {
+      return NextResponse.json({ error: musicType === 'genre' ? 'Choose a supported genre for this track.' : 'Choose a valid adult age group for this track.' }, { status: 400 });
     }
     if (!title) return NextResponse.json({ error: 'Enter a track name.' }, { status: 400 });
     if (!audioExtension || !canonicalAudioType) return NextResponse.json({ error: 'Only MP3, WAV, OGG, or M4A audio files are supported.' }, { status: 400 });
@@ -313,39 +332,41 @@ export async function POST(request: Request) {
     }
 
     const { data: current, error: readError } = await database.from('waitlist_site_content')
-      .select('age_group_tracks')
+      .select('age_group_tracks,genre_tracks')
       .eq('id', 'default')
       .single();
     if (readError) {
       console.error('[AdminWaitlistSite] Could not load current age-group music:', readError);
       return NextResponse.json({ error: 'Music settings could not be loaded. Apply the waitlist site migration.' }, { status: 503 });
     }
-    const path = `music/${ageGroup}/${crypto.randomUUID()}.${audioExtension}`;
+    const trackField = musicType === 'genre' ? 'genre_tracks' : 'age_group_tracks';
+    const path = `music/${musicType}/${musicKey}/${crypto.randomUUID()}.${audioExtension}`;
     const { error: uploadError } = await database.storage.from(AUDIO_BUCKET).upload(path, audioBytes, {
       contentType: canonicalAudioType,
       upsert: false
     });
     if (uploadError) {
-      console.error('[AdminWaitlistSite] Could not upload age-group track:', uploadError);
+      console.error('[AdminWaitlistSite] Could not upload music track:', uploadError);
       const missingBucket = uploadError.message.toLowerCase().includes('bucket not found');
       return NextResponse.json({
         error: missingBucket
           ? `The ${AUDIO_BUCKET} storage bucket is missing. Apply the waitlist site migration.`
-          : 'The age-group track could not be uploaded.'
+          : 'The music track could not be uploaded.'
       }, { status: 503 });
     }
-    const tracks = current.age_group_tracks && typeof current.age_group_tracks === 'object'
-      ? { ...current.age_group_tracks as Record<string, { path?: string }> }
+    const currentTracks = current[trackField];
+    const tracks = currentTracks && typeof currentTracks === 'object'
+      ? { ...currentTracks as Record<string, { path?: string }> }
       : {};
-    const previousPath = tracks[ageGroup]?.path;
+    const previousPath = tracks[musicKey]?.path;
     const track = {
       title,
       path,
       url: database.storage.from(AUDIO_BUCKET).getPublicUrl(path).data.publicUrl
     };
-    tracks[ageGroup] = track;
+    tracks[musicKey] = track;
     const { data, error: saveError } = await database.from('waitlist_site_content')
-      .update({ age_group_tracks: tracks, updated_at: new Date().toISOString() })
+      .update({ [trackField]: tracks, updated_at: new Date().toISOString() })
       .eq('id', 'default')
       .select(contentFields)
       .single();
@@ -355,23 +376,24 @@ export async function POST(request: Request) {
       console.error('[AdminWaitlistSite] Could not save age-group track:', saveError);
       return NextResponse.json({ error: 'The track uploaded but could not be published. Confirm the waitlist site migration.' }, { status: 503 });
     }
-    const savedTracks = data.age_group_tracks && typeof data.age_group_tracks === 'object'
-      ? data.age_group_tracks as Record<string, { title?: string; path?: string; url?: string }>
+    const savedTrackSet = data[trackField];
+    const savedTracks = savedTrackSet && typeof savedTrackSet === 'object'
+      ? savedTrackSet as Record<string, { title?: string; path?: string; url?: string }>
       : {};
-    const savedTrack = savedTracks[ageGroup];
+    const savedTrack = savedTracks[musicKey];
     if (savedTrack?.title !== title || savedTrack.path !== path || savedTrack.url !== track.url) {
-      console.error('[AdminWaitlistSite] Track upload returned without the expected age-group assignment.');
-      return NextResponse.json({ error: 'The audio file uploaded, but the age-group assignment could not be confirmed. Refresh the waitlist settings and try again.' }, { status: 503 });
+      console.error('[AdminWaitlistSite] Track upload returned without the expected music assignment.');
+      return NextResponse.json({ error: 'The audio file uploaded, but its assignment could not be confirmed. Refresh the waitlist settings and try again.' }, { status: 503 });
     }
     if (previousPath && previousPath !== path) {
       const { error: cleanupError } = await database.storage.from(AUDIO_BUCKET).remove([previousPath]);
-      if (cleanupError) console.error('[AdminWaitlistSite] Could not remove replaced age-group track:', cleanupError);
+      if (cleanupError) console.error('[AdminWaitlistSite] Could not remove replaced music track:', cleanupError);
     }
-    const publicSiteCheck = await checkTracksOnPublicSite({ [ageGroup]: track });
+    const publicSiteCheck = await checkTracksOnPublicSite({ [musicKey]: track }, trackField);
     return NextResponse.json({
       content: data,
       publicSiteCheckAvailable: publicSiteCheck.available,
-      publicSiteConfirmed: publicSiteCheck.confirmed[ageGroup] === true
+      publicSiteConfirmed: publicSiteCheck.confirmed[musicKey] === true
     }, { headers: { 'Cache-Control': 'no-store' } });
   }
 

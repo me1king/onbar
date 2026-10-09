@@ -75,6 +75,7 @@ interface WaitlistSiteContent {
   hero_image_path: string | null;
   hero_image_alt: string;
   age_group_tracks: Record<string, { title: string; path: string; url: string }>;
+  genre_tracks: Record<string, { title: string; path: string; url: string }>;
   launch_at: string | null;
   tokens_per_referral: number;
   updated_at: string;
@@ -102,7 +103,7 @@ interface WaitlistSiteAnalytics {
   page_opens: number;
   unique_visitors: number;
   age_groups: Array<{ group: string; label: string; visitors: number }>;
-  music: Array<{ age_group: string; track_title: string; starts: number; heard_80: number; listeners: number }>;
+  music: Array<{ age_group: string; music_genre: string | null; track_title: string; starts: number; heard_80: number; listeners: number }>;
   locations: Array<{ country: string; county: string; city: string; area: string; signups: number }>;
 }
 
@@ -112,6 +113,20 @@ const ageGroups = [
   { id: '25_34', label: '25–34' },
   { id: '35_44', label: '35–44' },
   { id: '45_plus', label: '45+' }
+];
+
+const musicGenres = [
+  { id: 'reggae', label: 'Reggae' },
+  { id: 'genge', label: 'Genge' },
+  { id: 'gengetone', label: 'Gengetone' },
+  { id: 'soul', label: 'Soul' },
+  { id: 'rnb', label: 'R&B' },
+  { id: 'classic', label: 'Classics' },
+  { id: 'love_romance', label: 'Love & Romance' },
+  { id: 'afrobeats', label: 'Afrobeats' },
+  { id: 'hip_hop', label: 'Hip-hop' },
+  { id: 'pop', label: 'Pop' },
+  { id: 'other', label: 'Other' }
 ];
 
 const statusLabels: Record<WaitlistStatus, string> = {
@@ -295,24 +310,30 @@ export default function WaitlistPage() {
     }
   };
 
-  const uploadAgeGroupTrack = async (ageGroup: string, file: File | undefined) => {
+  const uploadMusicTrack = async (type: 'age' | 'genre', key: string, file: File | undefined) => {
     if (!file) return;
-    const title = trackTitles[ageGroup]?.trim();
+    const trackId = `${type}:${key}`;
+    const track = type === 'genre' ? siteContent?.genre_tracks?.[key] : siteContent?.age_group_tracks?.[key];
+    const title = trackTitles[trackId]?.trim() || track?.title || '';
     if (!title) {
-      const message = `Enter a track name for age ${ageGroups.find(group => group.id === ageGroup)?.label || ageGroup}.`;
-      setTrackUploadErrors(current => ({ ...current, [ageGroup]: message }));
+      const label = type === 'genre'
+        ? musicGenres.find(genre => genre.id === key)?.label || key
+        : ageGroups.find(group => group.id === key)?.label || key;
+      const message = `Enter a track name for ${type === 'genre' ? label : `age ${label}`}.`;
+      setTrackUploadErrors(current => ({ ...current, [trackId]: message }));
       setSiteContentError(message);
       return;
     }
-    setTrackUploadErrors(current => ({ ...current, [ageGroup]: '' }));
-    setUploadingTrack(ageGroup);
+    setTrackUploadErrors(current => ({ ...current, [trackId]: '' }));
+    setUploadingTrack(trackId);
     setSiteContentError('');
     setSiteContentNotice('');
     setSiteContentNoticeConfirmed(true);
     try {
       const form = new FormData();
       form.append('kind', 'music');
-      form.append('ageGroup', ageGroup);
+      form.append('musicType', type);
+      form.append(type === 'genre' ? 'genre' : 'ageGroup', key);
       form.append('title', title);
       form.append('file', file);
       const response = await fetch('/api/admin/waitlist-site', { method: 'POST', body: form });
@@ -321,24 +342,26 @@ export default function WaitlistPage() {
         publicSiteCheckAvailable?: boolean;
         publicSiteConfirmed?: boolean;
         error?: string;
-      }>(response, 'Age-group music could not be uploaded.');
-      if (!response.ok || !result.content) throw new Error(result.error || 'Age-group music could not be uploaded.');
-      const savedTrack = result.content.age_group_tracks?.[ageGroup];
-      if (!savedTrack || savedTrack.title !== title) throw new Error('The upload finished but the saved age-group assignment could not be confirmed. Refresh the page and check the track before retrying.');
+      }>(response, 'Music could not be uploaded.');
+      if (!response.ok || !result.content) throw new Error(result.error || 'Music could not be uploaded.');
+      const savedTrack = type === 'genre' ? result.content.genre_tracks?.[key] : result.content.age_group_tracks?.[key];
+      if (!savedTrack || savedTrack.title !== title) throw new Error('The upload finished but its saved music assignment could not be confirmed. Refresh the page and check the track before retrying.');
       setSiteContent(result.content);
       setPublicSiteCheckAvailable(result.publicSiteCheckAvailable ?? false);
-      setPublicSiteConfirmed(current => ({ ...current, [ageGroup]: result.publicSiteConfirmed === true }));
-      const label = ageGroups.find(group => group.id === ageGroup)?.label || ageGroup;
+      setPublicSiteConfirmed(current => ({ ...current, [key]: result.publicSiteConfirmed === true }));
+      const label = type === 'genre'
+        ? musicGenres.find(genre => genre.id === key)?.label || key
+        : ageGroups.find(group => group.id === key)?.label || key;
       setSiteContentNoticeConfirmed(result.publicSiteConfirmed === true);
       setSiteContentNotice(result.publicSiteConfirmed
-        ? `UPLOAD COMPLETE — “${savedTrack.title}” is assigned to age ${label} and confirmed on the live waitlist site.`
+        ? `UPLOAD COMPLETE — “${savedTrack.title}” is assigned to ${type === 'genre' ? label : `age ${label}`} and confirmed on the live waitlist site.`
         : result.publicSiteCheckAvailable
-          ? `UPLOAD SAVED, BUT NOT LIVE — “${savedTrack.title}” is saved for age ${label}, but the live waitlist site does not have this assignment. Make sure both deployments use the same Supabase project. Do not upload it again.`
-          : `UPLOAD SAVED — “${savedTrack.title}” is assigned to age ${label}, but the live waitlist site could not be checked. Check the public site connection before treating it as live.`);
+          ? `UPLOAD SAVED, BUT NOT LIVE — “${savedTrack.title}” is saved for ${type === 'genre' ? label : `age ${label}`}, but the live waitlist site does not have this assignment. Make sure both deployments use the same Supabase project. Do not upload it again.`
+          : `UPLOAD SAVED — “${savedTrack.title}” is assigned to ${type === 'genre' ? label : `age ${label}`}, but the live waitlist site could not be checked. Check the public site connection before treating it as live.`);
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Age-group music could not be uploaded.';
-      console.error('[AdminWaitlistSite] Could not upload age-group music:', cause);
-      setTrackUploadErrors(current => ({ ...current, [ageGroup]: message }));
+      const message = cause instanceof Error ? cause.message : 'Music could not be uploaded.';
+      console.error('[AdminWaitlistSite] Could not upload waitlist music:', cause);
+      setTrackUploadErrors(current => ({ ...current, [trackId]: message }));
       setSiteContentError(message);
     } finally {
       setUploadingTrack(null);
@@ -513,6 +536,7 @@ export default function WaitlistPage() {
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {ageGroups.map(group => {
                     const track = siteContent.age_group_tracks?.[group.id];
+                    const trackId = `age:${group.id}`;
                     return <div key={group.id} className="rounded-xl border border-slate-200 p-3">
                       <p className="text-xs font-black text-slate-800">Age {group.label}</p>
                       {track && <div className={`mt-2 rounded-lg p-2.5 ${publicSiteConfirmed[group.id] ? 'bg-emerald-50' : 'bg-amber-50'}`}>
@@ -524,14 +548,42 @@ export default function WaitlistPage() {
                         <audio className="mt-2 block h-9 w-full" controls preload="none" src={track.url} aria-label={`Preview published track for age ${group.label}`} />
                       </div>}
                       {!track && <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-500">NO SONG UPLOADED for this age group.</p>}
-                      <label className="mt-2 block text-[10px] font-bold text-slate-600">Track name<input maxLength={100} value={trackTitles[group.id] ?? track?.title ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [group.id]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
-                      {!track && trackTitles[group.id]?.trim() && <p className="mt-1 text-[10px] font-semibold text-amber-800">Name entered only — select the audio file below to upload this song.</p>}
+                      <label className="mt-2 block text-[10px] font-bold text-slate-600">Track name<input maxLength={100} value={trackTitles[trackId] ?? track?.title ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [trackId]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
+                      {!track && trackTitles[trackId]?.trim() && <p className="mt-1 text-[10px] font-semibold text-amber-800">Name entered only — select the audio file below to upload this song.</p>}
                       <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">
-                        <Upload size={13} />{uploadingTrack === group.id ? 'Uploading & publishing…' : track ? 'Choose replacement audio' : 'Choose audio file to upload'}
-                        <input type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a" disabled={uploadingTrack !== null} className="sr-only" onChange={event => { void uploadAgeGroupTrack(group.id, event.target.files?.[0]); event.currentTarget.value = ''; }} />
+                        <Upload size={13} />{uploadingTrack === trackId ? 'Uploading & publishing…' : track ? 'Choose replacement audio' : 'Choose audio file to upload'}
+                        <input type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a" disabled={uploadingTrack !== null} className="sr-only" onChange={event => { void uploadMusicTrack('age', group.id, event.target.files?.[0]); event.currentTarget.value = ''; }} />
                       </label>
-                      {uploadingTrack === group.id && <p role="status" className="mt-2 text-xs text-slate-500">Uploading the file and publishing it to the waitlist site. Keep this page open.</p>}
-                      {trackUploadErrors[group.id] && <p role="alert" className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-semibold text-rose-800">{trackUploadErrors[group.id]}</p>}
+                      {uploadingTrack === trackId && <p role="status" className="mt-2 text-xs text-slate-500">Uploading the file and publishing it to the waitlist site. Keep this page open.</p>}
+                      {trackUploadErrors[trackId] && <p role="alert" className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-semibold text-rose-800">{trackUploadErrors[trackId]}</p>}
+                    </div>;
+                  })}
+                </div>
+              </div>
+              <div className="grid gap-3 border-t border-slate-100 pt-4 lg:col-span-2">
+                <div><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Music by genre</h3><p className="mt-1 text-xs text-slate-500">Upload a licensed song for each style. Visitors can choose a genre at the age gate and hear that genre’s track. If no genre track is available, they can use the existing age-group mix.</p></div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {musicGenres.map(genre => {
+                    const track = siteContent.genre_tracks?.[genre.id];
+                    const trackId = `genre:${genre.id}`;
+                    return <div key={genre.id} className="rounded-xl border border-slate-200 p-3">
+                      <p className="text-xs font-black text-slate-800">{genre.label}</p>
+                      {track && <div className={`mt-2 rounded-lg p-2.5 ${publicSiteConfirmed[genre.id] ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+                        <p className={`flex items-center gap-1.5 text-xs font-bold ${publicSiteConfirmed[genre.id] ? 'text-emerald-800' : 'text-amber-900'}`}>
+                          {publicSiteConfirmed[genre.id] ? <Check size={13} /> : <AlertTriangle size={13} />}
+                          {publicSiteConfirmed[genre.id] ? 'UPLOAD COMPLETE · LIVE' : publicSiteCheckAvailable ? 'UPLOADED · NOT LIVE' : 'SAVED · LIVE STATUS UNKNOWN'}
+                        </p>
+                        <p className={`mt-1 truncate text-xs ${publicSiteConfirmed[genre.id] ? 'text-emerald-900' : 'text-amber-950'}`}>{track.title}</p>
+                        <audio className="mt-2 block h-9 w-full" controls preload="none" src={track.url} aria-label={`Preview ${genre.label} track`} />
+                      </div>}
+                      {!track && <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-500">NO SONG UPLOADED for this genre.</p>}
+                      <label className="mt-2 block text-[10px] font-bold text-slate-600">Track name<input maxLength={100} value={trackTitles[trackId] ?? track?.title ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [trackId]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
+                      <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">
+                        <Upload size={13} />{uploadingTrack === trackId ? 'Uploading & publishing…' : track ? 'Choose replacement audio' : 'Choose audio file to upload'}
+                        <input type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a" disabled={uploadingTrack !== null} className="sr-only" onChange={event => { void uploadMusicTrack('genre', genre.id, event.target.files?.[0]); event.currentTarget.value = ''; }} />
+                      </label>
+                      {uploadingTrack === trackId && <p role="status" className="mt-2 text-xs text-slate-500">Uploading the file and publishing it to the waitlist site. Keep this page open.</p>}
+                      {trackUploadErrors[trackId] && <p role="alert" className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-semibold text-rose-800">{trackUploadErrors[trackId]}</p>}
                     </div>;
                   })}
                 </div>
@@ -568,7 +620,7 @@ export default function WaitlistPage() {
             </div>
 
             <div>
-              <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Age groups &amp; the songs they listen through</h3>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Age groups, genres &amp; the songs they listen through</h3>
               <p className="mt-1 text-xs text-slate-500">“Heard 80%” is a useful resonance signal, not a guarantee that listeners like a track. We need at least five starts before highlighting a leading song.</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {ageGroups.map(group => {
@@ -582,8 +634,8 @@ export default function WaitlistPage() {
                       : <p className="mt-2 text-xs text-slate-500">{groupTracks.length ? `Need at least 5 listens to call a leader · ${count(groupTracks.reduce((total, track) => total + track.starts, 0))} starts so far.` : 'No track listening data yet for this age group.'}</p>}
                     {groupTracks.map(track => {
                       const rate = track.starts ? Math.round((track.heard_80 / track.starts) * 100) : 0;
-                      return <div key={`${track.age_group}-${track.track_title}`} className="mt-3">
-                        <div className="flex justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-700">{track.track_title}</span><span className="shrink-0 text-slate-500">{count(track.starts)} plays · {rate}% to 80%</span></div>
+                      return <div key={`${track.age_group}-${track.music_genre || 'age'}-${track.track_title}`} className="mt-3">
+                        <div className="flex justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-700">{track.track_title}{track.music_genre ? ` · ${musicGenres.find(genre => genre.id === track.music_genre)?.label || track.music_genre}` : ''}</span><span className="shrink-0 text-slate-500">{count(track.starts)} plays · {rate}% to 80%</span></div>
                         <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-primary" style={{ width: `${rate}%` }} /></div>
                       </div>;
                     })}
