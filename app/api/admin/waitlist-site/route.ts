@@ -28,8 +28,15 @@ const audioExtensions: Record<string, string> = {
   'audio/x-m4a': 'm4a'
 };
 const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,genre_tracks,launch_at,tokens_per_referral,updated_at';
+const legacyContentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,launch_at,tokens_per_referral,updated_at';
 const rewardFields = 'id,name,description,image_url,image_path,token_cost,is_active,sort_order,created_at,updated_at';
 const claimFields = 'id,referrer_id,reward_id,tokens_spent,status,created_at,updated_at';
+
+function isMissingGenreColumn(error: { code?: string; message?: string } | null) {
+  return Boolean(error
+    && ['42703', 'PGRST200', 'PGRST204'].includes(error.code || '')
+    && (error.message || '').toLowerCase().includes('genre_tracks'));
+}
 
 async function checkTracksOnPublicSite(tracks: Record<string, { title: string; url: string }>, assignment: 'age_group_tracks' | 'genre_tracks') {
   if (Object.keys(tracks).length === 0) return { available: false, confirmed: {} as Record<string, boolean> };
@@ -111,7 +118,15 @@ export async function GET(request: Request) {
   if (response) return response;
   const database = getDatabase();
   if (!database) return NextResponse.json({ error: 'Waitlist site storage is not configured.' }, { status: 503 });
-  const { data, error } = await database.from('waitlist_site_content').select(contentFields).eq('id', 'default').maybeSingle();
+  let { data, error } = await database.from('waitlist_site_content').select(contentFields).eq('id', 'default').maybeSingle();
+  if (isMissingGenreColumn(error)) {
+    const legacyResult = await database.from('waitlist_site_content')
+      .select(legacyContentFields)
+      .eq('id', 'default')
+      .maybeSingle();
+    data = legacyResult.data ? { ...legacyResult.data, genre_tracks: {} } : null;
+    error = legacyResult.error;
+  }
   if (error || !data) {
     console.error('[AdminWaitlistSite] Could not load published website content:', error);
     return NextResponse.json({ error: 'Apply waitlist-site/supabase/WAITLIST_SITE_MIGRATION.sql to enable website content management.' }, { status: 503 });
@@ -331,13 +346,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The audio contents do not match the selected file type.' }, { status: 400 });
     }
 
-    const { data: current, error: readError } = await database.from('waitlist_site_content')
+    let { data: current, error: readError } = await database.from('waitlist_site_content')
       .select('age_group_tracks,genre_tracks')
       .eq('id', 'default')
       .single();
+    if (musicType === 'age' && isMissingGenreColumn(readError)) {
+      const legacyResult = await database.from('waitlist_site_content')
+        .select('age_group_tracks')
+        .eq('id', 'default')
+        .single();
+      current = legacyResult.data ? { ...legacyResult.data, genre_tracks: {} } : null;
+      readError = legacyResult.error;
+    }
     if (readError) {
       console.error('[AdminWaitlistSite] Could not load current age-group music:', readError);
-      return NextResponse.json({ error: 'Music settings could not be loaded. Apply the waitlist site migration.' }, { status: 503 });
+      return NextResponse.json({
+        error: musicType === 'genre' && isMissingGenreColumn(readError)
+          ? 'Genre uploads require the latest supabase/WAITLIST_SITE_MIGRATION.sql in the shared Supabase project. Age-group uploads can still be used.'
+          : 'Music settings could not be loaded. Apply the waitlist site migration.'
+      }, { status: 503 });
+    }
+    if (!current) {
+      return NextResponse.json({ error: 'Waitlist music settings have not been initialized. Apply the waitlist site migration.' }, { status: 503 });
     }
     const trackField = musicType === 'genre' ? 'genre_tracks' : 'age_group_tracks';
     const path = `music/${musicType}/${musicKey}/${crypto.randomUUID()}.${audioExtension}`;
@@ -365,15 +395,24 @@ export async function POST(request: Request) {
       url: database.storage.from(AUDIO_BUCKET).getPublicUrl(path).data.publicUrl
     };
     tracks[musicKey] = track;
-    const { data, error: saveError } = await database.from('waitlist_site_content')
+    let { data, error: saveError } = await database.from('waitlist_site_content')
       .update({ [trackField]: tracks, updated_at: new Date().toISOString() })
       .eq('id', 'default')
       .select(contentFields)
       .single();
-    if (saveError) {
+    if (musicType === 'age' && isMissingGenreColumn(saveError)) {
+      const legacyResult = await database.from('waitlist_site_content')
+        .update({ age_group_tracks: tracks, updated_at: new Date().toISOString() })
+        .eq('id', 'default')
+        .select(legacyContentFields)
+        .single();
+      data = legacyResult.data ? { ...legacyResult.data, genre_tracks: {} } : null;
+      saveError = legacyResult.error;
+    }
+    if (saveError || !data) {
       const { error: cleanupError } = await database.storage.from(AUDIO_BUCKET).remove([path]);
       if (cleanupError) console.error('[AdminWaitlistSite] Could not clean up unlinked music:', cleanupError);
-      console.error('[AdminWaitlistSite] Could not save age-group track:', saveError);
+      if (saveError) console.error('[AdminWaitlistSite] Could not save age-group track:', saveError);
       return NextResponse.json({ error: 'The track uploaded but could not be published. Confirm the waitlist site migration.' }, { status: 503 });
     }
     const savedTrackSet = data[trackField];
