@@ -101,7 +101,7 @@ function validAudioSignature(type: string, bytes: Uint8Array) {
   return false;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { response } = await authorize();
   if (response) return response;
   const database = getDatabase();
@@ -111,9 +111,13 @@ export async function GET() {
     console.error('[AdminWaitlistSite] Could not load published website content:', error);
     return NextResponse.json({ error: 'Apply waitlist-site/supabase/WAITLIST_SITE_MIGRATION.sql to enable website content management.' }, { status: 503 });
   }
-  const [rewards, claims] = await Promise.all([
+  const requestedDays = Number(new URL(request.url).searchParams.get('days') || '30');
+  const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 30;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const [rewards, claims, analytics] = await Promise.all([
     database.from('waitlist_site_rewards').select(rewardFields).order('sort_order').order('created_at'),
-    database.from('waitlist_reward_claims').select(claimFields).order('created_at', { ascending: false }).limit(100)
+    database.from('waitlist_reward_claims').select(claimFields).order('created_at', { ascending: false }).limit(100),
+    database.rpc('get_waitlist_site_analytics', { p_since: since })
   ]);
   if (rewards.error || claims.error) {
     console.error('[AdminWaitlistSite] Could not load reward/widget settings:', rewards.error || claims.error);
@@ -126,6 +130,9 @@ export async function GET() {
   if (members.error) {
     console.error('[AdminWaitlistSite] Could not load redemption member details:', members.error);
     return NextResponse.json({ error: 'Souvenir request member details could not be loaded.' }, { status: 503 });
+  }
+  if (analytics.error) {
+    console.error('[AdminWaitlistSite] Could not load anonymous site analytics:', analytics.error);
   }
   const tracks = data.age_group_tracks && typeof data.age_group_tracks === 'object'
     ? data.age_group_tracks as Record<string, { title?: unknown; url?: unknown }>
@@ -145,6 +152,11 @@ export async function GET() {
     content: data,
     rewards: rewards.data || [],
     claims: claimsWithMember,
+    analytics: analytics.data || null,
+    analyticsError: analytics.error
+      ? 'Apply supabase/WAITLIST_SITE_MIGRATION.sql in the shared Supabase project to enable site traffic and music analytics.'
+      : null,
+    analyticsDays: days,
     publicSiteCheckAvailable: publicSiteCheck.available,
     publicSiteConfirmed: publicSiteCheck.confirmed
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });

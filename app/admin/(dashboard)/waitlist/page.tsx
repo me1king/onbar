@@ -98,6 +98,13 @@ interface WaitlistRewardClaim {
   created_at: string;
   member?: { full_name: string | null; email: string } | null;
 }
+interface WaitlistSiteAnalytics {
+  page_opens: number;
+  unique_visitors: number;
+  age_groups: Array<{ group: string; label: string; visitors: number }>;
+  music: Array<{ age_group: string; track_title: string; starts: number; heard_80: number; listeners: number }>;
+  locations: Array<{ country: string; county: string; city: string; area: string; signups: number }>;
+}
 
 const ageGroups = [
   { id: '18_20', label: '18–20' },
@@ -159,6 +166,9 @@ export default function WaitlistPage() {
   const [uploadingTrack, setUploadingTrack] = useState<string | null>(null);
   const [trackUploadErrors, setTrackUploadErrors] = useState<Record<string, string>>({});
   const [trackTitles, setTrackTitles] = useState<Record<string, string>>({});
+  const [siteAnalytics, setSiteAnalytics] = useState<WaitlistSiteAnalytics | null>(null);
+  const [siteAnalyticsError, setSiteAnalyticsError] = useState('');
+  const [analyticsDays, setAnalyticsDays] = useState(30);
   const [siteRewards, setSiteRewards] = useState<WaitlistSiteReward[]>([]);
   const [rewardClaims, setRewardClaims] = useState<WaitlistRewardClaim[]>([]);
   const [newReward, setNewReward] = useState({ name: '', description: '', token_cost: 10 });
@@ -192,12 +202,16 @@ export default function WaitlistPage() {
     if (!canManageSite) return;
     setLoadingSiteContent(true);
     setSiteContentError('');
+    setSiteAnalyticsError('');
     try {
-      const response = await fetch('/api/admin/waitlist-site', { cache: 'no-store' });
+      const response = await fetch(`/api/admin/waitlist-site?days=${analyticsDays}`, { cache: 'no-store' });
       const result = await readAdminJson<{
         content?: WaitlistSiteContent;
         rewards?: WaitlistSiteReward[];
         claims?: WaitlistRewardClaim[];
+        analytics?: WaitlistSiteAnalytics | null;
+        analyticsError?: string | null;
+        analyticsDays?: number;
         publicSiteCheckAvailable?: boolean;
         publicSiteConfirmed?: Record<string, boolean>;
         error?: string;
@@ -206,6 +220,9 @@ export default function WaitlistPage() {
       setSiteContent(result.content);
       setSiteRewards(result.rewards || []);
       setRewardClaims(result.claims || []);
+      setSiteAnalytics(result.analytics || null);
+      setSiteAnalyticsError(result.analyticsError || '');
+      if (result.analyticsDays) setAnalyticsDays(result.analyticsDays);
       setPublicSiteCheckAvailable(result.publicSiteCheckAvailable ?? false);
       setPublicSiteConfirmed(result.publicSiteConfirmed || {});
     } catch (cause) {
@@ -214,11 +231,22 @@ export default function WaitlistPage() {
     } finally {
       setLoadingSiteContent(false);
     }
-  }, [canManageSite]);
+  }, [analyticsDays, canManageSite]);
 
   useEffect(() => { void loadSiteContent(); }, [loadSiteContent]);
 
   const topAreas = useMemo(() => (data?.stats.areas || []).slice(0, 5), [data]);
+  const locationHeatMaximum = Math.max(1, ...(siteAnalytics?.locations || []).map(location => location.signups));
+  const topTrackByAge = useMemo(() => {
+    const leaders = new Map<string, WaitlistSiteAnalytics['music'][number]>();
+    for (const track of siteAnalytics?.music || []) {
+      const current = leaders.get(track.age_group);
+      if (track.starts >= 5 && (!current || track.heard_80 / track.starts > current.heard_80 / current.starts)) {
+        leaders.set(track.age_group, track);
+      }
+    }
+    return leaders;
+  }, [siteAnalytics]);
 
   const saveSiteContent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -510,6 +538,77 @@ export default function WaitlistPage() {
               </div>
             </form>
           )}
+        </section>
+      )}
+
+      {canManageSite && (
+        <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Waitlist visits &amp; music resonance</h2>
+              <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-500">Anonymous page opens and listening engagement, alongside a heat map of the areas members chose to share at signup. We do not infer visitor location from IP addresses.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-slate-600">Period
+                <select value={analyticsDays} onChange={event => setAnalyticsDays(Number(event.target.value))} className="ml-2 min-h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs">
+                  <option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option>
+                </select>
+              </label>
+              <button type="button" onClick={() => void loadSiteContent()} disabled={loadingSiteContent} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                <RefreshCw size={13} className={loadingSiteContent ? 'animate-spin' : ''} /> Refresh
+              </button>
+            </div>
+          </div>
+          {siteAnalyticsError && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{siteAnalyticsError}</p>}
+          {!siteAnalytics && !siteAnalyticsError && <p className="text-sm text-slate-500">{loadingSiteContent ? 'Loading anonymous site analytics…' : 'Analytics are not available yet.'}</p>}
+          {siteAnalytics && <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <article className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Website opens · {analyticsDays} days</p><p className="mt-2 text-3xl font-black text-slate-950">{count(siteAnalytics.page_opens)}</p></article>
+              <article className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Anonymous browser sessions</p><p className="mt-2 text-3xl font-black text-slate-950">{count(siteAnalytics.unique_visitors)}</p></article>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Age groups &amp; the songs they listen through</h3>
+              <p className="mt-1 text-xs text-slate-500">“Heard 80%” is a useful resonance signal, not a guarantee that listeners like a track. We need at least five starts before highlighting a leading song.</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {ageGroups.map(group => {
+                  const leader = topTrackByAge.get(group.id);
+                  const groupTracks = (siteAnalytics.music || []).filter(track => track.age_group === group.id);
+                  const visitors = siteAnalytics.age_groups.find(item => item.group === group.id)?.visitors || 0;
+                  return <article key={group.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-black text-slate-900">Age {group.label}</h4><span className="text-[10px] font-bold text-slate-500">{count(visitors)} selected</span></div>
+                    {leader
+                      ? <p className="mt-2 text-xs text-emerald-800">Leading so far: <b>{leader.track_title}</b> · {Math.round((leader.heard_80 / leader.starts) * 100)}% heard 80% ({count(leader.starts)} starts)</p>
+                      : <p className="mt-2 text-xs text-slate-500">{groupTracks.length ? `Need at least 5 listens to call a leader · ${count(groupTracks.reduce((total, track) => total + track.starts, 0))} starts so far.` : 'No track listening data yet for this age group.'}</p>}
+                    {groupTracks.map(track => {
+                      const rate = track.starts ? Math.round((track.heard_80 / track.starts) * 100) : 0;
+                      return <div key={`${track.age_group}-${track.track_title}`} className="mt-3">
+                        <div className="flex justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-700">{track.track_title}</span><span className="shrink-0 text-slate-500">{count(track.starts)} plays · {rate}% to 80%</span></div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-primary" style={{ width: `${rate}%` }} /></div>
+                      </div>;
+                    })}
+                  </article>;
+                })}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Signup-area heat map</h3>
+              <p className="mt-1 text-xs text-slate-500">Darker tiles mean more people voluntarily listed that area when they joined. This is signup activity, not the geographic location of every anonymous site visit.</p>
+              {!siteAnalytics.locations.length
+                ? <p className="mt-3 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No signups in this period yet.</p>
+                : <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {siteAnalytics.locations.map(location => {
+                    const intensity = location.signups / locationHeatMaximum;
+                    return <article key={`${location.country}-${location.city}-${location.area}`} title={`${location.county}, ${location.country}`} className="rounded-xl border p-3" style={{ backgroundColor: `rgba(217, 28, 28, ${0.05 + intensity * 0.2})`, borderColor: `rgba(217, 28, 28, ${0.15 + intensity * 0.45})` }}>
+                      <p className="truncate text-xs font-black text-slate-900">{location.area}</p>
+                      <p className="mt-1 truncate text-[10px] text-slate-600">{location.city}, {location.county}</p>
+                      <p className="mt-2 text-lg font-black text-primary">{count(location.signups)} <span className="text-[9px] uppercase tracking-wide">signups</span></p>
+                    </article>;
+                  })}
+                </div>}
+            </div>
+          </>}
         </section>
       )}
 
