@@ -149,6 +149,8 @@ export default function WaitlistPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [siteContent, setSiteContent] = useState<WaitlistSiteContent | null>(null);
   const [loadingSiteContent, setLoadingSiteContent] = useState(false);
+  const [publicSiteCheckAvailable, setPublicSiteCheckAvailable] = useState<boolean | null>(null);
+  const [publicSiteConfirmed, setPublicSiteConfirmed] = useState<Record<string, boolean>>({});
   const [siteContentError, setSiteContentError] = useState('');
   const [siteContentNotice, setSiteContentNotice] = useState('');
   const [siteContentNoticeConfirmed, setSiteContentNoticeConfirmed] = useState(true);
@@ -195,12 +197,16 @@ export default function WaitlistPage() {
         content?: WaitlistSiteContent;
         rewards?: WaitlistSiteReward[];
         claims?: WaitlistRewardClaim[];
+        publicSiteCheckAvailable?: boolean;
+        publicSiteConfirmed?: Record<string, boolean>;
         error?: string;
       }>(response, 'Website content could not be loaded.');
       if (!response.ok || !result.content) throw new Error(result.error || 'Website content could not be loaded.');
       setSiteContent(result.content);
       setSiteRewards(result.rewards || []);
       setRewardClaims(result.claims || []);
+      setPublicSiteCheckAvailable(result.publicSiteCheckAvailable ?? false);
+      setPublicSiteConfirmed(result.publicSiteConfirmed || {});
     } catch (cause) {
       console.error('[AdminWaitlistSite] Could not load website settings:', cause);
       setSiteContentError(cause instanceof Error ? cause.message : 'Website content could not be loaded.');
@@ -278,16 +284,25 @@ export default function WaitlistPage() {
       form.append('title', title);
       form.append('file', file);
       const response = await fetch('/api/admin/waitlist-site', { method: 'POST', body: form });
-      const result = await readAdminJson<{ content?: WaitlistSiteContent; publicSiteConfirmed?: boolean; error?: string }>(response, 'Age-group music could not be uploaded.');
+      const result = await readAdminJson<{
+        content?: WaitlistSiteContent;
+        publicSiteCheckAvailable?: boolean;
+        publicSiteConfirmed?: boolean;
+        error?: string;
+      }>(response, 'Age-group music could not be uploaded.');
       if (!response.ok || !result.content) throw new Error(result.error || 'Age-group music could not be uploaded.');
       const savedTrack = result.content.age_group_tracks?.[ageGroup];
       if (!savedTrack || savedTrack.title !== title) throw new Error('The upload finished but the saved age-group assignment could not be confirmed. Refresh the page and check the track before retrying.');
       setSiteContent(result.content);
+      setPublicSiteCheckAvailable(result.publicSiteCheckAvailable ?? false);
+      setPublicSiteConfirmed(current => ({ ...current, [ageGroup]: result.publicSiteConfirmed === true }));
       const label = ageGroups.find(group => group.id === ageGroup)?.label || ageGroup;
       setSiteContentNoticeConfirmed(result.publicSiteConfirmed === true);
       setSiteContentNotice(result.publicSiteConfirmed
         ? `UPLOAD COMPLETE — “${savedTrack.title}” is assigned to age ${label} and confirmed on the live waitlist site.`
-        : `UPLOAD SAVED, BUT NOT LIVE — “${savedTrack.title}” is saved for age ${label}, but the live waitlist site could not confirm it. Make sure both deployments use the same Supabase project. Do not upload it again; refresh the site settings after fixing the connection.`);
+        : result.publicSiteCheckAvailable
+          ? `UPLOAD SAVED, BUT NOT LIVE — “${savedTrack.title}” is saved for age ${label}, but the live waitlist site does not have this assignment. Make sure both deployments use the same Supabase project. Do not upload it again.`
+          : `UPLOAD SAVED — “${savedTrack.title}” is assigned to age ${label}, but the live waitlist site could not be checked. Check the public site connection before treating it as live.`);
     } catch (cause) {
       console.error('[AdminWaitlistSite] Could not upload age-group music:', cause);
       setSiteContentError(cause instanceof Error ? cause.message : 'Age-group music could not be uploaded.');
@@ -430,6 +445,7 @@ export default function WaitlistPage() {
           </div>
           {siteContentError && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{siteContentError}</p>}
           {siteContentNotice && <p role="status" className={`mb-4 rounded-lg border p-3 text-sm font-bold ${siteContentNoticeConfirmed ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-950'}`}>{siteContentNoticeConfirmed && <Check size={15} className="mr-1 inline-block" />}{siteContentNotice}</p>}
+          {publicSiteCheckAvailable === false && siteContent && <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">The live waitlist could not be checked right now. Song assignments below are not confirmed live.</p>}
           {!siteContent ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-semibold text-slate-700">{loadingSiteContent ? 'Loading website content…' : 'Website controls are unavailable until the settings load.'}</p>
@@ -465,11 +481,15 @@ export default function WaitlistPage() {
                     const track = siteContent.age_group_tracks?.[group.id];
                     return <div key={group.id} className="rounded-xl border border-slate-200 p-3">
                       <p className="text-xs font-black text-slate-800">Age {group.label}</p>
-                      {track && <div className="mt-2 rounded-lg bg-emerald-50 p-2.5">
-                        <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-800"><Check size={13} /> UPLOAD COMPLETE · ASSIGNED</p>
-                        <p className="mt-1 truncate text-xs text-emerald-900">{track.title}</p>
+                      {track && <div className={`mt-2 rounded-lg p-2.5 ${publicSiteConfirmed[group.id] ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+                        <p className={`flex items-center gap-1.5 text-xs font-bold ${publicSiteConfirmed[group.id] ? 'text-emerald-800' : 'text-amber-900'}`}>
+                          {publicSiteConfirmed[group.id] ? <Check size={13} /> : <AlertTriangle size={13} />}
+                          {publicSiteConfirmed[group.id] ? 'UPLOAD COMPLETE · LIVE' : publicSiteCheckAvailable ? 'UPLOADED · NOT LIVE' : 'SAVED · LIVE STATUS UNKNOWN'}
+                        </p>
+                        <p className={`mt-1 truncate text-xs ${publicSiteConfirmed[group.id] ? 'text-emerald-900' : 'text-amber-950'}`}>{track.title}</p>
                         <audio className="mt-2 block h-9 w-full" controls preload="none" src={track.url} aria-label={`Preview published track for age ${group.label}`} />
                       </div>}
+                      {!track && <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-500">NO SONG UPLOADED for this age group.</p>}
                       <label className="mt-2 block text-[10px] font-bold text-slate-600">Track name<input maxLength={100} value={trackTitles[group.id] ?? track?.title ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [group.id]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
                       <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">
                         <Upload size={13} />{uploadingTrack === group.id ? 'Uploading & publishing…' : track ? 'Replace track' : 'Upload track'}

@@ -26,22 +26,30 @@ const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit
 const rewardFields = 'id,name,description,image_url,image_path,token_cost,is_active,sort_order,created_at,updated_at';
 const claimFields = 'id,referrer_id,reward_id,tokens_spent,status,created_at,updated_at';
 
-async function confirmTrackOnPublicSite(ageGroup: string, track: { title: string; url: string }) {
+async function checkTracksOnPublicSite(tracks: Record<string, { title: string; url: string }>) {
   const baseUrl = (process.env.WAITLIST_PUBLIC_URL?.trim() || 'https://theewaitlist.vercel.app').replace(/\/+$/, '');
   try {
     const response = await fetch(`${baseUrl}/api/content?track_check=${crypto.randomUUID()}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(8000)
     });
-    if (!response.ok) return false;
+    if (!response.ok) return { available: false, confirmed: {} as Record<string, boolean> };
     const result = await response.json() as {
       content?: { age_group_tracks?: Record<string, { title?: string; url?: string }> };
     };
-    const publishedTrack = result.content?.age_group_tracks?.[ageGroup];
-    return publishedTrack?.title === track.title && publishedTrack.url === track.url;
+    const publishedTracks = result.content?.age_group_tracks || {};
+    return {
+      available: true,
+      confirmed: Object.fromEntries(
+        Object.entries(tracks).map(([ageGroup, track]) => {
+          const publishedTrack = publishedTracks[ageGroup];
+          return [ageGroup, publishedTrack?.title === track.title && publishedTrack.url === track.url];
+        })
+      )
+    };
   } catch (error) {
     console.error('[AdminWaitlistSite] Could not verify the uploaded track on the public waitlist site:', error);
-    return false;
+    return { available: false, confirmed: {} as Record<string, boolean> };
   }
 }
 
@@ -115,12 +123,27 @@ export async function GET() {
     console.error('[AdminWaitlistSite] Could not load redemption member details:', members.error);
     return NextResponse.json({ error: 'Souvenir request member details could not be loaded.' }, { status: 503 });
   }
+  const tracks = data.age_group_tracks && typeof data.age_group_tracks === 'object'
+    ? data.age_group_tracks as Record<string, { title?: unknown; url?: unknown }>
+    : {};
+  const tracksToCheck = Object.fromEntries(
+    Object.entries(tracks).filter((entry): entry is [string, { title: string; url: string }] =>
+      typeof entry[1]?.title === 'string' && typeof entry[1]?.url === 'string'
+    )
+  );
+  const publicSiteCheck = await checkTracksOnPublicSite(tracksToCheck);
   const memberById = new Map((members.data || []).map(member => [member.id, member]));
   const claimsWithMember = (claims.data || []).map(claim => ({
     ...claim,
     member: memberById.get(claim.referrer_id) || null
   }));
-  return NextResponse.json({ content: data, rewards: rewards.data || [], claims: claimsWithMember }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  return NextResponse.json({
+    content: data,
+    rewards: rewards.data || [],
+    claims: claimsWithMember,
+    publicSiteCheckAvailable: publicSiteCheck.available,
+    publicSiteConfirmed: publicSiteCheck.confirmed
+  }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
 export async function PATCH(request: Request) {
@@ -320,8 +343,12 @@ export async function POST(request: Request) {
       const { error: cleanupError } = await database.storage.from(AUDIO_BUCKET).remove([previousPath]);
       if (cleanupError) console.error('[AdminWaitlistSite] Could not remove replaced age-group track:', cleanupError);
     }
-    const publicSiteConfirmed = await confirmTrackOnPublicSite(ageGroup, track);
-    return NextResponse.json({ content: data, publicSiteConfirmed }, { headers: { 'Cache-Control': 'no-store' } });
+    const publicSiteCheck = await checkTracksOnPublicSite({ [ageGroup]: track });
+    return NextResponse.json({
+      content: data,
+      publicSiteCheckAvailable: publicSiteCheck.available,
+      publicSiteConfirmed: publicSiteCheck.confirmed[ageGroup] === true
+    }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   if (form.get('kind') === 'reward') {
