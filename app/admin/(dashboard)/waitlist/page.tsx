@@ -138,6 +138,7 @@ export default function WaitlistPage() {
   const [siteContent, setSiteContent] = useState<WaitlistSiteContent | null>(null);
   const [siteContentError, setSiteContentError] = useState('');
   const [siteContentNotice, setSiteContentNotice] = useState('');
+  const [siteContentNoticeConfirmed, setSiteContentNoticeConfirmed] = useState(true);
   const [savingSiteContent, setSavingSiteContent] = useState(false);
   const [uploadingSiteImage, setUploadingSiteImage] = useState(false);
   const [uploadingTrack, setUploadingTrack] = useState<string | null>(null);
@@ -195,6 +196,7 @@ export default function WaitlistPage() {
     setSavingSiteContent(true);
     setSiteContentError('');
     setSiteContentNotice('');
+    setSiteContentNoticeConfirmed(true);
     try {
       const response = await fetch('/api/admin/waitlist-site', {
         method: 'PATCH',
@@ -218,6 +220,7 @@ export default function WaitlistPage() {
     setUploadingSiteImage(true);
     setSiteContentError('');
     setSiteContentNotice('');
+    setSiteContentNoticeConfirmed(true);
     try {
       const form = new FormData();
       form.append('file', file);
@@ -244,6 +247,7 @@ export default function WaitlistPage() {
     setUploadingTrack(ageGroup);
     setSiteContentError('');
     setSiteContentNotice('');
+    setSiteContentNoticeConfirmed(true);
     try {
       const form = new FormData();
       form.append('kind', 'music');
@@ -251,10 +255,16 @@ export default function WaitlistPage() {
       form.append('title', title);
       form.append('file', file);
       const response = await fetch('/api/admin/waitlist-site', { method: 'POST', body: form });
-      const result = await response.json() as { content?: WaitlistSiteContent; error?: string };
+      const result = await response.json() as { content?: WaitlistSiteContent; publicSiteConfirmed?: boolean; error?: string };
       if (!response.ok || !result.content) throw new Error(result.error || 'Age-group music could not be uploaded.');
+      const savedTrack = result.content.age_group_tracks?.[ageGroup];
+      if (!savedTrack || savedTrack.title !== title) throw new Error('The upload finished but the saved age-group assignment could not be confirmed. Refresh the page and check the track before retrying.');
       setSiteContent(result.content);
-      setSiteContentNotice(`Music published for age ${ageGroups.find(group => group.id === ageGroup)?.label || ageGroup}.`);
+      const label = ageGroups.find(group => group.id === ageGroup)?.label || ageGroup;
+      setSiteContentNoticeConfirmed(result.publicSiteConfirmed === true);
+      setSiteContentNotice(result.publicSiteConfirmed
+        ? `UPLOAD COMPLETE — “${savedTrack.title}” is assigned to age ${label} and confirmed on the live waitlist site.`
+        : `UPLOAD SAVED, BUT NOT LIVE — “${savedTrack.title}” is saved for age ${label}, but the live waitlist site could not confirm it. Make sure both deployments use the same Supabase project. Do not upload it again; refresh the site settings after fixing the connection.`);
     } catch (cause) {
       console.error('[AdminWaitlistSite] Could not upload age-group music:', cause);
       setSiteContentError(cause instanceof Error ? cause.message : 'Age-group music could not be uploaded.');
@@ -396,7 +406,7 @@ export default function WaitlistPage() {
             <div><h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Standalone site content</h2><p className="mt-1 text-xs text-slate-500">Manage the copy and hero image shown on the separately hosted early-access website.</p></div>
           </div>
           {siteContentError && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{siteContentError}</p>}
-          {siteContentNotice && <p role="status" className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">{siteContentNotice}</p>}
+          {siteContentNotice && <p role="status" className={`mb-4 rounded-lg border p-3 text-sm font-bold ${siteContentNoticeConfirmed ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-950'}`}>{siteContentNoticeConfirmed && <Check size={15} className="mr-1 inline-block" />}{siteContentNotice}</p>}
           {!siteContent ? <p className="text-sm text-slate-500">Loading website content…</p> : (
             <form className="grid gap-4 lg:grid-cols-2" onSubmit={saveSiteContent}>
               <label className="text-xs font-bold text-slate-700">Eyebrow<input required maxLength={80} value={siteContent.eyebrow} onChange={event => setSiteContent({ ...siteContent, eyebrow: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
@@ -428,7 +438,7 @@ export default function WaitlistPage() {
                     return <div key={group.id} className="rounded-xl border border-slate-200 p-3">
                       <p className="text-xs font-black text-slate-800">Age {group.label}</p>
                       {track && <div className="mt-2 rounded-lg bg-emerald-50 p-2.5">
-                        <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-800"><Check size={13} /> Uploaded &amp; published</p>
+                        <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-800"><Check size={13} /> UPLOAD COMPLETE · ASSIGNED</p>
                         <p className="mt-1 truncate text-xs text-emerald-900">{track.title}</p>
                         <audio className="mt-2 block h-9 w-full" controls preload="none" src={track.url} aria-label={`Preview published track for age ${group.label}`} />
                       </div>}

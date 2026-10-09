@@ -85,21 +85,13 @@ export default function BeverageCommandAdmin() {
     }, [imageFile]);
 
     const fetchBeverages = React.useCallback(async () => {
-        if (!supabase) {
-            setLoadError('Supabase is not configured. Inventory is unavailable.');
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         setLoadError(null);
         try {
-            const { data, error } = await supabase
-                .from('products')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            const beverageProducts = ((data || []) as BeverageNode[]).filter(isBeverageInventoryProduct);
+            const response = await fetch('/api/admin/products?scope=inventory', { cache: 'no-store' });
+            const result = await response.json() as { products?: BeverageNode[]; error?: string };
+            if (!response.ok || !result.products) throw new Error(result.error || 'Unable to load beverage inventory.');
+            const beverageProducts = result.products.filter(isBeverageInventoryProduct);
             setBeverages(beverageProducts);
             setStockDrafts(Object.fromEntries(beverageProducts.map(beverage => [String(beverage.id), String(beverage.stock ?? 0)])));
         } catch (err) {
@@ -334,7 +326,7 @@ export default function BeverageCommandAdmin() {
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-600">BEVERAGE VAULT — INVENTORY CONTROL</span>
                     </div>
                     <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Beverage Vault</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Manage cold drinks, juices, energy, coffee, wines, whiskies, and food pairings.</p>
+                    <p className="text-muted-foreground text-sm font-medium mt-1">Upload and publish spirits, wine, beer, soft drinks, and food pairings to their storefront categories.</p>
                 </div>
                 <div className="flex gap-4">
                     <Button onClick={() => { setFormFeedback(null); setImageFile(null); setIsAddModalOpen(true); }} className="h-12 px-8 rounded-xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20">
@@ -551,12 +543,27 @@ export default function BeverageCommandAdmin() {
                                                 onChange={e => setForm({ ...form, category: e.target.value })}
                                                 className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
                                             >
-                                                <option value="Soft Drinks">Soft Drinks</option>
-                                                <option value="Energy">Energy Drinks</option>
-                                                <option value="Water">Mineral Water</option>
-                                                <option value="Juices">Fresh Juices</option>
-                                                <option value="Coffee">Coffee & Tea</option>
-                                                <option value="Mixers">Cocktail Mixers</option>
+                                                <optgroup label="Spirits">
+                                                    <option value="Gin">Gin</option>
+                                                    <option value="Whisky">Whisky</option>
+                                                    <option value="Vodka">Vodka</option>
+                                                    <option value="Rum">Rum</option>
+                                                    <option value="Tequila">Tequila</option>
+                                                    <option value="Brandy">Brandy</option>
+                                                    <option value="Cognac">Cognac</option>
+                                                    <option value="Liqueur">Liqueur</option>
+                                                </optgroup>
+                                                <optgroup label="Other drinks">
+                                                    <option value="Wine">Wine</option>
+                                                    <option value="Beer">Beer</option>
+                                                    <option value="Champagne">Champagne</option>
+                                                    <option value="Soft Drinks">Soft Drinks</option>
+                                                    <option value="Energy">Energy Drinks</option>
+                                                    <option value="Water">Mineral Water</option>
+                                                    <option value="Juices">Fresh Juices</option>
+                                                    <option value="Coffee">Coffee & Tea</option>
+                                                    <option value="Mixers">Cocktail Mixers</option>
+                                                </optgroup>
                                             </select>
                                         </Field>
                                     </div>

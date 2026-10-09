@@ -28,7 +28,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/lib/supabaseClient';
 import { formatPrice, cn } from '@/lib/utils';
 import { generateReceiptPDF, getWhatsAppReceiptLink } from '@/lib/receiptService';
 import { useAdmin } from '@/context/AdminContext';
@@ -95,7 +94,7 @@ const initialManualOrder: ManualOrderForm = {
 };
 
 export default function AdminOrdersPage() {
-  const { role, email } = useAdmin();
+  const { role, email, permissions } = useAdmin();
   const [orders, setOrders] = React.useState<OrderRecord[]>([]);
   const [products, setProducts] = React.useState<{ id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number> }[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -115,7 +114,8 @@ export default function AdminOrdersPage() {
   const [giftMessageDraft, setGiftMessageDraft] = React.useState('');
   const [isSavingGiftMessage, setIsSavingGiftMessage] = React.useState(false);
 
-  const canManageOrders = role === 'staff' || role === 'admin' || role === 'owner';
+  const canManageOrders = role === 'staff' || role === 'admin' || role === 'owner' || permissions.can_manage_orders;
+  const canDeleteOrders = role === 'admin' || role === 'owner' || permissions.can_delete_items;
   const canSeeMoney = role === 'staff' || role === 'admin' || role === 'owner';
 
   const productOptions = React.useMemo(() => {
@@ -130,27 +130,18 @@ export default function AdminOrdersPage() {
   }, [products]);
 
   const loadOrders = async () => {
-    if (!supabase) {
-      setStatusMessage({
-        type: 'error',
-        text: 'Supabase is not configured yet.',
-      });
-      setIsLoading(false);
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      const [ordersRes, productsRes] = await Promise.all([
-          supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }),
-          supabase.from('products').select('id, name, price, cost_price, stock, variant_stock')
-      ]);
-
-      if (ordersRes.error) throw ordersRes.error;
-
-      setOrders((ordersRes.data ?? []) as OrderRecord[]);
-      setProducts((productsRes.data ?? []) as { id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number> }[]);
+      const response = await fetch('/api/admin/orders', { cache: 'no-store' });
+      const result = await response.json() as {
+        orders?: OrderRecord[];
+        products?: { id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number> }[];
+        error?: string;
+      };
+      if (!response.ok || !result.orders || !result.products) throw new Error(result.error || 'Unable to load orders.');
+      setOrders(result.orders);
+      setProducts(result.products);
       setStatusMessage({ type: 'idle', text: '' });
     } catch (err: unknown) {
       const error = err as Error;
@@ -188,7 +179,7 @@ export default function AdminOrdersPage() {
   }, [orders]);
 
   const updateOrderStatus = async (orderId: number, status: MachineStatus) => {
-    if (!supabase || !canManageOrders) return;
+    if (!canManageOrders) return;
 
     const orderToUpdate = orders.find(o => o.id === orderId);
     if (!orderToUpdate) return;
@@ -206,31 +197,14 @@ export default function AdminOrdersPage() {
     setStatusMessage({ type: 'idle', text: '' });
 
     try {
-      const orderToUpdate = orders.find(o => o.id === orderId);
       const oldStatus = orderToUpdate?.status;
-
-      const updatePayload: Partial<OrderRecord> & { note?: string } = { status };
-
-      if (status === 'Paid') {
-          updatePayload.note = `Status manually updated to Paid by ${email || 'Admin'}`;
-      }
-
-      const { error } = await supabase.rpc('transition_order_state', {
-          order_id_input: orderId,
-          new_state_input: status,
-          reason_input: status === 'Paid' ? `Payment Verified` : 'Manual Status Update',
-          admin_email_input: email || 'Admin'
+      const response = await fetch('/api/admin/orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'status', id: orderId, status })
       });
-
-      if (error) {
-          console.error("RPC Transition Error:", error);
-          // Fallback to direct update if RPC fails (e.g. not migrated yet)
-          const { error: directError } = await supabase
-            .from('orders')
-            .update({ status })
-            .eq('id', orderId);
-          if (directError) throw directError;
-      }
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Unable to update order status.');
 
       await logAuditAction(
         email,
@@ -242,35 +216,7 @@ export default function AdminOrdersPage() {
 
       let loyaltyWarning = '';
       if (status === 'Delivered' && oldStatus !== 'Delivered' && orderToUpdate?.order_items) {
-        for (const item of orderToUpdate.order_items) {
-            const { data: productData } = await supabase
-              .from('products')
-              .select('stock, variant_stock')
-              .eq('id', item.product_id)
-              .single();
-
-            if (productData) {
-              const qty = item.quantity || 1;
-              const currentStock = Number(productData.stock || 0);
-              const newStock = Math.max(0, currentStock - qty);
-
-              let updatedVariantStock = productData.variant_stock || {};
-              if (item.size && updatedVariantStock[item.size] !== undefined) {
-                  const currentVStock = Number(updatedVariantStock[item.size] || 0);
-                  updatedVariantStock = { ...updatedVariantStock, [item.size]: Math.max(0, currentVStock - qty) };
-
-                  await supabase
-                    .from('products')
-                    .update({ stock: newStock, variant_stock: updatedVariantStock })
-                    .eq('id', item.product_id);
-              } else {
-                  await supabase
-                    .from('products')
-                    .update({ stock: newStock })
-                    .eq('id', item.product_id);
-              }
-            }
-        }
+        await loadOrders();
       }
 
       if (status === 'Delivered' && oldStatus !== 'Delivered') {
@@ -356,16 +302,17 @@ export default function AdminOrdersPage() {
   };
 
   const handleSaveGiftMessage = async (order: OrderRecord) => {
-      if (!supabase || !canManageOrders) return;
+      if (!canManageOrders) return;
       setIsSavingGiftMessage(true);
       try {
           const message = giftMessageDraft.trim();
-          const { error } = await supabase
-              .from('orders')
-              .update({ is_gift: true, gift_message: message || null })
-              .eq('id', order.id);
-
-          if (error) throw error;
+          const response = await fetch('/api/admin/orders', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'gift', id: order.id, message })
+          });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Unable to save gift card message.');
 
           await logAuditAction(email, 'UPDATE_GIFT_MESSAGE', { id: order.id });
           setOrders(current => current.map(item => item.id === order.id
@@ -423,7 +370,7 @@ export default function AdminOrdersPage() {
 
   const handleManualOrderSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!supabase || !canManageOrders) return;
+    if (!canManageOrders) return;
 
     if (!manualOrder.customer_name.trim() || !manualOrder.customer_phone.trim()) {
       setStatusMessage({ type: 'error', text: 'Name and phone required.' });
@@ -441,7 +388,7 @@ export default function AdminOrdersPage() {
     setIsSavingManualOrder(true);
     const targetProductId = manualOrder.product_id ? Number(manualOrder.product_id) : null;
 
-    const orderData: Record<string, unknown> = {
+    const orderData = {
         customer_name: manualOrder.customer_name.trim(),
         customer_phone: manualOrder.customer_phone.trim(),
         quantity,
@@ -453,19 +400,23 @@ export default function AdminOrdersPage() {
         captured_by: email || 'system'
     };
 
-    const { error } = await supabase.from('orders').insert([orderData]);
-
-    if (error) {
-      setStatusMessage({ type: 'error', text: error.message || 'Unable to save order.' });
+    try {
+      const response = await fetch('/api/admin/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Unable to save order.');
+      await logAuditAction(email || 'system', 'CREATE_MANUAL_ORDER', { customer: manualOrder.customer_name, total: totalPrice });
+      await loadOrders();
+      setManualOrder(initialManualOrder);
+      setStatusMessage({ type: 'success', text: 'Manual order saved.' });
+    } catch (error) {
+      setStatusMessage({ type: 'error', text: error instanceof Error ? error.message : 'Unable to save order.' });
+    } finally {
       setIsSavingManualOrder(false);
-      return;
     }
-
-    await logAuditAction(email || 'system', 'CREATE_MANUAL_ORDER', { customer: manualOrder.customer_name, total: totalPrice });
-    await loadOrders();
-    setManualOrder(initialManualOrder);
-    setStatusMessage({ type: 'success', text: 'Manual order saved.' });
-    setIsSavingManualOrder(false);
   };
 
   const toggleOrderSelection = (id: number) => {
@@ -475,15 +426,16 @@ export default function AdminOrdersPage() {
   };
 
   const handleBulkStatusUpdate = async (status: MachineStatus) => {
-      if (selectedOrders.length === 0 || !supabase) return;
+      if (selectedOrders.length === 0) return;
       setIsBulkUpdating(true);
       try {
-          const { error } = await supabase
-              .from('orders')
-              .update({ status })
-              .in('id', selectedOrders);
-
-          if (error) throw error;
+          const response = await fetch('/api/admin/orders', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'bulk_status', ids: selectedOrders, status })
+          });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Selected orders could not be updated.');
 
           await logAuditAction(email, 'BULK_UPDATE_ORDERS', { count: selectedOrders.length, newStatus: status });
 
@@ -499,18 +451,15 @@ export default function AdminOrdersPage() {
   };
 
   const handleAssignRider = async (orderId: number) => {
-      if (!supabase || !riderForm.name || !riderForm.phone) return;
+      if (!riderForm.name || !riderForm.phone) return;
       try {
-          const { error } = await supabase
-              .from('orders')
-              .update({
-                  rider_name: riderForm.name.trim(),
-                  rider_phone: riderForm.phone.trim(),
-                  status: 'Dispatched'
-              })
-              .eq('id', orderId);
-
-          if (error) throw error;
+          const response = await fetch('/api/admin/orders', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'rider', id: orderId, name: riderForm.name, phone: riderForm.phone })
+          });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Rider could not be assigned.');
 
           await logAuditAction(email, 'ASSIGN_RIDER', { id: orderId, rider: riderForm.name });
 
@@ -525,12 +474,13 @@ export default function AdminOrdersPage() {
   };
 
   const handleDeleteOrder = async (id: number) => {
-      if (!supabase || !canManageOrders) return;
+      if (!canDeleteOrders) return;
       if (!window.confirm(`Nuclear Option: Expunge Order #${id} from the records?`)) return;
 
       try {
-          const { error } = await supabase.from('orders').delete().eq('id', id);
-          if (error) throw error;
+          const response = await fetch(`/api/admin/orders?id=${id}`, { method: 'DELETE' });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || 'Order could not be deleted.');
 
           await logAuditAction(email, 'DELETE_ORDER', { id });
           setOrders(prev => prev.filter(o => o.id !== id));
@@ -541,7 +491,7 @@ export default function AdminOrdersPage() {
       }
   };
 
-  if (role !== 'owner' && role !== 'admin' && role !== 'staff') {
+  if (!canManageOrders) {
       return (
           <div className="p-24 flex flex-col items-center justify-center text-center">
               <ShieldAlert className="h-16 w-16 text-primary mb-6" />
@@ -978,15 +928,17 @@ export default function AdminOrdersPage() {
                                         >
                                             <Navigation className="h-4 w-4" />
                                         </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-9 w-9 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-all active:scale-95"
-                                            onClick={() => handleDeleteOrder(order.id)}
-                                            title="Expunge Order"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                        {canDeleteOrders && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-9 w-9 rounded-xl hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-all active:scale-95"
+                                                onClick={() => handleDeleteOrder(order.id)}
+                                                title="Expunge Order"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>

@@ -35,9 +35,23 @@ function isProductPayload(value: unknown): value is ProductPayload {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
     const access = await getAuthorizedDatabase();
     if ('response' in access) return access.response;
+
+    if (new URL(request.url).searchParams.get('scope') === 'inventory') {
+        const { data: inventory, error } = await access.database
+            .from('products')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) {
+            console.error('[ProductAdmin] Could not load beverage inventory:', error);
+            return NextResponse.json({ error: 'Could not load beverage inventory.' }, { status: 503 });
+        }
+        return NextResponse.json({ products: inventory || [] }, {
+            headers: { 'Cache-Control': 'private, no-store, max-age=0' }
+        });
+    }
 
     const { data: products, error: productsError } = await access.database
         .from('products')

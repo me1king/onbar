@@ -26,6 +26,25 @@ const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit
 const rewardFields = 'id,name,description,image_url,image_path,token_cost,is_active,sort_order,created_at,updated_at';
 const claimFields = 'id,referrer_id,reward_id,tokens_spent,status,created_at,updated_at';
 
+async function confirmTrackOnPublicSite(ageGroup: string, track: { title: string; url: string }) {
+  const baseUrl = (process.env.WAITLIST_PUBLIC_URL?.trim() || 'https://theewaitlist.vercel.app').replace(/\/+$/, '');
+  try {
+    const response = await fetch(`${baseUrl}/api/content?track_check=${crypto.randomUUID()}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) return false;
+    const result = await response.json() as {
+      content?: { age_group_tracks?: Record<string, { title?: string; url?: string }> };
+    };
+    const publishedTrack = result.content?.age_group_tracks?.[ageGroup];
+    return publishedTrack?.title === track.title && publishedTrack.url === track.url;
+  } catch (error) {
+    console.error('[AdminWaitlistSite] Could not verify the uploaded track on the public waitlist site:', error);
+    return false;
+  }
+}
+
 function getDatabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -289,11 +308,20 @@ export async function POST(request: Request) {
       console.error('[AdminWaitlistSite] Could not save age-group track:', saveError);
       return NextResponse.json({ error: 'The track uploaded but could not be published. Confirm the waitlist site migration.' }, { status: 503 });
     }
+    const savedTracks = data.age_group_tracks && typeof data.age_group_tracks === 'object'
+      ? data.age_group_tracks as Record<string, { title?: string; path?: string; url?: string }>
+      : {};
+    const savedTrack = savedTracks[ageGroup];
+    if (savedTrack?.title !== title || savedTrack.path !== path || savedTrack.url !== track.url) {
+      console.error('[AdminWaitlistSite] Track upload returned without the expected age-group assignment.');
+      return NextResponse.json({ error: 'The audio file uploaded, but the age-group assignment could not be confirmed. Refresh the waitlist settings and try again.' }, { status: 503 });
+    }
     if (previousPath && previousPath !== path) {
       const { error: cleanupError } = await database.storage.from(AUDIO_BUCKET).remove([previousPath]);
       if (cleanupError) console.error('[AdminWaitlistSite] Could not remove replaced age-group track:', cleanupError);
     }
-    return NextResponse.json({ content: data }, { headers: { 'Cache-Control': 'no-store' } });
+    const publicSiteConfirmed = await confirmTrackOnPublicSite(ageGroup, track);
+    return NextResponse.json({ content: data, publicSiteConfirmed }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   if (form.get('kind') === 'reward') {
