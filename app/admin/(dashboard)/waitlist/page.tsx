@@ -6,6 +6,12 @@ import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, 
 import { useAdmin } from '@/context/AdminContext';
 
 type WaitlistStatus = 'WAITLIST' | 'INVITED' | 'NOTIFIED' | 'CONVERTED' | 'UNSUBSCRIBED';
+type RewardPath = 'wine' | 'adventure' | 'music';
+const experienceLabels: Record<RewardPath, string> = {
+  wine: 'Wine tastings & curated gifts',
+  adventure: 'Hosted adventures for two',
+  music: 'Soul Fest ticket draw'
+};
 interface WaitlistContact {
   id: string;
   full_name: string | null;
@@ -24,7 +30,7 @@ interface WaitlistContact {
   whatsapp_consent: boolean;
   preferred_contact_method: string | null;
   product_interests: string[];
-  reward_path: 'wine' | 'adventure' | 'music' | null;
+  reward_path: RewardPath | null;
   order_frequency: string | null;
   age_group: string | null;
   age_confirmed: boolean;
@@ -48,7 +54,7 @@ interface WaitlistStats {
   areas: Array<{ country: string; county: string; city: string; area: string; total: number; inArea: number }>;
   interests: Array<{ name: string; count: number }>;
   ageGroups: Array<{ group: string; label: string; count: number }>;
-  rewardPaths: Array<{ path: string; label: string; count: number }>;
+  rewardPaths: Array<{ path: RewardPath; label: string; count: number }>;
 }
 interface WaitlistResponse {
   contacts: WaitlistContact[];
@@ -126,6 +132,7 @@ export default function WaitlistPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [rewardPath, setRewardPath] = useState<'all' | RewardPath>('all');
   const [page, setPage] = useState(0);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [siteContent, setSiteContent] = useState<WaitlistSiteContent | null>(null);
@@ -149,7 +156,7 @@ export default function WaitlistPage() {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ page: String(page), status, search });
+      const params = new URLSearchParams({ page: String(page), status, search, rewardPath });
       const response = await fetch(`/api/admin/waitlist?${params}`, { cache: 'no-store' });
       const result = await response.json() as WaitlistResponse;
       if (!response.ok) throw new Error(result.error || 'Waitlist data could not be loaded.');
@@ -160,7 +167,7 @@ export default function WaitlistPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, status]);
+  }, [page, search, rewardPath, status]);
 
   useEffect(() => { if (canView) void load(); }, [canView, load]);
 
@@ -533,13 +540,21 @@ export default function WaitlistPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Chosen experiences</h2>
-        <p className="mt-1 text-xs text-slate-500">Reward path selected at signup.</p>
+        <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Experience interests</h2>
+        <p className="mt-1 text-xs text-slate-500">See who is interested in wine experiences, hosted adventures or the Soul Fest ticket draw. Select a card to show those members below.</p>
         <ul className="mt-4 grid gap-3 sm:grid-cols-3">
           {(stats?.rewardPaths || []).map(path => (
-            <li key={path.path} className="rounded-xl bg-slate-50 p-4">
-              <span className="text-xs font-bold text-slate-500">{path.label}</span>
-              <b className="mt-2 block text-2xl text-slate-950">{loading ? '—' : count(path.count)}</b>
+            <li key={path.path}>
+              <button
+                type="button"
+                aria-pressed={rewardPath === path.path}
+                onClick={() => { setRewardPath(current => current === path.path ? 'all' : path.path); setPage(0); }}
+                className={`w-full rounded-xl border p-4 text-left transition-colors ${rewardPath === path.path ? 'border-primary bg-amber-50 ring-2 ring-primary/20' : 'border-transparent bg-slate-50 hover:border-slate-200'}`}
+              >
+                <span className="text-xs font-bold text-slate-600">{experienceLabels[path.path]}</span>
+                <b className="mt-2 block text-2xl text-slate-950">{loading ? '—' : count(path.count)}</b>
+                <span className="mt-1 block text-[10px] font-semibold text-slate-500">{rewardPath === path.path ? 'Showing these members · click to clear' : 'Click to view interested members'}</span>
+              </button>
             </li>
           ))}
         </ul>
@@ -548,17 +563,21 @@ export default function WaitlistPage() {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-end sm:justify-between">
           <div><h2 className="text-lg font-black uppercase tracking-tight text-slate-950">Waitlist signups</h2><p className="mt-1 text-xs text-slate-500">Review contact consent before contacting anyone. Signup does not count as permission for unselected channels.</p></div>
-          <div className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_180px]">
+          <div className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_180px_210px]">
             <label className="relative"><span className="sr-only">Search waitlist</span><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="Search name, area, contact" className="min-h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm" /></label>
             <select aria-label="Filter by signup status" value={status} onChange={event => { setStatus(event.target.value); setPage(0); }} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm">
               <option value="all">All statuses</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <select aria-label="Filter by chosen experience" value={rewardPath} onChange={event => { setRewardPath(event.target.value as 'all' | RewardPath); setPage(0); }} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+              <option value="all">All experience interests</option>
+              {Object.entries(experienceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </div>
         </div>
         {loading && !data ? <p className="p-10 text-center text-sm text-slate-500">Loading signups…</p>
           : !data?.contacts.length ? <p className="p-10 text-center text-sm text-slate-500">No signups match these filters.</p>
             : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-xs">
-              <thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500"><tr>{['Person & area','Consent','Interests & frequency','Reward path','Age group & check','Attribution','Joined','Status'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
+              <thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500"><tr>{['Person & area','Consent','Interests & frequency','Experience interest','Age group & check','Attribution','Joined','Status'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
               <tbody className="divide-y divide-slate-100">{data.contacts.map(contact => (
                 <tr key={contact.id} className="align-top">
                   <td className="max-w-[220px] px-3 py-4">
@@ -571,7 +590,7 @@ export default function WaitlistPage() {
                   </td>
                   <td className="px-3 py-4"><div className="space-y-1.5">{[['Email', contact.email_updates_consent],['SMS', contact.sms_consent],['WhatsApp', contact.whatsapp_consent]].map(([label, allowed]) => <p key={String(label)} className={allowed ? 'font-bold text-emerald-700' : 'text-slate-400'}>{allowed ? '✓' : '—'} {String(label)}</p>)}</div><p className="mt-2 text-slate-500">Preferred: {contact.preferred_contact_method || 'No preference'}</p></td>
                   <td className="max-w-[190px] px-3 py-4"><p className="leading-relaxed text-slate-700">{contact.product_interests?.join(', ') || 'Not provided'}</p><p className="mt-2 text-slate-500">{contact.order_frequency?.replace('_', ' ') || 'Frequency not provided'}</p></td>
-                  <td className="max-w-[170px] px-3 py-4 text-slate-700">{contact.reward_path === 'wine' ? 'Wine & good living' : contact.reward_path === 'adventure' ? 'Adventure & experiences' : contact.reward_path === 'music' ? 'Music & madness' : 'Not selected'}</td>
+                  <td className="max-w-[190px] px-3 py-4 text-slate-700">{contact.reward_path ? experienceLabels[contact.reward_path] : 'Not selected'}</td>
                   <td className="px-3 py-4"><b className="mb-1 block text-slate-800">{ageGroups.find(group => group.id === contact.age_group)?.label ? `Age ${ageGroups.find(group => group.id === contact.age_group)?.label}` : 'Age group not provided'}</b>{contact.age_confirmed ? <span className="inline-flex items-center gap-1 font-bold text-emerald-700"><Check size={13} /> 18+ confirmed</span> : <span className="font-bold text-amber-700">Not recorded</span>}<p className="mt-1 text-slate-500">{date(contact.age_confirmed_at)}</p></td>
                   <td className="max-w-[160px] px-3 py-4 text-slate-600"><p>{contact.source || 'direct'}</p>{contact.campaign && <p className="mt-1">Campaign: {contact.campaign}</p>}{contact.referred_by_code && <p className="mt-1">Referred: {contact.referred_by_code}</p>}{contact.referral_code && <p className="mt-1">Invite: {contact.referral_code}</p>}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>

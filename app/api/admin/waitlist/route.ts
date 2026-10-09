@@ -7,6 +7,7 @@ import { isSameOriginRequest } from '@/lib/adminAccess.server';
 export const dynamic = 'force-dynamic';
 
 const statuses = ['WAITLIST', 'INVITED', 'NOTIFIED', 'CONVERTED', 'UNSUBSCRIBED'] as const;
+const rewardPaths = ['wine', 'adventure', 'music'] as const;
 const fields = 'id,full_name,email,phone,country,county,city,area,landmark,location_verified,location_accuracy_m,service_area_status,email_updates_consent,email_updates_consent_at,sms_consent,sms_consent_at,whatsapp_consent,whatsapp_consent_at,preferred_contact_method,product_interests,reward_path,order_frequency,age_group,age_confirmed,age_confirmed_at,referral_code,referred_by_code,campaign,landing_page,consent_version,source,status,notified_at,created_at,updated_at,unsubscribed_at';
 
 async function authorize() {
@@ -45,12 +46,17 @@ export async function GET(request: Request) {
   if (status !== 'all' && !statuses.includes(status as typeof statuses[number])) {
     return NextResponse.json({ error: 'Choose a valid waitlist status filter.' }, { status: 400 });
   }
+  const rewardPath = params.get('rewardPath') || 'all';
+  if (rewardPath !== 'all' && !rewardPaths.includes(rewardPath as typeof rewardPaths[number])) {
+    return NextResponse.json({ error: 'Choose a valid waitlist experience filter.' }, { status: 400 });
+  }
   const requestedPage = Number.parseInt(params.get('page') || '0', 10);
   const page = Number.isFinite(requestedPage) ? Math.min(100_000, Math.max(0, requestedPage)) : 0;
   const pageSize = 30;
   let query = database.from('market_waitlist').select(fields).order('created_at', { ascending: false })
     .range(page * pageSize, page * pageSize + pageSize - 1);
   if (status !== 'all' && statuses.includes(status as typeof statuses[number])) query = query.eq('status', status);
+  if (rewardPath !== 'all') query = query.eq('reward_path', rewardPath);
   if (search) {
     const term = `%${search}%`;
     query = query.or(`full_name.ilike.${term},email.ilike.${term},phone.ilike.${term},city.ilike.${term},area.ilike.${term}`);
