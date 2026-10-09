@@ -125,6 +125,18 @@ function date(value: string | null) {
   return Number.isNaN(parsed.getTime()) ? 'Unknown' : parsed.toLocaleString('en-KE');
 }
 
+async function readAdminJson<T>(response: Response, fallbackMessage: string): Promise<T> {
+  const body = await response.text();
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    const isHtml = response.headers.get('content-type')?.includes('text/html') || /^\s*</.test(body);
+    throw new Error(isHtml
+      ? `The Admin API returned a web page instead of data (HTTP ${response.status}). Refresh the page and sign in again. If it continues, redeploy Online Bar so the waitlist Admin API is available.`
+      : `${fallbackMessage} The Admin API returned an invalid response (HTTP ${response.status}).`);
+  }
+}
+
 export default function WaitlistPage() {
   const { role, permissions } = useAdmin();
   const [data, setData] = useState<WaitlistResponse | null>(null);
@@ -136,6 +148,7 @@ export default function WaitlistPage() {
   const [page, setPage] = useState(0);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [siteContent, setSiteContent] = useState<WaitlistSiteContent | null>(null);
+  const [loadingSiteContent, setLoadingSiteContent] = useState(false);
   const [siteContentError, setSiteContentError] = useState('');
   const [siteContentNotice, setSiteContentNotice] = useState('');
   const [siteContentNoticeConfirmed, setSiteContentNoticeConfirmed] = useState(true);
@@ -172,21 +185,31 @@ export default function WaitlistPage() {
 
   useEffect(() => { if (canView) void load(); }, [canView, load]);
 
-  useEffect(() => {
+  const loadSiteContent = useCallback(async () => {
     if (!canManageSite) return;
-    void fetch('/api/admin/waitlist-site', { cache: 'no-store' })
-      .then(async response => {
-        const result = await response.json() as { content?: WaitlistSiteContent; rewards?: WaitlistSiteReward[]; claims?: WaitlistRewardClaim[]; error?: string };
-        if (!response.ok || !result.content) throw new Error(result.error || 'Website content could not be loaded.');
-        setSiteContent(result.content);
-        setSiteRewards(result.rewards || []);
-        setRewardClaims(result.claims || []);
-      })
-      .catch(cause => {
-        console.error('[AdminWaitlistSite] Could not load website settings:', cause);
-        setSiteContentError(cause instanceof Error ? cause.message : 'Website content could not be loaded.');
-      });
+    setLoadingSiteContent(true);
+    setSiteContentError('');
+    try {
+      const response = await fetch('/api/admin/waitlist-site', { cache: 'no-store' });
+      const result = await readAdminJson<{
+        content?: WaitlistSiteContent;
+        rewards?: WaitlistSiteReward[];
+        claims?: WaitlistRewardClaim[];
+        error?: string;
+      }>(response, 'Website content could not be loaded.');
+      if (!response.ok || !result.content) throw new Error(result.error || 'Website content could not be loaded.');
+      setSiteContent(result.content);
+      setSiteRewards(result.rewards || []);
+      setRewardClaims(result.claims || []);
+    } catch (cause) {
+      console.error('[AdminWaitlistSite] Could not load website settings:', cause);
+      setSiteContentError(cause instanceof Error ? cause.message : 'Website content could not be loaded.');
+    } finally {
+      setLoadingSiteContent(false);
+    }
   }, [canManageSite]);
+
+  useEffect(() => { void loadSiteContent(); }, [loadSiteContent]);
 
   const topAreas = useMemo(() => (data?.stats.areas || []).slice(0, 5), [data]);
 
@@ -203,7 +226,7 @@ export default function WaitlistPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(siteContent)
       });
-      const result = await response.json() as { content?: WaitlistSiteContent; error?: string };
+      const result = await readAdminJson<{ content?: WaitlistSiteContent; error?: string }>(response, 'Website content could not be saved.');
       if (!response.ok || !result.content) throw new Error(result.error || 'Website content could not be saved.');
       setSiteContent(result.content);
       setSiteContentNotice('Published. The standalone site will show these updates shortly.');
@@ -225,7 +248,7 @@ export default function WaitlistPage() {
       const form = new FormData();
       form.append('file', file);
       const response = await fetch('/api/admin/waitlist-site', { method: 'POST', body: form });
-      const result = await response.json() as { content?: WaitlistSiteContent; error?: string };
+      const result = await readAdminJson<{ content?: WaitlistSiteContent; error?: string }>(response, 'Website image could not be uploaded.');
       if (!response.ok || !result.content) throw new Error(result.error || 'Website image could not be uploaded.');
       setSiteContent(result.content);
       setSiteContentNotice('Hero image uploaded and published.');
@@ -255,7 +278,7 @@ export default function WaitlistPage() {
       form.append('title', title);
       form.append('file', file);
       const response = await fetch('/api/admin/waitlist-site', { method: 'POST', body: form });
-      const result = await response.json() as { content?: WaitlistSiteContent; publicSiteConfirmed?: boolean; error?: string };
+      const result = await readAdminJson<{ content?: WaitlistSiteContent; publicSiteConfirmed?: boolean; error?: string }>(response, 'Age-group music could not be uploaded.');
       if (!response.ok || !result.content) throw new Error(result.error || 'Age-group music could not be uploaded.');
       const savedTrack = result.content.age_group_tracks?.[ageGroup];
       if (!savedTrack || savedTrack.title !== title) throw new Error('The upload finished but the saved age-group assignment could not be confirmed. Refresh the page and check the track before retrying.');
@@ -407,7 +430,12 @@ export default function WaitlistPage() {
           </div>
           {siteContentError && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{siteContentError}</p>}
           {siteContentNotice && <p role="status" className={`mb-4 rounded-lg border p-3 text-sm font-bold ${siteContentNoticeConfirmed ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-950'}`}>{siteContentNoticeConfirmed && <Check size={15} className="mr-1 inline-block" />}{siteContentNotice}</p>}
-          {!siteContent ? <p className="text-sm text-slate-500">Loading website content…</p> : (
+          {!siteContent ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-700">{loadingSiteContent ? 'Loading website content…' : 'Website controls are unavailable until the settings load.'}</p>
+              {!loadingSiteContent && <button type="button" onClick={() => void loadSiteContent()} className="mt-3 min-h-10 rounded-lg bg-slate-900 px-4 text-sm font-bold text-white">Retry loading settings</button>}
+            </div>
+          ) : (
             <form className="grid gap-4 lg:grid-cols-2" onSubmit={saveSiteContent}>
               <label className="text-xs font-bold text-slate-700">Eyebrow<input required maxLength={80} value={siteContent.eyebrow} onChange={event => setSiteContent({ ...siteContent, eyebrow: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-slate-700">Headline<input required maxLength={120} value={siteContent.headline} onChange={event => setSiteContent({ ...siteContent, headline: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
