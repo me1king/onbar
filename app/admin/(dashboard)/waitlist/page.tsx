@@ -490,7 +490,10 @@ export default function WaitlistPage() {
           <p className="mt-2 max-w-2xl text-sm text-slate-600">Signups from the standalone early-access site and storefront waitlist. Exact GPS coordinates are never stored.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          {canManageSite && <a href="#waitlist-genre-music" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white hover:opacity-90"><Upload size={15} /> Upload songs</a>}
+          {canManageSite && <>
+            <a href="#waitlist-age-music" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white hover:opacity-90"><Upload size={15} /> Upload age-group songs</a>
+            <a href="#waitlist-genre-music" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Upload size={15} /> Upload genre songs</a>
+          </>}
           <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>
         </div>
       </header>
