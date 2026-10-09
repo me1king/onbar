@@ -427,12 +427,17 @@ export default function WaitlistPage() {
                     const track = siteContent.age_group_tracks?.[group.id];
                     return <div key={group.id} className="rounded-xl border border-slate-200 p-3">
                       <p className="text-xs font-black text-slate-800">Age {group.label}</p>
-                      {track && <p className="mt-1 truncate text-xs text-slate-500">Current: {track.title}</p>}
+                      {track && <div className="mt-2 rounded-lg bg-emerald-50 p-2.5">
+                        <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-800"><Check size={13} /> Uploaded &amp; published</p>
+                        <p className="mt-1 truncate text-xs text-emerald-900">{track.title}</p>
+                        <audio className="mt-2 block h-9 w-full" controls preload="none" src={track.url} aria-label={`Preview published track for age ${group.label}`} />
+                      </div>}
                       <label className="mt-2 block text-[10px] font-bold text-slate-600">Track name<input maxLength={100} value={trackTitles[group.id] ?? track?.title ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [group.id]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
                       <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">
-                        <Upload size={13} />{uploadingTrack === group.id ? 'Uploading…' : track ? 'Replace track' : 'Upload track'}
+                        <Upload size={13} />{uploadingTrack === group.id ? 'Uploading & publishing…' : track ? 'Replace track' : 'Upload track'}
                         <input type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a" disabled={uploadingTrack !== null} className="sr-only" onChange={event => { void uploadAgeGroupTrack(group.id, event.target.files?.[0]); event.currentTarget.value = ''; }} />
                       </label>
+                      {uploadingTrack === group.id && <p role="status" className="mt-2 text-xs text-slate-500">Uploading the file and publishing it to the waitlist site. Keep this page open.</p>}
                     </div>;
                   })}
                 </div>
