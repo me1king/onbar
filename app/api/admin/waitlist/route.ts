@@ -36,6 +36,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
     const { data, error } = await database.from('market_waitlist')
       .select('id,full_name,email,referral_code,converted_to_user,country,county,city,area')
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
       .range(offset, offset + 999);
     if (error) throw error;
     members.push(...data);
@@ -46,6 +47,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
     const { data, error } = await database.from('waitlist_referral_credits')
       .select('id,referrer_id,invitee_id,token_amount,referral_depth,created_at')
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
       .range(offset, offset + 999);
     if (error) throw error;
     credits.push(...data);
@@ -64,6 +66,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
         .select('user_id,total_price')
         .in('user_id', userIds)
         .in('status', ['Delivered', 'Completed'])
+        .order('id', { ascending: true })
         .range(offset, offset + 999);
       if (error) throw error;
       for (const order of data) {

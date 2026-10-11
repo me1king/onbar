@@ -812,7 +812,7 @@ export default function WaitlistPage() {
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-4 py-3">
             <h3 className="text-xs font-black uppercase tracking-wide text-slate-900">Referral points distributed by person</h3>
-            <p className="mt-1 text-xs text-slate-500">One row per reward recipient and invited member, including the depth of the chain and converted-member sales.</p>
+            <p className="mt-1 text-xs text-slate-500">One row per reward recipient and invited member, including chain depth, converted-member sales and a map link for the area shared at signup. Waitlist signups store neighbourhoods, not exact coordinates.</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -823,11 +823,12 @@ export default function WaitlistPage() {
                 <th className="px-4 py-3">Points credited</th>
                 <th className="px-4 py-3">Positive turnover</th>
                 <th className="px-4 py-3">Member area</th>
+                <th className="px-4 py-3">Map</th>
                 <th className="px-4 py-3">Signup</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {!referralCredits.length ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Referral credit details will appear here as waitlist members join.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">Referral credit details will appear here as waitlist members join.</td></tr>
                 ) : visibleReferralCredits.map(credit => (
                   <tr key={credit.id}>
                     <td className="px-4 py-3 font-semibold text-slate-900">{credit.referrerName}</td>
@@ -836,6 +837,7 @@ export default function WaitlistPage() {
                     <td className="px-4 py-3 font-black text-primary">{count(credit.points)}</td>
                     <td className="px-4 py-3 font-semibold text-emerald-700">{money(credit.turnover)}</td>
                     <td className="px-4 py-3 text-slate-600">{[credit.city, credit.area].filter(Boolean).join(' · ') || '—'}</td>
+                    <td className="px-4 py-3">{credit.city || credit.area ? <a href={`https://www.openstreetmap.org/search?query=${encodeURIComponent([credit.area, credit.city, credit.county, credit.country].filter(Boolean).join(', '))}`} target="_blank" rel="noopener noreferrer" className="font-bold text-blue-700 underline underline-offset-2">Approximate area map</a> : <span className="text-slate-400">No area</span>}</td>
                     <td className="px-4 py-3 text-slate-500">{date(credit.createdAt)}</td>
                   </tr>
                 ))}
