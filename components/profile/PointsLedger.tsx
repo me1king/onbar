@@ -17,23 +17,41 @@ export default function PointsLedger({ profileId }: { profileId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!supabase || !profileId) {
+      setEntries([]);
+      setLoading(false);
+      return;
+    }
+
+    const database = supabase;
+    let active = true;
     async function loadLedger() {
-      if (!supabase || !profileId) return;
       try {
-        const { data } = await supabase
+        const { data, error } = await database
           .from('loyalty_ledger')
           .select('*')
           .eq('profile_id', profileId)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(100);
 
-        setEntries(data || []);
+        if (error) throw error;
+        if (active) setEntries(data || []);
       } catch (err) {
-        console.error(err);
+        console.error('[PointsLedger] Could not load points history:', err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
-    loadLedger();
+
+    void loadLedger();
+    const refreshInterval = window.setInterval(() => void loadLedger(), 15000);
+    const handleFocus = () => void loadLedger();
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      active = false;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [profileId]);
 
   if (loading) return <div className="animate-pulse h-20 bg-slate-50 rounded-2xl"></div>;

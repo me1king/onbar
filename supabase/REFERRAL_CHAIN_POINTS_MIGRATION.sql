@@ -102,6 +102,17 @@ BEGIN
           );
         IF v_applied THEN
             v_points_awarded := v_points_awarded + v_referral_bonus;
+            INSERT INTO public.user_notifications (
+                user_id, title, message, icon, style, action_url
+            )
+            VALUES (
+                referred_profile_id_input,
+                'Referral points added',
+                'Welcome! ' || v_referral_bonus || ' referral points have been added to your balance.',
+                'Zap',
+                'reward',
+                '/rewards'
+            );
         END IF;
     END IF;
 
@@ -130,6 +141,20 @@ BEGIN
               );
             IF v_applied THEN
                 v_points_awarded := v_points_awarded + v_referral_bonus;
+                INSERT INTO public.user_notifications (
+                    user_id, title, message, icon, style, action_url
+                )
+                VALUES (
+                    v_current_referrer_id,
+                    'Referral points added',
+                    CASE
+                        WHEN v_depth = 1 THEN 'A friend you referred joined. '
+                        ELSE 'A member in your referral chain joined (level ' || v_depth || '). '
+                    END || v_referral_bonus || ' points have been added to your balance.',
+                    'Zap',
+                    'reward',
+                    '/rewards'
+                );
             END IF;
         END IF;
 

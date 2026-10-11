@@ -49,6 +49,8 @@ interface NotificationNode {
     is_read: boolean;
     created_at: string;
     type?: string;
+    style?: string | null;
+    icon?: string | null;
 }
 
 function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
@@ -65,6 +67,10 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
   useEffect(() => {
     setMounted(true);
     let isMounted = true;
+    let activeUserId: string | null = null;
+    const refreshProfile = () => {
+      if (activeUserId) void fetchProfile(activeUserId);
+    };
 
     if (!supabase) {
       setDisplayEmail(getLocalSession()?.email ?? null);
@@ -73,8 +79,9 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (isMounted && session) {
+        activeUserId = session.user.id;
         setDisplayEmail(session.user.email ?? null);
-        fetchProfile(session.user.id);
+        refreshProfile();
       }
     });
 
@@ -82,17 +89,23 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (isMounted) {
+        activeUserId = session?.user?.id ?? null;
         setDisplayEmail(session?.user?.email ?? null);
         if (session) {
-            fetchProfile(session.user.id);
+            refreshProfile();
         } else {
             setPoints(null);
         }
       }
     });
 
+    const refreshInterval = window.setInterval(refreshProfile, 15000);
+    window.addEventListener('focus', refreshProfile);
+
     return () => {
       isMounted = false;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', refreshProfile);
       subscription.unsubscribe();
     };
   }, []);
@@ -386,11 +399,11 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
   };
 
   const navItems = [
-    { href: "/shop", label: "Menu" },
-    { href: "/beverages", label: "Beverages" },
-    { href: "/bites", label: "Street Food" },
-    { href: "/souvenirs", label: "Souvenirs" },
+    { href: "/shop", label: "Build My Bar" },
+    { href: "/beverages", label: "Drinks" },
+    { href: "/bites", label: "Food" },
     { href: "/shop/snacks", label: "Munchies" },
+    { href: "/souvenirs", label: "Souvenirs" },
     { href: "/shop/category/sale", label: "Deals" },
     { href: "/shop/category/gifts", label: "Gifts" },
     { href: "/buzz?planner=true", label: "Build My Night" },
@@ -584,7 +597,9 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                                         n.is_read ? "bg-white border-transparent opacity-60 grayscale" : "bg-slate-50 border-slate-100 hover:border-primary/20"
                                     )}>
                                         <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center text-primary shadow-sm shrink-0 border border-slate-100 group-hover/item:scale-110 transition-transform">
-                                            {n.type === 'reward' ? <Zap className="h-5 w-5 fill-current" /> : <Package className="h-5 w-5" />}
+                                            {n.type === 'reward' || n.style === 'reward' || n.icon === 'Zap'
+                                                ? <Zap className="h-5 w-5 fill-current" />
+                                                : <Package className="h-5 w-5" />}
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <p className="text-[11px] font-black text-foreground uppercase leading-tight truncate">{n.title}</p>
@@ -638,25 +653,39 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
         <nav
           className="mt-3 hidden items-center gap-1 overflow-x-auto border-t border-slate-100 pt-2 no-scrollbar lg:flex"
           role="navigation"
-          aria-label="Shop categories"
+          aria-label="Shop and bar menus"
         >
-          {catalogNavItems.map(({ id, href, label }) => {
-            const active = pathname === href || (id === "gifts" && pathname === "/gifting");
+          {navItems.map(({ href, label }) => {
+            const active = pathname === href || (href === "/shop" && pathname?.startsWith("/shop"));
             return (
-              <Link
-                key={id}
-                href={href}
+              <Link key={`desktop-${label}`} href={href}
                 prefetch
+                aria-current={active ? "page" : undefined}
                 className={`shrink-0 border-b-2 px-2.5 py-2 text-[11px] font-semibold transition-colors xl:px-3 ${
                   active
-                    ? "border-rose-600 text-rose-600"
-                    : "border-transparent text-slate-800 hover:text-rose-600"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-slate-800 hover:text-primary"
                 }`}
               >
                 {label}
               </Link>
             );
           })}
+          {catalogNavItems.map(({ id, href, label }) => (
+            <Link
+              key={`desktop-category-${id}`}
+              href={href}
+              prefetch
+              aria-current={pathname === href ? "page" : undefined}
+              className={`shrink-0 border-b-2 px-2.5 py-2 text-[11px] font-semibold transition-colors xl:px-3 ${
+                pathname === href
+                  ? "border-rose-600 text-rose-600"
+                  : "border-transparent text-slate-800 hover:text-rose-600"
+              }`}
+            >
+              {label}
+            </Link>
+          ))}
         </nav>
         <nav
           className="-mx-2 mt-2 flex items-center gap-1 overflow-x-auto border-t border-slate-100 px-2 pt-1 no-scrollbar sm:-mx-6 sm:px-6 lg:hidden"
