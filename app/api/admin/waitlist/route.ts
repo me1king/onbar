@@ -10,6 +10,131 @@ const statuses = ['WAITLIST', 'INVITED', 'NOTIFIED', 'CONVERTED', 'UNSUBSCRIBED'
 const rewardPaths = ['wine', 'adventure', 'music'] as const;
 const fields = 'id,full_name,email,phone,country,county,city,area,landmark,location_verified,location_accuracy_m,service_area_status,email_updates_consent,email_updates_consent_at,sms_consent,sms_consent_at,whatsapp_consent,whatsapp_consent_at,preferred_contact_method,product_interests,reward_path,order_frequency,age_group,age_confirmed,age_confirmed_at,referral_code,referred_by_code,campaign,landing_page,consent_version,source,status,notified_at,created_at,updated_at,unsubscribed_at';
 
+async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
+  if (!database) throw new Error('Waitlist database access is not configured.');
+  const members: Array<{
+    id: string;
+    full_name: string | null;
+    email: string;
+    referral_code: string | null;
+    converted_to_user: string | null;
+    country: string;
+    county: string;
+    city: string;
+    area: string;
+  }> = [];
+  const credits: Array<{
+    id: string;
+    referrer_id: string;
+    invitee_id: string;
+    token_amount: number;
+    referral_depth: number;
+    created_at: string;
+  }> = [];
+
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await database.from('market_waitlist')
+      .select('id,full_name,email,referral_code,converted_to_user,country,county,city,area')
+      .order('created_at', { ascending: true })
+      .range(offset, offset + 999);
+    if (error) throw error;
+    members.push(...data);
+    if (data.length < 1000) break;
+  }
+
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await database.from('waitlist_referral_credits')
+      .select('id,referrer_id,invitee_id,token_amount,referral_depth,created_at')
+      .order('created_at', { ascending: true })
+      .range(offset, offset + 999);
+    if (error) throw error;
+    credits.push(...data);
+    if (data.length < 1000) break;
+  }
+
+  const memberById = new Map(members.map(member => [member.id, member]));
+  const convertedUserIds = [...new Set(members
+    .map(member => member.converted_to_user)
+    .filter((userId): userId is string => Boolean(userId)))];
+  const turnoverByUser = new Map<string, number>();
+  for (let start = 0; start < convertedUserIds.length; start += 200) {
+    const userIds = convertedUserIds.slice(start, start + 200);
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await database.from('orders')
+        .select('user_id,total_price')
+        .in('user_id', userIds)
+        .in('status', ['Delivered', 'Completed'])
+        .range(offset, offset + 999);
+      if (error) throw error;
+      for (const order of data) {
+        const amount = Number(order.total_price || 0);
+        if (Number.isFinite(amount) && amount > 0) {
+          turnoverByUser.set(order.user_id, (turnoverByUser.get(order.user_id) || 0) + amount);
+        }
+      }
+      if (data.length < 1000) break;
+    }
+  }
+
+  const leaderboard = new Map<string, {
+    referrerId: string;
+    name: string;
+    referralCode: string;
+    directReferrals: number;
+    networkReferrals: number;
+    positiveTurnoverReferrals: number;
+    turnover: number;
+    pointsEarned: number;
+  }>();
+  const referralCredits = credits.map(credit => {
+    const referrer = memberById.get(credit.referrer_id);
+    const invitee = memberById.get(credit.invitee_id);
+    const turnover = invitee?.converted_to_user
+      ? turnoverByUser.get(invitee.converted_to_user) || 0
+      : 0;
+    const aggregate = leaderboard.get(credit.referrer_id) || {
+      referrerId: credit.referrer_id,
+      name: referrer?.full_name || referrer?.email || credit.referrer_id,
+      referralCode: referrer?.referral_code || '',
+      directReferrals: 0,
+      networkReferrals: 0,
+      positiveTurnoverReferrals: 0,
+      turnover: 0,
+      pointsEarned: 0
+    };
+    aggregate.networkReferrals += 1;
+    if (credit.referral_depth === 1) aggregate.directReferrals += 1;
+    if (turnover > 0) aggregate.positiveTurnoverReferrals += 1;
+    aggregate.turnover += turnover;
+    aggregate.pointsEarned += Number(credit.token_amount || 0);
+    leaderboard.set(credit.referrer_id, aggregate);
+    return {
+      id: credit.id,
+      referrerId: credit.referrer_id,
+      referrerName: aggregate.name,
+      inviteeId: credit.invitee_id,
+      inviteeName: invitee?.full_name || invitee?.email || credit.invitee_id,
+      inviteeEmail: invitee?.email || '',
+      depth: credit.referral_depth,
+      points: credit.token_amount,
+      turnover,
+      country: invitee?.country || '',
+      county: invitee?.county || '',
+      city: invitee?.city || '',
+      area: invitee?.area || '',
+      createdAt: credit.created_at
+    };
+  });
+
+  const referrers = [...leaderboard.values()]
+    .sort((left, right) =>
+      right.positiveTurnoverReferrals - left.positiveTurnoverReferrals
+      || right.turnover - left.turnover
+      || right.directReferrals - left.directReferrals
+    );
+  return { referrers, credits: referralCredits };
+}
+
 async function authorize() {
   const cookieStore = await cookies();
   const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
@@ -75,9 +200,19 @@ export async function GET(request: Request) {
         : 'Waitlist data could not be loaded. Check Supabase connectivity and permissions.'
     }, { status: 503 });
   }
+  let referralAnalytics;
+  try {
+    referralAnalytics = await loadReferralAnalytics(database);
+  } catch (error) {
+    console.error('[AdminWaitlist] Could not load referral points and turnover:', error);
+    return NextResponse.json({
+      error: 'Waitlist referral analytics could not be loaded. Apply the latest supabase/WAITLIST_SITE_MIGRATION.sql to the shared Supabase project and confirm orders can be read.'
+    }, { status: 503 });
+  }
   return NextResponse.json({
     contacts: list.data || [],
     stats: intelligence.data || {},
+    referralAnalytics,
     page,
     pageSize,
     hasMore: (list.data || []).length === pageSize

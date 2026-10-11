@@ -129,7 +129,7 @@ export async function GET(request: Request) {
   }
   if (error || !data) {
     console.error('[AdminWaitlistSite] Could not load published website content:', error);
-    return NextResponse.json({ error: 'Apply waitlist-site/supabase/WAITLIST_SITE_MIGRATION.sql to enable website content management.' }, { status: 503 });
+    return NextResponse.json({ error: 'Apply supabase/WAITLIST_SITE_MIGRATION.sql from the isolated WAITLIST repository to enable website content management.' }, { status: 503 });
   }
   const requestedDays = Number(new URL(request.url).searchParams.get('days') || '30');
   const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 30;
@@ -280,10 +280,6 @@ export async function PATCH(request: Request) {
     }
     updates[field] = (body[field] as string).trim();
   }
-  if (!Number.isSafeInteger(body.tokens_per_referral)
-    || Number(body.tokens_per_referral) < 1 || Number(body.tokens_per_referral) > 1000) {
-    return NextResponse.json({ error: 'Tokens per successful referral must be between 1 and 1,000.' }, { status: 400 });
-  }
   let launchAt: string | null = null;
   if (body.launch_at !== null && body.launch_at !== '') {
     if (typeof body.launch_at !== 'string' || !Number.isFinite(Date.parse(body.launch_at))) {
@@ -292,7 +288,7 @@ export async function PATCH(request: Request) {
     launchAt = new Date(body.launch_at).toISOString();
   }
   const { data, error } = await database.from('waitlist_site_content')
-    .update({ ...updates, launch_at: launchAt, tokens_per_referral: Number(body.tokens_per_referral), updated_at: new Date().toISOString() })
+    .update({ ...updates, launch_at: launchAt, tokens_per_referral: 3, updated_at: new Date().toISOString() })
     .eq('id', 'default')
     .select(contentFields)
     .single();

@@ -56,9 +56,39 @@ interface WaitlistStats {
   ageGroups: Array<{ group: string; label: string; count: number }>;
   rewardPaths: Array<{ path: RewardPath; label: string; count: number }>;
 }
+interface WaitlistReferralLeaderboardEntry {
+  referrerId: string;
+  name: string;
+  referralCode: string;
+  directReferrals: number;
+  networkReferrals: number;
+  positiveTurnoverReferrals: number;
+  turnover: number;
+  pointsEarned: number;
+}
+interface WaitlistReferralCredit {
+  id: string;
+  referrerId: string;
+  referrerName: string;
+  inviteeId: string;
+  inviteeName: string;
+  inviteeEmail: string;
+  depth: number;
+  points: number;
+  turnover: number;
+  country: string;
+  county: string;
+  city: string;
+  area: string;
+  createdAt: string;
+}
 interface WaitlistResponse {
   contacts: WaitlistContact[];
   stats: WaitlistStats;
+  referralAnalytics: {
+    referrers: WaitlistReferralLeaderboardEntry[];
+    credits: WaitlistReferralCredit[];
+  };
   page: number;
   hasMore: boolean;
   error?: string;
@@ -141,6 +171,10 @@ function count(value: number | undefined) {
   return new Intl.NumberFormat('en-KE').format(value || 0);
 }
 
+function money(value: number) {
+  return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(value || 0);
+}
+
 function date(value: string | null) {
   if (!value) return '—';
   const parsed = new Date(value);
@@ -168,6 +202,7 @@ export default function WaitlistPage() {
   const [status, setStatus] = useState('all');
   const [rewardPath, setRewardPath] = useState<'all' | RewardPath>('all');
   const [page, setPage] = useState(0);
+  const [referralCreditPage, setReferralCreditPage] = useState(0);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [siteContent, setSiteContent] = useState<WaitlistSiteContent | null>(null);
   const [loadingSiteContent, setLoadingSiteContent] = useState(false);
@@ -251,6 +286,13 @@ export default function WaitlistPage() {
   useEffect(() => { void loadSiteContent(); }, [loadSiteContent]);
 
   const topAreas = useMemo(() => (data?.stats.areas || []).slice(0, 5), [data]);
+  const referralCredits = data?.referralAnalytics?.credits || [];
+  const referralCreditPageSize = 20;
+  const referralCreditPageCount = Math.ceil(referralCredits.length / referralCreditPageSize);
+  const visibleReferralCredits = referralCredits.slice(
+    referralCreditPage * referralCreditPageSize,
+    (referralCreditPage + 1) * referralCreditPageSize
+  );
   const locationHeatMaximum = Math.max(1, ...(siteAnalytics?.locations || []).map(location => location.signups));
   const topTrackByAge = useMemo(() => {
     const leaders = new Map<string, WaitlistSiteAnalytics['music'][number]>();
@@ -526,9 +568,9 @@ export default function WaitlistPage() {
               <label className="text-xs font-bold text-slate-700">Benefit three<input required maxLength={60} value={siteContent.benefit_three} onChange={event => setSiteContent({ ...siteContent, benefit_three: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-slate-700">Hero image description<input required maxLength={180} value={siteContent.hero_image_alt} onChange={event => setSiteContent({ ...siteContent, hero_image_alt: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <div className="grid gap-3 rounded-xl border border-rose-100 bg-rose-50/50 p-4 sm:grid-cols-2 lg:col-span-2">
-                <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Waitlist countdown &amp; invite rewards</h3><p className="mt-1 text-xs text-slate-500">The launch time drives the standalone site countdown and the installable phone dashboard. Every new, valid referral earns this many tokens.</p></div>
+                <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Waitlist countdown &amp; invite rewards</h3><p className="mt-1 text-xs text-slate-500">The launch time drives the standalone site countdown and the installable phone dashboard. Each new signup awards exactly 3 points to every inviter in the chain.</p></div>
                 <label className="text-xs font-bold text-slate-700">Launch date and time<input type="datetime-local" value={siteContent.launch_at ? new Date(new Date(siteContent.launch_at).getTime() - new Date(siteContent.launch_at).getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : ''} onChange={event => setSiteContent({ ...siteContent, launch_at: event.target.value ? new Date(event.target.value).toISOString() : null })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal" /></label>
-                <label className="text-xs font-bold text-slate-700">Tokens per successful referral<input type="number" min={1} max={1000} required value={siteContent.tokens_per_referral} onChange={event => setSiteContent({ ...siteContent, tokens_per_referral: Number(event.target.value) })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal" /></label>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">Fixed referral reward: 3 points for every member in the referral chain.</div>
               </div>
               <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
                 <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">
@@ -732,6 +774,84 @@ export default function WaitlistPage() {
             <p className="mt-3 text-2xl font-black text-slate-950">{loading ? '—' : count(metric.value)}</p>
           </article>
         ))}
+      </section>
+
+      <section className="space-y-4" aria-label="Waitlist referral rewards and turnover">
+        <div>
+          <h2 className="text-lg font-black uppercase tracking-wide text-slate-900">Waitlist referral leaderboard</h2>
+          <p className="mt-1 text-xs text-slate-500">Ranks people whose waitlist referrals converted into positive delivered sales. Each member in the referral chain receives 3 points/tokens for every new signup in their downline.</p>
+        </div>
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full text-left text-sm">
+            <thead><tr className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
+              <th className="px-4 py-3">Rank</th>
+              <th className="px-4 py-3">Referrer</th>
+              <th className="px-4 py-3">Direct invites</th>
+              <th className="px-4 py-3">Full network</th>
+              <th className="px-4 py-3">Positive-turnover members</th>
+              <th className="px-4 py-3">Delivered turnover</th>
+              <th className="px-4 py-3">Referral points</th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {!data?.referralAnalytics?.referrers?.length ? (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No waitlist referrals have been recorded yet.</td></tr>
+              ) : data.referralAnalytics.referrers.map((referrer, index) => (
+                <tr key={referrer.referrerId}>
+                  <td className="px-4 py-3 font-black text-primary">#{index + 1}</td>
+                  <td className="px-4 py-3"><b className="block text-slate-900">{referrer.name}</b><span className="font-mono text-[10px] text-slate-500">{referrer.referralCode || referrer.referrerId}</span></td>
+                  <td className="px-4 py-3 font-bold text-slate-800">{count(referrer.directReferrals)}</td>
+                  <td className="px-4 py-3 font-bold text-slate-800">{count(referrer.networkReferrals)}</td>
+                  <td className="px-4 py-3 font-black text-emerald-700">{count(referrer.positiveTurnoverReferrals)}</td>
+                  <td className="px-4 py-3 font-bold text-slate-900">{money(referrer.turnover)}</td>
+                  <td className="px-4 py-3 font-black text-primary">{count(referrer.pointsEarned)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <h3 className="text-xs font-black uppercase tracking-wide text-slate-900">Referral points distributed by person</h3>
+            <p className="mt-1 text-xs text-slate-500">One row per reward recipient and invited member, including the depth of the chain and converted-member sales.</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead><tr className="bg-slate-50 font-black uppercase tracking-wider text-slate-500">
+                <th className="px-4 py-3">Points recipient</th>
+                <th className="px-4 py-3">Referred member</th>
+                <th className="px-4 py-3">Generation</th>
+                <th className="px-4 py-3">Points credited</th>
+                <th className="px-4 py-3">Positive turnover</th>
+                <th className="px-4 py-3">Member area</th>
+                <th className="px-4 py-3">Signup</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {!referralCredits.length ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Referral credit details will appear here as waitlist members join.</td></tr>
+                ) : visibleReferralCredits.map(credit => (
+                  <tr key={credit.id}>
+                    <td className="px-4 py-3 font-semibold text-slate-900">{credit.referrerName}</td>
+                    <td className="px-4 py-3"><span className="block font-semibold text-slate-900">{credit.inviteeName}</span><span className="text-slate-500">{credit.inviteeEmail}</span></td>
+                    <td className="px-4 py-3 text-slate-700">Level {credit.depth}</td>
+                    <td className="px-4 py-3 font-black text-primary">{count(credit.points)}</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-700">{money(credit.turnover)}</td>
+                    <td className="px-4 py-3 text-slate-600">{[credit.city, credit.area].filter(Boolean).join(' · ') || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500">{date(credit.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {referralCreditPageCount > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs">
+              <span className="text-slate-500">Showing {referralCreditPage * referralCreditPageSize + 1}–{Math.min((referralCreditPage + 1) * referralCreditPageSize, referralCredits.length)} of {count(referralCredits.length)} credits</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setReferralCreditPage(current => Math.max(0, current - 1))} disabled={referralCreditPage === 0} className="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:opacity-40">Previous</button>
+                <button type="button" onClick={() => setReferralCreditPage(current => Math.min(referralCreditPageCount - 1, current + 1))} disabled={referralCreditPage >= referralCreditPageCount - 1} className="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:opacity-40">Next</button>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
