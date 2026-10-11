@@ -49,14 +49,6 @@ export default function CategoryCatalog({
 
   return (
     <main className="min-h-screen bg-[#edf5fc] pb-24 text-foreground">
-      <section className="mx-2 mt-2 flex min-h-56 items-center justify-center rounded-2xl bg-white px-4 py-12 text-center sm:min-h-56 sm:rounded-3xl">
-        <div>
-          <h1 className="text-4xl font-black tracking-tight text-slate-900 sm:text-5xl md:text-6xl">
-            {title} <span className="bg-gradient-to-r from-slate-900 to-rose-700 bg-clip-text text-transparent">delivery Nairobi</span>
-          </h1>
-        </div>
-      </section>
-
       <nav aria-label="Breadcrumb" className="mx-auto flex max-w-none items-center gap-2 px-2 py-1 text-sm text-slate-500 sm:px-3">
         <Link href="/" className="hover:text-primary">Home</Link>
         <ChevronRight aria-hidden="true" size={15} />
