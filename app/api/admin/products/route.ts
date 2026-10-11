@@ -129,6 +129,9 @@ async function saveProduct(database: SupabaseClient, id: number | null, product:
             if (missingColumn[1] === 'variant_prices') {
                 throw new Error('Run supabase/PRODUCT_VARIANT_PRICING_MIGRATION.sql before saving prices by size.');
             }
+            if (missingColumn[1] === 'pairing_suggestions') {
+                throw new Error('Food pairings are not connected to this database yet. Run supabase/PRODUCT_PAIRING_SUGGESTIONS_MIGRATION.sql, then save the product again.');
+            }
             console.warn(`[ProductAdmin] Ignoring unavailable products column "${missingColumn[1]}" and retrying.`);
             delete payload[missingColumn[1]];
             continue;

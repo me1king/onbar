@@ -1151,7 +1151,7 @@ function UploadContent() {
                                 {/* PAIRING CHIPS */}
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Food Pairing Suggestions</label>
+                                        <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Goes well with · shown on the customer product page</label>
                                         <span className="text-[8px] font-bold text-slate-400 uppercase">Tap chip to toggle</span>
                                     </div>
                                     <div className="flex flex-wrap gap-2">

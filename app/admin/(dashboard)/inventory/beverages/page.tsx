@@ -71,7 +71,7 @@ export default function BeverageCommandAdmin() {
         stock: '0',
         temperature: '',
         image_url: '',
-        pairings: 'Smocha Deluxe, Chips Masala, Chicken Wings'
+        pairings: ''
     });
 
     React.useEffect(() => {
@@ -199,7 +199,7 @@ export default function BeverageCommandAdmin() {
                 stock: '0',
                 temperature: '',
                 image_url: '',
-                pairings: 'Smocha Deluxe, Chips Masala'
+                pairings: ''
             });
 
             await fetchBeverages();
@@ -620,7 +620,7 @@ export default function BeverageCommandAdmin() {
                                             </div>
                                         </Field>
                                     </div>
-                                    <Field label="Food pairings" hint="Separate suggestions with commas.">
+                                    <Field label="Goes well with" hint="These suggestions appear on the customer-facing product page. Separate items with commas.">
                                         <Textarea value={form.pairings} onChange={e => setForm({ ...form, pairings: e.target.value })} placeholder="Smocha Deluxe, Chips Masala, Burgers" className="min-h-24 resize-y rounded-xl border-slate-200 bg-slate-50/80 p-3 text-sm shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100" rows={3} />
                                     </Field>
                                 </div>

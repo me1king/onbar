@@ -9,6 +9,7 @@ ALTER TABLE public.products
     ADD COLUMN IF NOT EXISTS capacity_oz NUMERIC,
     ADD COLUMN IF NOT EXISTS weight_grams INTEGER,
     ADD COLUMN IF NOT EXISTS story TEXT,
+    ADD COLUMN IF NOT EXISTS pairing_suggestions TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     ADD COLUMN IF NOT EXISTS drink_pairings TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 CREATE TABLE IF NOT EXISTS public.support_tickets (

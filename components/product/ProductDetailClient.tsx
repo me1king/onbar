@@ -573,7 +573,7 @@ export default function ProductDetailClient({
 
                 <div className="space-y-6 px-4">
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-3">
-                        <Utensils size={14} className="text-brand-red" /> Pairs Well With
+                        <Utensils size={14} className="text-brand-red" /> Goes Well With
                     </p>
                     <div className="flex flex-wrap gap-3">
                         {(product.pairing_suggestions || []).map(chip => (

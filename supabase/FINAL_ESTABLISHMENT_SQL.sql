@@ -171,6 +171,7 @@ ALTER TABLE public.products
     ADD COLUMN IF NOT EXISTS is_ice_cold BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS temperature_celsius NUMERIC(5,2),
     ADD COLUMN IF NOT EXISTS warehouse_location TEXT,
+    ADD COLUMN IF NOT EXISTS pairing_suggestions TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     ADD COLUMN IF NOT EXISTS material TEXT,
     ADD COLUMN IF NOT EXISTS finish TEXT,
     ADD COLUMN IF NOT EXISTS capacity_oz NUMERIC,

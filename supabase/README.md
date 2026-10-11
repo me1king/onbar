@@ -1,5 +1,12 @@
 # Supabase migrations
 
+## Product page food pairings
+
+If the Admin product editor cannot save food-pairing suggestions or the customer
+product page does not show them, run `PRODUCT_PAIRING_SUGGESTIONS_MIGRATION.sql`
+in the Supabase SQL Editor. The Admin editor writes to
+`products.pairing_suggestions`, and the storefront reads that same column.
+
 ## Admin dashboard recovery
 
 The analytics, finance, staff, and dispatch dashboards expect schema that may not
