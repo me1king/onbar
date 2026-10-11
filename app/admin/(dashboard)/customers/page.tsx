@@ -51,6 +51,21 @@ interface CustomerProfile {
     longitude: number | null;
 }
 
+interface ReferralRecord {
+  referred_profile_id: string;
+  referrer_profile_id: string;
+  referral_code: string;
+  qualifying_order_id: number | null;
+  created_at: string;
+}
+
+interface ReferralLedgerEntry {
+  profile_id: string;
+  amount: number;
+  event_key: string;
+  created_at: string;
+}
+
 interface CustomerStats {
   id: string;
   name: string;
@@ -75,6 +90,8 @@ export default function AdminCustomersPage() {
   const router = useRouter();
   const [orders, setOrders] = React.useState<OrderRecord[]>([]);
   const [profiles, setProfiles] = React.useState<CustomerProfile[]>([]);
+  const [referrals, setReferrals] = React.useState<ReferralRecord[]>([]);
+  const [referralLedger, setReferralLedger] = React.useState<ReferralLedgerEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [segmentFilter, setSegmentFilter] = React.useState<string>('all');
@@ -87,11 +104,15 @@ export default function AdminCustomersPage() {
         const result = await response.json() as {
           orders?: OrderRecord[];
           profiles?: CustomerProfile[];
+          referrals?: ReferralRecord[];
+          referralLedger?: ReferralLedgerEntry[];
           error?: string;
         };
         if (!response.ok) throw new Error(result.error || 'Customer data could not be loaded.');
         setOrders(result.orders || []);
         setProfiles(result.profiles || []);
+        setReferrals(result.referrals || []);
+        setReferralLedger(result.referralLedger || []);
         setLocationError(null);
       } catch (err) {
         console.error('Error loading customers:', err);
@@ -142,12 +163,8 @@ export default function AdminCustomersPage() {
   const customers = React.useMemo(() => {
     const map = new Map<string, CustomerStats>();
     const referralMap = new Map<string, number>();
-
-    // Count referrals
-    orders.forEach(o => {
-        if (o.referred_by_code) {
-            referralMap.set(o.referred_by_code, (referralMap.get(o.referred_by_code) || 0) + 1);
-        }
+    referrals.forEach(referral => {
+      referralMap.set(referral.referrer_profile_id, (referralMap.get(referral.referrer_profile_id) || 0) + 1);
     });
 
     orders.forEach((order) => {
@@ -156,7 +173,7 @@ export default function AdminCustomersPage() {
 
       const existing = map.get(key);
       const profile = profiles.find(p => p.phone_number === key);
-      const referredCount = (profile && profile.referral_code) ? (referralMap.get(profile.referral_code as string) || 0) : 0;
+      const referredCount = profile ? (referralMap.get(profile.id) || 0) : 0;
 
       // Age calculation
       let age = "N/A";
@@ -215,7 +232,22 @@ export default function AdminCustomersPage() {
             isVIP: segment === 'VIP Premium'
         };
     }).sort((a, b) => b.totalSpend - a.totalSpend);
-  }, [orders, profiles]);
+  }, [orders, profiles, referrals]);
+
+  const profileNames = React.useMemo(() => new Map(
+    profiles.map(profile => [profile.id, profile.full_name || profile.phone_number || profile.id])
+  ), [profiles]);
+
+  const referralPointsByMember = React.useMemo(() => {
+    const points = new Map<string, number>();
+    for (const entry of referralLedger) {
+      const [, , referredProfileId] = entry.event_key.split(':');
+      if (referredProfileId) {
+        points.set(referredProfileId, (points.get(referredProfileId) || 0) + Number(entry.amount || 0));
+      }
+    }
+    return points;
+  }, [referralLedger]);
 
   const filteredCustomers = React.useMemo(() => {
     const query = (searchQuery || '').toLowerCase();
@@ -277,6 +309,39 @@ export default function AdminCustomersPage() {
                 />
             </div>
         </div>
+
+        <section className="space-y-4">
+            <div>
+              <h2 className="text-xl font-black uppercase tracking-tight text-foreground">Referral Network</h2>
+              <p className="mt-1 text-sm text-slate-500">Qualified referral signups, their inviter, and total points awarded across the inviter&apos;s chain.</p>
+            </div>
+            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    <th className="px-6 py-4">Member</th>
+                    <th className="px-6 py-4">Invited by</th>
+                    <th className="px-6 py-4">Referral code</th>
+                    <th className="px-6 py-4">Chain points</th>
+                    <th className="px-6 py-4">Joined</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {referrals.length === 0 ? (
+                    <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No qualified referrals yet.</td></tr>
+                  ) : referrals.map(referral => (
+                    <tr key={referral.referred_profile_id}>
+                      <td className="px-6 py-4 font-bold text-foreground">{profileNames.get(referral.referred_profile_id) || referral.referred_profile_id}</td>
+                      <td className="px-6 py-4 text-slate-600">{profileNames.get(referral.referrer_profile_id) || referral.referrer_profile_id}</td>
+                      <td className="px-6 py-4 font-mono text-xs text-slate-500">{referral.referral_code}</td>
+                      <td className="px-6 py-4 font-black text-emerald-700">{referralPointsByMember.get(referral.referred_profile_id) || 0}</td>
+                      <td className="px-6 py-4 text-slate-500">{new Date(referral.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+        </section>
       </div>
 
       <CustomerLocationsMap
@@ -359,6 +424,7 @@ export default function AdminCustomersPage() {
                         <div className="h-10 w-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-foreground font-black text-[10px] uppercase shadow-sm">
                           {customer.name.substring(0, 2)}
                         </div>
+
                         <p className="font-black text-foreground uppercase text-xs tracking-tight group-hover:text-primary transition-colors">{customer.name}</p>
                       </div>
                     </td>

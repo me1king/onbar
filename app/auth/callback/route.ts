@@ -18,8 +18,25 @@ export async function GET(request: Request) {
         }
 
         const supabase = createClient(supabaseUrl, supabaseKey)
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
+            const referralCode = data.user?.user_metadata?.referred_by_code || searchParams.get('ref');
+            const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+            if (typeof referralCode === 'string' && referralCode.trim() && !serviceKey) {
+                console.error('[AuthCallback] Cannot register referral rewards without the server service key.');
+            } else if (typeof referralCode === 'string' && referralCode.trim() && serviceKey && data.user) {
+                const database = createClient(supabaseUrl, serviceKey, {
+                    auth: { autoRefreshToken: false, persistSession: false }
+                });
+                const { error: referralError } = await database.rpc('record_loyalty_referral', {
+                    referred_profile_id_input: data.user.id,
+                    referral_code_input: referralCode.trim(),
+                    qualifying_order_id_input: null
+                });
+                if (referralError) {
+                    console.error('[AuthCallback] Could not register referral rewards:', referralError);
+                }
+            }
             return NextResponse.redirect(`${origin}${next}`)
         }
         console.error('Code exchange error:', error)

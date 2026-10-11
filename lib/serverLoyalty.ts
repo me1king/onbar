@@ -61,17 +61,21 @@ export async function processOrderLoyalty(
   await apply(order.user_id, earnedPoints, `Earned from order #${order.id}`, `order:${order.id}:earn`);
 
   if (order.referred_by_code) {
-    const { data: referrer, error: referrerError } = await database
-      .from('profiles')
-      .select('id')
-      .eq('referral_code', order.referred_by_code)
-      .neq('id', order.user_id)
+    const { error: referralError } = await database.rpc('record_loyalty_referral', {
+      referred_profile_id_input: order.user_id,
+      referral_code_input: order.referred_by_code,
+      qualifying_order_id_input: order.id
+    });
+    if (referralError) throw referralError;
+
+    const { data: referral, error: referralLookupError } = await database
+      .from('loyalty_referrals')
+      .select('referrer_profile_id')
+      .eq('referred_profile_id', order.user_id)
       .maybeSingle();
-    if (referrerError) throw referrerError;
-    if (referrer) {
-      await apply(order.user_id, referralBonus, 'Referral welcome bonus', `referral-welcome:${order.user_id}`);
-      await apply(referrer.id, referralBonus, `Referral bonus for member ${order.user_id}`, `referral:${referrer.id}:${order.user_id}`);
-      await recordMissionEvent(database, referrer.id, 'refer-friend', `order:${order.id}`);
+    if (referralLookupError) throw referralLookupError;
+    if (referral) {
+      await recordMissionEvent(database, referral.referrer_profile_id, 'refer-friend', `referral:${order.user_id}`);
     }
   }
 

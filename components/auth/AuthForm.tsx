@@ -93,6 +93,26 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
       }
   };
 
+  const registerReferral = async (accessToken: string | undefined, referralCode: unknown) => {
+    if (!accessToken || typeof referralCode !== 'string' || !referralCode.trim()) return true;
+    try {
+      const response = await fetch('/api/member/referrals', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Referral rewards could not be synchronized.');
+      return true;
+    } catch (error) {
+      console.error('[AuthForm] Referral rewards could not be synchronized:', error);
+      setMessage({
+        type: 'error',
+        text: 'Your account is ready, but referral points are still syncing. Please sign in again or contact support if they do not appear.'
+      });
+      return false;
+    }
+  };
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -105,14 +125,22 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
       if (!supabase) throw new Error('Supabase not configured. Check your environment variables.');
 
       if (isSignUp) {
+        const referralCode = typeof window !== 'undefined'
+          ? sessionStorage.getItem('ob_referral_code')
+          : null;
+        const emailRedirectTo = typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback?next=%2Fprofile`
+          : undefined;
         const { data, error } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
           options: {
+              emailRedirectTo,
               data: {
                   full_name: fullName.trim() || null,
                   phone_number: phoneNumber.trim() || null,
-                  address: address.trim() || null
+                  address: address.trim() || null,
+                  ...(referralCode ? { referred_by_code: referralCode } : {})
               }
           }
         });
@@ -133,6 +161,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
 
             if (data.session) {
                 setMessage({ type: 'success', text: 'Registration Successful! Establishing profile...' });
+                await registerReferral(data.session.access_token, data.user.user_metadata?.referred_by_code);
                 if (onSuccess) setTimeout(() => onSuccess(data.user!.id), 2000);
             } else {
                 setMessage({ type: 'success', text: 'Identity Reserved! Please check your email inbox to confirm your account.' });
@@ -156,7 +185,8 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         if (data.user) {
             await handleIdentityStitching(data.user.id);
             await OB_OS.track('USER_LOGIN', { userId: data.user.id });
-            setMessage({ type: 'success', text: 'Access Granted. Entering Vault...' });
+            const referralSynced = await registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
+            if (referralSynced) setMessage({ type: 'success', text: 'Access Granted. Entering Vault...' });
             if (onSuccess) {
                 setTimeout(() => onSuccess(data.user!.id), 1500);
             }
@@ -211,8 +241,10 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         const cleanPhone = phoneNumber.startsWith('+') ? phoneNumber : `+254${phoneNumber.replace(/^0/, '')}`;
 
         if (!showOtpField) {
+            const referralCode = isSignUp ? sessionStorage.getItem('ob_referral_code') : null;
             const { error } = await supabase.auth.signInWithOtp({
                 phone: cleanPhone,
+                options: referralCode ? { data: { referred_by_code: referralCode } } : undefined
             });
             if (error) throw error;
 
@@ -229,7 +261,10 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             if (data.user) {
                 await handleIdentityStitching(data.user.id);
                 await OB_OS.track('USER_LOGIN', { userId: data.user.id });
-                setMessage({ type: 'success', text: isSignUp ? 'Identity Established! Synchronizing...' : 'Access Granted. Entering Vault...' });
+                const referralSynced = await registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
+                if (referralSynced) {
+                    setMessage({ type: 'success', text: isSignUp ? 'Identity Established! Synchronizing...' : 'Access Granted. Entering Vault...' });
+                }
                 if (onSuccess) {
                     setTimeout(() => onSuccess(data.user!.id), 1500);
                 }
@@ -502,9 +537,13 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
                 if (!supabase) return;
                 setLoading(true);
                 try {
+                    const redirectUrl = new URL('/auth/callback', window.location.origin);
+                    redirectUrl.searchParams.set('next', '/profile');
+                    const referralCode = sessionStorage.getItem('ob_referral_code');
+                    if (isSignUp && referralCode) redirectUrl.searchParams.set('ref', referralCode);
                     const { error } = await supabase.auth.signInWithOAuth({
                       provider: 'google',
-                      options: { redirectTo: window.location.origin }
+                      options: { redirectTo: redirectUrl.toString() }
                     });
                     if (error) throw error;
                 } catch (err: unknown) {

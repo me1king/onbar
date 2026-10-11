@@ -272,7 +272,7 @@ export default function AdminGamificationPage() {
                                     ['Order earning rate (%)', 'order_earn_percent', 100],
                                     ['Points per KSh redeemed', 'points_per_ksh', 10000],
                                     ['Photo review bonus (points)', 'photo_review', 100000],
-                                    ['Referral bonus (points)', 'referral_bonus', 100000],
+                                    ['Referral chain bonus (points per member)', 'referral_bonus', 100000],
                                     ['Welcome-back bonus (points)', 'welcome_back_bonus', 100000]
                                 ] as const).map(([label, key, max]) => (
                                     <div key={key} className="space-y-2">
