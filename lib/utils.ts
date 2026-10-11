@@ -26,17 +26,17 @@ export function getPublicBaseUrl() {
  */
 export const normalizeImage = (url: string | null | undefined | object) => {
     if (!url || (typeof url === 'string' && (url.trim() === "" || url.trim() === "null" || url.trim() === "undefined" || url.trim() === "[object Object]"))) {
-        return '/images/NoImage.jpg';
+        return '/images/NoImage.avif';
     }
 
     if (typeof url === 'object') {
-        return '/images/NoImage.jpg';
+        return '/images/NoImage.avif';
     }
 
     const trimmedUrl = (url as string).trim();
 
     if (trimmedUrl === '' || trimmedUrl === '{}' || trimmedUrl === 'null' || trimmedUrl === 'undefined') {
-        return '/images/NoImage.jpg';
+        return '/images/NoImage.avif';
     }
 
     const isPlaceholder =
@@ -46,7 +46,7 @@ export const normalizeImage = (url: string | null | undefined | object) => {
         trimmedUrl === 'https://onlinebar.co.ke/placeholder.jpg';
 
     if (isPlaceholder) {
-        return '/images/NoImage.jpg';
+        return '/images/NoImage.avif';
     }
 
     // 🚀 [CLOUDINARY_AUTO_OPTIMIZE] Automatically inject WebP/AVIF auto-compression parameters for Cloudinary URLs

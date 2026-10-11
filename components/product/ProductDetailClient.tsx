@@ -401,7 +401,7 @@ export default function ProductDetailClient({
                         </div>
                     )}
                     <Image
-                        src={allImages[activeImageIndex] || '/images/NoImage.jpg'}
+                        src={allImages[activeImageIndex] || '/images/NoImage.avif'}
                         alt={product.name}
                         fill
                         className="z-10 object-contain scale-[1.15] drop-shadow-[0_24px_22px_rgba(15,23,42,0.22)] transition-transform duration-1000 group-hover:scale-[1.2] sm:scale-125 sm:group-hover:scale-[1.3]"
@@ -956,7 +956,7 @@ export default function ProductDetailClient({
                 <div className="flex-1 min-h-0 relative flex items-center justify-center p-3 sm:p-12">
                     <div className="relative w-full h-full max-w-5xl">
                         <Image
-                            src={allImages[activeImageIndex] || '/images/NoImage.jpg'}
+                            src={allImages[activeImageIndex] || '/images/NoImage.avif'}
                             alt={product.name}
                             fill
                             className="object-contain animate-in zoom-in-95 duration-500"

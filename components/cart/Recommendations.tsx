@@ -106,7 +106,7 @@ export default function Recommendations() {
           <Card key={String(product.id)} className="group rounded-[2.5rem] bg-white border border-slate-100 shadow-sm hover:shadow-2xl hover:border-primary/20 transition-all overflow-hidden flex flex-col">
             <div className="block aspect-square bg-slate-50 relative overflow-hidden">
                 <Image
-                    src={product.image_url ? normalizeImage(product.image_url) : '/images/NoImage.jpg'}
+                    src={product.image_url ? normalizeImage(product.image_url) : '/images/NoImage.avif'}
                     alt={product.name}
                     fill
                     className="object-contain p-8 group-hover:scale-110 transition-transform duration-500"
@@ -128,7 +128,7 @@ export default function Recommendations() {
                     name: product.name,
                     price: product.price,
                     base_price: product.price,
-                    image: product.image_url ? normalizeImage(product.image_url) : '/images/NoImage.jpg',
+                    image: product.image_url ? normalizeImage(product.image_url) : '/images/NoImage.avif',
                     quantity: 1,
                     category: product.category || 'Merch'
                   } as CartItem);

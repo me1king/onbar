@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
+import { InvalidImageUploadError, normalizeImageToAvif } from '@/lib/imageStorage.server';
 
 export const dynamic = 'force-dynamic';
 
 const BUCKET = 'onlinebar-assets';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 
 async function getAuthorizedDatabase() {
     const store = await cookies();
@@ -35,17 +36,23 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get('file');
     if (!(file instanceof File)) return NextResponse.json({ error: 'Choose an image file to upload.' }, { status: 400 });
-    if (!ALLOWED_TYPES.has(file.type)) return NextResponse.json({ error: 'Only JPG, PNG, or WebP images are supported.' }, { status: 400 });
+    if (!ALLOWED_TYPES.has(file.type)) return NextResponse.json({ error: 'Choose a JPEG, PNG, WebP, or AVIF image.' }, { status: 400 });
     if (file.size === 0 || file.size > MAX_IMAGE_BYTES) return NextResponse.json({ error: 'Image must be greater than 0 bytes and no larger than 8 MB.' }, { status: 400 });
 
-    const extensionByType: Record<string, string> = {
-        'image/jpeg': 'jpg',
-        'image/png': 'png',
-        'image/webp': 'webp'
-    };
-    const path = `bites/${crypto.randomUUID()}.${extensionByType[file.type]}`;
-    const { error } = await database.storage.from(BUCKET).upload(path, file, {
-        contentType: file.type,
+    let imageBytes: Buffer;
+    try {
+        imageBytes = await normalizeImageToAvif(Buffer.from(await file.arrayBuffer()), file.type);
+    } catch (error) {
+        if (error instanceof InvalidImageUploadError) {
+            return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        console.error('[FoodImage] Could not convert food photo to AVIF:', error);
+        return NextResponse.json({ error: 'The food image could not be converted to AVIF.' }, { status: 500 });
+    }
+
+    const path = `bites/${crypto.randomUUID()}.avif`;
+    const { error } = await database.storage.from(BUCKET).upload(path, imageBytes, {
+        contentType: 'image/avif',
         upsert: false
     });
     if (error) {
@@ -79,7 +86,7 @@ export async function DELETE(request: Request) {
     } catch {
         return NextResponse.json({ error: 'A valid food image path is required.' }, { status: 400 });
     }
-    if (typeof body.path !== 'string' || !/^bites\/[0-9a-f-]+\.(jpg|png|webp)$/i.test(body.path)) {
+    if (typeof body.path !== 'string' || !/^bites\/[0-9a-f-]+\.(jpg|jpeg|png|webp|avif)$/i.test(body.path)) {
         return NextResponse.json({ error: 'A valid food image path is required.' }, { status: 400 });
     }
 

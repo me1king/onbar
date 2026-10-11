@@ -692,13 +692,13 @@ export default function BiteCommandCenter() {
                                         {imageFile ? imageFile.name : 'Choose image file'}
                                         <input
                                             type="file"
-                                            accept="image/jpeg,image/png,image/webp"
+                                            accept="image/jpeg,image/png,image/webp,image/avif"
                                             className="sr-only"
                                             onChange={event => {
                                                 const file = event.target.files?.[0];
                                                 if (!file) return;
-                                                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-                                                    alert('Choose a JPG, PNG, or WebP image.');
+                                                if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) {
+                                                    alert('Choose a JPEG, PNG, WebP, or AVIF image.');
                                                     event.target.value = '';
                                                     return;
                                                 }

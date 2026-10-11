@@ -592,14 +592,14 @@ export default function BeverageCommandAdmin() {
                                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-[11px] font-black text-violet-800">3</span>
                                         <h4 className="text-xs font-black uppercase tracking-widest text-slate-800">Make it yours</h4>
                                     </div>
-                                    <Field label="Product image" hint="Upload a JPG, PNG, or WebP up to 8 MB, or use a public image URL.">
+                                    <Field label="Product image" hint="Upload a JPEG, PNG, WebP, or AVIF up to 8 MB, or use a public image URL. New uploads are stored as AVIF.">
                                         <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-4 text-sm font-semibold text-slate-600 transition hover:border-orange-300 hover:bg-orange-50/50">
                                             <Upload className="h-4 w-4 shrink-0 text-orange-500" />
                                             <span className="min-w-0 flex-1 truncate">{imageFile ? imageFile.name : 'Choose an image from your device'}</span>
                                             <span className="rounded-lg bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-slate-500 shadow-sm">Browse</span>
                                             <input
                                                 type="file"
-                                                accept="image/jpeg,image/png,image/webp"
+                                                accept="image/jpeg,image/png,image/webp,image/avif"
                                                 className="sr-only"
                                                 onChange={event => {
                                                     setImageFile(event.target.files?.[0] || null);

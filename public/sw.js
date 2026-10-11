@@ -3,7 +3,7 @@
 const CACHE_NAME = 'ob-os-static-v3';
 const ASSETS_TO_CACHE = [
   '/favicon.svg',
-  '/images/NoImage.jpg',
+  '/images/NoImage.avif',
   '/widgets/mobile-node.json'
 ];
 

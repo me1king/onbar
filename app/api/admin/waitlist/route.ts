@@ -28,7 +28,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
     referrer_id: string;
     invitee_id: string;
     token_amount: number;
-    referral_depth: number;
+    generation: number;
     created_at: string;
   }> = [];
 
@@ -45,7 +45,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
 
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await database.from('waitlist_referral_credits')
-      .select('id,referrer_id,invitee_id,token_amount,referral_depth,created_at')
+      .select('id,referrer_id,invitee_id,token_amount,generation,created_at')
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
       .range(offset, offset + 999);
@@ -106,7 +106,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
       pointsEarned: 0
     };
     aggregate.networkReferrals += 1;
-    if (credit.referral_depth === 1) aggregate.directReferrals += 1;
+    if (credit.generation === 1) aggregate.directReferrals += 1;
     if (turnover > 0) aggregate.positiveTurnoverReferrals += 1;
     aggregate.turnover += turnover;
     aggregate.pointsEarned += Number(credit.token_amount || 0);
@@ -118,7 +118,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
       inviteeId: credit.invitee_id,
       inviteeName: invitee?.full_name || invitee?.email || credit.invitee_id,
       inviteeEmail: invitee?.email || '',
-      depth: credit.referral_depth,
+      depth: credit.generation,
       points: credit.token_amount,
       turnover,
       country: invitee?.country || '',

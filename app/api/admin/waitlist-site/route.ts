@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAdminSession, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { InvalidImageUploadError, normalizeImageToAvif } from '@/lib/imageStorage.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,12 +12,7 @@ const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const AGE_GROUPS = new Set(['18_20', '21_24', '25_34', '35_44', '45_plus']);
 const MUSIC_GENRES = new Set(['reggae', 'genge', 'gengetone', 'soul', 'rnb', 'classic', 'love_romance', 'afrobeats', 'hip_hop', 'pop', 'other']);
-const extensions: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/avif': 'avif'
-};
+const allowedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 const audioExtensions: Record<string, string> = {
   'audio/mpeg': 'mp3',
   'audio/mp3': 'mp3',
@@ -437,13 +433,20 @@ export async function POST(request: Request) {
     if (typeof rewardId !== 'string' || !/^[0-9a-f-]{36}$/i.test(rewardId)) {
       return NextResponse.json({ error: 'Save the souvenir before uploading its image.' }, { status: 400 });
     }
-    const extension = extensions[file.type];
-    if (!extension) return NextResponse.json({ error: 'Only JPG, PNG, WebP, or AVIF souvenir images are supported.' }, { status: 400 });
+    if (!allowedImageTypes.has(file.type)) return NextResponse.json({ error: 'Choose a JPEG, PNG, WebP, or AVIF souvenir image.' }, { status: 400 });
     if (file.size === 0 || file.size > MAX_IMAGE_BYTES) {
       return NextResponse.json({ error: 'The souvenir image must be greater than 0 bytes and no larger than 6 MB.' }, { status: 400 });
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (!validImageSignature(file.type, bytes)) return NextResponse.json({ error: 'The image contents do not match the selected file type.' }, { status: 400 });
+    let avifBytes: Buffer;
+    try {
+      avifBytes = await normalizeImageToAvif(Buffer.from(bytes), file.type);
+    } catch (error) {
+      if (error instanceof InvalidImageUploadError) return NextResponse.json({ error: error.message }, { status: 400 });
+      console.error('[AdminWaitlistSite] Could not convert souvenir image to AVIF:', error);
+      return NextResponse.json({ error: 'The souvenir image could not be converted to AVIF.' }, { status: 500 });
+    }
 
     const { data: current, error: readError } = await database.from('waitlist_site_rewards')
       .select('image_path').eq('id', rewardId).maybeSingle();
@@ -451,9 +454,9 @@ export async function POST(request: Request) {
       console.error('[AdminWaitlistSite] Could not load souvenir before image upload:', readError);
       return NextResponse.json({ error: 'The saved souvenir could not be found.' }, { status: 404 });
     }
-    const path = `souvenirs/${rewardId}/${crypto.randomUUID()}.${extension}`;
-    const { error: uploadError } = await database.storage.from(REWARD_BUCKET).upload(path, bytes, {
-      contentType: file.type,
+    const path = `souvenirs/${rewardId}/${crypto.randomUUID()}.avif`;
+    const { error: uploadError } = await database.storage.from(REWARD_BUCKET).upload(path, avifBytes, {
+      contentType: 'image/avif',
       upsert: false
     });
     if (uploadError) {
@@ -487,17 +490,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Choose a valid waitlist image type.' }, { status: 400 });
   }
 
-  const extension = extensions[file.type];
-  if (!extension) return NextResponse.json({ error: 'Only JPG, PNG, WebP, or AVIF images are supported.' }, { status: 400 });
+  if (!allowedImageTypes.has(file.type)) return NextResponse.json({ error: 'Choose a JPEG, PNG, WebP, or AVIF image.' }, { status: 400 });
   if (file.size === 0 || file.size > MAX_IMAGE_BYTES) {
     return NextResponse.json({ error: 'The image must be greater than 0 bytes and no larger than 6 MB.' }, { status: 400 });
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!validImageSignature(file.type, bytes)) return NextResponse.json({ error: 'The image contents do not match the selected file type.' }, { status: 400 });
+  let avifBytes: Buffer;
+  try {
+    avifBytes = await normalizeImageToAvif(Buffer.from(bytes), file.type);
+  } catch (error) {
+    if (error instanceof InvalidImageUploadError) return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[AdminWaitlistSite] Could not convert website image to AVIF:', error);
+    return NextResponse.json({ error: 'The website image could not be converted to AVIF.' }, { status: 500 });
+  }
 
-  const path = `hero/${crypto.randomUUID()}.${extension}`;
-  const { error: uploadError } = await database.storage.from(BUCKET).upload(path, bytes, {
-    contentType: file.type,
+  const path = `hero/${crypto.randomUUID()}.avif`;
+  const { error: uploadError } = await database.storage.from(BUCKET).upload(path, avifBytes, {
+    contentType: 'image/avif',
     upsert: false
   });
   if (uploadError) {

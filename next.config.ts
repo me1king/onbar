@@ -5,6 +5,7 @@ const nextConfig = (phase: string): NextConfig => ({
   distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next',
   images: {
     unoptimized: process.env.NODE_ENV === 'development', // Prevent timeouts during dev
+    formats: ['image/avif', 'image/webp'],
     remotePatterns: [
       {
         protocol: "https",

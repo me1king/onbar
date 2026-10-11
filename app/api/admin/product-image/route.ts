@@ -2,16 +2,13 @@ import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
+import { InvalidImageUploadError, normalizeImageToAvif } from '@/lib/imageStorage.server';
 
 export const dynamic = 'force-dynamic';
 
 const BUCKET = 'onlinebar-assets';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const EXTENSIONS: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp'
-};
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
 
 type AuthorizedDatabase = { database: SupabaseClient } | { response: NextResponse };
 
@@ -47,15 +44,25 @@ export async function POST(request: Request) {
 
     const file = form.get('file');
     if (!(file instanceof File)) return NextResponse.json({ error: 'Choose an image file to upload.' }, { status: 400 });
-    const extension = EXTENSIONS[file.type];
-    if (!extension) return NextResponse.json({ error: 'Only JPG, PNG, or WebP images are supported.' }, { status: 400 });
+    if (!ALLOWED_TYPES.has(file.type)) return NextResponse.json({ error: 'Choose a JPEG, PNG, WebP, or AVIF image.' }, { status: 400 });
     if (file.size === 0 || file.size > MAX_IMAGE_BYTES) {
         return NextResponse.json({ error: 'Image must be greater than 0 bytes and no larger than 8 MB.' }, { status: 400 });
     }
 
-    const path = `products/${crypto.randomUUID()}.${extension}`;
-    const { error } = await access.database.storage.from(BUCKET).upload(path, file, {
-        contentType: file.type,
+    let imageBytes: Buffer;
+    try {
+        imageBytes = await normalizeImageToAvif(Buffer.from(await file.arrayBuffer()), file.type);
+    } catch (error) {
+        if (error instanceof InvalidImageUploadError) {
+            return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        console.error('[ProductImage] Could not convert product photo to AVIF:', error);
+        return NextResponse.json({ error: 'The product image could not be converted to AVIF.' }, { status: 500 });
+    }
+
+    const path = `products/${crypto.randomUUID()}.avif`;
+    const { error } = await access.database.storage.from(BUCKET).upload(path, imageBytes, {
+        contentType: 'image/avif',
         upsert: false
     });
     if (error) {
@@ -84,7 +91,7 @@ export async function DELETE(request: Request) {
     } catch {
         return NextResponse.json({ error: 'A valid product image path is required.' }, { status: 400 });
     }
-    if (typeof body.path !== 'string' || !/^products\/[0-9a-f-]+\.(jpg|png|webp)$/i.test(body.path)) {
+    if (typeof body.path !== 'string' || !/^products\/[0-9a-f-]+\.(jpg|jpeg|png|webp|avif)$/i.test(body.path)) {
         return NextResponse.json({ error: 'A valid product image path is required.' }, { status: 400 });
     }
 

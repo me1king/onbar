@@ -29,12 +29,12 @@ VALUES (
     'onlinebar-assets',
     true,
     8388608,
-    ARRAY['image/jpeg', 'image/png', 'image/webp']
+    ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/avif']
 )
 ON CONFLICT (id) DO UPDATE
 SET public = true,
     file_size_limit = 8388608,
-    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp'];
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 
 DROP POLICY IF EXISTS "Public read onlinebar assets" ON storage.objects;
 CREATE POLICY "Public read onlinebar assets"
