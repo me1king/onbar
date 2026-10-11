@@ -71,8 +71,10 @@ interface ReferralLeaderboardEntry {
   profileId: string;
   name: string;
   referralCode: string;
-  qualifiedReferrals: number;
+  referralCount: number;
+  deliveredReferrals: number;
   turnover: number;
+  pointsEarned: number;
 }
 
 interface CustomerStats {
@@ -250,10 +252,7 @@ export default function AdminCustomersPage() {
   const referralPointsByMember = React.useMemo(() => {
     const points = new Map<string, number>();
     for (const entry of referralLedger) {
-      const [, , referredProfileId] = entry.event_key.split(':');
-      if (referredProfileId) {
-        points.set(referredProfileId, (points.get(referredProfileId) || 0) + Number(entry.amount || 0));
-      }
+      points.set(entry.profile_id, (points.get(entry.profile_id) || 0) + Number(entry.amount || 0));
     }
     return points;
   }, [referralLedger]);
@@ -274,23 +273,53 @@ export default function AdminCustomersPage() {
     const leaderboard = new Map<string, ReferralLeaderboardEntry>();
     for (const referral of referrals) {
       const referredTurnover = deliveredTurnoverByMember.get(referral.referred_profile_id) || 0;
-      if (referredTurnover <= 0) continue;
-
       const referrer = leaderboard.get(referral.referrer_profile_id) || {
         profileId: referral.referrer_profile_id,
         name: profileNames.get(referral.referrer_profile_id) || referral.referrer_profile_id,
         referralCode: profiles.find(profile => profile.id === referral.referrer_profile_id)?.referral_code || '',
-        qualifiedReferrals: 0,
-        turnover: 0
+        referralCount: 0,
+        deliveredReferrals: 0,
+        turnover: 0,
+        pointsEarned: referralPointsByMember.get(referral.referrer_profile_id) || 0
       };
-      referrer.qualifiedReferrals += 1;
+      referrer.referralCount += 1;
+      if (referredTurnover > 0) referrer.deliveredReferrals += 1;
       referrer.turnover += referredTurnover;
       leaderboard.set(referral.referrer_profile_id, referrer);
     }
 
     return Array.from(leaderboard.values())
-      .sort((left, right) => right.qualifiedReferrals - left.qualifiedReferrals || right.turnover - left.turnover);
-  }, [orders, referrals, profileNames, profiles]);
+      .sort((left, right) => right.referralCount - left.referralCount || right.turnover - left.turnover);
+  }, [orders, referrals, profileNames, profiles, referralPointsByMember]);
+
+  const referralMapLocations = React.useMemo(() => {
+    const profilesById = new Map(profiles.map(profile => [profile.id, profile]));
+    const ordersByMember = new Map<string, OrderRecord[]>();
+    for (const order of orders) {
+      if (!order.user_id) continue;
+      const memberOrders = ordersByMember.get(order.user_id) || [];
+      memberOrders.push(order);
+      ordersByMember.set(order.user_id, memberOrders);
+    }
+
+    return referrals.map(referral => {
+      const referredProfile = profilesById.get(referral.referred_profile_id);
+      const locationOrder = (ordersByMember.get(referral.referred_profile_id) || [])
+        .find(order => order.latitude !== null && order.longitude !== null);
+      return {
+        id: referral.referred_profile_id,
+        name: profileNames.get(referral.referred_profile_id) || referral.referred_profile_id,
+        referrerName: profileNames.get(referral.referrer_profile_id) || referral.referrer_profile_id,
+        createdAt: referral.created_at,
+        latitude: referredProfile?.latitude ?? locationOrder?.latitude ?? null,
+        longitude: referredProfile?.longitude ?? locationOrder?.longitude ?? null
+      };
+    });
+  }, [referrals, profiles, orders, profileNames]);
+  const referralMapLocationById = React.useMemo(
+    () => new Map(referralMapLocations.map(location => [location.id, location])),
+    [referralMapLocations]
+  );
 
   const filteredCustomers = React.useMemo(() => {
     const query = (searchQuery || '').toLowerCase();
@@ -357,6 +386,7 @@ export default function AdminCustomersPage() {
 
       <CustomerLocationsMap
         locations={customerLocations}
+        referralLocations={referralMapLocations}
         loading={isLoading}
         error={locationError}
       />
@@ -409,8 +439,8 @@ export default function AdminCustomersPage() {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-xl font-black uppercase tracking-tight text-foreground">Top Referrers by Sales</h2>
-          <p className="mt-1 text-sm text-slate-500">Ranks members by referred customers with delivered orders and positive sales turnover.</p>
+          <h2 className="text-xl font-black uppercase tracking-tight text-foreground">Referral Leaderboard &amp; Points</h2>
+          <p className="mt-1 text-sm text-slate-500">Ranks every referrer by people invited and shows delivered sales and total referral-related points credited to each referrer.</p>
         </div>
         <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
           <table className="w-full text-left text-sm">
@@ -419,20 +449,24 @@ export default function AdminCustomersPage() {
                 <th className="px-6 py-4">Rank</th>
                 <th className="px-6 py-4">Referrer</th>
                 <th className="px-6 py-4">Referral code</th>
-                <th className="px-6 py-4">Customers with sales</th>
+                <th className="px-6 py-4">People referred</th>
+                <th className="px-6 py-4">With delivered sales</th>
                 <th className="px-6 py-4">Delivered turnover</th>
+                <th className="px-6 py-4">Referral points</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {referralLeaderboard.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No referred customers have completed a positive-value delivery yet.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-8 text-center text-slate-400">No referrals have been recorded yet.</td></tr>
               ) : referralLeaderboard.map((referrer, index) => (
                 <tr key={referrer.profileId}>
                   <td className="px-6 py-4 font-black text-primary">#{index + 1}</td>
                   <td className="px-6 py-4 font-bold text-foreground">{referrer.name}</td>
                   <td className="px-6 py-4 font-mono text-xs text-slate-500">{referrer.referralCode || '—'}</td>
-                  <td className="px-6 py-4 font-black text-emerald-700">{referrer.qualifiedReferrals}</td>
+                  <td className="px-6 py-4 font-black text-emerald-700">{referrer.referralCount}</td>
+                  <td className="px-6 py-4 font-bold text-slate-600">{referrer.deliveredReferrals}</td>
                   <td className="px-6 py-4 font-black text-foreground">{formatPrice(referrer.turnover)}</td>
+                  <td className="px-6 py-4 font-black text-primary">{referrer.pointsEarned}</td>
                 </tr>
               ))}
             </tbody>
@@ -443,7 +477,7 @@ export default function AdminCustomersPage() {
       <section className="space-y-4">
         <div>
           <h2 className="text-xl font-black uppercase tracking-tight text-foreground">Referral Network</h2>
-          <p className="mt-1 text-sm text-slate-500">Referral signups and the points credited through their inviter chain.</p>
+          <p className="mt-1 text-sm text-slate-500">Every recorded referred member, their direct inviter, and points credited to that member.</p>
         </div>
         <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
           <table className="w-full text-left text-sm">
@@ -452,22 +486,27 @@ export default function AdminCustomersPage() {
                 <th className="px-6 py-4">Member</th>
                 <th className="px-6 py-4">Invited by</th>
                 <th className="px-6 py-4">Referral code</th>
-                <th className="px-6 py-4">Chain points</th>
+                <th className="px-6 py-4">Points credited to member</th>
+                <th className="px-6 py-4">Map</th>
                 <th className="px-6 py-4">Joined</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {referrals.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No qualified referrals yet.</td></tr>
-              ) : referrals.map(referral => (
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-400">No qualified referrals yet.</td></tr>
+              ) : referrals.map(referral => {
+                const location = referralMapLocationById.get(referral.referred_profile_id);
+                return (
                 <tr key={referral.referred_profile_id}>
                   <td className="px-6 py-4 font-bold text-foreground">{profileNames.get(referral.referred_profile_id) || referral.referred_profile_id}</td>
                   <td className="px-6 py-4 text-slate-600">{profileNames.get(referral.referrer_profile_id) || referral.referrer_profile_id}</td>
                   <td className="px-6 py-4 font-mono text-xs text-slate-500">{referral.referral_code}</td>
                   <td className="px-6 py-4 font-black text-emerald-700">{referralPointsByMember.get(referral.referred_profile_id) || 0}</td>
+                  <td className="px-6 py-4 text-xs font-semibold text-slate-600">{location?.latitude !== null && location?.latitude !== undefined && location?.longitude !== null && location?.longitude !== undefined ? <span className="inline-flex items-center gap-1 text-blue-700"><MapPin className="h-3 w-3" /> Pinned</span> : 'No saved location'}</td>
                   <td className="px-6 py-4 text-slate-500">{new Date(referral.created_at).toLocaleDateString()}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

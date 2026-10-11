@@ -37,7 +37,7 @@ export async function GET() {
     database
       .from('loyalty_ledger')
       .select('profile_id, amount, event_key, created_at')
-      .like('event_key', 'referral:%')
+      .like('event_key', 'referral%')
       .order('created_at', { ascending: false })
   ]);
 

@@ -8,8 +8,16 @@ interface CustomerLocation {
     longitude: number | null;
 }
 
+interface ReferralLocation extends CustomerLocation {
+    id: string;
+    name: string;
+    referrerName: string;
+    createdAt: string;
+}
+
 interface CustomerLocationsMapProps {
     locations: CustomerLocation[];
+    referralLocations: ReferralLocation[];
     loading: boolean;
     error: string | null;
 }
@@ -31,7 +39,7 @@ function FitMapToLocations({ locations }: { locations: Array<[number, number]> }
     return null;
 }
 
-export default function CustomerLocationsMap({ locations, loading, error }: CustomerLocationsMapProps) {
+export default function CustomerLocationsMap({ locations, referralLocations, loading, error }: CustomerLocationsMapProps) {
     const clusters = new Map<string, { latitude: number; longitude: number; count: number }>();
     let validLocationCount = 0;
 
@@ -52,21 +60,36 @@ export default function CustomerLocationsMap({ locations, loading, error }: Cust
     }
 
     const demandClusters = Array.from(clusters.values());
-    const clusterCoordinates = demandClusters.map(
+    const referralPins = referralLocations.flatMap((location) => {
+        if (location.latitude === null || location.longitude === null) return [];
+        const latitude = Number(location.latitude);
+        const longitude = Number(location.longitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+            || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return [];
+        return [{ ...location, latitude, longitude }];
+    });
+    const clusterCoordinates = (referralPins.length
+        ? referralPins
+        : demandClusters.map((cluster) => ({ latitude: cluster.latitude, longitude: cluster.longitude }))).map(
         (cluster): [number, number] => [cluster.latitude, cluster.longitude]
     );
-    const center: [number, number] = demandClusters.length
+    const center: [number, number] = referralPins.length
         ? [
+            referralPins.reduce((sum, pin) => sum + pin.latitude, 0) / referralPins.length,
+            referralPins.reduce((sum, pin) => sum + pin.longitude, 0) / referralPins.length
+        ]
+        : demandClusters.length
+          ? [
             demandClusters.reduce((sum, cluster) => sum + cluster.latitude, 0) / demandClusters.length,
             demandClusters.reduce((sum, cluster) => sum + cluster.longitude, 0) / demandClusters.length
-        ]
-        : [-1.286389, 36.817223];
+          ]
+          : [-1.286389, 36.817223];
 
     return (
         <section className="space-y-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <div>
                 <h2 className="text-lg font-black uppercase tracking-tight text-foreground">Shared customer delivery areas</h2>
-                <p className="text-xs text-slate-500">Approximate map areas from customers who chose to save a delivery pin. Customer names and contact details are not shown.</p>
+                <p className="text-xs text-slate-500">Referral members with saved coordinates are shown individually; other customer pins are grouped into approximate areas.</p>
             </div>
             {loading ? (
                 <div className="flex h-72 items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">Loading saved locations…</div>
@@ -75,15 +98,15 @@ export default function CustomerLocationsMap({ locations, loading, error }: Cust
                     Some customer location data could not be loaded: {error}
                 </div>
             ) : null}
-            {!loading && demandClusters.length > 0 && (
+            {!loading && (demandClusters.length > 0 || referralPins.length > 0) && (
                 <>
                     <p className="text-sm font-semibold text-foreground">
-                        {validLocationCount} customer{validLocationCount === 1 ? '' : 's'} shared a delivery pin across {demandClusters.length} approximate area{demandClusters.length === 1 ? '' : 's'}.
+                        {referralPins.length} of {referralLocations.length} referred members have mappable locations; {validLocationCount} customer pins are grouped across {demandClusters.length} approximate area{demandClusters.length === 1 ? '' : 's'}.
                     </p>
                     <div className="h-80 overflow-hidden rounded-xl">
                         <MapContainer
                             center={center}
-                            zoom={demandClusters.length === 1 ? 11 : 5}
+                            zoom={referralPins.length === 1 || (!referralPins.length && demandClusters.length === 1) ? 11 : 5}
                             style={{ height: '100%', width: '100%' }}
                             scrollWheelZoom={false}
                         >
@@ -102,16 +125,35 @@ export default function CustomerLocationsMap({ locations, loading, error }: Cust
                                     <Popup>{cluster.count} customer{cluster.count === 1 ? '' : 's'} in this approximate area</Popup>
                                 </CircleMarker>
                             ))}
+                            {referralPins.map((referral) => (
+                                <CircleMarker
+                                    key={`referral:${referral.id}`}
+                                    center={[referral.latitude, referral.longitude]}
+                                    radius={8}
+                                    pathOptions={{ color: '#1d4ed8', fillColor: '#3b82f6', fillOpacity: 0.85, weight: 2 }}
+                                >
+                                    <Popup>
+                                        <div className="space-y-1">
+                                            <p className="font-bold">{referral.name}</p>
+                                            <p>Referred by: {referral.referrerName}</p>
+                                            <p>Joined: {new Date(referral.createdAt).toLocaleDateString()}</p>
+                                        </div>
+                                    </Popup>
+                                </CircleMarker>
+                            ))}
                         </MapContainer>
                     </div>
                 </>
             )}
-            {!loading && demandClusters.length === 0 && (
+            {!loading && demandClusters.length === 0 && referralPins.length === 0 && (
                 <div className="flex h-40 items-center justify-center rounded-xl bg-slate-50 px-5 text-center text-sm text-slate-500">
                     No customer delivery pins are available yet. Customers can share one by setting and confirming a delivery location at checkout or in their profile.
                 </div>
             )}
-            <p className="text-[11px] text-slate-400">Pins are grouped into approximate areas (about 1 km); the map does not display customer identities or live location.</p>
+            {!loading && referralLocations.length > 0 && referralPins.length === 0 && (
+                <p className="text-xs text-amber-700">Referral members are recorded, but none have saved coordinates available for a map pin.</p>
+            )}
+            <p className="text-[11px] text-slate-400">Blue pins identify referred members and their inviter for Admin users. Orange pins are grouped into approximate customer areas. These are saved delivery/profile coordinates, not live tracking.</p>
         </section>
     );
 }
