@@ -112,6 +112,13 @@ interface Order {
   payment_method: string;
 }
 
+interface ReferralNetworkStats {
+  directReferrals: number;
+  networkSize: number;
+  pointsEarned: number;
+  levelCounts: number[];
+}
+
 interface Coupon {
   code: string;
   discount: string;
@@ -184,6 +191,8 @@ export default function ProfilePage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [purchasedItems, setPurchasedItems] = useState<PurchasedItem[]>([]);
   const [referralUrl, setReferralUrl] = useState('');
+  const [referralStats, setReferralStats] = useState<ReferralNetworkStats | null>(null);
+  const [referralStatsError, setReferralStatsError] = useState<string | null>(null);
   const [affiliateStatus, setAffiliateStatus] = useState<string | null>(null);
   const [abandonedBag, setAbandonedBag] = useState<AbandonedCart | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -369,6 +378,45 @@ export default function ProfilePage() {
     loadData();
     return () => clearTimeout(failsafeTimer);
   }, [router]);
+
+  const memberId = user?.id;
+  useEffect(() => {
+    const client = supabase;
+    if (!memberId || !client) return;
+    let active = true;
+
+    const refreshReferralStats = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await client.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!session?.access_token) throw new Error('Sign in again to view your referral network.');
+        const response = await fetch('/api/member/referrals', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: 'no-store'
+        });
+        const result = await response.json() as ReferralNetworkStats & { error?: string };
+        if (!response.ok) throw new Error(result.error || 'Could not load your referral network.');
+        if (active) {
+          setReferralStats(result);
+          setReferralStatsError(null);
+        }
+      } catch (error) {
+        console.error('[Profile] Could not load referral network:', error);
+        if (active) {
+          setReferralStatsError(error instanceof Error ? error.message : 'Could not load your referral network.');
+        }
+      }
+    };
+
+    void refreshReferralStats();
+    const interval = window.setInterval(refreshReferralStats, 30000);
+    window.addEventListener('focus', refreshReferralStats);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshReferralStats);
+    };
+  }, [memberId]);
 
   // 0.5 Inline Countdown Timer Component
   const DealsCountdown = ({ hours }: { hours: number }) => {
@@ -1573,8 +1621,8 @@ export default function ProfilePage() {
                 <div className="bg-white rounded-[3rem] p-10 border-2 border-primary/10 text-foreground relative overflow-hidden shadow-2xl group hover:border-primary/30 transition-all text-left">
                     <div className="relative z-10 space-y-6 text-left">
                         <div className="h-12 w-12 rounded-2xl bg-primary/5 flex items-center justify-center text-primary border border-primary/10 group-hover:scale-110 transition-transform"><Users className="h-6 w-6" /></div>
-                        <h3 className="text-2xl font-black uppercase tracking-tighter leading-none">Invite Friends <br/> <span className="text-primary italic">Earn Ksh 200</span></h3>
-                        <p className="text-slate-500 text-[11px] font-medium leading-relaxed italic">&quot;Both you and your friend earn Ksh 200 store credit instantly when they initialize their first mission.&quot;</p>
+                        <h3 className="text-2xl font-black uppercase tracking-tighter leading-none">Invite Friends <br/> <span className="text-primary italic">Grow your network</span></h3>
+                        <p className="text-slate-500 text-[11px] font-medium leading-relaxed italic">&quot;Earn 3 points when each new member joins anywhere in your referral network.&quot;</p>
                         <div className="p-5 bg-white border border-slate-100 rounded-2xl text-center shadow-inner relative group/key">
                             <p className="text-[8px] font-black uppercase text-slate-400 mb-2 tracking-widest">Your Private Referral Link</p>
                             <p className="text-[10px] font-black tracking-tight text-primary select-all cursor-pointer hover:scale-105 transition-transform break-all">
@@ -1584,6 +1632,31 @@ export default function ProfilePage() {
                                 <Zap className="h-3 w-3 text-primary animate-pulse" />
                             </div>
                         </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {[
+                                { label: 'Direct invites', value: referralStats?.directReferrals },
+                                { label: 'Your network', value: referralStats?.networkSize },
+                                { label: 'Points earned', value: referralStats?.pointsEarned }
+                            ].map(stat => (
+                                <div key={stat.label} className="rounded-2xl border border-primary/10 bg-primary/[0.03] p-3 text-center">
+                                    <p className="text-lg font-black text-primary">{stat.value ?? '—'}</p>
+                                    <p className="mt-1 text-[8px] font-black uppercase tracking-wider text-slate-400">{stat.label}</p>
+                                </div>
+                            ))}
+                        </div>
+                        {referralStats && referralStats.levelCounts.length > 0 && (
+                            <div className="rounded-2xl bg-slate-50 p-4">
+                                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-slate-400">Members by generation</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {referralStats.levelCounts.map((count, index) => (
+                                        <span key={index} className="rounded-full bg-white px-3 py-1 text-[9px] font-bold text-slate-600 shadow-sm">
+                                            Level {index + 1}: {count}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {referralStatsError && <p role="status" className="text-[10px] font-semibold text-red-600">{referralStatsError}</p>}
                         <Button onClick={handleShareReferral} className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black uppercase text-[10px] tracking-widest shadow-xl transition-all shadow-primary/20 active:scale-95">WhatsApp Premium Invite</Button>
                     </div>
                     <Users className="absolute -bottom-10 -left-10 h-64 w-64 text-primary/5 -z-0 rotate-12" />
