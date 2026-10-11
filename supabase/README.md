@@ -5,9 +5,10 @@
 After applying `LOYALTY_POINTS_MIGRATION.sql`, run
 `REFERRAL_CHAIN_POINTS_MIGRATION.sql` in the Supabase SQL Editor. It creates
 the private referral relationship table and the server-only function used to
-award the configured referral bonus to a new member, their inviter, and each
-earlier inviter in that referral chain. Referral points are applied only once
-per member, and referral activity is available in the Admin customer directory.
+award the configured welcome bonus to a new member and exactly 3 points to
+their inviter and every earlier inviter in that referral chain. Chain points
+are applied only once per referral and referral activity plus referred
+delivered turnover are available in the Admin customer directory.
 
 ## Product page food pairings
 

@@ -29,6 +29,7 @@ interface OrderRecord {
   customer_name: string;
   customer_phone: string;
   total_price: number;
+  status: string;
   created_at: string;
   referred_by_code?: string | null;
   latitude: number | null;
@@ -64,6 +65,14 @@ interface ReferralLedgerEntry {
   amount: number;
   event_key: string;
   created_at: string;
+}
+
+interface ReferralLeaderboardEntry {
+  profileId: string;
+  name: string;
+  referralCode: string;
+  qualifiedReferrals: number;
+  turnover: number;
 }
 
 interface CustomerStats {
@@ -249,6 +258,40 @@ export default function AdminCustomersPage() {
     return points;
   }, [referralLedger]);
 
+  const referralLeaderboard = React.useMemo(() => {
+    const deliveredTurnoverByMember = new Map<string, number>();
+    for (const order of orders) {
+      if (order.status !== 'Delivered' || !order.user_id) continue;
+      const total = Number(order.total_price || 0);
+      if (Number.isFinite(total) && total > 0) {
+        deliveredTurnoverByMember.set(
+          order.user_id,
+          (deliveredTurnoverByMember.get(order.user_id) || 0) + total
+        );
+      }
+    }
+
+    const leaderboard = new Map<string, ReferralLeaderboardEntry>();
+    for (const referral of referrals) {
+      const referredTurnover = deliveredTurnoverByMember.get(referral.referred_profile_id) || 0;
+      if (referredTurnover <= 0) continue;
+
+      const referrer = leaderboard.get(referral.referrer_profile_id) || {
+        profileId: referral.referrer_profile_id,
+        name: profileNames.get(referral.referrer_profile_id) || referral.referrer_profile_id,
+        referralCode: profiles.find(profile => profile.id === referral.referrer_profile_id)?.referral_code || '',
+        qualifiedReferrals: 0,
+        turnover: 0
+      };
+      referrer.qualifiedReferrals += 1;
+      referrer.turnover += referredTurnover;
+      leaderboard.set(referral.referrer_profile_id, referrer);
+    }
+
+    return Array.from(leaderboard.values())
+      .sort((left, right) => right.qualifiedReferrals - left.qualifiedReferrals || right.turnover - left.turnover);
+  }, [orders, referrals, profileNames, profiles]);
+
   const filteredCustomers = React.useMemo(() => {
     const query = (searchQuery || '').toLowerCase();
     return customers.filter(c => {
@@ -310,38 +353,6 @@ export default function AdminCustomersPage() {
             </div>
         </div>
 
-        <section className="space-y-4">
-            <div>
-              <h2 className="text-xl font-black uppercase tracking-tight text-foreground">Referral Network</h2>
-              <p className="mt-1 text-sm text-slate-500">Qualified referral signups, their inviter, and total points awarded across the inviter&apos;s chain.</p>
-            </div>
-            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    <th className="px-6 py-4">Member</th>
-                    <th className="px-6 py-4">Invited by</th>
-                    <th className="px-6 py-4">Referral code</th>
-                    <th className="px-6 py-4">Chain points</th>
-                    <th className="px-6 py-4">Joined</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {referrals.length === 0 ? (
-                    <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No qualified referrals yet.</td></tr>
-                  ) : referrals.map(referral => (
-                    <tr key={referral.referred_profile_id}>
-                      <td className="px-6 py-4 font-bold text-foreground">{profileNames.get(referral.referred_profile_id) || referral.referred_profile_id}</td>
-                      <td className="px-6 py-4 text-slate-600">{profileNames.get(referral.referrer_profile_id) || referral.referrer_profile_id}</td>
-                      <td className="px-6 py-4 font-mono text-xs text-slate-500">{referral.referral_code}</td>
-                      <td className="px-6 py-4 font-black text-emerald-700">{referralPointsByMember.get(referral.referred_profile_id) || 0}</td>
-                      <td className="px-6 py-4 text-slate-500">{new Date(referral.created_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-        </section>
       </div>
 
       <CustomerLocationsMap
@@ -395,6 +406,72 @@ export default function AdminCustomersPage() {
           </div>
         </div>
       </div>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-xl font-black uppercase tracking-tight text-foreground">Top Referrers by Sales</h2>
+          <p className="mt-1 text-sm text-slate-500">Ranks members by referred customers with delivered orders and positive sales turnover.</p>
+        </div>
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <th className="px-6 py-4">Rank</th>
+                <th className="px-6 py-4">Referrer</th>
+                <th className="px-6 py-4">Referral code</th>
+                <th className="px-6 py-4">Customers with sales</th>
+                <th className="px-6 py-4">Delivered turnover</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {referralLeaderboard.length === 0 ? (
+                <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No referred customers have completed a positive-value delivery yet.</td></tr>
+              ) : referralLeaderboard.map((referrer, index) => (
+                <tr key={referrer.profileId}>
+                  <td className="px-6 py-4 font-black text-primary">#{index + 1}</td>
+                  <td className="px-6 py-4 font-bold text-foreground">{referrer.name}</td>
+                  <td className="px-6 py-4 font-mono text-xs text-slate-500">{referrer.referralCode || '—'}</td>
+                  <td className="px-6 py-4 font-black text-emerald-700">{referrer.qualifiedReferrals}</td>
+                  <td className="px-6 py-4 font-black text-foreground">{formatPrice(referrer.turnover)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-xl font-black uppercase tracking-tight text-foreground">Referral Network</h2>
+          <p className="mt-1 text-sm text-slate-500">Referral signups and the points credited through their inviter chain.</p>
+        </div>
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <th className="px-6 py-4">Member</th>
+                <th className="px-6 py-4">Invited by</th>
+                <th className="px-6 py-4">Referral code</th>
+                <th className="px-6 py-4">Chain points</th>
+                <th className="px-6 py-4">Joined</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {referrals.length === 0 ? (
+                <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No qualified referrals yet.</td></tr>
+              ) : referrals.map(referral => (
+                <tr key={referral.referred_profile_id}>
+                  <td className="px-6 py-4 font-bold text-foreground">{profileNames.get(referral.referred_profile_id) || referral.referred_profile_id}</td>
+                  <td className="px-6 py-4 text-slate-600">{profileNames.get(referral.referrer_profile_id) || referral.referrer_profile_id}</td>
+                  <td className="px-6 py-4 font-mono text-xs text-slate-500">{referral.referral_code}</td>
+                  <td className="px-6 py-4 font-black text-emerald-700">{referralPointsByMember.get(referral.referred_profile_id) || 0}</td>
+                  <td className="px-6 py-4 text-slate-500">{new Date(referral.created_at).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Customer List */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">

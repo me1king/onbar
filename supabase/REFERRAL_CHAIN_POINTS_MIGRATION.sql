@@ -1,5 +1,5 @@
--- Persist referral relationships and award configured points through the
--- inviter's complete referral chain when a referred member joins.
+-- Persist referral relationships, give the referred member the configured
+-- welcome bonus, and award a fixed 3 points to every inviter in their chain.
 
 CREATE TABLE IF NOT EXISTS public.loyalty_referrals (
     referred_profile_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -32,7 +32,8 @@ DECLARE
     v_saved_referrer_id UUID;
     v_current_referrer_id UUID;
     v_referral_code TEXT := trim(referral_code_input);
-    v_referral_bonus INTEGER;
+    v_welcome_bonus INTEGER;
+    v_chain_bonus CONSTANT INTEGER := 3;
     v_depth INTEGER := 0;
     v_points_awarded INTEGER := 0;
     v_applied BOOLEAN;
@@ -85,30 +86,30 @@ BEGIN
     END IF;
 
     SELECT COALESCE((value->'points'->>'referral_bonus')::INTEGER, 0)
-      INTO v_referral_bonus
+      INTO v_welcome_bonus
       FROM public.loyalty_config
      WHERE id = true;
-    IF v_referral_bonus IS NULL OR v_referral_bonus < 0 THEN
+    IF v_welcome_bonus IS NULL OR v_welcome_bonus < 0 THEN
         RAISE EXCEPTION 'The referral points rule is invalid.';
     END IF;
 
-    IF v_referral_bonus > 0 THEN
+    IF v_welcome_bonus > 0 THEN
         SELECT applied INTO v_applied
           FROM public.apply_loyalty_points(
               referred_profile_id_input,
-              v_referral_bonus,
+              v_welcome_bonus,
               'Referral welcome bonus',
               'referral-welcome:' || referred_profile_id_input::TEXT
           );
         IF v_applied THEN
-            v_points_awarded := v_points_awarded + v_referral_bonus;
+            v_points_awarded := v_points_awarded + v_welcome_bonus;
             INSERT INTO public.user_notifications (
                 user_id, title, message, icon, style, action_url
             )
             VALUES (
                 referred_profile_id_input,
                 'Referral points added',
-                'Welcome! ' || v_referral_bonus || ' referral points have been added to your balance.',
+                'Welcome! ' || v_welcome_bonus || ' referral points have been added to your balance.',
                 'Zap',
                 'reward',
                 '/rewards'
@@ -128,34 +129,32 @@ BEGIN
         v_visited := array_append(v_visited, v_current_referrer_id);
         v_depth := v_depth + 1;
 
-        IF v_referral_bonus > 0 THEN
-            SELECT applied INTO v_applied
-              FROM public.apply_loyalty_points(
-                  v_current_referrer_id,
-                  v_referral_bonus,
-                  CASE
-                      WHEN v_depth = 1 THEN 'Referral bonus for member ' || referred_profile_id_input::TEXT
-                      ELSE 'Network referral level ' || v_depth || ' bonus for member ' || referred_profile_id_input::TEXT
-                  END,
-                  'referral:' || v_current_referrer_id::TEXT || ':' || referred_profile_id_input::TEXT
-              );
-            IF v_applied THEN
-                v_points_awarded := v_points_awarded + v_referral_bonus;
-                INSERT INTO public.user_notifications (
-                    user_id, title, message, icon, style, action_url
-                )
-                VALUES (
-                    v_current_referrer_id,
-                    'Referral points added',
-                    CASE
-                        WHEN v_depth = 1 THEN 'A friend you referred joined. '
-                        ELSE 'A member in your referral chain joined (level ' || v_depth || '). '
-                    END || v_referral_bonus || ' points have been added to your balance.',
-                    'Zap',
-                    'reward',
-                    '/rewards'
-                );
-            END IF;
+        SELECT applied INTO v_applied
+          FROM public.apply_loyalty_points(
+              v_current_referrer_id,
+              v_chain_bonus,
+              CASE
+                  WHEN v_depth = 1 THEN 'Referral bonus for member ' || referred_profile_id_input::TEXT
+                  ELSE 'Network referral level ' || v_depth || ' bonus for member ' || referred_profile_id_input::TEXT
+              END,
+              'referral:' || v_current_referrer_id::TEXT || ':' || referred_profile_id_input::TEXT
+          );
+        IF v_applied THEN
+            v_points_awarded := v_points_awarded + v_chain_bonus;
+            INSERT INTO public.user_notifications (
+                user_id, title, message, icon, style, action_url
+            )
+            VALUES (
+                v_current_referrer_id,
+                'Referral points added',
+                CASE
+                    WHEN v_depth = 1 THEN 'A friend you referred joined. '
+                    ELSE 'A member in your referral chain joined (level ' || v_depth || '). '
+                END || v_chain_bonus || ' points have been added to your balance.',
+                'Zap',
+                'reward',
+                '/rewards'
+            );
         END IF;
 
         SELECT referrer_profile_id

@@ -25,7 +25,7 @@ export async function GET() {
   const [ordersResult, profilesResult, referralsResult, referralLedgerResult] = await Promise.all([
     database
       .from('orders')
-      .select('id, user_id, customer_name, customer_phone, total_price, created_at, referred_by_code, latitude, longitude')
+      .select('id, user_id, customer_name, customer_phone, total_price, status, created_at, referred_by_code, latitude, longitude')
       .order('created_at', { ascending: false }),
     database
       .from('profiles')
