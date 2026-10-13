@@ -552,7 +552,7 @@ export default function WaitlistPage() {
         <div>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-primary"><MapPin size={14} /> Pre-launch · consent-respecting market demand</p>
           <h1 className="mt-2 text-3xl font-black uppercase tracking-tight text-slate-950">Early Access Waitlist</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-600">Signups from the standalone early-access site and storefront waitlist. Exact GPS coordinates are never stored.</p>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">Signups from the standalone early-access site and storefront waitlist. Area demand helps us prepare coverage for the planned same-day, late-night treats delivery system. Exact GPS coordinates are never stored.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           {canManageSite && <>
@@ -753,8 +753,8 @@ export default function WaitlistPage() {
             </div>
 
             <div>
-              <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Signup-area heat map</h3>
-              <p className="mt-1 text-xs text-slate-500">Darker tiles mean more people voluntarily listed that area when they joined. This is signup activity, not the geographic location of every anonymous site visit.</p>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Delivery launch coverage · signup-area demand</h3>
+              <p className="mt-1 text-xs text-slate-500">Use these neighborhood-level signup counts to prioritize coverage for the planned same-day, late-night treats delivery system before launch. Counts reflect areas members entered when joining, not confirmed service availability or delivery bookings.</p>
               {!siteAnalytics.locations.length
                 ? <p className="mt-3 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No signups in this period yet.</p>
                 : <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
