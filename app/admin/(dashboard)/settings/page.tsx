@@ -83,7 +83,7 @@ const DEFAULTS = {
         navigation: DEFAULT_CATALOG_NAVIGATION.map(item => ({ ...item }))
     },
     promotions: { flash_sale_text: 'Happy Hour: 20% OFF Select Spirits!', discount_percent: 20, is_active: true, flash_sale_end: '' },
-    theme_config: { primary: "#F5A000", secondary: "#0F172A", accent: "#F5A000", custom_css: "" },
+    theme_config: { primary: "#D91C1C", secondary: "#10231f", accent: "#F9F4EC", custom_css: "" },
     seo_config: { title: "Online Bar | Premium Drinks", description: "Premium wine, spirits and snacks delivery in Nairobi.", keywords: "Wine delivery, Whiskey Nairobi, Late night snacks, Kenya Bar", og_image: "" },
     social_links: { instagram: "", tiktok: "", facebook: "", x: "", youtube: "", snapchat: "" },
     store_info: { name: "ONLINE BAR", hours: "24/7 Dispatch", google_maps: "", footer_copy: "© 2026 Online Bar™" },

@@ -17,16 +17,8 @@ export default function ThemeSynchronizer() {
                     .maybeSingle();
 
                 if (profile) {
-                    const pts = profile.loyalty_points || 0;
                     const html = document.documentElement;
-
-                    if (pts >= 5000) {
-                        html.setAttribute('data-theme', 'noir');
-                    } else if (pts >= 1000) {
-                        html.setAttribute('data-theme', 'titanium');
-                    } else {
-                        html.removeAttribute('data-theme');
-                    }
+                    html.removeAttribute('data-theme');
                 }
             } else {
                 document.documentElement.removeAttribute('data-theme');

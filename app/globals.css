@@ -1,50 +1,51 @@
 @import "tailwindcss";
 
 :root {
-  /* Strictly Light Theme - No Black allowed */
-  --background: #ffffff;
-  --foreground: #334155; /* Slate-700 (Lighter than black) */
+  /* Original brand palette: warm cream, deep green, and bold red */
+  --background: #F9F4EC;
+  --foreground: #10231f;
   --font-inter: "Inter", system-ui, -apple-system, sans-serif;
-  --card: #ffffff;
-  --card-foreground: #334155;
-  --popover: #ffffff;
-  --popover-foreground: #334155;
-  --primary: #F5A000;
-  --primary-foreground: #ffffff;
-  --secondary: #f8fafc;
-  --secondary-foreground: #334155;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #f1f5f9;
-  --accent-foreground: #1e293b;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #F5A000;
+  --card: #fffdf9;
+  --card-foreground: #10231f;
+  --popover: #fffdf9;
+  --popover-foreground: #10231f;
+  --primary: #D91C1C;
+  --primary-foreground: #F9F4EC;
+  --secondary: #E9EFEA;
+  --secondary-foreground: #10231f;
+  --muted: #F3EDE4;
+  --muted-foreground: #49615d;
+  --accent: #F2E7D5;
+  --accent-foreground: #10231f;
+  --destructive: #D91C1C;
+  --destructive-foreground: #F9F4EC;
+  --border: #d8d0c6;
+  --input: #efe7dc;
+  --ring: #D91C1C;
 
-  --sidebar: #ffffff;
-  --sidebar-foreground: #334155;
-  --sidebar-border: #e2e8f0;
+  --sidebar: #fffdf9;
+  --sidebar-foreground: #10231f;
+  --sidebar-border: #d8d0c6;
 
   --radius: 1.225rem;
 
-  /* Titanium Accents */
-  --titanium-slate: #1e293b;
-  --titanium-border: #cbd5e1;
-  --titanium-bg: #f8fafc;
+  /* Legacy theme aliases kept in the original brand tones */
+  --titanium-slate: #10231f;
+  --titanium-border: #d8d0c6;
+  --titanium-bg: #F9F4EC;
 
   color-scheme: light;
 }
 
-/* 💎 TITANIUM SLATE THEME (Gold/Diamond) */
+[data-theme='noir'],
 [data-theme='titanium'] {
-  --background: #f1f5f9;
-  --foreground: #1e293b;
-  --card: #ffffff;
-  --primary: #5B5BFF; /* Indigo */
-  --secondary: #e2e8f0;
-  --border: #cbd5e1;
+  --background: #F9F4EC;
+  --foreground: #10231f;
+  --card: #fffdf9;
+  --primary: #D91C1C;
+  --secondary: #E9EFEA;
+  --border: #d8d0c6;
+  --ring: #D91C1C;
 }
 
 @theme {
@@ -82,8 +83,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    background-color: #ffffff !important;
-    color: #334155 !important;
+    background-color: #F9F4EC !important;
+    color: #10231f !important;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;

@@ -226,9 +226,9 @@ export const DEFAULT_SETTINGS: StoreSettings = {
         dispatch_zones: ["CBD", "Westlands", "Kilimani", "Lavington", "Kileleshwa", "Karen", "Langata", "South C", "South B", "Embakasi", "Roysambu", "Kasarani", "Kahawa", "Githurai", "Zimmerman", "Utawala", "Syokimau", "Kitengela", "Rongai", "Ngong", "Kikuyu", "Thika Road", "Mombasa Road"]
     },
     theme_config: {
-        primary: "#F5A000",
-        secondary: "#0F172A",
-        accent: "#5B5BFF",
+        primary: "#D91C1C",
+        secondary: "#10231f",
+        accent: "#F9F4EC",
         custom_css: ""
     },
     seo_config: {
