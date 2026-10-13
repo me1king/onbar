@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import ProductCard from '@/components/home/ProductCard';
 import Image from 'next/image';
+import { getStoredVariantPrices } from '@/lib/productPricing';
 
 type StudioSection = 'basic' | 'media' | 'pricing' | 'inventory' | 'display' | 'intelligence' | 'search';
 
@@ -151,7 +152,7 @@ export default function ProductStudioTerminal() {
                 if (data) setForm({
                     ...data,
                     sizes: data.sizes || (data.size_label ? [data.size_label] : []),
-                    variant_prices: data.variant_prices || {},
+                    variant_prices: getStoredVariantPrices(data.variant_prices, data.beverage_specs) || {},
                     ingredients: data.ingredients || [],
                     sensory_metrics: data.sensory_metrics || { body: 60, sweet: 60, smoke: 20, spice: 40 },
                     pairing_suggestions: data.pairing_suggestions || [],
@@ -212,8 +213,7 @@ export default function ProductStudioTerminal() {
         }
         setSaving(true);
         try {
-            // High-fidelity sync including new V33 intelligence nodes
-            const { error } = await supabase.from('products').update({
+            const product = {
                 name: form.name,
                 brand: form.brand,
                 category: form.category,
@@ -249,10 +249,18 @@ export default function ProductStudioTerminal() {
                 pairing_suggestions: form.pairing_suggestions,
                 faq_data: form.faq_data,
                 bought_together_ids: form.bought_together_ids
-            }).eq('id', id);
+            };
 
-            if (error) throw error;
-            alert("Product Node Synchronized.");
+            const response = await fetch('/api/admin/products', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: Number(id), product })
+            });
+            const result = await response.json() as { error?: string; variantPricesStoredInSpecs?: boolean };
+            if (!response.ok) throw new Error(result.error || 'Product could not be saved.');
+            alert(result.variantPricesStoredInSpecs
+                ? 'Product synchronized. Size prices were saved using the compatible beverage specifications field.'
+                : 'Product Node Synchronized.');
         } catch (err: unknown) {
             const error = err as Error;
             alert(`Sync Failure: ${error.message}`);

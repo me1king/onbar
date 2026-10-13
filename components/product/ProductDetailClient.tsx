@@ -37,7 +37,7 @@ import { useInteractionTracking } from '@/lib/utils/useInteractionTracking';
 import { productKnowledgeEngine, ProductDossier, SensoryDNA } from '@/lib/engines/productKnowledgeEngine';
 import { supabase } from '@/lib/supabaseClient';
 import { Product } from '@/types/product';
-import { getVariantPrice } from '@/lib/productPricing';
+import { getStoredVariantPrices, getVariantPrice } from '@/lib/productPricing';
 
 import ReviewSection from '@/components/product/ReviewSection';
 import BundleUpsell from './BundleUpsell';
@@ -94,6 +94,7 @@ export default function ProductDetailClient({
   const { isInWishlist, addToWishlist, removeFromWishlist } = useWishlist();
   const { trackClick } = useInteractionTracking();
   const isFoodProduct = Boolean(product.is_bite || product.is_snack);
+  const variantPrices = getStoredVariantPrices(product.variant_prices, product.beverage_specs);
 
   const [dossier, setDossier] = useState<ProductDossier | null>(null);
   const sensoryProfile = getSensoryProfile(dossier?.sensory_dna)
@@ -218,16 +219,16 @@ export default function ProductDetailClient({
     intensity: dossier?.sensory_dna?.intensity ?? beverageDNA?.intensity ?? productDNA.intensity ?? productDNA.spice,
   };
 
-  const isSale = !product.variant_prices?.[selectedVariant] && product.old_price && Number(product.old_price) > Number(product.price);
+  const isSale = !variantPrices?.[selectedVariant] && product.old_price && Number(product.old_price) > Number(product.price);
   const discountPercent = isSale ? Math.round((1 - (product.price / Number(product.old_price!))) * 100) : 0;
   const savings = isSale ? (Number(product.old_price) - product.price) : 0;
-  const selectedVariantPrice = getVariantPrice(product.price, product.variant_prices, selectedVariant);
+  const selectedVariantPrice = getVariantPrice(product.price, variantPrices, selectedVariant);
   const points = Math.floor(selectedVariantPrice * orderEarnPercent / 100);
 
   const activeBundleItems = [product, ...bundleProducts].filter(p => boughtTogether.includes(p.id));
   const getBundleVariant = (item: Product) => item.id === product.id ? selectedVariant : item.sizes?.[0] || 'Standard';
   const bundleTotal = activeBundleItems.reduce(
-    (sum, item) => sum + getVariantPrice(item.price, item.variant_prices, getBundleVariant(item)),
+    (sum, item) => sum + getVariantPrice(item.price, getStoredVariantPrices(item.variant_prices, item.beverage_specs), getBundleVariant(item)),
     0
   );
 
@@ -659,7 +660,7 @@ export default function ProductDetailClient({
                                     )}
                                 >
                                     <span className={cn("text-[10px] font-black uppercase tracking-widest", isSelected ? "text-brand-red" : "text-slate-400")}>{size}</span>
-                                    <span className={cn("text-base font-black tracking-tight", isSelected ? "text-foreground" : "text-slate-500")}>{formatPrice(getVariantPrice(product.price, product.variant_prices, size))}</span>
+                                    <span className={cn("text-base font-black tracking-tight", isSelected ? "text-foreground" : "text-slate-500")}>{formatPrice(getVariantPrice(product.price, variantPrices, size))}</span>
                                     {isSelected && <Check size={14} className="absolute top-4 right-4 text-brand-red" />}
                                 </button>
                             );
@@ -854,8 +855,8 @@ export default function ProductDetailClient({
                                         addBundleToCart(activeBundleItems.map(p => ({
                                             id: p.id,
                                             name: p.name,
-                                            price: getVariantPrice(p.price, p.variant_prices, getBundleVariant(p)),
-                                            base_price: getVariantPrice(p.price, p.variant_prices, getBundleVariant(p)),
+                                            price: getVariantPrice(p.price, getStoredVariantPrices(p.variant_prices, p.beverage_specs), getBundleVariant(p)),
+                                            base_price: getVariantPrice(p.price, getStoredVariantPrices(p.variant_prices, p.beverage_specs), getBundleVariant(p)),
                                             image: normalizeImage(p.image || p.image_url),
                                             quantity: 1,
                                             category: p.category,

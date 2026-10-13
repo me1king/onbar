@@ -112,6 +112,7 @@ export async function GET(request: Request) {
 
 async function saveProduct(database: SupabaseClient, id: number | null, product: ProductPayload) {
     const payload = { ...product };
+    let variantPricesStoredInSpecs = false;
     if (typeof payload.category === 'string' && /\b(souvenir|souvenirs|merchandise)\b/i.test(payload.category)) {
         payload.is_souvenir = true;
     }
@@ -121,13 +122,48 @@ async function saveProduct(database: SupabaseClient, id: number | null, product:
             ? await database.from('products').insert(payload).select('id').single()
             : await database.from('products').update(payload).eq('id', id).select('id').single();
 
-        if (!result.error && result.data) return { id: Number(result.data.id) };
+        if (!result.error && result.data) {
+            return { id: Number(result.data.id), variantPricesStoredInSpecs };
+        }
 
         const message = result.error?.message || 'Product could not be saved.';
-        const missingColumn = message.match(/Could not find the '([^']+)' column of 'products'/i);
+        const missingColumn = message.match(/Could not find the '([^']+)' column of 'products'/i)
+            || message.match(/column products\.([a-z_]+) does not exist/i);
         if (missingColumn?.[1] && missingColumn[1] in payload) {
             if (missingColumn[1] === 'variant_prices') {
-                throw new Error('Run supabase/PRODUCT_VARIANT_PRICING_MIGRATION.sql before saving prices by size.');
+                const variantPrices = payload.variant_prices;
+                if (typeof variantPrices !== 'object' || variantPrices === null || Array.isArray(variantPrices)) {
+                    throw new Error('Size prices could not be saved because their value is invalid.');
+                }
+
+                let existingSpecs: Record<string, unknown> = {};
+                if (id !== null) {
+                    const existing = await database.from('products')
+                        .select('beverage_specs')
+                        .eq('id', id)
+                        .maybeSingle();
+                    if (existing.error) {
+                        console.error('[ProductAdmin] Could not preserve existing beverage specifications while saving size prices:', existing.error);
+                        throw new Error('Size prices could not be saved because this database does not expose the product specifications field.');
+                    }
+                    if (existing.data?.beverage_specs && typeof existing.data.beverage_specs === 'object' && !Array.isArray(existing.data.beverage_specs)) {
+                        existingSpecs = existing.data.beverage_specs as Record<string, unknown>;
+                    }
+                }
+                const suppliedSpecs = payload.beverage_specs;
+                payload.beverage_specs = {
+                    ...existingSpecs,
+                    ...(typeof suppliedSpecs === 'object' && suppliedSpecs !== null && !Array.isArray(suppliedSpecs)
+                        ? suppliedSpecs as Record<string, unknown>
+                        : {}),
+                    variant_prices: variantPrices
+                };
+                delete payload.variant_prices;
+                variantPricesStoredInSpecs = true;
+                continue;
+            }
+            if (missingColumn[1] === 'beverage_specs' && variantPricesStoredInSpecs) {
+                throw new Error('This database is missing both supported product-size pricing fields. Apply supabase/PRODUCT_VARIANT_PRICING_MIGRATION.sql, then retry.');
             }
             if (missingColumn[1] === 'pairing_suggestions') {
                 throw new Error('Food pairings are not connected to this database yet. Run supabase/PRODUCT_PAIRING_SUGGESTIONS_MIGRATION.sql, then save the product again.');

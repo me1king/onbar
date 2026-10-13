@@ -57,6 +57,7 @@ ON CONFLICT (key) DO NOTHING;
 -- draft-only campaign setup, and accurate admin analytics.
 
 ALTER TABLE public.products
+    ADD COLUMN IF NOT EXISTS variant_prices JSONB NOT NULL DEFAULT '{}'::JSONB,
     ADD COLUMN IF NOT EXISTS is_souvenir BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS is_available_now BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN IF NOT EXISTS material TEXT,

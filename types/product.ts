@@ -41,6 +41,7 @@ export interface Product {
     abv?: string;
     origin?: string;
     region?: string;
+    variant_prices?: Record<string, number>;
     body?: string;
     sweetness?: string;
     glassware?: string;

@@ -88,6 +88,7 @@ interface WaitlistResponse {
   referralAnalytics: {
     referrers: WaitlistReferralLeaderboardEntry[];
     credits: WaitlistReferralCredit[];
+    uncreditedDirectReferrals: number;
   };
   page: number;
   hasMore: boolean;
@@ -781,6 +782,11 @@ export default function WaitlistPage() {
           <h2 className="text-lg font-black uppercase tracking-wide text-slate-900">Waitlist referral leaderboard</h2>
           <p className="mt-1 text-xs text-slate-500">Ranks people whose waitlist referrals converted into positive delivered sales. Each member in the referral chain receives 3 points/tokens for every new signup in their downline.</p>
         </div>
+        {(data?.referralAnalytics?.uncreditedDirectReferrals || 0) > 0 && (
+          <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {count(data?.referralAnalytics.uncreditedDirectReferrals)} referred signup(s) are in the waitlist, but have no referral credit records yet. Apply <code>supabase/WAITLIST_SITE_MIGRATION.sql</code> to the shared WAITLIST Supabase project to backfill credits and enable future referral rewards.
+          </p>
+        )}
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-left text-sm">
             <thead><tr className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">

@@ -20,7 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Product as CatalogProduct } from '@/types/product';
-import { getStartingPrice } from '@/lib/productPricing';
+import { getStartingPrice, getStoredVariantPrices } from '@/lib/productPricing';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
 import { isAllowed } from '@/lib/consentService';
 
@@ -167,10 +167,10 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
 
       // 3. Price Range Filter
       if (minPrice) {
-          filtered = filtered.filter(p => getStartingPrice(p.price, p.variant_prices, p.sizes) >= Number(minPrice));
+          filtered = filtered.filter(p => getStartingPrice(p.price, getStoredVariantPrices(p.variant_prices, p.beverage_specs), p.sizes) >= Number(minPrice));
       }
       if (maxPrice) {
-          filtered = filtered.filter(p => getStartingPrice(p.price, p.variant_prices, p.sizes) <= Number(maxPrice));
+          filtered = filtered.filter(p => getStartingPrice(p.price, getStoredVariantPrices(p.variant_prices, p.beverage_specs), p.sizes) <= Number(maxPrice));
       }
 
       // 4. Stock Filter
@@ -187,8 +187,8 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
 
       // 6. Sorting
       filtered.sort((a, b) => {
-          const aPrice = getStartingPrice(a.price, a.variant_prices, a.sizes);
-          const bPrice = getStartingPrice(b.price, b.variant_prices, b.sizes);
+          const aPrice = getStartingPrice(a.price, getStoredVariantPrices(a.variant_prices, a.beverage_specs), a.sizes);
+          const bPrice = getStartingPrice(b.price, getStoredVariantPrices(b.variant_prices, b.beverage_specs), b.sizes);
           if (sortBy === 'low-to-high') return aPrice - bPrice;
           if (sortBy === 'high-to-low') return bPrice - aPrice;
           return (b.created_at ? new Date(b.created_at).getTime() : b.id)

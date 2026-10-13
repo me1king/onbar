@@ -21,6 +21,7 @@ import { OB_OS } from "@/lib/onlineBarOS";
 import { v4 as uuidv4 } from 'uuid';
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import { DeliveryArea, findDeliveryArea, parseDeliveryAreas } from "@/lib/deliveryAreas";
+import { getStoredVariantPrices } from "@/lib/productPricing";
 
 const LocationPicker = dynamic(() => import("@/components/profile/LocationPicker"), {
     ssr: false,
@@ -45,6 +46,7 @@ interface DBProduct {
   variant_stock: Record<string, number> | null;
   price: number;
   variant_prices: Record<string, number> | null;
+  beverage_specs: { variant_prices?: Record<string, number> | null } | null;
   cost_price: number;
 }
 
@@ -443,12 +445,21 @@ function CheckoutContent() {
       // 0.5 Smart Stock Guard: Final real-time check
       let dbProducts: DBProduct[] = [];
       const productIds = cart.map(item => item.id);
-      const { data, error: stockError } = await client
+      const productQuery = await client
           .from('products')
-          .select('id, name, stock, variant_stock, price, variant_prices, cost_price')
+          .select('id, name, stock, variant_stock, price, variant_prices, beverage_specs, cost_price')
           .in('id', productIds);
-      if (stockError) throw stockError;
-      dbProducts = (data as DBProduct[] | null) || [];
+      if (productQuery.error && /variant_prices/i.test(productQuery.error.message)) {
+          const legacyQuery = await client
+              .from('products')
+              .select('id, name, stock, variant_stock, price, beverage_specs, cost_price')
+              .in('id', productIds);
+          if (legacyQuery.error) throw legacyQuery.error;
+          dbProducts = (legacyQuery.data as DBProduct[] | null) || [];
+      } else {
+          if (productQuery.error) throw productQuery.error;
+          dbProducts = (productQuery.data as DBProduct[] | null) || [];
+      }
 
       for (const item of cart) {
           const dbProd = dbProducts.find(p => p.id === item.id);
@@ -456,7 +467,8 @@ function CheckoutContent() {
               throw new Error(`Product ${item.name} is no longer available. Please refresh your cart.`);
           }
 
-          const currentPrice = dbProd.variant_prices?.[item.size || 'Standard'] ?? dbProd.price;
+          const variantPrices = getStoredVariantPrices(dbProd.variant_prices, dbProd.beverage_specs);
+          const currentPrice = variantPrices?.[item.size || 'Standard'] ?? dbProd.price;
           if (Number(item.base_price) !== Number(currentPrice)) {
               throw new Error(`${dbProd.name} (${item.size || 'Standard'}) has a new price. Remove it from your cart and add it again.`);
           }

@@ -17,6 +17,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
     full_name: string | null;
     email: string;
     referral_code: string | null;
+    referred_by_code: string | null;
     converted_to_user: string | null;
     country: string;
     county: string;
@@ -34,7 +35,7 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
 
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await database.from('market_waitlist')
-      .select('id,full_name,email,referral_code,converted_to_user,country,county,city,area')
+      .select('id,full_name,email,referral_code,referred_by_code,converted_to_user,country,county,city,area')
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
       .range(offset, offset + 999);
@@ -135,7 +136,101 @@ async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
       || right.turnover - left.turnover
       || right.directReferrals - left.directReferrals
     );
-  return { referrers, credits: referralCredits };
+  const knownReferralCodes = new Set(members
+    .flatMap(member => member.referral_code ? [member.referral_code.toLowerCase()] : []));
+  const directReferralInvitees = members.filter(member =>
+    member.referred_by_code && knownReferralCodes.has(member.referred_by_code.toLowerCase())
+  );
+  const creditedDirectInvitees = new Set(credits
+    .filter(credit => credit.generation === 1)
+    .map(credit => credit.invitee_id));
+  const uncreditedDirectReferrals = directReferralInvitees
+    .filter(invitee => !creditedDirectInvitees.has(invitee.id)).length;
+  return { referrers, credits: referralCredits, uncreditedDirectReferrals };
+}
+
+async function loadWaitlistStats(database: ReturnType<typeof getDatabase>) {
+  if (!database) throw new Error('Waitlist database access is not configured.');
+  const stats = {
+    total: 0,
+    inArea: 0,
+    outsideArea: 0,
+    unknownArea: 0,
+    emailOptIns: 0,
+    smsOptIns: 0,
+    whatsappOptIns: 0,
+    areas: [] as Array<{ country: string; county: string; city: string; area: string; total: number; inArea: number }>,
+    interests: [] as Array<{ name: string; count: number }>,
+    ageGroups: [
+      { group: '18_20', label: '18–20', count: 0 },
+      { group: '21_24', label: '21–24', count: 0 },
+      { group: '25_34', label: '25–34', count: 0 },
+      { group: '35_44', label: '35–44', count: 0 },
+      { group: '45_plus', label: '45+', count: 0 }
+    ],
+    rewardPaths: [
+      { path: 'wine', label: 'Wine tastings & curated gifts', count: 0 },
+      { path: 'adventure', label: 'Hosted adventures for two', count: 0 },
+      { path: 'music', label: 'Soul Fest ticket draw', count: 0 }
+    ]
+  };
+  const areaCounts = new Map<string, { country: string; county: string; city: string; area: string; total: number; inArea: number }>();
+  const interestCounts = new Map<string, number>();
+  const ageGroups = new Map(stats.ageGroups.map(group => [group.group, group]));
+  const rewardPaths = new Map(stats.rewardPaths.map(path => [path.path, path]));
+
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await database.from('market_waitlist')
+      .select('country,county,city,area,service_area_status,email_updates_consent,sms_consent,whatsapp_consent,status,age_group,reward_path,product_interests')
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + 999);
+    if (error) throw error;
+
+    for (const member of data) {
+      stats.total += 1;
+      if (member.service_area_status === 'in_area') stats.inArea += 1;
+      else if (member.service_area_status === 'outside_area') stats.outsideArea += 1;
+      else stats.unknownArea += 1;
+
+      if (member.status !== 'UNSUBSCRIBED') {
+        if (member.email_updates_consent) stats.emailOptIns += 1;
+        if (member.sms_consent) stats.smsOptIns += 1;
+        if (member.whatsapp_consent) stats.whatsappOptIns += 1;
+      }
+
+      const areaKey = JSON.stringify([member.country, member.county, member.city, member.area]);
+      const area = areaCounts.get(areaKey) || {
+        country: member.country || '',
+        county: member.county || '',
+        city: member.city || '',
+        area: member.area || '',
+        total: 0,
+        inArea: 0
+      };
+      area.total += 1;
+      if (member.service_area_status === 'in_area') area.inArea += 1;
+      areaCounts.set(areaKey, area);
+
+      const ageGroup = ageGroups.get(member.age_group || '');
+      if (ageGroup) ageGroup.count += 1;
+      const rewardPath = rewardPaths.get(member.reward_path || '');
+      if (rewardPath) rewardPath.count += 1;
+      for (const interest of member.product_interests || []) {
+        interestCounts.set(interest, (interestCounts.get(interest) || 0) + 1);
+      }
+    }
+
+    if (data.length < 1000) break;
+  }
+
+  stats.areas = [...areaCounts.values()]
+    .sort((left, right) => right.total - left.total || left.area.localeCompare(right.area))
+    .slice(0, 100);
+  stats.interests = [...interestCounts]
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
+  return stats;
 }
 
 async function authorize() {
@@ -190,12 +285,14 @@ export async function GET(request: Request) {
     query = query.or(`full_name.ilike.${term},email.ilike.${term},phone.ilike.${term},city.ilike.${term},area.ilike.${term}`);
   }
 
-  const [list, intelligence] = await Promise.all([
+  const [list, statsResult] = await Promise.all([
     query,
-    database.rpc('get_waitlist_intelligence')
+    loadWaitlistStats(database)
+      .then(stats => ({ stats, error: null }))
+      .catch(error => ({ stats: null, error }))
   ]);
-  if (list.error || intelligence.error) {
-    const error = list.error || intelligence.error!;
+  if (list.error || statsResult.error) {
+    const error = list.error || statsResult.error;
     console.error('[AdminWaitlist] Could not load waitlist data:', error);
     return NextResponse.json({
       error: missingMigration(error)
@@ -214,7 +311,7 @@ export async function GET(request: Request) {
   }
   return NextResponse.json({
     contacts: list.data || [],
-    stats: intelligence.data || {},
+    stats: statsResult.stats || {},
     referralAnalytics,
     page,
     pageSize,

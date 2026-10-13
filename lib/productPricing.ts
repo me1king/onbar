@@ -1,3 +1,14 @@
+type BeverageSpecsWithVariantPrices = {
+  variant_prices?: Record<string, number> | null;
+} | null | undefined;
+
+export function getStoredVariantPrices(
+  variantPrices: Record<string, number> | null | undefined,
+  beverageSpecs: BeverageSpecsWithVariantPrices
+) {
+  return variantPrices ?? beverageSpecs?.variant_prices ?? undefined;
+}
+
 export function getVariantPrice(
   price: number,
   variantPrices: Record<string, number> | null | undefined,

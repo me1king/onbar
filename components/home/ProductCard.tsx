@@ -22,7 +22,7 @@ import { useState } from "react";
 import { useWishlist } from "@/context/WishlistContext";
 import { useSettings } from "@/lib/useSettings";
 import { Product } from "@/types/product";
-import { getStartingPrice, getVariantPrice } from "@/lib/productPricing";
+import { getStartingPrice, getStoredVariantPrices, getVariantPrice } from "@/lib/productPricing";
 import { isStorefrontProductVisible } from "@/lib/productVisibility";
 
 const TIER_RANK: Record<string, number> = {
@@ -44,7 +44,8 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
   const { settings } = useSettings();
 
   const imageUrl = normalizeImage(product.image || product.image_url);
-  const isSale = !product.variant_prices || Object.keys(product.variant_prices).length === 0
+  const variantPrices = getStoredVariantPrices(product.variant_prices, product.beverage_specs);
+  const isSale = !variantPrices || Object.keys(variantPrices).length === 0
     ? product.old_price && Number(product.old_price) > Number(product.price)
     : false;
   const discountPercent = isSale ? Math.round((1 - (product.price / Number(product.old_price))) * 100) : 0;
@@ -72,7 +73,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
   const originDisplay = product.origin || beverageSpecs?.origin;
   const regionDisplay = product.region || beverageSpecs?.region;
   const sizeDisplay = product.size_label || product.sizes?.[0];
-  const startingPrice = getStartingPrice(product.price, product.variant_prices, product.sizes);
+  const startingPrice = getStartingPrice(product.price, variantPrices, product.sizes);
   const drinkDetails = [
     { label: 'Origin', value: originDisplay },
     { label: 'Region', value: regionDisplay },
@@ -103,7 +104,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
 
     // Standardize variant selection for quick add
     const variant = (product.sizes && product.sizes.length > 0) ? product.sizes[0] : 'Standard';
-    const variantPrice = getVariantPrice(product.price, product.variant_prices, variant);
+    const variantPrice = getVariantPrice(product.price, variantPrices, variant);
 
     setIsAdding(true);
     addToCart({
@@ -309,7 +310,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
                 <button
                     onClick={(e) => {
                         e.preventDefault();
-                        const message = `Hello Online Bar! I want to order:\n\n*Product:* ${product.name}\n${product.sizes?.length ? `*Size:* ${product.sizes[0]}\n` : ''}*Price:* ${formatPrice(product.sizes?.length ? getVariantPrice(product.price, product.variant_prices, product.sizes[0]) : product.price)}\n\nIs this available for dispatch?`;
+                        const message = `Hello Online Bar! I want to order:\n\n*Product:* ${product.name}\n${product.sizes?.length ? `*Size:* ${product.sizes[0]}\n` : ''}*Price:* ${formatPrice(product.sizes?.length ? getVariantPrice(product.price, variantPrices, product.sizes[0]) : product.price)}\n\nIs this available for dispatch?`;
                         window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
                     }}
                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-primary transition-all hover:bg-primary/5 sm:h-10 sm:w-10 sm:rounded-xl"

@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import ProductCard from '@/components/home/ProductCard';
 import { Product } from '@/types/product';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
-import { getStartingPrice } from '@/lib/productPricing';
+import { getStartingPrice, getStoredVariantPrices } from '@/lib/productPricing';
 
 type SortOrder = 'recommended' | 'price-ascending' | 'price-descending';
 
@@ -40,9 +40,9 @@ export default function CategoryCatalog({
       : [...availableProducts];
 
     if (sortOrder === 'price-ascending') {
-      filtered.sort((a, b) => getStartingPrice(a.price, a.variant_prices, a.sizes) - getStartingPrice(b.price, b.variant_prices, b.sizes));
+      filtered.sort((a, b) => getStartingPrice(a.price, getStoredVariantPrices(a.variant_prices, a.beverage_specs), a.sizes) - getStartingPrice(b.price, getStoredVariantPrices(b.variant_prices, b.beverage_specs), b.sizes));
     } else if (sortOrder === 'price-descending') {
-      filtered.sort((a, b) => getStartingPrice(b.price, b.variant_prices, b.sizes) - getStartingPrice(a.price, a.variant_prices, a.sizes));
+      filtered.sort((a, b) => getStartingPrice(b.price, getStoredVariantPrices(b.variant_prices, b.beverage_specs), b.sizes) - getStartingPrice(a.price, getStoredVariantPrices(a.variant_prices, a.beverage_specs), a.sizes));
     }
     return filtered;
   }, [products, selectedType, sortOrder]);
