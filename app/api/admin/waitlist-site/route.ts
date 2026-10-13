@@ -127,6 +127,16 @@ export async function GET(request: Request) {
     console.error('[AdminWaitlistSite] Could not load published website content:', error);
     return NextResponse.json({ error: 'Apply supabase/WAITLIST_SITE_MIGRATION.sql from the isolated WAITLIST repository to enable website content management.' }, { status: 503 });
   }
+  const campaignSettings = data.campaign_settings && typeof data.campaign_settings === 'object' && !Array.isArray(data.campaign_settings)
+    ? data.campaign_settings as Record<string, unknown>
+    : {};
+  data = {
+    ...data,
+    campaign_settings: {
+      ...campaignSettings,
+      palette: campaignSettings.palette === 'yellow' ? 'yellow' : 'midnight'
+    }
+  };
   const requestedDays = Number(new URL(request.url).searchParams.get('days') || '30');
   const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 30;
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -285,6 +295,9 @@ export async function PATCH(request: Request) {
     registrationLabel: 60
   };
   if (!campaign) return NextResponse.json({ error: 'Campaign settings are required.' }, { status: 400 });
+  if (campaign.palette !== 'midnight' && campaign.palette !== 'yellow') {
+    return NextResponse.json({ error: 'Choose either the cream/red/green or classic yellow website palette.' }, { status: 400 });
+  }
   const safeCampaign: Record<string, unknown> = {};
   for (const [field, limit] of Object.entries(campaignStringLimits)) {
     const value = campaign[field];
@@ -338,6 +351,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'At least one experience card must remain available for signup.' }, { status: 400 });
   }
   safeCampaign.phase = campaign.phase;
+  safeCampaign.palette = campaign.palette;
   safeCampaign.experiences = experiences;
   let launchAt: string | null = null;
   if (body.launch_at !== null && body.launch_at !== '') {

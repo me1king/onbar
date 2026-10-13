@@ -70,18 +70,18 @@ function MetricCard({
   trend?: number | null;
 }) {
   return (
-    <Card className="rounded-3xl border-slate-100 bg-white p-6 shadow-sm">
+    <Card className="min-w-0 rounded-3xl border-slate-100 bg-white p-4 shadow-sm sm:p-6">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
-          <p className="mt-3 text-2xl font-black tracking-tight text-slate-900">{value}</p>
+        <div className="min-w-0">
+          <p className="break-words text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 sm:tracking-[0.18em]">{label}</p>
+          <p className="mt-3 break-words text-xl font-black leading-tight tracking-tight text-slate-900 sm:text-2xl">{value}</p>
         </div>
-        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary sm:h-10 sm:w-10">
           <Icon size={19} />
         </span>
       </div>
-      <div className="mt-4 flex min-h-5 items-center justify-between gap-2">
-        <p className="text-xs leading-relaxed text-slate-500">{detail}</p>
+      <div className="mt-4 flex min-h-5 flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 flex-1 text-xs leading-relaxed text-slate-500">{detail}</p>
         {trend !== undefined && trend !== null && (
           <span className={`inline-flex shrink-0 items-center gap-1 text-xs font-bold ${trend >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
             {trend >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
@@ -154,7 +154,7 @@ export default function CustomerIntelligencePage() {
                 <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Measured in the last 90 days</h2>
                 <p className="text-xs text-slate-400">Compared with the previous 90 days</p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
                 <MetricCard label="Order revenue" value={formatPrice(data.current.revenue)} detail={`${data.current.orders.toLocaleString()} paid or delivered orders`} icon={CircleDollarSign} trend={revenueTrend} />
                 <MetricCard label="Purchasing customers" value={data.current.customers.toLocaleString()} detail="Unique customer accounts or normalized phone numbers" icon={Users} />
                 <MetricCard label="Repeat customer rate" value={data.current.repeatRate === null ? 'Unavailable' : `${data.current.repeatRate.toFixed(1)}%`} detail={`${data.current.repeatCustomers.toLocaleString()} customers ordered at least twice in this period`} icon={Repeat2} />

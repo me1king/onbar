@@ -100,6 +100,7 @@ type CampaignExperience = { id: RewardPath; title: string; description: string; 
 interface WaitlistCampaignSettings {
   brandName: string;
   brandDescriptor: string;
+  palette: 'midnight' | 'yellow';
   tagline: string;
   subheadline: string;
   presentedBy: string;
@@ -344,7 +345,7 @@ export default function WaitlistPage() {
       const result = await readAdminJson<{ content?: WaitlistSiteContent; error?: string }>(response, 'Website content could not be saved.');
       if (!response.ok || !result.content) throw new Error(result.error || 'Website content could not be saved.');
       setSiteContent(result.content);
-      setSiteContentNotice('Published. The standalone site will show these updates shortly.');
+      setSiteContentNotice('Published. The standalone site will use the selected palette and campaign settings on its next load or refresh.');
     } catch (cause) {
       console.error('[AdminWaitlistSite] Could not save website content:', cause);
       setSiteContentError(cause instanceof Error ? cause.message : 'Website content could not be saved.');
@@ -587,6 +588,20 @@ export default function WaitlistPage() {
             <form className="grid gap-4 lg:grid-cols-2" onSubmit={saveSiteContent}>
               <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 lg:col-span-2">
                 <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Public identity</h3><p className="mt-1 text-xs text-slate-500">Midnight Society KE is the experience brand; ONLINE BAR remains the parent brand.</p></div>
+                <div className="sm:col-span-2" role="group" aria-label="Waitlist website color palette">
+                  <p className="text-xs font-bold text-slate-700">Website colors</p>
+                  <p className="mt-1 text-xs text-slate-500">Choose the original cream, red and green look or switch back to the classic yellow palette. Publish the settings below to apply your choice.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" aria-pressed={(siteContent.campaign_settings.palette || 'midnight') === 'midnight'} onClick={() => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, palette: 'midnight' } })} className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-bold ${(siteContent.campaign_settings.palette || 'midnight') === 'midnight' ? 'border-slate-900 bg-white ring-2 ring-slate-900/10' : 'border-slate-200 bg-white'}`}>
+                      <span aria-hidden="true" className="flex h-5 w-5 overflow-hidden rounded-full border border-slate-200"><i className="w-1/3 bg-[#F9F4EC]" /><i className="w-1/3 bg-[#D91C1C]" /><i className="w-1/3 bg-[#10231f]" /></span>
+                      Cream · red · green
+                    </button>
+                    <button type="button" aria-pressed={siteContent.campaign_settings.palette === 'yellow'} onClick={() => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, palette: 'yellow' } })} className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-bold ${siteContent.campaign_settings.palette === 'yellow' ? 'border-slate-900 bg-white ring-2 ring-slate-900/10' : 'border-slate-200 bg-white'}`}>
+                      <span aria-hidden="true" className="h-5 w-5 rounded-full border border-slate-200 bg-[#F5A000]" />
+                      Classic yellow
+                    </button>
+                  </div>
+                </div>
                 <label className="text-xs font-bold text-slate-700">Experience brand<input required maxLength={80} value={siteContent.campaign_settings.brandName} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, brandName: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
                 <label className="text-xs font-bold text-slate-700">Brand descriptor<input required maxLength={120} value={siteContent.campaign_settings.brandDescriptor} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, brandDescriptor: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
                 <label className="text-xs font-bold text-slate-700">Tagline line one<input required maxLength={120} value={siteContent.campaign_settings.tagline} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, tagline: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>

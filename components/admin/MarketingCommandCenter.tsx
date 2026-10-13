@@ -90,41 +90,41 @@ export default function MarketingCommandCenter() {
     };
 
     return (
-        <div className="space-y-10 text-left selection:bg-primary/20 animate-in fade-in duration-1000">
+        <div className="min-w-0 space-y-6 text-left selection:bg-primary/20 animate-in fade-in duration-1000 sm:space-y-8">
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-16">
+            {loadError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{loadError}</p>}
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
                 {[
                     { label: 'Saved Drafts', val: marketingStats.drafts?.toLocaleString() ?? 'Unavailable', icon: Target, color: 'primary' },
                     { label: 'Saved Audiences', val: marketingStats.audiences?.toLocaleString() ?? 'Unavailable', icon: Users, color: 'indigo' },
                     { label: 'External Messages', val: 'Not connected', icon: MessageCircle, color: 'emerald' },
                     { label: 'Campaign Attribution', val: 'Unavailable', icon: Activity, color: 'rose' },
                 ].map((item) => (
-                    <Card key={item.label} className="aspect-[4/5] rounded-[4rem] bg-white border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-6 group hover:shadow-2xl transition-all relative overflow-hidden text-center p-6 min-w-[180px]">
+                    <Card key={item.label} className="flex min-h-52 min-w-0 flex-col items-center justify-center gap-4 overflow-hidden rounded-3xl border border-slate-100 bg-white p-5 text-center shadow-sm transition-all group hover:shadow-xl sm:min-h-56 sm:p-6">
                         <div className={cn(
-                            "h-14 w-14 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 shadow-inner",
+                            "flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow-inner transition-transform group-hover:scale-110",
                             item.color === 'primary' ? "bg-primary/10 text-primary" :
                             item.color === 'indigo' ? "bg-indigo-50 text-indigo-500" :
                             item.color === 'emerald' ? "bg-emerald-50 text-emerald-600" :
                             "bg-rose-50 text-rose-500"
                         )}>
-                            <item.icon size={28} />
+                            <item.icon size={24} />
                         </div>
-                        {loadError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{loadError}</p>}
-                        <div className="space-y-2 w-full">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">{item.label}</p>
-                            <h3 className="text-2xl font-black text-foreground tracking-tighter uppercase leading-none whitespace-nowrap">{item.val}</h3>
+                        <div className="w-full min-w-0 space-y-2">
+                            <p className="break-words text-[10px] font-black uppercase leading-snug tracking-[0.12em] text-slate-400">{item.label}</p>
+                            <h3 className="break-words text-xl font-black uppercase leading-tight tracking-tight text-foreground sm:text-2xl">{item.val}</h3>
                         </div>
                     </Card>
                 ))}
             </div>
 
-            <div className="grid lg:grid-cols-12 gap-10">
+            <div className="grid min-w-0 gap-6 lg:grid-cols-12 lg:gap-8">
 
                 {/* 2. CAMPAIGN BUILDER */}
-                <div className="lg:col-span-7 space-y-8 text-left">
-                    <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-10">
-                        <div className="flex items-center justify-between border-b border-slate-50 pb-8">
-                            <div className="flex items-center gap-4">
+                <div className="min-w-0 space-y-6 text-left sm:space-y-8 lg:col-span-7">
+                    <Card className="space-y-6 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:space-y-8 sm:rounded-[2rem] sm:p-7 lg:space-y-10 lg:rounded-[3.5rem] lg:p-10">
+                        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-50 pb-6 sm:pb-8">
+                            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                                 <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner"><Plus size={24} /></div>
                                 <div>
                                     <h2 className="text-2xl font-black text-foreground uppercase tracking-tighter leading-none">New Campaign</h2>
@@ -167,10 +167,10 @@ export default function MarketingCommandCenter() {
                 </div>
 
                 {/* 3. CAMPAIGN HISTORY */}
-                <div className="lg:col-span-5 space-y-8 text-left">
-                    <Card className="p-10 rounded-[3.5rem] bg-slate-50 border border-slate-100 shadow-inner space-y-8 h-full">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-xl font-black text-foreground uppercase tracking-tighter">Mission Log</h3>
+                <div className="min-w-0 space-y-6 text-left sm:space-y-8 lg:col-span-5">
+                    <Card className="h-full min-w-0 space-y-6 rounded-3xl border border-slate-100 bg-slate-50 p-5 shadow-inner sm:space-y-8 sm:rounded-[2rem] sm:p-7 lg:rounded-[3.5rem] lg:p-10">
+                        <div className="flex items-center justify-between gap-3">
+                            <h3 className="min-w-0 break-words text-xl font-black uppercase tracking-tighter text-foreground">Mission Log</h3>
                             <button onClick={fetchCampaigns} className="text-slate-300 hover:text-primary transition-colors"><RefreshCcw size={18} /></button>
                         </div>
 

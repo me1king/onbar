@@ -356,9 +356,9 @@ export default function AdminDashboard() {
       <ExperimentLab />
 
       {/* AUTOMATION & CAMPAIGNS: ENGINE CONTROLS */}
-      <div className="grid lg:grid-cols-2 gap-10">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-2 lg:gap-10">
           <AutonomousSwitch />
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
               <h2 className="text-2xl font-black uppercase text-foreground px-4">Growth Command</h2>
               <MarketingCommandCenter />
           </div>
