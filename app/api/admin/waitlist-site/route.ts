@@ -23,8 +23,8 @@ const audioExtensions: Record<string, string> = {
   'audio/mp4': 'm4a',
   'audio/x-m4a': 'm4a'
 };
-const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,genre_tracks,launch_at,tokens_per_referral,updated_at';
-const legacyContentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,launch_at,tokens_per_referral,updated_at';
+const contentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,genre_tracks,campaign_settings,launch_at,tokens_per_referral,updated_at';
+const legacyContentFields = 'id,eyebrow,headline,intro,benefit_one,benefit_two,benefit_three,hero_image_url,hero_image_path,hero_image_alt,age_group_tracks,campaign_settings,launch_at,tokens_per_referral,updated_at';
 const rewardFields = 'id,name,description,image_url,image_path,token_cost,is_active,sort_order,created_at,updated_at';
 const claimFields = 'id,referrer_id,reward_id,tokens_spent,status,created_at,updated_at';
 
@@ -276,6 +276,69 @@ export async function PATCH(request: Request) {
     }
     updates[field] = (body[field] as string).trim();
   }
+  const campaign = body.campaign_settings && typeof body.campaign_settings === 'object' && !Array.isArray(body.campaign_settings)
+    ? body.campaign_settings as Record<string, unknown>
+    : null;
+  const campaignStringLimits: Record<string, number> = {
+    brandName: 80, brandDescriptor: 120, tagline: 120, subheadline: 120, presentedBy: 120,
+    instagramHandle: 40, ctaLabel: 60, announcement: 700, eventTitle: 120, eventDetails: 500, venueNotice: 180,
+    registrationLabel: 60
+  };
+  if (!campaign) return NextResponse.json({ error: 'Campaign settings are required.' }, { status: 400 });
+  const safeCampaign: Record<string, unknown> = {};
+  for (const [field, limit] of Object.entries(campaignStringLimits)) {
+    const value = campaign[field];
+    if (typeof value !== 'string' || value.trim().length < 1 || value.trim().length > limit) {
+      return NextResponse.json({ error: `Enter ${field.replace(/[A-Z]/g, letter => ` ${letter.toLowerCase()}`)} in 1–${limit} characters.` }, { status: 400 });
+    }
+    safeCampaign[field] = value.trim();
+  }
+  const registrationUrl = campaign.registrationUrl;
+  if (registrationUrl !== '' && (typeof registrationUrl !== 'string' || registrationUrl.length > 500
+    || (() => { try { return new URL(registrationUrl).protocol !== 'https:'; } catch { return true; } })())) {
+    return NextResponse.json({ error: 'Enter a valid HTTPS registration link or leave it blank.' }, { status: 400 });
+  }
+  safeCampaign.registrationUrl = registrationUrl || '';
+  if (typeof safeCampaign.instagramHandle !== 'string' || !/^@?[a-zA-Z0-9._]{1,30}$/.test(safeCampaign.instagramHandle)) {
+    return NextResponse.json({ error: 'Enter a valid Instagram handle.' }, { status: 400 });
+  }
+  const phases = new Set(['signal', 'anticipation', 'invitation', 'final_call', 'aftermath']);
+  if (typeof campaign.phase !== 'string' || !phases.has(campaign.phase)) {
+    return NextResponse.json({ error: 'Choose a valid campaign reveal phase.' }, { status: 400 });
+  }
+  const experienceIds = new Set(['wine', 'adventure', 'music']);
+  if (!Array.isArray(campaign.experiences) || campaign.experiences.length !== experienceIds.size) {
+    return NextResponse.json({ error: 'All three experience cards must be configured.' }, { status: 400 });
+  }
+  const seenExperienceIds = new Set<string>();
+  const experiences: Array<{ id: string; title: string; description: string; icon: string; active: boolean }> = [];
+  for (const rawExperience of campaign.experiences) {
+    if (!rawExperience || typeof rawExperience !== 'object' || Array.isArray(rawExperience)) {
+      return NextResponse.json({ error: 'An experience card is invalid.' }, { status: 400 });
+    }
+    const experience = rawExperience as Record<string, unknown>;
+    const id = experience.id;
+    if (typeof id !== 'string' || !experienceIds.has(id) || seenExperienceIds.has(id)
+      || typeof experience.title !== 'string' || !experience.title.trim() || experience.title.trim().length > 80
+      || typeof experience.description !== 'string' || !experience.description.trim() || experience.description.trim().length > 240
+      || typeof experience.icon !== 'string' || !experience.icon.trim() || experience.icon.trim().length > 8
+      || typeof experience.active !== 'boolean') {
+      return NextResponse.json({ error: 'Each experience needs a unique supported category, title, description, icon, and visibility setting.' }, { status: 400 });
+    }
+    seenExperienceIds.add(id);
+    experiences.push({
+      id,
+      title: experience.title.trim(),
+      description: experience.description.trim(),
+      icon: experience.icon.trim(),
+      active: experience.active
+    });
+  }
+  if (!experiences.some(experience => experience.active)) {
+    return NextResponse.json({ error: 'At least one experience card must remain available for signup.' }, { status: 400 });
+  }
+  safeCampaign.phase = campaign.phase;
+  safeCampaign.experiences = experiences;
   let launchAt: string | null = null;
   if (body.launch_at !== null && body.launch_at !== '') {
     if (typeof body.launch_at !== 'string' || !Number.isFinite(Date.parse(body.launch_at))) {
@@ -284,7 +347,7 @@ export async function PATCH(request: Request) {
     launchAt = new Date(body.launch_at).toISOString();
   }
   const { data, error } = await database.from('waitlist_site_content')
-    .update({ ...updates, launch_at: launchAt, tokens_per_referral: 3, updated_at: new Date().toISOString() })
+    .update({ ...updates, campaign_settings: safeCampaign, launch_at: launchAt, tokens_per_referral: 3, updated_at: new Date().toISOString() })
     .eq('id', 'default')
     .select(contentFields)
     .single();

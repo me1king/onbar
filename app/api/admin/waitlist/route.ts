@@ -177,6 +177,25 @@ async function loadWaitlistStats(database: ReturnType<typeof getDatabase>) {
   const areaCounts = new Map<string, { country: string; county: string; city: string; area: string; total: number; inArea: number }>();
   const interestCounts = new Map<string, number>();
   const ageGroups = new Map(stats.ageGroups.map(group => [group.group, group]));
+  const { data: siteContent, error: contentError } = await database.from('waitlist_site_content')
+    .select('campaign_settings')
+    .eq('id', 'default')
+    .maybeSingle();
+  if (contentError) {
+    console.warn('[AdminWaitlist] Could not read experience card labels; using standard labels:', contentError);
+  } else {
+    const campaign = siteContent?.campaign_settings as { experiences?: unknown } | null;
+    if (Array.isArray(campaign?.experiences)) {
+      const labelByPath = new Map(campaign.experiences.flatMap(experience => {
+        if (!experience || typeof experience !== 'object') return [];
+        const item = experience as { id?: unknown; title?: unknown };
+        return typeof item.id === 'string' && typeof item.title === 'string'
+          ? [[item.id, item.title] as const]
+          : [];
+      }));
+      for (const path of stats.rewardPaths) path.label = labelByPath.get(path.path) || path.label;
+    }
+  }
   const rewardPaths = new Map(stats.rewardPaths.map(path => [path.path, path]));
 
   for (let offset = 0; ; offset += 1000) {

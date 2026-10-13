@@ -94,6 +94,25 @@ interface WaitlistResponse {
   hasMore: boolean;
   error?: string;
 }
+type CampaignPhase = 'signal' | 'anticipation' | 'invitation' | 'final_call' | 'aftermath';
+type CampaignExperience = { id: RewardPath; title: string; description: string; icon: string; active: boolean };
+interface WaitlistCampaignSettings {
+  brandName: string;
+  brandDescriptor: string;
+  tagline: string;
+  subheadline: string;
+  presentedBy: string;
+  instagramHandle: string;
+  ctaLabel: string;
+  phase: CampaignPhase;
+  announcement: string;
+  eventTitle: string;
+  eventDetails: string;
+  venueNotice: string;
+  registrationUrl: string;
+  registrationLabel: string;
+  experiences: CampaignExperience[];
+}
 interface WaitlistSiteContent {
   id: string;
   eyebrow: string;
@@ -107,6 +126,7 @@ interface WaitlistSiteContent {
   hero_image_alt: string;
   age_group_tracks: Record<string, { title: string; path: string; url: string }>;
   genre_tracks: Record<string, { title: string; path: string; url: string }>;
+  campaign_settings: WaitlistCampaignSettings;
   launch_at: string | null;
   tokens_per_referral: number;
   updated_at: string;
@@ -549,7 +569,7 @@ export default function WaitlistPage() {
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-start gap-3">
             <ImageIcon size={19} className="mt-1 text-primary" />
-            <div><h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Standalone site content</h2><p className="mt-1 text-xs text-slate-500">Manage the copy and hero image shown on the separately hosted early-access website.</p></div>
+            <div><h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Midnight Society campaign</h2><p className="mt-1 text-xs text-slate-500">Manage the live public identity, reveal phase, announcement, experience cards, event details and countdown for the separate waitlist site.</p></div>
           </div>
           {siteContentError && <p role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{siteContentError}</p>}
           {siteContentNotice && <p role="status" className={`mb-4 rounded-lg border p-3 text-sm font-bold ${siteContentNoticeConfirmed ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-300 bg-amber-50 text-amber-950'}`}>{siteContentNoticeConfirmed && <Check size={15} className="mr-1 inline-block" />}{siteContentNotice}</p>}
@@ -561,6 +581,39 @@ export default function WaitlistPage() {
             </div>
           ) : (
             <form className="grid gap-4 lg:grid-cols-2" onSubmit={saveSiteContent}>
+              <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 lg:col-span-2">
+                <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Public identity</h3><p className="mt-1 text-xs text-slate-500">Midnight Society KE is the experience brand; ONLINE BAR remains the parent brand.</p></div>
+                <label className="text-xs font-bold text-slate-700">Experience brand<input required maxLength={80} value={siteContent.campaign_settings.brandName} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, brandName: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Brand descriptor<input required maxLength={120} value={siteContent.campaign_settings.brandDescriptor} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, brandDescriptor: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Tagline line one<input required maxLength={120} value={siteContent.campaign_settings.tagline} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, tagline: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Tagline line two<input required maxLength={120} value={siteContent.campaign_settings.subheadline} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, subheadline: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Instagram handle<input required maxLength={40} value={siteContent.campaign_settings.instagramHandle} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, instagramHandle: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Presented by<input required maxLength={120} value={siteContent.campaign_settings.presentedBy} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, presentedBy: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              </div>
+              <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4 sm:grid-cols-2 lg:col-span-2">
+                <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Reveal sequence &amp; live announcement</h3><p className="mt-1 text-xs text-slate-500">Changing a phase only updates the public site; it does not send messages to members. Only publish dates, venue details and availability that are confirmed.</p></div>
+                <label className="text-xs font-bold text-slate-700">Current phase<select value={siteContent.campaign_settings.phase} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, phase: event.target.value as CampaignPhase } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal"><option value="signal">Phase 1 — The signal</option><option value="anticipation">Phase 2 — The anticipation</option><option value="invitation">Phase 3 — The invitation</option><option value="final_call">Phase 4 — The final call</option><option value="aftermath">Phase 5 — The aftermath</option></select></label>
+                <label className="text-xs font-bold text-slate-700">Primary button label<input required maxLength={60} value={siteContent.campaign_settings.ctaLabel} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, ctaLabel: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700 sm:col-span-2">Public announcement<textarea required maxLength={700} rows={4} value={siteContent.campaign_settings.announcement} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, announcement: event.target.value } })} className="mt-1 block w-full rounded-lg border border-slate-200 p-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Invitation / event card title<input required maxLength={120} value={siteContent.campaign_settings.eventTitle} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, eventTitle: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Venue / reveal note<input required maxLength={180} value={siteContent.campaign_settings.venueNotice} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, venueNotice: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700 sm:col-span-2">Event details<textarea required maxLength={500} rows={3} value={siteContent.campaign_settings.eventDetails} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, eventDetails: event.target.value } })} className="mt-1 block w-full rounded-lg border border-slate-200 p-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Official registration URL (optional)<input type="url" maxLength={500} placeholder="https://..." value={siteContent.campaign_settings.registrationUrl} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, registrationUrl: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-slate-700">Registration link label<input required maxLength={60} value={siteContent.campaign_settings.registrationLabel} onChange={event => setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, registrationLabel: event.target.value } })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                <p className="text-xs text-slate-500 sm:col-span-2">This link only sends visitors to the official destination. It does not report ticket purchases; ticket conversion reporting requires an integration with the ticketing provider.</p>
+              </div>
+              <div className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-2 lg:col-span-2">
+                <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Experience cards</h3><p className="mt-1 text-xs text-slate-500">These labels appear on the landing page and in the signup choice. At least one must remain visible.</p></div>
+                {siteContent.campaign_settings.experiences.map((experience, index) => (
+                  <fieldset key={experience.id} className="grid gap-2 rounded-lg border border-slate-200 p-3">
+                    <legend className="px-1 text-xs font-black text-slate-700">{experience.id === 'wine' ? 'Wine experiences' : experience.id === 'adventure' ? 'Curated experiences' : 'Music & live events'}</legend>
+                    <label className="text-xs font-bold text-slate-700">Title<input required maxLength={80} value={experience.title} onChange={event => { const experiences = [...siteContent.campaign_settings.experiences]; experiences[index] = { ...experience, title: event.target.value }; setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, experiences } }); }} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                    <label className="text-xs font-bold text-slate-700">Description<input required maxLength={240} value={experience.description} onChange={event => { const experiences = [...siteContent.campaign_settings.experiences]; experiences[index] = { ...experience, description: event.target.value }; setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, experiences } }); }} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                    <label className="text-xs font-bold text-slate-700">Icon<input required maxLength={8} value={experience.icon} onChange={event => { const experiences = [...siteContent.campaign_settings.experiences]; experiences[index] = { ...experience, icon: event.target.value }; setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, experiences } }); }} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+                    <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700"><input type="checkbox" checked={experience.active} onChange={event => { const experiences = [...siteContent.campaign_settings.experiences]; experiences[index] = { ...experience, active: event.target.checked }; setSiteContent({ ...siteContent, campaign_settings: { ...siteContent.campaign_settings, experiences } }); }} /> Show on public site and signup</label>
+                  </fieldset>
+                ))}
+              </div>
               <label className="text-xs font-bold text-slate-700">Eyebrow<input required maxLength={80} value={siteContent.eyebrow} onChange={event => setSiteContent({ ...siteContent, eyebrow: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-slate-700">Headline<input required maxLength={120} value={siteContent.headline} onChange={event => setSiteContent({ ...siteContent, headline: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-slate-700 lg:col-span-2">Introduction<textarea required maxLength={500} rows={3} value={siteContent.intro} onChange={event => setSiteContent({ ...siteContent, intro: event.target.value })} className="mt-1 block w-full rounded-lg border border-slate-200 p-3 text-sm font-normal" /></label>
@@ -899,7 +952,7 @@ export default function WaitlistPage() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Experience interests</h2>
-        <p className="mt-1 text-xs text-slate-500">See who is interested in wine experiences, hosted adventures or the Soul Fest ticket draw. Select a card to show those members below.</p>
+        <p className="mt-1 text-xs text-slate-500">See signup interest in the experience cards currently published on the Midnight Society site. Select a card to show those members below.</p>
         <ul className="mt-4 grid gap-3 sm:grid-cols-3">
           {(stats?.rewardPaths || []).map(path => (
             <li key={path.path}>
@@ -909,7 +962,7 @@ export default function WaitlistPage() {
                 onClick={() => { setRewardPath(current => current === path.path ? 'all' : path.path); setPage(0); }}
                 className={`w-full rounded-xl border p-4 text-left transition-colors ${rewardPath === path.path ? 'border-primary bg-amber-50 ring-2 ring-primary/20' : 'border-transparent bg-slate-50 hover:border-slate-200'}`}
               >
-                <span className="text-xs font-bold text-slate-600">{experienceLabels[path.path]}</span>
+                <span className="text-xs font-bold text-slate-600">{path.label || experienceLabels[path.path]}</span>
                 <b className="mt-2 block text-2xl text-slate-950">{loading ? '—' : count(path.count)}</b>
                 <span className="mt-1 block text-[10px] font-semibold text-slate-500">{rewardPath === path.path ? 'Showing these members · click to clear' : 'Click to view interested members'}</span>
               </button>
@@ -928,7 +981,7 @@ export default function WaitlistPage() {
             </select>
             <select aria-label="Filter by chosen experience" value={rewardPath} onChange={event => { setRewardPath(event.target.value as 'all' | RewardPath); setPage(0); }} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm">
               <option value="all">All experience interests</option>
-              {Object.entries(experienceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {(stats?.rewardPaths || []).map(path => <option key={path.path} value={path.path}>{path.label || experienceLabels[path.path]}</option>)}
             </select>
           </div>
         </div>
@@ -948,7 +1001,7 @@ export default function WaitlistPage() {
                   </td>
                   <td className="px-3 py-4"><div className="space-y-1.5">{[['Email', contact.email_updates_consent],['SMS', contact.sms_consent],['WhatsApp', contact.whatsapp_consent]].map(([label, allowed]) => <p key={String(label)} className={allowed ? 'font-bold text-emerald-700' : 'text-slate-400'}>{allowed ? '✓' : '—'} {String(label)}</p>)}</div><p className="mt-2 text-slate-500">Preferred: {contact.preferred_contact_method || 'No preference'}</p></td>
                   <td className="max-w-[190px] px-3 py-4"><p className="leading-relaxed text-slate-700">{contact.product_interests?.join(', ') || 'Not provided'}</p><p className="mt-2 text-slate-500">{contact.order_frequency?.replace('_', ' ') || 'Frequency not provided'}</p></td>
-                  <td className="max-w-[190px] px-3 py-4 text-slate-700">{contact.reward_path ? experienceLabels[contact.reward_path] : 'Not selected'}</td>
+                  <td className="max-w-[190px] px-3 py-4 text-slate-700">{contact.reward_path ? stats?.rewardPaths.find(path => path.path === contact.reward_path)?.label || experienceLabels[contact.reward_path] : 'Not selected'}</td>
                   <td className="px-3 py-4"><b className="mb-1 block text-slate-800">{ageGroups.find(group => group.id === contact.age_group)?.label ? `Age ${ageGroups.find(group => group.id === contact.age_group)?.label}` : 'Age group not provided'}</b>{contact.age_confirmed ? <span className="inline-flex items-center gap-1 font-bold text-emerald-700"><Check size={13} /> 18+ confirmed</span> : <span className="font-bold text-amber-700">Not recorded</span>}<p className="mt-1 text-slate-500">{date(contact.age_confirmed_at)}</p></td>
                   <td className="max-w-[160px] px-3 py-4 text-slate-600"><p>{contact.source || 'direct'}</p>{contact.campaign && <p className="mt-1">Campaign: {contact.campaign}</p>}{contact.referred_by_code && <p className="mt-1">Referred: {contact.referred_by_code}</p>}{contact.referral_code && <p className="mt-1">Invite: {contact.referral_code}</p>}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>
