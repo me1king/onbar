@@ -274,6 +274,21 @@ export default function AdminSettingsPage() {
         });
         const result = await response.json() as { error?: string };
         if (!response.ok) throw new Error(result.error || 'Settings could not be saved.');
+
+        const publishedTheme = settings.find(setting => setting.key === 'theme_config' && setting.is_published !== false);
+        if (
+            publishedTheme
+            && typeof publishedTheme.value === 'object'
+            && publishedTheme.value !== null
+            && 'primary' in publishedTheme.value
+            && typeof publishedTheme.value.primary === 'string'
+            && /^#[\da-f]{6}$/i.test(publishedTheme.value.primary)
+        ) {
+            const primary = publishedTheme.value.primary;
+            document.documentElement.style.setProperty('--primary', primary);
+            document.documentElement.style.setProperty('--ring', primary);
+            window.sessionStorage.setItem('onlinebar_theme_primary', primary);
+        }
     };
 
     const handleSave = async (key: string, value: unknown, publish: boolean = true) => {
@@ -325,16 +340,6 @@ export default function AdminSettingsPage() {
             await saveSettings([{ key, value: finalValue, is_published: publish }]);
 
             await logAuditAction(email, 'UPDATE_SETTINGS', { key, published: publish });
-            if (
-                key === 'theme_config' &&
-                publish &&
-                typeof finalValue === 'object' &&
-                finalValue !== null &&
-                'primary' in finalValue &&
-                typeof finalValue.primary === 'string'
-            ) {
-                window.sessionStorage.setItem('onlinebar_theme_primary', finalValue.primary);
-            }
             setMessage({
                 type: 'success',
                 text: publish ? `${key.toUpperCase()} published to live bar.` : `${key.toUpperCase()} saved as draft.`
@@ -429,7 +434,6 @@ export default function AdminSettingsPage() {
 
             await saveSettings(payloads.map(setting => ({ ...setting, is_published: true })));
 
-            window.sessionStorage.setItem('onlinebar_theme_primary', theme.primary);
             setBranding(updatedBrandingLocal);
             setHomepage(updatedHomepageLocal);
             setLogoFile(null);

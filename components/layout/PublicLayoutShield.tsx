@@ -75,7 +75,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
     }, []);
 
     useEffect(() => {
-        if (!mounted || pathname?.startsWith('/admin')) return;
+        if (!mounted) return;
         const cachedPrimary = window.sessionStorage.getItem('onlinebar_theme_primary');
         const configuredPrimary = cachedPrimary || settings.theme_config.primary;
         const primary = /^#[\da-f]{6}$/i.test(configuredPrimary)
