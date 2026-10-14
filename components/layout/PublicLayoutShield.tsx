@@ -153,9 +153,17 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
     }, [pathname, mounted]);
 
     const isAdmin = pathname?.startsWith('/admin');
+    const isMarket = pathname?.startsWith('/market')
+        || pathname === '/merchant/register'
+        || pathname?.startsWith('/merchant/dashboard')
+        || pathname?.startsWith('/merchant/portal');
     const suppressFloatingLaunchers = newsletterVisible || pathname?.startsWith('/profile') === true;
 
     if (isAdmin) {
+        return <main className="flex-grow">{children}</main>;
+    }
+
+    if (isMarket) {
         return <main className="flex-grow">{children}</main>;
     }
 

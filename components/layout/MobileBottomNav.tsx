@@ -34,7 +34,11 @@ export default function MobileBottomNav() {
     const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
     // Only show on mobile, and hide on admin pages
-    if (pathname?.startsWith('/admin')) return null;
+    if (pathname?.startsWith('/admin')
+        || pathname?.startsWith('/market')
+        || pathname === '/merchant/register'
+        || pathname?.startsWith('/merchant/dashboard')
+        || pathname?.startsWith('/merchant/portal')) return null;
 
     return (
         <nav data-mobile-bottom-nav className="fixed bottom-0 left-0 right-0 z-[1000] lg:hidden bg-white/95 backdrop-blur-xl border-t border-slate-100 pb-safe animate-in slide-in-from-bottom-full duration-500">

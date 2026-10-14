@@ -176,6 +176,7 @@ export default function AdminLayoutClient({
       { name: 'The Buzz Hub', href: '/admin/buzz', icon: Flame, permission: 'can_manage_marketing' },
       { name: 'Tasks Board', href: '/admin/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },
       { name: 'Merchant Onboarding', href: '/admin/merchants', icon: Store, minRole: 'admin' },
+      { name: 'Market Operations', href: '/admin/market', icon: Store, permission: 'can_manage_inventory' },
       { name: 'Traceability & Incidents', href: '/admin/traceability', icon: PackageSearch, permission: 'can_manage_orders' },
       { name: 'Partner Bars', href: '/admin/operations/vendors', icon: Store, permission: 'can_manage_settings' },
       { name: 'Global Supply', href: '/admin/operations/sourcing', icon: Globe, permission: 'can_manage_inventory' },
