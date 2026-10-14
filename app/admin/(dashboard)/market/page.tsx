@@ -41,6 +41,9 @@ interface Merchant {
   name: string;
   slug: string;
   status: 'approved' | 'suspended';
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
   created_at: string;
 }
 
@@ -62,9 +65,29 @@ interface MarketOffer {
   expires_at: string;
   created_at: string;
   product: { name: string; slug: string };
-  merchant: { name: string; slug: string };
+  merchant: { name: string; slug: string; contact_name: string | null; contact_email: string | null; contact_phone: string | null };
   variant: { size: string | null; color: string | null };
   messages: Array<{ actor: string; action: string; amount_minor: number | null; message: string | null; created_at: string }>;
+}
+
+interface MarketOrderRequest {
+  id: string;
+  reference: string;
+  product_name: string;
+  variant_label: string;
+  quantity: number;
+  unit_price_minor: number;
+  total_minor: number;
+  currency: string;
+  buyer_name: string;
+  buyer_email: string;
+  buyer_phone: string | null;
+  buyer_note: string | null;
+  status: string;
+  payment_status: string;
+  created_at: string;
+  updated_at: string;
+  merchant: { id: string; name: string; slug: string; contact_name: string | null; contact_email: string | null; contact_phone: string | null };
 }
 
 export default function MarketOperationsPage() {
@@ -72,7 +95,9 @@ export default function MarketOperationsPage() {
   const [products, setProducts] = useState<ProductListing[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [offers, setOffers] = useState<MarketOffer[]>([]);
+  const [orders, setOrders] = useState<MarketOrderRequest[]>([]);
   const [offerCounterAmounts, setOfferCounterAmounts] = useState<Record<string, string>>({});
+  const [offerAdminMessages, setOfferAdminMessages] = useState<Record<string, string>>({});
   const [campaign, setCampaign] = useState<MarketCampaign>({ title: '', message: '', published: false });
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -88,29 +113,33 @@ export default function MarketOperationsPage() {
     setLoading(true);
     setError('');
     try {
-      const [applicationResponse, productResponse, merchantResponse, campaignResponse, offerResponse] = await Promise.all([
+      const [applicationResponse, productResponse, merchantResponse, campaignResponse, offerResponse, orderResponse] = await Promise.all([
         fetch('/api/admin/market/applications', { cache: 'no-store' }),
         fetch('/api/admin/market/products', { cache: 'no-store' }),
         fetch('/api/admin/market/merchants', { cache: 'no-store' }),
         fetch('/api/admin/market/campaign', { cache: 'no-store' }),
-        fetch('/api/admin/market/offers', { cache: 'no-store' })
+        fetch('/api/admin/market/offers', { cache: 'no-store' }),
+        fetch('/api/admin/market/orders', { cache: 'no-store' })
       ]);
-      const [applicationResult, productResult, merchantResult, campaignResult, offerResult] = await Promise.all([
+      const [applicationResult, productResult, merchantResult, campaignResult, offerResult, orderResult] = await Promise.all([
         applicationResponse.json() as Promise<{ applications?: Application[]; error?: string }>,
         productResponse.json() as Promise<{ products?: ProductListing[]; error?: string }>,
         merchantResponse.json() as Promise<{ merchants?: Merchant[]; error?: string }>,
         campaignResponse.json() as Promise<{ campaign?: MarketCampaign; error?: string }>,
-        offerResponse.json() as Promise<{ offers?: MarketOffer[]; error?: string }>
+        offerResponse.json() as Promise<{ offers?: MarketOffer[]; error?: string }>,
+        orderResponse.json() as Promise<{ orders?: MarketOrderRequest[]; error?: string }>
       ]);
       if (!applicationResponse.ok) throw new Error(applicationResult.error || 'Could not load seller applications.');
       if (!productResponse.ok) throw new Error(productResult.error || 'Could not load product listings.');
       if (!merchantResponse.ok) throw new Error(merchantResult.error || 'Could not load merchants.');
       if (!campaignResponse.ok || !campaignResult.campaign) throw new Error(campaignResult.error || 'Could not load Market campaign settings.');
       if (!offerResponse.ok) throw new Error(offerResult.error || 'Could not load marketplace offers.');
+      if (!orderResponse.ok) throw new Error(orderResult.error || 'Could not load marketplace order requests.');
       setApplications(applicationResult.applications || []);
       setProducts(productResult.products || []);
       setMerchants(merchantResult.merchants || []);
       setOffers(offerResult.offers || []);
+      setOrders(orderResult.orders || []);
       setCampaign(campaignResult.campaign);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load seller applications.');
@@ -223,8 +252,13 @@ export default function MarketOperationsPage() {
 
   async function respondToOffer(offer: MarketOffer, action: 'accept' | 'counter' | 'decline') {
     const amountMinor = Math.round(Number(offerCounterAmounts[offer.id]) * 100);
+    const adminMessage = offerAdminMessages[offer.id]?.trim() || '';
     if (action === 'counter' && (!Number.isSafeInteger(amountMinor) || amountMinor < 100 || amountMinor > offer.listed_price_minor)) {
       setError('Enter a counteroffer between KSh 1 and the listed price.');
+      return;
+    }
+    if (adminMessage.length > 500) {
+      setError('Keep the coordination message under 500 characters.');
       return;
     }
     setWorkingOfferId(offer.id);
@@ -234,7 +268,7 @@ export default function MarketOperationsPage() {
       const response = await fetch('/api/admin/market/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ offerId: offer.id, action, amountMinor })
+        body: JSON.stringify({ offerId: offer.id, action, amountMinor, message: adminMessage })
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || 'Could not update this offer.');
@@ -353,7 +387,7 @@ export default function MarketOperationsPage() {
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Price negotiation</p>
           <h2 className="mt-2 text-2xl font-black">Customer offers</h2>
-          <p className="mt-2 text-sm text-slate-500">Review every buyer offer and seller response. Acceptances record a non-binding price agreement; checkout, orders and payments are not active.</p>
+          <p className="mt-2 text-sm text-slate-500">Review both sides of every negotiation, contact the buyer or boutique directly, and relay coordination notes in the shared offer thread. Acceptances are non-binding and do not create orders or payments.</p>
         </div>
         {!loading && offers.length === 0 && (
           <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No customer offers have been submitted.</div>
@@ -372,7 +406,17 @@ export default function MarketOperationsPage() {
                 </div>
               </div>
               <div className="mt-4 grid gap-1 text-sm text-slate-600">
-                <span>{offer.buyer_name} · {offer.buyer_email}{offer.buyer_phone ? ` · ${offer.buyer_phone}` : ''}</span>
+                <span className="font-semibold text-slate-800">Buyer: {offer.buyer_name}</span>
+                <span className="flex flex-wrap gap-x-3">
+                  <a className="text-primary underline" href={`mailto:${offer.buyer_email}`}>{offer.buyer_email}</a>
+                  {offer.buyer_phone && <a className="text-primary underline" href={`tel:${offer.buyer_phone}`}>{offer.buyer_phone}</a>}
+                </span>
+                <span className="font-semibold text-slate-800">Boutique: {offer.merchant.contact_name || offer.merchant.name}</span>
+                <span className="flex flex-wrap gap-x-3">
+                  {offer.merchant.contact_email && <a className="text-primary underline" href={`mailto:${offer.merchant.contact_email}`}>{offer.merchant.contact_email}</a>}
+                  {offer.merchant.contact_phone && <a className="text-primary underline" href={`tel:${offer.merchant.contact_phone}`}>{offer.merchant.contact_phone}</a>}
+                  {!offer.merchant.contact_email && !offer.merchant.contact_phone && <span>Contact details unavailable</span>}
+                </span>
                 <span>Submitted {new Date(offer.created_at).toLocaleString()} · Expires {new Date(offer.expires_at).toLocaleDateString()}</span>
               </div>
               <ol className="mt-4 grid gap-3 border-l border-slate-200 pl-4">
@@ -385,17 +429,78 @@ export default function MarketOperationsPage() {
                 ))}
               </ol>
               {['pending_merchant', 'countered'].includes(offer.status) && (
-                <div className="mt-5 flex flex-wrap items-end gap-3">
-                  <Button disabled={workingOfferId === offer.id} onClick={() => void respondToOffer(offer, 'accept')} className="bg-emerald-700 hover:bg-emerald-800">Accept current price</Button>
-                  <label className="grid gap-2 text-xs font-semibold text-slate-600">
-                    Counteroffer (KSh)
-                    <input type="number" min="1" max={offer.listed_price_minor / 100} step="1" value={offerCounterAmounts[offer.id] || ''} onChange={(event) => setOfferCounterAmounts({ ...offerCounterAmounts, [offer.id]: event.target.value })} className="rounded-lg border border-slate-200 p-2" />
+                <div className="mt-5 grid gap-3">
+                  <label className="grid max-w-2xl gap-2 text-xs font-semibold text-slate-600">
+                    Coordination note for both parties (optional)
+                    <textarea
+                      rows={2}
+                      maxLength={500}
+                      value={offerAdminMessages[offer.id] || ''}
+                      onChange={(event) => setOfferAdminMessages({ ...offerAdminMessages, [offer.id]: event.target.value })}
+                      placeholder="Share a message or next step with the buyer and boutique."
+                      className="rounded-lg border border-slate-200 p-2 text-sm font-normal"
+                    />
                   </label>
-                  <Button disabled={workingOfferId === offer.id || !offerCounterAmounts[offer.id]} onClick={() => void respondToOffer(offer, 'counter')} variant="outline">Send counteroffer</Button>
-                  <Button disabled={workingOfferId === offer.id} onClick={() => void respondToOffer(offer, 'decline')} variant="outline" className="border-rose-200 text-rose-700">Decline</Button>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <Button disabled={workingOfferId === offer.id} onClick={() => void respondToOffer(offer, 'accept')} className="bg-emerald-700 hover:bg-emerald-800">Accept current price</Button>
+                    <label className="grid gap-2 text-xs font-semibold text-slate-600">
+                      Counteroffer (KSh)
+                      <input type="number" min="1" max={offer.listed_price_minor / 100} step="1" value={offerCounterAmounts[offer.id] || ''} onChange={(event) => setOfferCounterAmounts({ ...offerCounterAmounts, [offer.id]: event.target.value })} className="rounded-lg border border-slate-200 p-2" />
+                    </label>
+                    <Button disabled={workingOfferId === offer.id || !offerCounterAmounts[offer.id]} onClick={() => void respondToOffer(offer, 'counter')} variant="outline">Send counteroffer</Button>
+                    <Button disabled={workingOfferId === offer.id} onClick={() => void respondToOffer(offer, 'decline')} variant="outline" className="border-rose-200 text-rose-700">Decline</Button>
+                  </div>
                 </div>
               )}
               {offer.status === 'accepted' && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Agreed price: KSh {((offer.accepted_amount_minor || offer.latest_amount_minor) / 100).toLocaleString('en-KE')}. This is not an order or payment.</p>}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-12">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Sales coordination</p>
+          <h2 className="mt-2 text-2xl font-black">Customer order requests</h2>
+          <p className="mt-2 text-sm text-slate-500">These are requests, not completed sales. Payment is unpaid unless the boutique has manually recorded an offline payment.</p>
+        </div>
+        {!loading && orders.length === 0 && (
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No customer order requests have been submitted.</div>
+        )}
+        <div className="mt-5 grid gap-4">
+          {orders.map((order) => (
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" key={order.id}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-primary">{order.reference} · {order.product_name}</p>
+                  <p className="mt-1 text-sm text-slate-600">{order.variant_label} · Qty {order.quantity} · Order request {order.status.replace(/_/g, ' ')}</p>
+                </div>
+                <div className="text-right text-sm">
+                  <p className="font-bold text-slate-900">Total: KSh {(order.total_minor / 100).toLocaleString('en-KE')}</p>
+                  <p className={order.payment_status === 'paid' ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>
+                    {order.payment_status === 'paid' ? 'Offline payment recorded by boutique' : 'Unpaid'}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-slate-500">Requested {new Date(order.created_at).toLocaleString()} · Unit price KSh {(order.unit_price_minor / 100).toLocaleString('en-KE')}</p>
+              <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <p className="font-bold text-slate-900">Customer · {order.buyer_name}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3">
+                    <a className="text-primary underline" href={`mailto:${order.buyer_email}`}>{order.buyer_email}</a>
+                    {order.buyer_phone && <a className="text-primary underline" href={`tel:${order.buyer_phone}`}>{order.buyer_phone}</a>}
+                  </div>
+                  {order.buyer_note && <p className="mt-2 whitespace-pre-wrap text-slate-600">Note: {order.buyer_note}</p>}
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <p className="font-bold text-slate-900">Boutique · {order.merchant.contact_name || order.merchant.name}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3">
+                    {order.merchant.contact_email && <a className="text-primary underline" href={`mailto:${order.merchant.contact_email}`}>{order.merchant.contact_email}</a>}
+                    {order.merchant.contact_phone && <a className="text-primary underline" href={`tel:${order.merchant.contact_phone}`}>{order.merchant.contact_phone}</a>}
+                    {!order.merchant.contact_email && !order.merchant.contact_phone && <span className="text-slate-500">Contact details unavailable</span>}
+                  </div>
+                </div>
+              </div>
             </article>
           ))}
         </div>
@@ -441,6 +546,12 @@ export default function MarketOperationsPage() {
               <div>
                 <h3 className="font-bold text-slate-900">{merchant.name}</h3>
                 <p className="text-sm text-slate-500">/market/store/{merchant.slug} · {merchant.status}</p>
+                <p className="mt-2 text-sm text-slate-600">{merchant.contact_name || 'Contact name unavailable'}</p>
+                <div className="mt-1 flex flex-wrap gap-x-3 text-sm">
+                  {merchant.contact_email && <a className="text-primary underline" href={`mailto:${merchant.contact_email}`}>{merchant.contact_email}</a>}
+                  {merchant.contact_phone && <a className="text-primary underline" href={`tel:${merchant.contact_phone}`}>{merchant.contact_phone}</a>}
+                  {!merchant.contact_email && !merchant.contact_phone && <span className="text-slate-500">Contact details unavailable</span>}
+                </div>
               </div>
               <Button
                 disabled={workingMerchantId === merchant.id}

@@ -25,7 +25,7 @@ export async function GET() {
 
   const { data, error } = await access.database
     .from('mm_price_offers')
-    .select('id, product_id, variant_id, merchant_id, buyer_name, buyer_email, buyer_phone, listed_price_minor, latest_amount_minor, accepted_amount_minor, status, expires_at, created_at, product:mm_products!inner(name, slug), merchant:mm_merchants!inner(name, slug), variant:mm_product_variants!inner(size, color), messages:mm_price_offer_messages(actor, action, amount_minor, message, created_at)')
+    .select('id, product_id, variant_id, merchant_id, buyer_name, buyer_email, buyer_phone, listed_price_minor, latest_amount_minor, accepted_amount_minor, status, expires_at, created_at, product:mm_products!inner(name, slug), merchant:mm_merchants!inner(name, slug, contact_name, contact_email, contact_phone), variant:mm_product_variants!inner(size, color), messages:mm_price_offer_messages(actor, action, amount_minor, message, created_at)')
     .order('created_at', { ascending: false })
     .limit(200);
   if (error) {
