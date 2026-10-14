@@ -27,6 +27,8 @@ interface ProductListing {
   id: string;
   name: string;
   description: string | null;
+  status: 'draft' | 'pending_review' | 'published' | 'rejected' | 'archived';
+  review_note: string | null;
   attributes: Record<string, string>;
   delivery_information: string | null;
   return_policy: string | null;
@@ -83,11 +85,12 @@ interface MarketOrderRequest {
   buyer_email: string;
   buyer_phone: string | null;
   buyer_note: string | null;
-  status: string;
-  payment_status: string;
+  status: 'requested' | 'confirmed' | 'preparing' | 'ready' | 'fulfilled' | 'cancelled';
+  payment_status: 'unpaid' | 'paid';
   created_at: string;
   updated_at: string;
   merchant: { id: string; name: string; slug: string; contact_name: string | null; contact_email: string | null; contact_phone: string | null };
+  events: Array<{ actor: string; actor_email: string | null; action: string; from_status: string | null; to_status: string; note: string | null; created_at: string }>;
 }
 
 export default function MarketOperationsPage() {
@@ -98,6 +101,7 @@ export default function MarketOperationsPage() {
   const [orders, setOrders] = useState<MarketOrderRequest[]>([]);
   const [offerCounterAmounts, setOfferCounterAmounts] = useState<Record<string, string>>({});
   const [offerAdminMessages, setOfferAdminMessages] = useState<Record<string, string>>({});
+  const [orderAdminNotes, setOrderAdminNotes] = useState<Record<string, string>>({});
   const [campaign, setCampaign] = useState<MarketCampaign>({ title: '', message: '', published: false });
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -108,6 +112,7 @@ export default function MarketOperationsPage() {
   const [workingMerchantId, setWorkingMerchantId] = useState<string | null>(null);
   const [campaignWorking, setCampaignWorking] = useState(false);
   const [workingOfferId, setWorkingOfferId] = useState<string | null>(null);
+  const [workingOrderId, setWorkingOrderId] = useState<string | null>(null);
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -224,10 +229,10 @@ export default function MarketOperationsPage() {
     }
   }
 
-  async function reviewProduct(product: ProductListing, status: 'published' | 'rejected') {
+  async function reviewProduct(product: ProductListing, status: ProductListing['status']) {
     const reviewNote = reviewNotes[product.id]?.trim() || '';
-    if (status === 'rejected' && reviewNote.length < 5) {
-      setError('Add at least five characters explaining the product changes required before declining it.');
+    if (['rejected', 'archived'].includes(status) && reviewNote.length < 5) {
+      setError('Add at least five characters explaining why this listing is declined or hidden.');
       return;
     }
     setWorkingProductId(product.id);
@@ -241,12 +246,47 @@ export default function MarketOperationsPage() {
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || 'Could not update this listing.');
-      setMessage(`${product.name} was ${status === 'published' ? 'published' : 'declined'}.`);
+      const labels: Record<ProductListing['status'], string> = {
+        draft: 'saved as a draft',
+        pending_review: 'returned to review',
+        published: 'published',
+        rejected: 'declined',
+        archived: 'hidden from the marketplace'
+      };
+      setMessage(`${product.name} was ${labels[status]}.`);
       await loadApplications();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not update this listing.');
     } finally {
       setWorkingProductId(null);
+    }
+  }
+
+  async function updateOrder(order: MarketOrderRequest, status: 'paid' | Exclude<MarketOrderRequest['status'], 'requested'>) {
+    const note = orderAdminNotes[order.id]?.trim() || '';
+    if (note.length < 5) {
+      setError('Add an audit note of at least five characters before changing an order.');
+      return;
+    }
+    setWorkingOrderId(order.id);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch('/api/admin/market/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, status, note })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not update this order request.');
+      setMessage(status === 'paid'
+        ? `Offline payment recorded for ${order.reference}.`
+        : `Order ${order.reference} moved to ${status.replace(/_/g, ' ')}.`);
+      await loadApplications();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not update this order request.');
+    } finally {
+      setWorkingOrderId(null);
     }
   }
 
@@ -356,27 +396,39 @@ export default function MarketOperationsPage() {
 
       <section className="mt-12">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Catalog moderation</p>
-          <h2 className="mt-2 text-2xl font-black">Product listings</h2>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Catalog control</p>
+          <h2 className="mt-2 text-2xl font-black">All product listings</h2>
+          <p className="mt-2 text-sm text-slate-500">Review submissions, publish or decline products, and hide or restore any listing. Hidden products do not appear in the customer catalog.</p>
         </div>
         {!loading && products.length === 0 && (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No products are waiting for review.</div>
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No marketplace listings yet.</div>
         )}
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           {products.map((product) => (
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" key={product.id}>
               {product.images[0] && <div className="relative mb-4 aspect-[4/3] w-full overflow-hidden rounded-xl">{product.images[0].mediaType === 'video' ? <video className="h-full w-full object-cover" src={product.images[0].url} controls aria-label={product.images[0].alt} /> : <Image className="object-cover" src={product.images[0].url} alt={product.images[0].alt} fill unoptimized sizes="(max-width: 800px) 100vw, 50vw" />}</div>}
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{product.merchant.name} · {product.category?.name || 'Uncategorized'}</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{product.merchant.name} · {product.category?.name || 'Uncategorized'} · {product.status.replace(/_/g, ' ')}</p>
               <h3 className="mt-2 text-lg font-bold text-slate-900">{product.name}</h3>
               {product.description && <p className="mt-2 text-sm text-slate-600">{product.description}</p>}
+              {product.review_note && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Last admin note: {product.review_note}</p>}
               {product.variants[0] && <p className="mt-2 font-semibold text-slate-800">KSh {(product.variants[0].sale_price_minor ? product.variants[0].sale_price_minor / 100 : product.variants[0].price_minor / 100).toLocaleString('en-KE')}{product.variants[0].sale_price_minor && <span className="ml-2 text-sm text-slate-400 line-through">KSh {(product.variants[0].price_minor / 100).toLocaleString('en-KE')}</span>}</p>}
               {Object.entries(product.attributes || {}).filter(([, value]) => value).length > 0 && <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">{Object.entries(product.attributes).filter(([, value]) => value).map(([key, value]) => <div key={key}><dt className="text-xs font-bold uppercase text-slate-500">{key.replace(/_/g, ' ')}</dt><dd className="text-slate-700">{value}</dd></div>)}</dl>}
               {product.delivery_information && <p className="mt-2 text-sm text-slate-600"><strong>Delivery:</strong> {product.delivery_information}</p>}
               {product.return_policy && <p className="mt-2 text-sm text-slate-600"><strong>Returns:</strong> {product.return_policy}</p>}
-              <label className="mt-4 block text-sm font-semibold text-slate-700">Review note (required when declining)<textarea className="mt-1 w-full rounded-lg border border-slate-300 p-3" maxLength={1000} rows={2} value={reviewNotes[product.id] || ''} onChange={(event) => setReviewNotes({ ...reviewNotes, [product.id]: event.target.value })} placeholder="Explain what the merchant should correct." /></label>
-              <div className="mt-4 flex gap-2">
-                <Button disabled={workingProductId === product.id} onClick={() => void reviewProduct(product, 'published')} className="gap-2 bg-emerald-700 hover:bg-emerald-800"><Check size={15} /> Publish</Button>
-                <Button disabled={workingProductId === product.id} onClick={() => void reviewProduct(product, 'rejected')} variant="outline" className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"><X size={15} /> Decline</Button>
+              <label className="mt-4 block text-sm font-semibold text-slate-700">Admin note (required when declining or hiding)<textarea className="mt-1 w-full rounded-lg border border-slate-300 p-3" maxLength={1000} rows={2} value={reviewNotes[product.id] || ''} onChange={(event) => setReviewNotes({ ...reviewNotes, [product.id]: event.target.value })} placeholder="Explain what the merchant should correct or why you are hiding this listing." /></label>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {product.status !== 'published' && (
+                  <Button disabled={workingProductId === product.id} onClick={() => void reviewProduct(product, 'published')} className="gap-2 bg-emerald-700 hover:bg-emerald-800"><Check size={15} /> Publish / restore</Button>
+                )}
+                {product.status === 'pending_review' && (
+                  <Button disabled={workingProductId === product.id} onClick={() => void reviewProduct(product, 'rejected')} variant="outline" className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"><X size={15} /> Decline</Button>
+                )}
+                {product.status !== 'archived' && product.status !== 'rejected' && (
+                  <Button disabled={workingProductId === product.id || (reviewNotes[product.id] || '').trim().length < 5} onClick={() => void reviewProduct(product, 'archived')} variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50">Hide listing</Button>
+                )}
+                {product.status === 'rejected' && (
+                  <Button disabled={workingProductId === product.id || (reviewNotes[product.id] || '').trim().length < 5} onClick={() => void reviewProduct(product, 'pending_review')} variant="outline">Return to review</Button>
+                )}
               </div>
             </article>
           ))}
@@ -461,8 +513,8 @@ export default function MarketOperationsPage() {
       <section className="mt-12">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Sales coordination</p>
-          <h2 className="mt-2 text-2xl font-black">Customer order requests</h2>
-          <p className="mt-2 text-sm text-slate-500">These are requests, not completed sales. Payment is unpaid unless the boutique has manually recorded an offline payment.</p>
+          <h2 className="mt-2 text-2xl font-black">Order control & customer requests</h2>
+          <p className="mt-2 text-sm text-slate-500">Coordinate with both parties, advance or cancel order requests, and review every intervention in the audit history. These are not completed sales. Only record offline payment after independently confirming it was received.</p>
         </div>
         {!loading && orders.length === 0 && (
           <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No customer order requests have been submitted.</div>
@@ -473,12 +525,12 @@ export default function MarketOperationsPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-primary">{order.reference} · {order.product_name}</p>
-                  <p className="mt-1 text-sm text-slate-600">{order.variant_label} · Qty {order.quantity} · Order request {order.status.replace(/_/g, ' ')}</p>
+                  <p className="mt-1 text-sm text-slate-600">{order.variant_label} · Qty {order.quantity} · Status: {order.status.replace(/_/g, ' ')}</p>
                 </div>
                 <div className="text-right text-sm">
                   <p className="font-bold text-slate-900">Total: KSh {(order.total_minor / 100).toLocaleString('en-KE')}</p>
                   <p className={order.payment_status === 'paid' ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>
-                    {order.payment_status === 'paid' ? 'Offline payment recorded by boutique' : 'Unpaid'}
+                    {order.payment_status === 'paid' ? 'Offline payment recorded' : 'Unpaid'}
                   </p>
                 </div>
               </div>
@@ -501,6 +553,62 @@ export default function MarketOperationsPage() {
                   </div>
                 </div>
               </div>
+              {order.events.length > 0 && (
+                <details className="mt-4 rounded-xl border border-slate-200 p-4">
+                  <summary className="cursor-pointer text-sm font-bold text-slate-800">Order history ({order.events.length})</summary>
+                  <ol className="mt-3 grid gap-3 border-l border-slate-200 pl-4">
+                    {order.events.map((event, index) => (
+                      <li key={`${event.created_at}-${index}`} className="text-sm text-slate-600">
+                        <strong className="text-slate-800">{event.actor === 'admin' ? `Online Bar${event.actor_email ? ` · ${event.actor_email}` : ''}` : event.actor === 'merchant' ? 'Boutique' : 'Customer'} · {event.action.replace(/_/g, ' ')}</strong>
+                        {event.from_status !== event.to_status && <span> · {event.from_status || 'new'} → {event.to_status}</span>}
+                        {event.note && <p className="mt-1 whitespace-pre-wrap">{event.note}</p>}
+                        <time className="mt-1 block text-xs">{new Date(event.created_at).toLocaleString()}</time>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
+              {!['fulfilled', 'cancelled'].includes(order.status) && (
+                <div className="mt-5 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                    Admin action note (required and audited)
+                    <textarea
+                      rows={2}
+                      maxLength={1000}
+                      minLength={5}
+                      value={orderAdminNotes[order.id] || ''}
+                      onChange={(event) => setOrderAdminNotes({ ...orderAdminNotes, [order.id]: event.target.value })}
+                      placeholder="Record why Online Bar is changing this order or verifying offline payment."
+                      className="rounded-lg border border-slate-200 bg-white p-3 font-normal"
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {order.status === 'requested' && (
+                      <Button disabled={workingOrderId === order.id} onClick={() => void updateOrder(order, 'confirmed')} className="bg-emerald-700 hover:bg-emerald-800">Confirm request</Button>
+                    )}
+                    {order.status === 'confirmed' && (
+                      <Button disabled={workingOrderId === order.id} onClick={() => void updateOrder(order, 'preparing')} variant="outline">Start preparation</Button>
+                    )}
+                    {order.status === 'preparing' && (
+                      <Button disabled={workingOrderId === order.id} onClick={() => void updateOrder(order, 'ready')} variant="outline">Mark ready</Button>
+                    )}
+                    {order.status === 'ready' && (
+                      <Button disabled={workingOrderId === order.id || order.payment_status !== 'paid'} onClick={() => void updateOrder(order, 'fulfilled')} variant="outline">Mark fulfilled</Button>
+                    )}
+                    {['confirmed', 'preparing', 'ready'].includes(order.status) && order.payment_status === 'unpaid' && (
+                      <Button disabled={workingOrderId === order.id} onClick={() => void updateOrder(order, 'paid')} variant="outline" className="border-emerald-300 text-emerald-800">
+                        Record verified offline payment
+                      </Button>
+                    )}
+                    {['requested', 'confirmed', 'preparing', 'ready'].includes(order.status) && (
+                      <Button disabled={workingOrderId === order.id} onClick={() => void updateOrder(order, 'cancelled')} variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50">
+                        Cancel request
+                      </Button>
+                    )}
+                  </div>
+                  {order.status === 'ready' && order.payment_status !== 'paid' && <p className="text-xs text-amber-800">Record confirmed offline payment before fulfilment. This control does not process or verify payments automatically.</p>}
+                </div>
+              )}
             </article>
           ))}
         </div>
