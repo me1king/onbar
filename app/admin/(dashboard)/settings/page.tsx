@@ -313,16 +313,26 @@ export default function AdminSettingsPage() {
                 setHeroFile(null);
             }
 
-            const { error } = await supabase
-                .from('settings')
-                .upsert({
-                    key,
-                    value: finalValue,
-                    is_published: publish,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'key' });
+            if (key === 'theme_config') {
+                const response = await fetch('/api/admin/settings/theme', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ theme: finalValue, publish })
+                });
+                const result = await response.json() as { error?: string };
+                if (!response.ok) throw new Error(result.error || 'Theme settings could not be saved.');
+            } else {
+                const { error } = await supabase
+                    .from('settings')
+                    .upsert({
+                        key,
+                        value: finalValue,
+                        is_published: publish,
+                        updated_at: new Date().toISOString()
+                    }, { onConflict: 'key' });
 
-            if (error) throw error;
+                if (error) throw error;
+            }
 
             await logAuditAction(email, 'UPDATE_SETTINGS', { key, published: publish });
             if (
@@ -422,11 +432,18 @@ export default function AdminSettingsPage() {
             if (faviconFile) updatedBrandingLocal.favicon_url = await uploadAsset(faviconFile, 'branding');
             if (heroFile) updatedHomepageLocal.hero_image_url = await uploadAsset(heroFile, 'homepage');
 
+            const themeResponse = await fetch('/api/admin/settings/theme', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme, publish: true })
+            });
+            const themeResult = await themeResponse.json() as { error?: string };
+            if (!themeResponse.ok) throw new Error(themeResult.error || 'Theme settings could not be saved.');
+
             const payloads = [
                 { key: 'contact', value: contact },
                 { key: 'branding', value: updatedBrandingLocal },
                 { key: 'homepage', value: updatedHomepageLocal },
-                { key: 'theme_config', value: theme },
                 { key: 'seo_config', value: seo },
                 { key: 'social_links', value: social },
                 { key: 'store_info', value: store },
