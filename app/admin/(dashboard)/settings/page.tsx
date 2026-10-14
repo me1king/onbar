@@ -114,6 +114,19 @@ const DEFAULTS = {
     }
 };
 
+const THEME_PRESETS = {
+    classic: {
+        label: 'Classic Online Bar',
+        description: 'Restore the familiar yellow primary color.',
+        colors: { primary: '#F5A000', secondary: '#0F172A', accent: '#5B5BFF' }
+    },
+    midnight: {
+        label: 'Midnight Society',
+        description: 'Use the cream, red and deep-green palette.',
+        colors: { primary: '#D91C1C', secondary: '#10231f', accent: '#F9F4EC' }
+    }
+} as const;
+
 type TabId = 'identity' | 'homepage' | 'promotions' | 'theme' | 'seo' | 'ops' | 'catalog' | 'ai' | 'onboarding' | 'integrations' | 'features' | 'advanced';
 
 interface HomepageProduct {
@@ -312,6 +325,16 @@ export default function AdminSettingsPage() {
             if (error) throw error;
 
             await logAuditAction(email, 'UPDATE_SETTINGS', { key, published: publish });
+            if (
+                key === 'theme_config' &&
+                publish &&
+                typeof finalValue === 'object' &&
+                finalValue !== null &&
+                'primary' in finalValue &&
+                typeof finalValue.primary === 'string'
+            ) {
+                window.sessionStorage.setItem('onlinebar_theme_primary', finalValue.primary);
+            }
             setMessage({
                 type: 'success',
                 text: publish ? `${key.toUpperCase()} published to live bar.` : `${key.toUpperCase()} saved as draft.`
@@ -422,6 +445,7 @@ export default function AdminSettingsPage() {
 
             if (error) throw error;
 
+            window.sessionStorage.setItem('onlinebar_theme_primary', theme.primary);
             setBranding(updatedBrandingLocal);
             setHomepage(updatedHomepageLocal);
             setLogoFile(null);
@@ -876,6 +900,37 @@ export default function AdminSettingsPage() {
                         <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
                             <Card className="rounded-[3rem] border border-border p-10 bg-card shadow-sm space-y-10 text-left">
                                 <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><Palette className="h-5 w-5 text-primary" /> Theme Engine</h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <h3 className="text-xs font-black uppercase tracking-widest text-foreground">Primary color preset</h3>
+                                        <p className="mt-1 text-sm text-muted-foreground">Choose a preset, then select <strong>Sync Changes</strong> to save it to the live storefront.</p>
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        {Object.entries(THEME_PRESETS).map(([presetId, preset]) => {
+                                            const selected = theme.primary.toUpperCase() === preset.colors.primary;
+                                            return (
+                                                <button
+                                                    key={presetId}
+                                                    type="button"
+                                                    aria-pressed={selected}
+                                                    onClick={() => setTheme({ ...theme, ...preset.colors })}
+                                                    className={cn(
+                                                        'flex min-h-24 items-center gap-4 rounded-2xl border p-4 text-left transition',
+                                                        selected ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-white hover:border-primary/40'
+                                                    )}
+                                                >
+                                                    <span className="h-10 w-10 shrink-0 rounded-full border border-black/10 shadow-sm" style={{ backgroundColor: preset.colors.primary }} />
+                                                    <span className="min-w-0">
+                                                        <span className="block text-sm font-black text-foreground">{preset.label}</span>
+                                                        <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{preset.description}</span>
+                                                        <span className="mt-1 block font-mono text-[10px] text-muted-foreground">{preset.colors.primary}</span>
+                                                    </span>
+                                                    {selected && <CheckCircle2 aria-label="Selected" className="ml-auto h-5 w-5 shrink-0 text-primary" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
                                 <div className="grid sm:grid-cols-3 gap-8">
                                     {[
                                         { id: 'primary', label: 'Primary (Action)', val: theme.primary },

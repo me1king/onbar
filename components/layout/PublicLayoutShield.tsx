@@ -75,6 +75,18 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
     }, []);
 
     useEffect(() => {
+        if (!mounted || pathname?.startsWith('/admin')) return;
+        const cachedPrimary = window.sessionStorage.getItem('onlinebar_theme_primary');
+        const configuredPrimary = cachedPrimary || settings.theme_config.primary;
+        const primary = /^#[\da-f]{6}$/i.test(configuredPrimary)
+            ? configuredPrimary
+            : '#D91C1C';
+        document.documentElement.style.setProperty('--primary', primary);
+        document.documentElement.style.setProperty('--ring', primary);
+        if (cachedPrimary) window.sessionStorage.removeItem('onlinebar_theme_primary');
+    }, [mounted, pathname, settings.theme_config.primary]);
+
+    useEffect(() => {
         if (!mounted) return;
         const newsletter = document.getElementById('footer-newsletter');
         if (!newsletter || typeof IntersectionObserver === 'undefined') return;
