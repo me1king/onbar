@@ -309,6 +309,16 @@ export default function WaitlistPage() {
 
   useEffect(() => { void loadSiteContent(); }, [loadSiteContent]);
 
+  useEffect(() => {
+    if (loadingSiteContent || !window.location.hash.startsWith('#waitlist-')) return;
+    const targetId = decodeURIComponent(window.location.hash.slice(1));
+    if (targetId !== 'waitlist-age-music' && targetId !== 'waitlist-genre-music') return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [loadingSiteContent, siteContent]);
+
   const topAreas = useMemo(() => (data?.stats.areas || []).slice(0, 5), [data]);
   const referralCredits = data?.referralAnalytics?.credits || [];
   const referralCreditPageSize = 20;
@@ -581,7 +591,30 @@ export default function WaitlistPage() {
           {publicSiteCheckAvailable === false && siteContent && <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">The live waitlist could not be checked right now. Song assignments below are not confirmed live.</p>}
           {!siteContent ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-700">{loadingSiteContent ? 'Loading website content…' : 'Website controls are unavailable until the settings load.'}</p>
+              <p className="text-sm font-semibold text-slate-700">{loadingSiteContent ? 'Loading website content…' : 'Website campaign settings are unavailable. The full campaign editor will return after its settings load.'}</p>
+              <p className="mt-2 text-xs text-slate-500">You can still upload a named licensed song below. The assignment is confirmed only when the upload endpoint saves it to the shared waitlist database.</p>
+              <div id="waitlist-age-music" className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Upload age-group songs</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{ageGroups.map(group => {
+                  const trackId = `age:${group.id}`;
+                  return <div key={trackId} className="rounded-lg border border-slate-100 p-3">
+                    <label className="block text-xs font-bold text-slate-600">{group.label} track name<input required maxLength={100} value={trackTitles[trackId] ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [trackId]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
+                    <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200"><Upload size={13} />{uploadingTrack === trackId ? 'Uploading…' : 'Choose audio file'}<input type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a" disabled={uploadingTrack !== null} className="sr-only" onChange={event => { void uploadMusicTrack('age', group.id, event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
+                    {trackUploadErrors[trackId] && <p role="alert" className="mt-2 text-xs text-rose-800">{trackUploadErrors[trackId]}</p>}
+                  </div>;
+                })}</div>
+              </div>
+              <div id="waitlist-genre-music" className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Upload genre songs</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{musicGenres.map(genre => {
+                  const trackId = `genre:${genre.id}`;
+                  return <div key={trackId} className="rounded-lg border border-slate-100 p-3">
+                    <label className="block text-xs font-bold text-slate-600">{genre.label} track name<input required maxLength={100} value={trackTitles[trackId] ?? ''} onChange={event => setTrackTitles(current => ({ ...current, [trackId]: event.target.value }))} className="mt-1 block min-h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-normal" /></label>
+                    <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200"><Upload size={13} />{uploadingTrack === trackId ? 'Uploading…' : 'Choose audio file'}<input type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a" disabled={uploadingTrack !== null} className="sr-only" onChange={event => { void uploadMusicTrack('genre', genre.id, event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
+                    {trackUploadErrors[trackId] && <p role="alert" className="mt-2 text-xs text-rose-800">{trackUploadErrors[trackId]}</p>}
+                  </div>;
+                })}</div>
+              </div>
               {!loadingSiteContent && <button type="button" onClick={() => void loadSiteContent()} className="mt-3 min-h-10 rounded-lg bg-slate-900 px-4 text-sm font-bold text-white">Retry loading settings</button>}
             </div>
           ) : (

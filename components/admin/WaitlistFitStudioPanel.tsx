@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { Download, RefreshCw, Save, Search, Users } from 'lucide-react';
 
 const serviceOptions = [
@@ -42,6 +42,17 @@ type Provider = {
   email: string | null; phone: string | null; notes: string; verified: boolean;
   available: boolean; updated_at: string;
 };
+type Offering = {
+  id: string; provider_id: string | null; service_key: string; title: string;
+  description: string; image_path: string | null; image_url: string | null;
+  price_kes: number | null; available: boolean; published: boolean; updated_at: string;
+};
+type Booking = {
+  id: string; offering_id: string; member_message: string; status: string;
+  created_at: string; updated_at: string;
+  member: { full_name: string | null; email: string; phone: string | null } | null;
+  offering: { title: string; service_key: string; price_kes: number | null } | null;
+};
 type FitProfile = {
   id: string; member_id: string; concept: string; character_theme: string | null;
   outfit_status: string; budget_range: string | null; group_plan: string;
@@ -55,6 +66,8 @@ type FitSettings = { title: string; intro: string; merchant_notice: string };
 type DashboardData = {
   profiles: FitProfile[];
   providers: Provider[];
+  offerings: Offering[];
+  bookings: Booking[];
   settings: FitSettings | null;
   audit: Array<{ id: number; actor_email: string; action: string; profile_id: string | null; created_at: string }>;
   metrics: {
@@ -70,6 +83,11 @@ type Props = { canView: boolean; canManage: boolean; canExport: boolean };
 const emptyProvider = {
   id: '', name: '', service_key: 'finding_outfit', contact_name: '',
   email: '', phone: '', notes: '', verified: false, available: false
+};
+const emptyOffering = {
+  id: '', provider_id: '', service_key: 'finding_outfit', title: '',
+  description: '', image_path: '', image_url: '', price_kes: '',
+  available: true, published: false
 };
 
 function count(value: number | undefined) {
@@ -95,8 +113,12 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
   const [expandedId, setExpandedId] = useState('');
   const [savingProfile, setSavingProfile] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
+  const [savingOffering, setSavingOffering] = useState(false);
+  const [uploadingOfferingImage, setUploadingOfferingImage] = useState(false);
+  const [savingBooking, setSavingBooking] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
   const [providerDraft, setProviderDraft] = useState(emptyProvider);
+  const [offeringDraft, setOfferingDraft] = useState(emptyOffering);
   const [settingsDraft, setSettingsDraft] = useState<FitSettings | null>(null);
 
   const load = useCallback(async () => {
@@ -170,6 +192,79 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
       setError(cause instanceof Error ? cause.message : 'Provider details could not be saved.');
     } finally {
       setSavingProvider(false);
+    }
+  };
+
+  const uploadOfferingImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setUploadingOfferingImage(true);
+    setError('');
+    setNotice('');
+    try {
+      const form = new FormData();
+      form.set('file', file);
+      const response = await fetch('/api/admin/waitlist-fit-studio', { method: 'POST', body: form });
+      const result = await response.json() as { imagePath?: string; imageUrl?: string; error?: string };
+      if (!response.ok || !result.imagePath || !result.imageUrl) throw new Error(result.error || 'The listing photo could not be uploaded.');
+      setOfferingDraft(current => ({ ...current, image_path: result.imagePath!, image_url: result.imageUrl! }));
+      setNotice('Photo uploaded. Save the offer to publish it with this image.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The listing photo could not be uploaded.');
+    } finally {
+      setUploadingOfferingImage(false);
+    }
+  };
+
+  const saveOffering = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingOffering(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch('/api/admin/waitlist-fit-studio', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_offering',
+          offering: {
+            ...offeringDraft,
+            price_kes: offeringDraft.price_kes === '' ? null : Number(offeringDraft.price_kes),
+            provider_id: offeringDraft.provider_id || null
+          }
+        })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'The offer could not be saved.');
+      setNotice('Offer saved and recorded in the Admin audit trail.');
+      setOfferingDraft(emptyOffering);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The offer could not be saved.');
+    } finally {
+      setSavingOffering(false);
+    }
+  };
+
+  const updateBooking = async (bookingId: string, nextStatus: string) => {
+    setSavingBooking(bookingId);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch('/api/admin/waitlist-fit-studio', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_booking', bookingId, status: nextStatus })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Booking status could not be saved.');
+      setNotice('Booking request status updated and audited.');
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Booking status could not be saved.');
+    } finally {
+      setSavingBooking('');
     }
   };
 
@@ -353,6 +448,58 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
           )}
           <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs"><button type="button" onClick={() => setPage(current => Math.max(0, current - 1))} disabled={page === 0 || loading} className="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:opacity-40">Previous</button><span>Page {page + 1}</span><button type="button" onClick={() => setPage(current => current + 1)} disabled={!data.hasMore || loading} className="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:opacity-40">Next</button></div>
         </div>
+
+        {canManage && <div className="grid gap-4 xl:grid-cols-2">
+          <form onSubmit={saveOffering} className="space-y-3 rounded-xl border border-slate-200 p-4 xl:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h3 className="text-xs font-black uppercase tracking-wide text-slate-900">Publish member offers</h3><p className="mt-1 text-xs text-slate-500">Add a photo, service, KSh price and availability. Members see published offers matching the help categories saved on their Fit Studio profile.</p></div>
+              <button type="button" onClick={() => setOfferingDraft(emptyOffering)} className="text-xs font-bold text-primary">New offer</button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <label className="text-xs font-bold text-slate-600">Offer title<input required minLength={2} maxLength={120} value={offeringDraft.title} onChange={event => setOfferingDraft({ ...offeringDraft, title: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-600">Help category<select value={offeringDraft.service_key} onChange={event => setOfferingDraft({ ...offeringDraft, service_key: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal">{serviceOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+              <label className="text-xs font-bold text-slate-600">Price in KSh <span className="font-normal">(leave blank for quote)</span><input type="number" min="0" max="10000000" step="1" value={offeringDraft.price_kes} onChange={event => setOfferingDraft({ ...offeringDraft, price_kes: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-slate-600">Linked provider (optional)<select value={offeringDraft.provider_id} onChange={event => setOfferingDraft({ ...offeringDraft, provider_id: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal"><option value="">No provider linked</option>{data.providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
+              <label className="text-xs font-bold text-slate-600 md:col-span-2">Description<textarea maxLength={1000} value={offeringDraft.description} onChange={event => setOfferingDraft({ ...offeringDraft, description: event.target.value })} className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 p-3 text-sm font-normal" /></label>
+              <div className="space-y-2 text-xs font-bold text-slate-600">
+                <label className="block">Listing photo<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={event => void uploadOfferingImage(event)} disabled={uploadingOfferingImage} className="mt-1 block w-full text-xs font-normal" /></label>
+                {uploadingOfferingImage && <span className="block text-primary">Uploading photo…</span>}
+                {offeringDraft.image_url && <div role="img" aria-label="Preview of offer photo" className="h-28 rounded-lg bg-cover bg-center" style={{ backgroundImage: `url("${offeringDraft.image_url.replaceAll('"', '%22')}")` }} />}
+              </div>
+              <div className="flex flex-col justify-center gap-3 text-xs">
+                <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.available} onChange={event => setOfferingDraft({ ...offeringDraft, available: event.target.checked })} />Available for requests</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.published} onChange={event => setOfferingDraft({ ...offeringDraft, published: event.target.checked })} />Published to matching members</label>
+              </div>
+            </div>
+            <button disabled={savingOffering || uploadingOfferingImage} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white disabled:opacity-50"><Save size={14} />{savingOffering ? 'Saving…' : offeringDraft.id ? 'Update offer' : 'Save offer'}</button>
+            <ul className="grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-3">
+              {data.offerings.map(offering => <li key={offering.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3 text-xs">
+                {offering.image_url && <div role="img" aria-label={`${offering.title} photo`} className="h-14 w-14 shrink-0 rounded-md bg-cover bg-center" style={{ backgroundImage: `url("${offering.image_url.replaceAll('"', '%22')}")` }} />}
+                <span className="min-w-0 flex-1"><b className="block truncate">{offering.title}</b><span className="block text-slate-500">{serviceOptions.find(([key]) => key === offering.service_key)?.[1]} · {offering.price_kes === null ? 'Quote' : `KSh ${count(offering.price_kes)}`}</span><span className="block text-slate-500">{offering.published ? 'Published' : 'Draft'} · {offering.available ? 'Available' : 'Unavailable'}</span></span>
+                <button type="button" onClick={() => setOfferingDraft({
+                  id: offering.id, provider_id: offering.provider_id || '', service_key: offering.service_key,
+                  title: offering.title, description: offering.description || '',
+                  image_path: offering.image_path || '', image_url: offering.image_url || '',
+                  price_kes: offering.price_kes === null ? '' : String(offering.price_kes),
+                  available: offering.available, published: offering.published
+                })} className="shrink-0 font-bold text-primary">Edit</button>
+              </li>)}
+              {!data.offerings.length && <li className="text-xs text-slate-500">No offers created yet.</li>}
+            </ul>
+          </form>
+
+          <article className="rounded-xl border border-slate-200 p-4 xl:col-span-2">
+            <h3 className="text-xs font-black uppercase tracking-wide text-slate-900">Member booking requests</h3>
+            <p className="mt-1 text-xs text-slate-500">A request is not a confirmed booking or payment. Update the status after reviewing availability and terms.</p>
+            <ul className="mt-3 space-y-2">
+              {data.bookings.map(booking => <li key={booking.id} className="flex flex-col gap-3 rounded-lg bg-slate-50 p-3 text-xs md:flex-row md:items-center">
+                <div className="min-w-0 flex-1"><b className="block">{booking.offering?.title || 'Offer removed'}</b><span className="text-slate-600">{booking.member?.full_name || 'Member'} · {booking.member?.email || 'Email unavailable'}</span>{booking.member_message && <p className="mt-1 break-words text-slate-500">“{booking.member_message}”</p>}<span className="mt-1 block text-slate-400">Requested {date(booking.created_at)}</span></div>
+                <select aria-label={`Status for booking by ${booking.member?.email || 'member'}`} value={booking.status} disabled={savingBooking === booking.id} onChange={event => void updateBooking(booking.id, event.target.value)} className="min-h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold"><option value="new">New</option><option value="reviewing">Reviewing</option><option value="confirmed">Confirmed</option><option value="declined">Declined</option><option value="cancelled">Cancelled</option></select>
+              </li>)}
+              {!data.bookings.length && <li className="rounded-lg bg-slate-50 p-4 text-xs text-slate-500">No member booking requests yet.</li>}
+            </ul>
+          </article>
+        </div>}
 
         {canManage && <div className="grid gap-4 xl:grid-cols-2">
           <form onSubmit={saveProvider} className="space-y-3 rounded-xl border border-slate-200 p-4">

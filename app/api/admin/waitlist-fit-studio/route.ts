@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
@@ -60,7 +61,7 @@ function migrationError(error: { code?: string } | null) {
   const missing = error && ['42P01', 'PGRST202', 'PGRST205', 'PGRST204', '42883'].includes(error.code || '');
   return NextResponse.json({
     error: missing
-      ? 'Fit Studio storage is not configured. Apply supabase/WAITLIST_FIT_STUDIO_MIGRATION.sql from the isolated WAITLIST repository to the shared Supabase project.'
+      ? 'Fit Studio storage is not configured. Apply the Fit Studio and marketplace migrations from the isolated WAITLIST repository to the shared Supabase project.'
       : 'Fit Studio data could not be loaded. Check shared Supabase connectivity and permissions.'
   }, { status: 503 });
 }
@@ -151,14 +152,20 @@ export async function GET(request: Request) {
   );
   if (serviceKey !== 'all') query = query.eq('help.service_key', serviceKey);
 
-  const [profilesResult, metricsResult, providersResult, settingsResult, auditResult] = await Promise.all([
+  const [profilesResult, metricsResult, providersResult, settingsResult, auditResult, offeringsResult, bookingsResult] = await Promise.all([
     query,
     db.rpc('get_waitlist_fit_studio_metrics'),
     db.from('fit_providers').select('id,name,service_key,contact_name,email,phone,notes,verified,available,updated_at').order('name'),
     db.from('fit_studio_settings').select('title,intro,merchant_notice,updated_at').eq('id', 'default').single(),
-    db.from('fit_studio_audit_log').select('id,actor_email,action,profile_id,details,created_at').order('created_at', { ascending: false }).limit(50)
+    db.from('fit_studio_audit_log').select('id,actor_email,action,profile_id,details,created_at').order('created_at', { ascending: false }).limit(50),
+    db.from('fit_service_offerings').select('id,provider_id,service_key,title,description,image_path,image_url,price_kes,available,published,updated_at').order('updated_at', { ascending: false }).limit(100),
+    db.from('fit_booking_requests')
+      .select('id,member_id,offering_id,member_message,status,created_at,updated_at,member:market_waitlist!fit_booking_requests_member_id_fkey!inner(id,full_name,email,phone),offering:fit_service_offerings!inner(title,service_key,price_kes)')
+      .order('created_at', { ascending: false })
+      .limit(100)
   ]);
-  const failed = profilesResult.error || metricsResult.error || providersResult.error || settingsResult.error || auditResult.error;
+  const failed = profilesResult.error || metricsResult.error || providersResult.error || settingsResult.error
+    || auditResult.error || offeringsResult.error || bookingsResult.error;
   if (failed) {
     console.error('[AdminFitStudio] Could not load dashboard data:', failed.code);
     return migrationError(failed);
@@ -194,6 +201,8 @@ export async function GET(request: Request) {
     profiles,
     metrics: metricsResult.data,
     providers: providersResult.data || [],
+    offerings: offeringsResult.data || [],
+    bookings: bookingsResult.data || [],
     settings: settingsResult.data,
     audit: auditResult.data || [],
     page,
@@ -205,6 +214,57 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+  if (request.headers.get('content-type')?.toLowerCase().includes('multipart/form-data')) {
+    const { session, response } = await authorize('manage');
+    if (response) return response;
+    const form = await request.formData();
+    const file = form.get('file');
+    if (!(file instanceof File) || file.size < 1 || file.size > 6 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Choose an image no larger than 6 MB.' }, { status: 400 });
+    }
+    const allowedTypes = new Map([
+      ['image/jpeg', 'jpg'],
+      ['image/png', 'png'],
+      ['image/webp', 'webp'],
+      ['image/avif', 'avif']
+    ]);
+    const extension = allowedTypes.get(file.type);
+    if (!extension) return NextResponse.json({ error: 'Use a JPEG, PNG, WebP or AVIF image.' }, { status: 400 });
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const isImage = file.type === 'image/jpeg'
+      ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : file.type === 'image/png'
+        ? bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+        : file.type === 'image/webp'
+          ? bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+            && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+          : new TextDecoder().decode(bytes.slice(4, 12)).includes('ftypavif');
+    if (!isImage) return NextResponse.json({ error: 'The selected file is not a valid supported image.' }, { status: 400 });
+    const db = getDatabase();
+    if (!db) return migrationError(null);
+    const path = `offerings/${randomUUID()}.${extension}`;
+    const { error } = await db.storage.from('fit-studio-listings').upload(path, bytes, {
+      contentType: file.type,
+      upsert: false
+    });
+    if (error) {
+      console.error('[AdminFitStudio] Could not upload listing image:', error.message);
+      return NextResponse.json({ error: 'The listing image could not be uploaded. Check the shared Supabase storage configuration.' }, { status: 503 });
+    }
+    const audit = await recordAudit(db, session?.email || session?.role, 'manage_offering', null, {
+      action: 'upload_offering_image',
+      path
+    });
+    if (audit.error) {
+      await db.storage.from('fit-studio-listings').remove([path]);
+      console.error('[AdminFitStudio] Could not audit listing image upload:', audit.error.code);
+      return migrationError(audit.error);
+    }
+    return NextResponse.json({
+      imagePath: path,
+      imageUrl: db.storage.from('fit-studio-listings').getPublicUrl(path).data.publicUrl
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  }
   const { session, response } = await authorize('view');
   if (response) return response;
   let body: { action?: unknown; profileId?: unknown };
@@ -290,6 +350,64 @@ export async function PATCH(request: Request) {
         : NextResponse.json({ error: 'The provider could not be saved. Check the required fields.' }, { status: 400 });
     }
     return NextResponse.json({ success: true, providerId: data });
+  }
+  if (body.action === 'save_offering') {
+    const offering = body.offering && typeof body.offering === 'object'
+      ? body.offering as Record<string, unknown> : {};
+    const stringValue = (key: string, max: number) => typeof offering[key] === 'string'
+      ? (offering[key] as string).trim().slice(0, max) : '';
+    const id = offering.id;
+    const providerId = offering.provider_id;
+    const imagePath = stringValue('image_path', 180);
+    const price = offering.price_kes === '' || offering.price_kes === null || offering.price_kes === undefined
+      ? null : offering.price_kes;
+    if ((id !== null && id !== undefined && id !== '' && (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)))
+      || (providerId !== null && providerId !== '' && (typeof providerId !== 'string' || !/^[0-9a-f-]{36}$/i.test(providerId)))
+      || !serviceKeys.includes(stringValue('service_key', 40) as typeof serviceKeys[number])
+      || stringValue('title', 120).length < 2
+      || typeof offering.description !== 'string' || offering.description.trim().length > 1000
+      || (imagePath !== '' && !/^offerings\/[0-9a-f-]{36}\.(jpg|png|webp|avif)$/i.test(imagePath))
+      || (price !== null && (typeof price !== 'number' || !Number.isInteger(price) || price < 0 || price > 10_000_000))
+      || typeof offering.available !== 'boolean' || typeof offering.published !== 'boolean') {
+      return NextResponse.json({ error: 'Enter a valid title, service, optional image and KSh price.' }, { status: 400 });
+    }
+    const imageUrl = imagePath ? db.storage.from('fit-studio-listings').getPublicUrl(imagePath).data.publicUrl : null;
+    const { data, error } = await db.rpc('save_waitlist_fit_offering', {
+      p_offering_id: typeof id === 'string' && id ? id : null,
+      p_provider_id: typeof providerId === 'string' && providerId ? providerId : null,
+      p_service_key: stringValue('service_key', 40),
+      p_title: stringValue('title', 120),
+      p_description: stringValue('description', 1000),
+      p_image_path: imagePath || null,
+      p_image_url: imageUrl,
+      p_price_kes: price,
+      p_available: offering.available,
+      p_published: offering.published,
+      p_actor_email: actor
+    });
+    if (error || !data) {
+      console.error('[AdminFitStudio] Could not save offering:', error?.code);
+      if (error && ['PGRST202', '42883'].includes(error.code || '')) return migrationError(error);
+      return NextResponse.json({ error: 'The offer could not be saved. Confirm the linked provider and try again.' }, { status: 400 });
+    }
+    return NextResponse.json({ success: true, offeringId: data });
+  }
+  if (body.action === 'update_booking') {
+    if (typeof body.bookingId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.bookingId)
+      || typeof body.status !== 'string' || !['new', 'reviewing', 'confirmed', 'declined', 'cancelled'].includes(body.status)) {
+      return NextResponse.json({ error: 'Choose a valid booking request status.' }, { status: 400 });
+    }
+    const { error } = await db.rpc('update_waitlist_fit_booking', {
+      p_booking_id: body.bookingId,
+      p_status: body.status,
+      p_actor_email: actor
+    });
+    if (error) {
+      console.error('[AdminFitStudio] Could not update booking request:', error.code);
+      if (['PGRST202', '42883'].includes(error.code || '')) return migrationError(error);
+      return NextResponse.json({ error: 'The booking request could not be updated.' }, { status: 400 });
+    }
+    return NextResponse.json({ success: true });
   }
   if (body.action === 'save_settings') {
     const title = typeof body.title === 'string' ? body.title.trim() : '';
