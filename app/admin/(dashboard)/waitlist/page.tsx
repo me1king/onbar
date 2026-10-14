@@ -567,6 +567,7 @@ export default function WaitlistPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           {canManageSite && <>
+            <a href="#waitlist-fit-studio-items" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-primary/30 bg-white px-4 text-sm font-bold text-primary hover:bg-primary/5"><ImageIcon size={15} /> Upload wig, belt or item photos</a>
             <a href="#waitlist-age-music" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white hover:opacity-90"><Upload size={15} /> Upload age-group songs</a>
             <a href="#waitlist-genre-music" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Upload size={15} /> Upload genre songs</a>
           </>}

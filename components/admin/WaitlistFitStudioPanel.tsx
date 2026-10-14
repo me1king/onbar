@@ -359,6 +359,47 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
       {!data && loading && <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Loading real Fit Studio demand from the shared waitlist database…</p>}
       {!data && error && <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-600">Dashboard data is unavailable; no sample or placeholder metrics are shown.</p>}
 
+      {canManage && <div id="waitlist-fit-studio-items" className="scroll-mt-5 rounded-xl border-2 border-primary/20 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div><p className="text-[10px] font-black uppercase tracking-wide text-primary">Admin · add outfit items and products</p><h3 className="mt-1 text-lg font-black text-slate-900">Upload a wig, belt, outfit or accessory photo</h3><p className="mt-1 max-w-3xl text-sm text-slate-600">Give each find its own listing: choose a photo, name the item, select its category and add a price. Save as a draft or publish it for members requesting that kind of help.</p></div>
+          <button type="button" onClick={() => setOfferingDraft(emptyOffering)} className="min-h-10 shrink-0 rounded-lg border border-slate-200 px-3 text-xs font-bold text-primary">Add another item</button>
+        </div>
+        <form onSubmit={saveOffering} className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <label className="text-xs font-bold text-slate-600">Item name<input required minLength={2} maxLength={120} placeholder="e.g. Curly Halloween wig or leather belt" value={offeringDraft.title} onChange={event => setOfferingDraft({ ...offeringDraft, title: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+            <label className="text-xs font-bold text-slate-600">Member help category<select value={offeringDraft.service_key} onChange={event => setOfferingDraft({ ...offeringDraft, service_key: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal">{serviceOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+            <label className="text-xs font-bold text-slate-600">Price in KSh <span className="font-normal">(blank means ask for a quote)</span><input type="number" min="0" max="10000000" step="1" value={offeringDraft.price_kes} onChange={event => setOfferingDraft({ ...offeringDraft, price_kes: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
+            <label className="text-xs font-bold text-slate-600">Linked provider (optional)<select value={offeringDraft.provider_id} onChange={event => setOfferingDraft({ ...offeringDraft, provider_id: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal"><option value="">No provider linked</option>{(data?.providers || []).map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
+            <label className="text-xs font-bold text-slate-600 md:col-span-2">Details<textarea maxLength={1000} placeholder="Describe the item, size, colour or what is included." value={offeringDraft.description} onChange={event => setOfferingDraft({ ...offeringDraft, description: event.target.value })} className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 p-3 text-sm font-normal" /></label>
+            <div className="rounded-lg border border-dashed border-slate-300 p-3 text-xs font-bold text-slate-600">
+              <label className="block">Choose item photo<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={event => void uploadOfferingImage(event)} disabled={uploadingOfferingImage} className="mt-2 block w-full cursor-pointer text-xs font-normal" /></label>
+              <p className="mt-1 font-normal text-slate-500">JPEG, PNG, WebP or AVIF · maximum 6 MB</p>
+              {uploadingOfferingImage && <p role="status" className="mt-2 font-bold text-primary">Uploading photo…</p>}
+              {offeringDraft.image_url && <div className="mt-3 flex items-center gap-3"><div role="img" aria-label={`Preview of ${offeringDraft.title || 'item'} photo`} className="h-20 w-20 shrink-0 rounded-lg bg-cover bg-center" style={{ backgroundImage: `url("${offeringDraft.image_url.replaceAll('"', '%22')}")` }} /><span className="text-xs text-emerald-700">Photo uploaded. Save this item to add it to your listings.</span></div>}
+            </div>
+            <div className="flex flex-col justify-center gap-3 rounded-lg bg-slate-50 p-3 text-xs">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.available} onChange={event => setOfferingDraft({ ...offeringDraft, available: event.target.checked })} />Available for requests</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.published} onChange={event => setOfferingDraft({ ...offeringDraft, published: event.target.checked })} />Publish to matching members</label>
+            </div>
+          </div>
+          <button disabled={savingOffering || uploadingOfferingImage} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white disabled:opacity-50"><Save size={14} />{savingOffering ? 'Saving item…' : offeringDraft.id ? 'Update item listing' : 'Save item listing'}</button>
+        </form>
+        {!data && <p role="status" className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Listings will appear here after Fit Studio data loads. If save/upload reports missing marketplace storage, apply the Fit Studio marketplace migration to the shared Supabase project.</p>}
+        {(data?.offerings || []).length > 0 && <ul className="mt-4 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-3">
+          {(data?.offerings || []).map(offering => <li key={offering.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3 text-xs">
+            {offering.image_url && <div role="img" aria-label={`${offering.title} photo`} className="h-14 w-14 shrink-0 rounded-md bg-cover bg-center" style={{ backgroundImage: `url("${offering.image_url.replaceAll('"', '%22')}")` }} />}
+            <span className="min-w-0 flex-1"><b className="block truncate">{offering.title}</b><span className="block text-slate-500">{serviceOptions.find(([key]) => key === offering.service_key)?.[1]} · {offering.price_kes === null ? 'Quote' : `KSh ${count(offering.price_kes)}`}</span><span className="block text-slate-500">{offering.published ? 'Published' : 'Draft'} · {offering.available ? 'Available' : 'Unavailable'}</span></span>
+            <button type="button" onClick={() => setOfferingDraft({
+              id: offering.id, provider_id: offering.provider_id || '', service_key: offering.service_key,
+              title: offering.title, description: offering.description || '',
+              image_path: offering.image_path || '', image_url: offering.image_url || '',
+              price_kes: offering.price_kes === null ? '' : String(offering.price_kes),
+              available: offering.available, published: offering.published
+            })} className="shrink-0 font-bold text-primary">Edit</button>
+          </li>)}
+        </ul>}
+      </div>}
+
       {data && <>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {[
@@ -449,45 +490,13 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
           <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs"><button type="button" onClick={() => setPage(current => Math.max(0, current - 1))} disabled={page === 0 || loading} className="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:opacity-40">Previous</button><span>Page {page + 1}</span><button type="button" onClick={() => setPage(current => current + 1)} disabled={!data.hasMore || loading} className="rounded-lg border border-slate-200 px-3 py-2 font-bold disabled:opacity-40">Next</button></div>
         </div>
 
-        {canManage && <div className="grid gap-4 xl:grid-cols-2">
-          <form onSubmit={saveOffering} className="space-y-3 rounded-xl border border-slate-200 p-4 xl:col-span-2">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h3 className="text-xs font-black uppercase tracking-wide text-slate-900">Publish member offers</h3><p className="mt-1 text-xs text-slate-500">Add a photo, service, KSh price and availability. Members see published offers matching the help categories saved on their Fit Studio profile.</p></div>
-              <button type="button" onClick={() => setOfferingDraft(emptyOffering)} className="text-xs font-bold text-primary">New offer</button>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <label className="text-xs font-bold text-slate-600">Offer title<input required minLength={2} maxLength={120} value={offeringDraft.title} onChange={event => setOfferingDraft({ ...offeringDraft, title: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-slate-600">Help category<select value={offeringDraft.service_key} onChange={event => setOfferingDraft({ ...offeringDraft, service_key: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal">{serviceOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-              <label className="text-xs font-bold text-slate-600">Price in KSh <span className="font-normal">(leave blank for quote)</span><input type="number" min="0" max="10000000" step="1" value={offeringDraft.price_kes} onChange={event => setOfferingDraft({ ...offeringDraft, price_kes: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-slate-600">Linked provider (optional)<select value={offeringDraft.provider_id} onChange={event => setOfferingDraft({ ...offeringDraft, provider_id: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal"><option value="">No provider linked</option>{data.providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
-              <label className="text-xs font-bold text-slate-600 md:col-span-2">Description<textarea maxLength={1000} value={offeringDraft.description} onChange={event => setOfferingDraft({ ...offeringDraft, description: event.target.value })} className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 p-3 text-sm font-normal" /></label>
-              <div className="space-y-2 text-xs font-bold text-slate-600">
-                <label className="block">Listing photo<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={event => void uploadOfferingImage(event)} disabled={uploadingOfferingImage} className="mt-1 block w-full text-xs font-normal" /></label>
-                {uploadingOfferingImage && <span className="block text-primary">Uploading photo…</span>}
-                {offeringDraft.image_url && <div role="img" aria-label="Preview of offer photo" className="h-28 rounded-lg bg-cover bg-center" style={{ backgroundImage: `url("${offeringDraft.image_url.replaceAll('"', '%22')}")` }} />}
-              </div>
-              <div className="flex flex-col justify-center gap-3 text-xs">
-                <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.available} onChange={event => setOfferingDraft({ ...offeringDraft, available: event.target.checked })} />Available for requests</label>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.published} onChange={event => setOfferingDraft({ ...offeringDraft, published: event.target.checked })} />Published to matching members</label>
-              </div>
-            </div>
-            <button disabled={savingOffering || uploadingOfferingImage} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white disabled:opacity-50"><Save size={14} />{savingOffering ? 'Saving…' : offeringDraft.id ? 'Update offer' : 'Save offer'}</button>
-            <ul className="grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-3">
-              {data.offerings.map(offering => <li key={offering.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3 text-xs">
-                {offering.image_url && <div role="img" aria-label={`${offering.title} photo`} className="h-14 w-14 shrink-0 rounded-md bg-cover bg-center" style={{ backgroundImage: `url("${offering.image_url.replaceAll('"', '%22')}")` }} />}
-                <span className="min-w-0 flex-1"><b className="block truncate">{offering.title}</b><span className="block text-slate-500">{serviceOptions.find(([key]) => key === offering.service_key)?.[1]} · {offering.price_kes === null ? 'Quote' : `KSh ${count(offering.price_kes)}`}</span><span className="block text-slate-500">{offering.published ? 'Published' : 'Draft'} · {offering.available ? 'Available' : 'Unavailable'}</span></span>
-                <button type="button" onClick={() => setOfferingDraft({
-                  id: offering.id, provider_id: offering.provider_id || '', service_key: offering.service_key,
-                  title: offering.title, description: offering.description || '',
-                  image_path: offering.image_path || '', image_url: offering.image_url || '',
-                  price_kes: offering.price_kes === null ? '' : String(offering.price_kes),
-                  available: offering.available, published: offering.published
-                })} className="shrink-0 font-bold text-primary">Edit</button>
-              </li>)}
-              {!data.offerings.length && <li className="text-xs text-slate-500">No offers created yet.</li>}
-            </ul>
-          </form>
+        {!data && error && canManage && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h3 className="font-bold text-amber-950">Fit Studio listing setup issue</h3>
+          <p className="mt-1 text-sm text-amber-900">{error}</p>
+          <button type="button" onClick={() => void load()} disabled={loading} className="mt-3 min-h-9 rounded-lg border border-amber-300 px-3 text-xs font-bold text-amber-950 disabled:opacity-50">{loading ? 'Retrying…' : 'Retry loading listings'}</button>
+        </section>}
 
+        {data && <div className="grid gap-4 xl:grid-cols-2">
           <article className="rounded-xl border border-slate-200 p-4 xl:col-span-2">
             <h3 className="text-xs font-black uppercase tracking-wide text-slate-900">Member booking requests</h3>
             <p className="mt-1 text-xs text-slate-500">A request is not a confirmed booking or payment. Update the status after reviewing availability and terms.</p>
