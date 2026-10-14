@@ -266,8 +266,17 @@ export default function AdminSettingsPage() {
         return data.publicUrl;
     };
 
+    const saveSettings = async (settings: { key: string; value: unknown; is_published?: boolean }[]) => {
+        const response = await fetch('/api/admin/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings })
+        });
+        const result = await response.json() as { error?: string };
+        if (!response.ok) throw new Error(result.error || 'Settings could not be saved.');
+    };
+
     const handleSave = async (key: string, value: unknown, publish: boolean = true) => {
-        if (!supabase) return;
         if (key === 'catalog') {
             const catalogValue = value as typeof catalog;
             if (catalogValue.navigation.some(item => !item.label.trim())) {
@@ -313,26 +322,7 @@ export default function AdminSettingsPage() {
                 setHeroFile(null);
             }
 
-            if (key === 'theme_config') {
-                const response = await fetch('/api/admin/settings/theme', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ theme: finalValue, publish })
-                });
-                const result = await response.json() as { error?: string };
-                if (!response.ok) throw new Error(result.error || 'Theme settings could not be saved.');
-            } else {
-                const { error } = await supabase
-                    .from('settings')
-                    .upsert({
-                        key,
-                        value: finalValue,
-                        is_published: publish,
-                        updated_at: new Date().toISOString()
-                    }, { onConflict: 'key' });
-
-                if (error) throw error;
-            }
+            await saveSettings([{ key, value: finalValue, is_published: publish }]);
 
             await logAuditAction(email, 'UPDATE_SETTINGS', { key, published: publish });
             if (
@@ -361,10 +351,6 @@ export default function AdminSettingsPage() {
     };
 
     const saveOperationsSettings = async () => {
-        if (!supabase) {
-            setMessage({ type: 'error', text: 'Supabase is not connected. Delivery prices were not saved.' });
-            return;
-        }
         const fees = [shipping.nairobi_cbd, shipping.nairobi_outskirts, shipping.upcountry];
         if (fees.some(fee => !Number.isSafeInteger(fee) || fee < 0)) {
             setMessage({ type: 'error', text: 'Enter a whole-number delivery fee of zero or more for each zone.' });
@@ -374,11 +360,10 @@ export default function AdminSettingsPage() {
         setSavingKey('ops');
         setMessage(null);
         try {
-            const { error } = await supabase.from('settings').upsert([
-                { key: 'contact', value: contact, is_published: true, updated_at: new Date().toISOString() },
-                { key: 'shipping', value: shipping, is_published: true, updated_at: new Date().toISOString() }
-            ], { onConflict: 'key' });
-            if (error) throw error;
+            await saveSettings([
+                { key: 'contact', value: contact, is_published: true },
+                { key: 'shipping', value: shipping, is_published: true }
+            ]);
 
             await logAuditAction(email, 'UPDATE_SETTINGS', { keys: ['contact', 'shipping'], published: true });
             setMessage({ type: 'success', text: 'Contact and delivery prices are live at checkout.' });
@@ -392,19 +377,13 @@ export default function AdminSettingsPage() {
     };
 
     const saveSeoAndSocialSettings = async () => {
-        if (!supabase) {
-            setMessage({ type: 'error', text: 'Supabase is not connected. SEO and social links were not saved.' });
-            return;
-        }
         setSavingKey('seo');
         setMessage(null);
         try {
-            const updatedAt = new Date().toISOString();
-            const { error } = await supabase.from('settings').upsert([
-                { key: 'seo_config', value: seo, is_published: true, updated_at: updatedAt },
-                { key: 'social_links', value: social, is_published: true, updated_at: updatedAt }
-            ], { onConflict: 'key' });
-            if (error) throw error;
+            await saveSettings([
+                { key: 'seo_config', value: seo, is_published: true },
+                { key: 'social_links', value: social, is_published: true }
+            ]);
 
             await logAuditAction(email, 'UPDATE_SETTINGS', { keys: ['seo_config', 'social_links'], published: true });
             setMessage({ type: 'success', text: 'SEO metadata and social profile links are saved and live.' });
@@ -418,7 +397,6 @@ export default function AdminSettingsPage() {
     };
 
     const handlePublishAll = async () => {
-        if (!supabase) return;
         if ([shipping.nairobi_cbd, shipping.nairobi_outskirts, shipping.upcountry].some(fee => !Number.isSafeInteger(fee) || fee < 0)) {
             setMessage({ type: 'error', text: 'Enter a whole-number delivery fee of zero or more for each zone before publishing.' });
             return;
@@ -432,18 +410,11 @@ export default function AdminSettingsPage() {
             if (faviconFile) updatedBrandingLocal.favicon_url = await uploadAsset(faviconFile, 'branding');
             if (heroFile) updatedHomepageLocal.hero_image_url = await uploadAsset(heroFile, 'homepage');
 
-            const themeResponse = await fetch('/api/admin/settings/theme', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ theme, publish: true })
-            });
-            const themeResult = await themeResponse.json() as { error?: string };
-            if (!themeResponse.ok) throw new Error(themeResult.error || 'Theme settings could not be saved.');
-
             const payloads = [
                 { key: 'contact', value: contact },
                 { key: 'branding', value: updatedBrandingLocal },
                 { key: 'homepage', value: updatedHomepageLocal },
+                { key: 'theme_config', value: theme },
                 { key: 'seo_config', value: seo },
                 { key: 'social_links', value: social },
                 { key: 'store_info', value: store },
@@ -456,11 +427,7 @@ export default function AdminSettingsPage() {
                 { key: 'ai_config', value: aiConfig },
             ];
 
-            const { error } = await supabase
-                .from('settings')
-                .upsert(payloads.map(p => ({ ...p, is_published: true, updated_at: new Date().toISOString() })), { onConflict: 'key' });
-
-            if (error) throw error;
+            await saveSettings(payloads.map(setting => ({ ...setting, is_published: true })));
 
             window.sessionStorage.setItem('onlinebar_theme_primary', theme.primary);
             setBranding(updatedBrandingLocal);
