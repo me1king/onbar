@@ -34,7 +34,12 @@ export async function GET() {
     .limit(200);
   if (error) {
     console.error('[MarketAdmin] Could not load order requests:', error);
-    return NextResponse.json({ error: 'Could not load marketplace order requests. Confirm the Market orders migration is applied.' }, { status: 503 });
+    const migrationCodes = new Set(['42P01', '42703', 'PGRST200', 'PGRST204', 'PGRST205']);
+    return NextResponse.json({
+      error: migrationCodes.has(error.code || '')
+        ? 'Market order tables or fields are missing. Apply the Market orders migration and its admin-control upgrade.'
+        : 'Could not load marketplace order requests. Check the database connection and server logs.'
+    }, { status: 503 });
   }
 
   return NextResponse.json({ orders: data || [] }, {

@@ -99,6 +99,7 @@ export default function MarketOperationsPage() {
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [offers, setOffers] = useState<MarketOffer[]>([]);
   const [orders, setOrders] = useState<MarketOrderRequest[]>([]);
+  const [ordersError, setOrdersError] = useState('');
   const [offerCounterAmounts, setOfferCounterAmounts] = useState<Record<string, string>>({});
   const [offerAdminMessages, setOfferAdminMessages] = useState<Record<string, string>>({});
   const [orderAdminNotes, setOrderAdminNotes] = useState<Record<string, string>>({});
@@ -118,33 +119,41 @@ export default function MarketOperationsPage() {
     setLoading(true);
     setError('');
     try {
-      const [applicationResponse, productResponse, merchantResponse, campaignResponse, offerResponse, orderResponse] = await Promise.all([
+      const orderRequest = fetch('/api/admin/market/orders', { cache: 'no-store' }).catch(() => null);
+      const [applicationResponse, productResponse, merchantResponse, campaignResponse, offerResponse] = await Promise.all([
         fetch('/api/admin/market/applications', { cache: 'no-store' }),
         fetch('/api/admin/market/products', { cache: 'no-store' }),
         fetch('/api/admin/market/merchants', { cache: 'no-store' }),
         fetch('/api/admin/market/campaign', { cache: 'no-store' }),
-        fetch('/api/admin/market/offers', { cache: 'no-store' }),
-        fetch('/api/admin/market/orders', { cache: 'no-store' })
+        fetch('/api/admin/market/offers', { cache: 'no-store' })
       ]);
-      const [applicationResult, productResult, merchantResult, campaignResult, offerResult, orderResult] = await Promise.all([
+      const orderResponse = await orderRequest;
+      const [applicationResult, productResult, merchantResult, campaignResult, offerResult] = await Promise.all([
         applicationResponse.json() as Promise<{ applications?: Application[]; error?: string }>,
         productResponse.json() as Promise<{ products?: ProductListing[]; error?: string }>,
         merchantResponse.json() as Promise<{ merchants?: Merchant[]; error?: string }>,
         campaignResponse.json() as Promise<{ campaign?: MarketCampaign; error?: string }>,
-        offerResponse.json() as Promise<{ offers?: MarketOffer[]; error?: string }>,
-        orderResponse.json() as Promise<{ orders?: MarketOrderRequest[]; error?: string }>
+        offerResponse.json() as Promise<{ offers?: MarketOffer[]; error?: string }>
       ]);
+      let orderResult: { orders?: MarketOrderRequest[]; error?: string };
+      try {
+        orderResult = orderResponse
+          ? await orderResponse.json() as { orders?: MarketOrderRequest[]; error?: string }
+          : { error: 'The marketplace order service could not be reached.' };
+      } catch {
+        orderResult = { error: 'Could not read the marketplace order response.' };
+      }
       if (!applicationResponse.ok) throw new Error(applicationResult.error || 'Could not load seller applications.');
       if (!productResponse.ok) throw new Error(productResult.error || 'Could not load product listings.');
       if (!merchantResponse.ok) throw new Error(merchantResult.error || 'Could not load merchants.');
       if (!campaignResponse.ok || !campaignResult.campaign) throw new Error(campaignResult.error || 'Could not load Market campaign settings.');
       if (!offerResponse.ok) throw new Error(offerResult.error || 'Could not load marketplace offers.');
-      if (!orderResponse.ok) throw new Error(orderResult.error || 'Could not load marketplace order requests.');
       setApplications(applicationResult.applications || []);
       setProducts(productResult.products || []);
       setMerchants(merchantResult.merchants || []);
       setOffers(offerResult.offers || []);
-      setOrders(orderResult.orders || []);
+      setOrders(orderResponse?.ok ? orderResult.orders || [] : []);
+      setOrdersError(orderResponse?.ok ? '' : orderResult.error || 'Could not load marketplace order requests.');
       setCampaign(campaignResult.campaign);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load seller applications.');
@@ -517,7 +526,9 @@ export default function MarketOperationsPage() {
           <p className="mt-2 text-sm text-slate-500">Coordinate with both parties, advance or cancel order requests, and review every intervention in the audit history. These are not completed sales. Only record offline payment after independently confirming it was received.</p>
         </div>
         {!loading && orders.length === 0 && (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No customer order requests have been submitted.</div>
+          ordersError
+            ? <div role="alert" className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">{ordersError} The rest of Market Desk remains available.</div>
+            : <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No customer order requests have been submitted.</div>
         )}
         <div className="mt-5 grid gap-4">
           {orders.map((order) => (
