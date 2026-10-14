@@ -29,7 +29,7 @@ export async function GET() {
 
   const { data, error } = await access.database
     .from('mm_products')
-    .select('id, name, slug, description, created_at, merchant:mm_merchants!inner(name, slug), category:mm_categories(name), media:mm_product_media(storage_path, alt_text), variants:mm_product_variants(price_minor, currency, size, color)')
+    .select('id, name, slug, description, attributes, delivery_information, return_policy, created_at, merchant:mm_merchants!inner(name, slug), category:mm_categories(name), media:mm_product_media(storage_path, media_type, alt_text), variants:mm_product_variants(price_minor, sale_price_minor, sku, currency, size, color)')
     .eq('status', 'pending_review')
     .order('created_at', { ascending: true });
   if (error) {
@@ -48,7 +48,7 @@ export async function GET() {
         signingFailed = true;
         return null;
       }
-      return { url: signed.signedUrl, alt: item.alt_text || product.name };
+      return { url: signed.signedUrl, alt: item.alt_text || product.name, mediaType: item.media_type };
     }));
     return { ...product, images: media.filter((item): item is NonNullable<typeof item> => item !== null) };
   }));
@@ -76,7 +76,9 @@ export async function POST(request: Request) {
 
   const productId = typeof body.productId === 'string' ? body.productId : '';
   const status = body.status === 'published' || body.status === 'rejected' ? body.status : '';
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(productId) || !status) {
+  const reviewNote = typeof body.reviewNote === 'string' ? body.reviewNote.trim() : '';
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(productId)
+    || !status || reviewNote.length > 1000 || (status === 'rejected' && reviewNote.length < 5)) {
     return NextResponse.json({ error: 'Choose a valid listing and review outcome.' }, { status: 400 });
   }
   if (!access.session.email?.trim()) {
@@ -86,7 +88,8 @@ export async function POST(request: Request) {
   const { data, error } = await access.database.rpc('mm_review_product_listing', {
     p_product_id: productId,
     p_status: status,
-    p_actor_email: access.session.email.trim().toLowerCase()
+    p_actor_email: access.session.email.trim().toLowerCase(),
+    p_review_note: status === 'rejected' ? reviewNote : null
   });
   if (error) {
     console.error('[MarketAdmin] Could not moderate product:', error);

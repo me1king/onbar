@@ -27,10 +27,13 @@ interface ProductListing {
   id: string;
   name: string;
   description: string | null;
+  attributes: Record<string, string>;
+  delivery_information: string | null;
+  return_policy: string | null;
   merchant: { name: string; slug: string };
   category: { name: string } | null;
-  variants: Array<{ price_minor: number; currency: string; size: string | null; color: string | null }>;
-  images: Array<{ url: string; alt: string }>;
+  variants: Array<{ price_minor: number; sale_price_minor: number | null; sku: string | null; currency: string; size: string | null; color: string | null }>;
+  images: Array<{ url: string; alt: string; mediaType: 'image' | 'video' }>;
 }
 
 interface Merchant {
@@ -193,6 +196,11 @@ export default function MarketOperationsPage() {
   }
 
   async function reviewProduct(product: ProductListing, status: 'published' | 'rejected') {
+    const reviewNote = reviewNotes[product.id]?.trim() || '';
+    if (status === 'rejected' && reviewNote.length < 5) {
+      setError('Add at least five characters explaining the product changes required before declining it.');
+      return;
+    }
     setWorkingProductId(product.id);
     setError('');
     setMessage('');
@@ -200,7 +208,7 @@ export default function MarketOperationsPage() {
       const response = await fetch('/api/admin/market/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: product.id, status })
+        body: JSON.stringify({ productId: product.id, status, reviewNote })
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || 'Could not update this listing.');
@@ -323,11 +331,15 @@ export default function MarketOperationsPage() {
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           {products.map((product) => (
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" key={product.id}>
-              {product.images[0] && <div className="relative mb-4 aspect-[4/3] w-full overflow-hidden rounded-xl"><Image className="object-cover" src={product.images[0].url} alt={product.images[0].alt} fill unoptimized sizes="(max-width: 800px) 100vw, 50vw" /></div>}
+              {product.images[0] && <div className="relative mb-4 aspect-[4/3] w-full overflow-hidden rounded-xl">{product.images[0].mediaType === 'video' ? <video className="h-full w-full object-cover" src={product.images[0].url} controls aria-label={product.images[0].alt} /> : <Image className="object-cover" src={product.images[0].url} alt={product.images[0].alt} fill unoptimized sizes="(max-width: 800px) 100vw, 50vw" />}</div>}
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{product.merchant.name} · {product.category?.name || 'Uncategorized'}</p>
               <h3 className="mt-2 text-lg font-bold text-slate-900">{product.name}</h3>
               {product.description && <p className="mt-2 text-sm text-slate-600">{product.description}</p>}
-              {product.variants[0] && <p className="mt-2 font-semibold text-slate-800">KSh {(product.variants[0].price_minor / 100).toLocaleString('en-KE')}</p>}
+              {product.variants[0] && <p className="mt-2 font-semibold text-slate-800">KSh {(product.variants[0].sale_price_minor ? product.variants[0].sale_price_minor / 100 : product.variants[0].price_minor / 100).toLocaleString('en-KE')}{product.variants[0].sale_price_minor && <span className="ml-2 text-sm text-slate-400 line-through">KSh {(product.variants[0].price_minor / 100).toLocaleString('en-KE')}</span>}</p>}
+              {Object.entries(product.attributes || {}).filter(([, value]) => value).length > 0 && <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">{Object.entries(product.attributes).filter(([, value]) => value).map(([key, value]) => <div key={key}><dt className="text-xs font-bold uppercase text-slate-500">{key.replace(/_/g, ' ')}</dt><dd className="text-slate-700">{value}</dd></div>)}</dl>}
+              {product.delivery_information && <p className="mt-2 text-sm text-slate-600"><strong>Delivery:</strong> {product.delivery_information}</p>}
+              {product.return_policy && <p className="mt-2 text-sm text-slate-600"><strong>Returns:</strong> {product.return_policy}</p>}
+              <label className="mt-4 block text-sm font-semibold text-slate-700">Review note (required when declining)<textarea className="mt-1 w-full rounded-lg border border-slate-300 p-3" maxLength={1000} rows={2} value={reviewNotes[product.id] || ''} onChange={(event) => setReviewNotes({ ...reviewNotes, [product.id]: event.target.value })} placeholder="Explain what the merchant should correct." /></label>
               <div className="mt-4 flex gap-2">
                 <Button disabled={workingProductId === product.id} onClick={() => void reviewProduct(product, 'published')} className="gap-2 bg-emerald-700 hover:bg-emerald-800"><Check size={15} /> Publish</Button>
                 <Button disabled={workingProductId === product.id} onClick={() => void reviewProduct(product, 'rejected')} variant="outline" className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"><X size={15} /> Decline</Button>
