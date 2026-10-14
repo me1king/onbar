@@ -957,6 +957,42 @@ export default function AdminSettingsPage() {
                         </div>
                     )}
 
+                    {activeTab === 'advanced' && (
+                        <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
+                            <Card className="rounded-[3rem] border border-border p-8 sm:p-10 bg-card shadow-sm space-y-6 text-left">
+                                <div>
+                                    <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><Palette className="h-5 w-5 text-primary" /> Store Color Preset</h2>
+                                    <p className="mt-2 text-sm text-muted-foreground">Switch between the classic yellow and cream/red/green palettes. Use Sync Changes above to publish your selection.</p>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {Object.entries(THEME_PRESETS).map(([presetId, preset]) => {
+                                        const selected = theme.primary.toUpperCase() === preset.colors.primary;
+                                        return (
+                                            <button
+                                                key={presetId}
+                                                type="button"
+                                                aria-pressed={selected}
+                                                onClick={() => setTheme({ ...theme, ...preset.colors })}
+                                                className={cn(
+                                                    'flex min-h-24 items-center gap-4 rounded-2xl border p-4 text-left transition',
+                                                    selected ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-white hover:border-primary/40'
+                                                )}
+                                            >
+                                                <span className="h-10 w-10 shrink-0 rounded-full border border-black/10 shadow-sm" style={{ backgroundColor: preset.colors.primary }} />
+                                                <span className="min-w-0">
+                                                    <span className="block text-sm font-black text-foreground">{preset.label}</span>
+                                                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{preset.description}</span>
+                                                    <span className="mt-1 block font-mono text-[10px] text-muted-foreground">{preset.colors.primary}</span>
+                                                </span>
+                                                {selected && <CheckCircle2 aria-label="Selected" className="ml-auto h-5 w-5 shrink-0 text-primary" />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </Card>
+                        </div>
+                    )}
+
                     {/* SEO & SOCIAL TAB */}
                     {activeTab === 'seo' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
