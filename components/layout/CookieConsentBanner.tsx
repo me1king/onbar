@@ -11,9 +11,12 @@ export default function CookieConsentBanner() {
     const [isVisible, setIsVisible] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [prefs, setPrefs] = useState<ConsentPreferences>(getLocalConsent());
+    const [sessionReplayAllowed, setSessionReplayAllowed] = useState(false);
 
     useEffect(() => {
         const hasConsent = localStorage.getItem('ob_user_consent');
+        setPrefs(getLocalConsent());
+        setSessionReplayAllowed(localStorage.getItem('ob_session_replay_consent') === 'true');
         if (!hasConsent) {
             setIsVisible(true);
         }
@@ -21,16 +24,38 @@ export default function CookieConsentBanner() {
 
     const handleAcceptAll = () => {
         const all = { necessary: true, analytics: true, personalization: true, marketing: true };
+        setPrefs(all);
         updateConsent(all);
         setIsVisible(false);
     };
 
+    const handleAllowReplay = () => {
+        localStorage.setItem('ob_session_replay_consent', 'true');
+        setSessionReplayAllowed(true);
+        setPrefs({ ...getLocalConsent(), analytics: true });
+        updateConsent({ analytics: true });
+        setIsVisible(false);
+    };
+
     const handleSaveSelection = () => {
+        const allowReplay = sessionReplayAllowed && prefs.analytics;
+        localStorage.setItem('ob_session_replay_consent', String(allowReplay));
+        setSessionReplayAllowed(allowReplay);
         updateConsent(prefs);
         setIsVisible(false);
     };
 
-    if (!isVisible) return null;
+    if (!isVisible) {
+        return (
+            <button
+                type="button"
+                onClick={() => setIsVisible(true)}
+                className="fixed bottom-24 right-4 z-[2000] rounded-full border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-600 shadow-lg hover:bg-slate-50"
+            >
+                Privacy settings
+            </button>
+        );
+    }
 
     return (
         <div className="fixed inset-0 z-[3000] flex items-end justify-center bg-slate-950/25 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:items-center sm:p-6 animate-in fade-in duration-300">
@@ -43,7 +68,7 @@ export default function CookieConsentBanner() {
                             <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">Privacy Protocol</h2>
                         </div>
                         <p className="text-sm font-medium text-slate-500 leading-relaxed italic md:pr-4">
-                            &quot;We use cookies to secure your session and optimize the Online Bar experience. Your data choice is critical to our system integrity.&quot;
+                            &quot;Session replay is optional and separately controlled. Choose Allow masked replay to explicitly opt in; form and password values are masked.&quot;
                         </p>
                     </div>
 
@@ -53,6 +78,13 @@ export default function CookieConsentBanner() {
                             className="h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest hover:bg-primary/90 transition-all shadow-xl active:scale-95 shadow-primary/20"
                         >
                             Authorize All
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={handleAllowReplay}
+                            className="h-12 rounded-2xl border-primary/30 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary/5"
+                        >
+                            Allow masked replay
                         </Button>
                         <div className="flex gap-2">
                             <Button
@@ -69,7 +101,7 @@ export default function CookieConsentBanner() {
                 {showSettings && (
                     <div className="relative z-10 pt-10 border-t border-slate-100 grid sm:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-500 text-left">
                         {[
-                            { id: 'analytics' as keyof ConsentPreferences, label: 'Analytics', desc: 'Node performance' },
+                            { id: 'analytics' as keyof ConsentPreferences, label: 'Analytics', desc: 'Usage metrics' },
                             { id: 'personalization' as keyof ConsentPreferences, label: 'Personalization', desc: 'Custom menu' },
                             { id: 'marketing' as keyof ConsentPreferences, label: 'Marketing', desc: 'Promo alerts' }
                         ].map(node => (
@@ -94,6 +126,20 @@ export default function CookieConsentBanner() {
                                 <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{node.desc}</p>
                             </button>
                         ))}
+                        <button
+                            type="button"
+                            onClick={() => setSessionReplayAllowed(value => !value)}
+                            className={cn(
+                                "p-6 rounded-[2rem] border-2 transition-all text-left space-y-1 group",
+                                sessionReplayAllowed ? "bg-primary/5 border-primary/20" : "bg-slate-50 border-slate-100 hover:bg-white hover:border-slate-200"
+                            )}
+                        >
+                            <div className="flex justify-between items-center mb-4">
+                                <span className={cn("text-[9px] font-black uppercase tracking-widest", sessionReplayAllowed ? "text-primary" : "text-slate-400")}>Session replay</span>
+                                <div className={cn("h-2 w-2 rounded-full", sessionReplayAllowed ? "bg-primary animate-pulse" : "bg-slate-200")} />
+                            </div>
+                            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Masked site playback</p>
+                        </button>
                         <div className="sm:col-span-3 pt-4">
                             <Button
                                 onClick={handleSaveSelection}

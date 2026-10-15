@@ -42,6 +42,7 @@ export const updateConsent = async (prefs: Partial<ConsentPreferences>, userId?:
 
     if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        window.dispatchEvent(new Event('ob-consent-updated'));
     }
 
     if (!supabase) return;

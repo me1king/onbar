@@ -27,6 +27,7 @@ import InstallAppWidget from "@/components/layout/InstallAppWidget";
 import ExperienceNotificationHost from "@/components/layout/ExperienceNotificationHost";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import RootStabilityGuard from "@/components/layout/RootStabilityGuard";
+import PostHogSessionReplay from "@/components/layout/PostHogSessionReplay";
 import { Suspense } from "react";
 
 export default function RootLayout({
@@ -50,6 +51,8 @@ export default function RootLayout({
                         <Suspense fallback={null}>
                             <AnalyticsTracker />
                         </Suspense>
+
+                        <PostHogSessionReplay appName="Online Bar" />
 
                         <Suspense fallback={null}>
                             <InstallAppWidget />

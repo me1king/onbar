@@ -16,7 +16,8 @@ import {
     ShoppingCart,
     ShoppingBag,
     Users,
-    Flame
+    Flame,
+    ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -52,6 +53,9 @@ interface ForensicEvent {
 
 export default function SessionLibraryPage() {
     const router = useRouter();
+    const posthogProjectId = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_ID;
+    const posthogProjectKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+    const posthogUiHost = (process.env.NEXT_PUBLIC_POSTHOG_UI_HOST || 'https://us.posthog.com').replace(/\/+$/, '');
     const [loading, setLoading] = React.useState(true);
     const [sessions, setSessions] = React.useState<SessionNode[]>([]);
     const [selectedSession, setSelectedSession] = React.useState<SessionNode | null>(null);
@@ -197,6 +201,20 @@ export default function SessionLibraryPage() {
                     </div>
                 </div>
                 <div className="flex gap-4">
+                    {posthogProjectId && posthogProjectKey ? (
+                        <a
+                            href={`${posthogUiHost}/project/${encodeURIComponent(posthogProjectId)}/replay`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-14 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-widest text-white shadow-sm transition hover:bg-indigo-700"
+                        >
+                            <ExternalLink size={15} /> Visual replays
+                        </a>
+                    ) : (
+                        <div className="flex max-w-64 items-center rounded-xl border border-amber-200 bg-amber-50 px-4 text-[9px] font-bold leading-relaxed text-amber-900">
+                            Set the shared PostHog project key and ID to open visual replays.
+                        </div>
+                    )}
                     <div className="relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
                         <Input
