@@ -20,6 +20,7 @@ import {
   ShieldAlert as SecurityIcon,
   Wine,
   Cookie,
+  Ticket,
   Bot,
   Flame,
   History as HistoryIcon,
@@ -172,6 +173,7 @@ export default function AdminLayoutClient({
       { name: 'App Widgets', href: '/admin/experience/mobile-widgets', icon: Smartphone, permission: 'can_manage_settings' },
     ]},
     { group: 'OPERATIONS', items: [
+      { name: 'Ticketing', href: '/admin/ticketing', icon: Ticket, minRole: 'admin' },
       { name: 'Live Runners', href: '/admin/dispatch', icon: Truck, permission: 'can_manage_orders' },
       { name: 'The Buzz Hub', href: '/admin/buzz', icon: Flame, permission: 'can_manage_marketing' },
       { name: 'Tasks Board', href: '/admin/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },
