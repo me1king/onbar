@@ -156,6 +156,7 @@ interface WaitlistSiteAnalytics {
   page_opens: number;
   unique_visitors: number;
   age_groups: Array<{ group: string; label: string; visitors: number }>;
+  genre_picks: Array<{ genre: string | null; label: string; visitors: number }>;
   music: Array<{ age_group: string; music_genre: string | null; track_title: string; starts: number; heard_80: number; listeners: number }>;
   locations: Array<{ country: string; county: string; city: string; area: string; signups: number }>;
 }
@@ -328,6 +329,7 @@ export default function WaitlistPage() {
     (referralCreditPage + 1) * referralCreditPageSize
   );
   const locationHeatMaximum = Math.max(1, ...(siteAnalytics?.locations || []).map(location => location.signups));
+  const genrePickMaximum = Math.max(1, ...(siteAnalytics?.genre_picks || []).map(genre => genre.visitors));
   const topTrackByAge = useMemo(() => {
     const leaders = new Map<string, WaitlistSiteAnalytics['music'][number]>();
     for (const track of siteAnalytics?.music || []) {
@@ -781,6 +783,28 @@ export default function WaitlistPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <article className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Website opens · {analyticsDays} days</p><p className="mt-2 text-3xl font-black text-slate-950">{count(siteAnalytics.page_opens)}</p></article>
               <article className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Anonymous browser sessions</p><p className="mt-2 text-3xl font-black text-slate-950">{count(siteAnalytics.unique_visitors)}</p></article>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Music styles people choose · {analyticsDays} days</h3>
+              <p className="mt-1 text-xs text-slate-500">Counts are anonymous browser sessions that selected each style. A session can select more than one while exploring; counts are not linked to signup details.</p>
+              {!siteAnalytics.genre_picks?.length
+                ? <p className="mt-3 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">Style-pick analytics will appear after the Waitlist site and database migration are updated.</p>
+                : <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {siteAnalytics.genre_picks.map(genre => {
+                    const percentage = Math.round((genre.visitors / genrePickMaximum) * 100);
+                    return <article key={genre.genre || 'age-group-mix'} className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="truncate text-xs font-black text-slate-800">{genre.label}</h4>
+                        <span className="shrink-0 text-xs font-black text-primary">{count(genre.visitors)}</span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${percentage}%` }} />
+                      </div>
+                      <p className="mt-1 text-[10px] text-slate-500">anonymous sessions</p>
+                    </article>;
+                  })}
+                </div>}
             </div>
 
             <div>
