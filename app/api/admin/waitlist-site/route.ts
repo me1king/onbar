@@ -199,7 +199,7 @@ export async function GET(request: Request) {
     claims: claimsWithMember,
     analytics: analytics.data || null,
     analyticsError: analytics.error
-      ? 'Apply supabase/WAITLIST_SITE_MIGRATION.sql in the shared Supabase project to enable site traffic and music analytics.'
+      ? 'Apply supabase/WAITLIST_MUSIC_ANALYTICS_MIGRATION.sql in the shared Supabase project to enable site traffic and music analytics. For a new database, apply WAITLIST_SITE_MIGRATION.sql first.'
       : null,
     analyticsDays: days,
     publicSiteCheckAvailable: publicSiteCheck.available,
