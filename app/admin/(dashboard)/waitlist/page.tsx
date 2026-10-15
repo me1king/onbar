@@ -424,7 +424,7 @@ export default function WaitlistPage() {
       if (!savedTrack || savedTrack.title !== title) throw new Error('The upload finished but its saved music assignment could not be confirmed. Refresh the page and check the track before retrying.');
       setSiteContent(result.content);
       setPublicSiteCheckAvailable(result.publicSiteCheckAvailable ?? false);
-      setPublicSiteConfirmed(current => ({ ...current, [key]: result.publicSiteConfirmed === true }));
+      setPublicSiteConfirmed(current => ({ ...current, [trackId]: result.publicSiteConfirmed === true }));
       const label = type === 'genre'
         ? musicGenres.find(genre => genre.id === key)?.label || key
         : ageGroups.find(group => group.id === key)?.label || key;
@@ -689,19 +689,25 @@ export default function WaitlistPage() {
                 <button type="submit" disabled={savingSiteContent || uploadingSiteImage} className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-50"><Save size={15} />{savingSiteContent ? 'Publishing…' : 'Publish copy'}</button>
               </div>
               <div id="waitlist-age-music" className="scroll-mt-6 grid gap-3 border-t border-slate-100 pt-4 lg:col-span-2">
-                <div><h3 className="text-sm font-black uppercase tracking-wide text-slate-900">Upload songs by age group</h3><p className="mt-1 text-xs text-slate-500">Upload music you own or are licensed to use. Visitors choose an adult age range and explicitly enter before a track plays. MP3, WAV, OGG or M4A · maximum 10 MB.</p></div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div><h3 className="text-sm font-black uppercase tracking-wide text-slate-900">Upload songs by age group</h3><p className="mt-1 text-xs text-slate-500">Upload music you own or are licensed to use. Visitors choose an adult age range and explicitly enter before a track plays. MP3, WAV, OGG or M4A · maximum 10 MB.</p></div>
+                  <button type="button" onClick={() => void loadSiteContent()} disabled={loadingSiteContent} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                    <RefreshCw size={13} className={loadingSiteContent ? 'animate-spin' : ''} /> {loadingSiteContent ? 'Checking…' : 'Verify live tracks'}
+                  </button>
+                </div>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {ageGroups.map(group => {
                     const track = siteContent.age_group_tracks?.[group.id];
                     const trackId = `age:${group.id}`;
+                    const isLive = publicSiteConfirmed[trackId] === true;
                     return <div key={group.id} className="rounded-xl border border-slate-200 p-3">
                       <p className="text-xs font-black text-slate-800">Age {group.label}</p>
-                      {track && <div className={`mt-2 rounded-lg p-2.5 ${publicSiteConfirmed[group.id] ? 'bg-emerald-50' : 'bg-amber-50'}`}>
-                        <p className={`flex items-center gap-1.5 text-xs font-bold ${publicSiteConfirmed[group.id] ? 'text-emerald-800' : 'text-amber-900'}`}>
-                          {publicSiteConfirmed[group.id] ? <Check size={13} /> : <AlertTriangle size={13} />}
-                          {publicSiteConfirmed[group.id] ? 'UPLOAD COMPLETE · LIVE' : publicSiteCheckAvailable ? 'UPLOADED · NOT LIVE' : 'SAVED · LIVE STATUS UNKNOWN'}
+                      {track && <div className={`mt-2 rounded-lg p-2.5 ${isLive ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+                        <p className={`flex items-center gap-1.5 text-xs font-bold ${isLive ? 'text-emerald-800' : 'text-amber-900'}`}>
+                          {isLive ? <Check size={13} /> : <AlertTriangle size={13} />}
+                          {isLive ? 'UPLOAD COMPLETE · LIVE' : publicSiteCheckAvailable ? 'UPLOADED · NOT LIVE' : 'SAVED · LIVE STATUS UNKNOWN'}
                         </p>
-                        <p className={`mt-1 truncate text-xs ${publicSiteConfirmed[group.id] ? 'text-emerald-900' : 'text-amber-950'}`}>{track.title}</p>
+                        <p className={`mt-1 truncate text-xs ${isLive ? 'text-emerald-900' : 'text-amber-950'}`}>{track.title}</p>
                         <audio className="mt-2 block h-9 w-full" controls preload="none" src={track.url} aria-label={`Preview published track for age ${group.label}`} />
                       </div>}
                       {!track && <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-500">NO SONG UPLOADED for this age group.</p>}
@@ -723,14 +729,15 @@ export default function WaitlistPage() {
                   {musicGenres.map(genre => {
                     const track = siteContent.genre_tracks?.[genre.id];
                     const trackId = `genre:${genre.id}`;
+                    const isLive = publicSiteConfirmed[trackId] === true;
                     return <div key={genre.id} className="rounded-xl border border-slate-200 p-3">
                       <p className="text-xs font-black text-slate-800">{genre.label}</p>
-                      {track && <div className={`mt-2 rounded-lg p-2.5 ${publicSiteConfirmed[genre.id] ? 'bg-emerald-50' : 'bg-amber-50'}`}>
-                        <p className={`flex items-center gap-1.5 text-xs font-bold ${publicSiteConfirmed[genre.id] ? 'text-emerald-800' : 'text-amber-900'}`}>
-                          {publicSiteConfirmed[genre.id] ? <Check size={13} /> : <AlertTriangle size={13} />}
-                          {publicSiteConfirmed[genre.id] ? 'UPLOAD COMPLETE · LIVE' : publicSiteCheckAvailable ? 'UPLOADED · NOT LIVE' : 'SAVED · LIVE STATUS UNKNOWN'}
+                      {track && <div className={`mt-2 rounded-lg p-2.5 ${isLive ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+                        <p className={`flex items-center gap-1.5 text-xs font-bold ${isLive ? 'text-emerald-800' : 'text-amber-900'}`}>
+                          {isLive ? <Check size={13} /> : <AlertTriangle size={13} />}
+                          {isLive ? 'UPLOAD COMPLETE · LIVE' : publicSiteCheckAvailable ? 'UPLOADED · NOT LIVE' : 'SAVED · LIVE STATUS UNKNOWN'}
                         </p>
-                        <p className={`mt-1 truncate text-xs ${publicSiteConfirmed[genre.id] ? 'text-emerald-900' : 'text-amber-950'}`}>{track.title}</p>
+                        <p className={`mt-1 truncate text-xs ${isLive ? 'text-emerald-900' : 'text-amber-950'}`}>{track.title}</p>
                         <audio className="mt-2 block h-9 w-full" controls preload="none" src={track.url} aria-label={`Preview ${genre.label} track`} />
                       </div>}
                       {!track && <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-500">NO SONG UPLOADED for this genre.</p>}

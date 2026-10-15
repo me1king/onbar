@@ -34,8 +34,13 @@ function isMissingGenreColumn(error: { code?: string; message?: string } | null)
     && (error.message || '').toLowerCase().includes('genre_tracks'));
 }
 
-async function checkTracksOnPublicSite(tracks: Record<string, { title: string; url: string }>, assignment: 'age_group_tracks' | 'genre_tracks') {
-  if (Object.keys(tracks).length === 0) return { available: false, confirmed: {} as Record<string, boolean> };
+async function checkTracksOnPublicSite(tracks: {
+  age_group_tracks: Record<string, { title: string; url: string }>;
+  genre_tracks: Record<string, { title: string; url: string }>;
+}) {
+  if (Object.keys(tracks.age_group_tracks).length === 0 && Object.keys(tracks.genre_tracks).length === 0) {
+    return { available: false, confirmed: {} as Record<string, boolean> };
+  }
   const baseUrl = (process.env.WAITLIST_PUBLIC_URL?.trim() || 'https://theewaitlist.vercel.app').replace(/\/+$/, '');
   try {
     const response = await fetch(`${baseUrl}/api/content?track_check=${crypto.randomUUID()}`, {
@@ -49,15 +54,18 @@ async function checkTracksOnPublicSite(tracks: Record<string, { title: string; u
         genre_tracks?: Record<string, { title?: string; url?: string }>;
       };
     };
-    const publishedTracks = result.content?.[assignment] || {};
+    const confirmed: Record<string, boolean> = {};
+    for (const [group, track] of Object.entries(tracks.age_group_tracks)) {
+      const publishedTrack = result.content?.age_group_tracks?.[group];
+      confirmed[`age:${group}`] = publishedTrack?.title === track.title && publishedTrack.url === track.url;
+    }
+    for (const [genre, track] of Object.entries(tracks.genre_tracks)) {
+      const publishedTrack = result.content?.genre_tracks?.[genre];
+      confirmed[`genre:${genre}`] = publishedTrack?.title === track.title && publishedTrack.url === track.url;
+    }
     return {
       available: true,
-      confirmed: Object.fromEntries(
-        Object.entries(tracks).map(([ageGroup, track]) => {
-          const publishedTrack = publishedTracks[ageGroup];
-          return [ageGroup, publishedTrack?.title === track.title && publishedTrack.url === track.url];
-        })
-      )
+      confirmed
     };
   } catch (error) {
     console.error('[AdminWaitlistSite] Could not verify the uploaded track on the public waitlist site:', error);
@@ -176,10 +184,10 @@ export async function GET(request: Request) {
       typeof entry[1]?.title === 'string' && typeof entry[1]?.url === 'string'
     )
   );
-  const [publicSiteCheck, publicGenreCheck] = await Promise.all([
-    checkTracksOnPublicSite(tracksToCheck, 'age_group_tracks'),
-    checkTracksOnPublicSite(genreTracksToCheck, 'genre_tracks')
-  ]);
+  const publicSiteCheck = await checkTracksOnPublicSite({
+    age_group_tracks: tracksToCheck,
+    genre_tracks: genreTracksToCheck
+  });
   const memberById = new Map((members.data || []).map(member => [member.id, member]));
   const claimsWithMember = (claims.data || []).map(claim => ({
     ...claim,
@@ -195,7 +203,7 @@ export async function GET(request: Request) {
       : null,
     analyticsDays: days,
     publicSiteCheckAvailable: publicSiteCheck.available,
-    publicSiteConfirmed: { ...publicSiteCheck.confirmed, ...publicGenreCheck.confirmed }
+    publicSiteConfirmed: publicSiteCheck.confirmed
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
@@ -497,11 +505,15 @@ export async function POST(request: Request) {
       const { error: cleanupError } = await database.storage.from(AUDIO_BUCKET).remove([previousPath]);
       if (cleanupError) console.error('[AdminWaitlistSite] Could not remove replaced music track:', cleanupError);
     }
-    const publicSiteCheck = await checkTracksOnPublicSite({ [musicKey]: track }, trackField);
+    const publicSiteCheck = await checkTracksOnPublicSite({
+      age_group_tracks: musicType === 'age' ? { [musicKey]: track } : {},
+      genre_tracks: musicType === 'genre' ? { [musicKey]: track } : {}
+    });
+    const trackId = `${musicType}:${musicKey}`;
     return NextResponse.json({
       content: data,
       publicSiteCheckAvailable: publicSiteCheck.available,
-      publicSiteConfirmed: publicSiteCheck.confirmed[musicKey] === true
+      publicSiteConfirmed: publicSiteCheck.confirmed[trackId] === true
     }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
