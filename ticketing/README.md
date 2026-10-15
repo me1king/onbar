@@ -8,6 +8,8 @@ The Ticketing control centre is an isolated Online Bar Admin module at `/admin/t
 - Server-side validation prevents invalid dates, price formats, purchase limits, and tier allocations beyond an event's stated capacity.
 - The core migration establishes isolated records for organizers, events, ticket tiers, reservations, orders, payment attempts and webhook deduplication, individual tickets, gate check-ins, refunds, promotions, notification jobs, and audit history.
 - The reservation and gate-check-in database functions are transactional and use ticket-level locking to prevent overselling and duplicate admission.
+- The Halloween-themed Trust & Security Centre records manually reported security cases, owner-only case assignment/status changes, and append-only case activity in the dedicated security migration.
+- Ticketing security case history is not an automated monitoring feed. MFA enforcement, payment callbacks, customer isolation, five-minute QR rotation, scanner sessions, external security logging, and backup verification remain unimplemented.
 - Public event discovery, customer checkout, Daraja/Paystack payment verification, ticket issuance, transfer/refund operations, notifications, and staff scanner access are not enabled in this initial phase. No event can be published or sold from this module.
 
 ## Complete product scope
@@ -26,7 +28,7 @@ These are product targets, not features that the current draft-only phase claims
 
 ## Database setup
 
-Apply `supabase/TICKETING_CORE_MIGRATION.sql` once to the same Supabase project used by Online Bar Admin. The migration uses only the `ticketing_*` namespace, enables RLS, revokes direct browser access, and grants server-side access to `service_role`. Review the SQL and confirm the target project before applying it.
+Apply `supabase/TICKETING_CORE_MIGRATION.sql` and then `supabase/TICKETING_SECURITY_MIGRATION.sql` to the same Supabase project used by Online Bar Admin. The migrations use only the `ticketing_*` namespace, enable RLS, revoke direct browser access, and grant server-side access to `service_role` only where needed. Security case activity and security events are append-only to the application service role; case assignment/status changes run through an audited database function. Review both SQL files and confirm the target project before applying them.
 
 The platform must keep its service-role key server-side. API access to the Admin control centre requires an authenticated Online Bar owner or admin session. Do not put payment credentials in client-side environment variables.
 
@@ -38,6 +40,8 @@ The platform must keep its service-role key server-side. API access to the Admin
 4. Issue one unpredictable credential per paid admission only after verified payment; store a credential hash and deliver tickets idempotently.
 5. Add event-scoped staff roles and online gate scanning with atomic duplicate prevention, revoked/refunded-ticket rejection, and audited manual overrides.
 6. Complete refunds, transfer rules, transactional notifications and retries, financial reconciliation, monitoring, accessibility, privacy/retention policy, backup recovery and concurrency/authorization tests.
-7. Run the Midnight Society KE pilot in sandbox with a controlled event and staff. Do not enable production sales until every release-blocking test in the ticketing blueprint passes.
+7. Connect privileged MFA/session revocation, protected external security logging, rate limits, payment/ticket fraud alerts, tested backup restores and an exercised incident-response process. The Trust & Security Centre currently manages cases but does not detect attacks.
+8. Implement short-lived rotating ticket credentials only alongside authenticated ticket-wallet access, server-side validity checks and authorized online gate scanning; test clock drift, replay, race conditions and lost-connectivity recovery.
+9. Run the Midnight Society KE pilot in sandbox with a controlled event and staff. Do not enable production sales until every release-blocking test in the ticketing blueprint passes.
 
 Money is stored as integer minor units with an explicit ISO currency. A checkout redirect, screenshot, or client-side status must never be treated as proof of payment.
