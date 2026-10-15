@@ -399,6 +399,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
   };
 
   const navItems = [
+    { href: "/tickets", label: "Halloween Tickets" },
     { href: "/shop", label: "Build My Bar" },
     { href: "/beverages", label: "Drinks" },
     { href: "/bites", label: "Food" },
@@ -657,14 +658,15 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
         >
           {navItems.map(({ href, label }) => {
             const active = pathname === href || (href === "/shop" && pathname?.startsWith("/shop"));
+            const ticketLink = href === "/tickets";
             return (
               <Link key={`desktop-${label}`} href={href}
                 prefetch
                 aria-current={active ? "page" : undefined}
                 className={`shrink-0 border-b-2 px-2.5 py-2 text-[11px] font-semibold transition-colors xl:px-3 ${
                   active
-                    ? "border-primary text-primary"
-                    : "border-transparent text-slate-800 hover:text-primary"
+                    ? ticketLink ? "border-orange-500 text-orange-600" : "border-primary text-primary"
+                    : ticketLink ? "border-transparent text-orange-700 hover:text-orange-600" : "border-transparent text-slate-800 hover:text-primary"
                 }`}
               >
                 {label}
@@ -833,7 +835,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
                   href={href}
                   onClick={() => setIsMobileOpen(false)}
                   className={`text-[11px] font-black uppercase tracking-widest py-3.5 px-5 rounded-2xl transition-all active:scale-[0.98] ${
-                    pathname === href ? "bg-white shadow-sm text-primary" : "text-slate-500 hover:bg-white/50"
+                    pathname === href ? href === "/tickets" ? "bg-orange-50 shadow-sm text-orange-700" : "bg-white shadow-sm text-primary" : href === "/tickets" ? "text-orange-700 hover:bg-orange-50" : "text-slate-500 hover:bg-white/50"
                   }`}
                 >
                   {label}
