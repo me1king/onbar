@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, Suspense, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useSettings, type StoreSettings } from '@/lib/useSettings';
+import { getPrimaryForeground } from '@/lib/themeColors';
 import { Loader2 } from 'lucide-react';
 import CustomerAnnouncementHost from './CustomerAnnouncementHost';
 import LocationOnboarding from './LocationOnboarding';
@@ -82,6 +83,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
             ? configuredPrimary
             : '#D91C1C';
         document.documentElement.style.setProperty('--primary', primary);
+        document.documentElement.style.setProperty('--primary-foreground', getPrimaryForeground(primary));
         document.documentElement.style.setProperty('--ring', primary);
         if (cachedPrimary) window.sessionStorage.removeItem('onlinebar_theme_primary');
     }, [mounted, pathname, settings.theme_config.primary]);

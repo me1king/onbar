@@ -49,6 +49,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { getPrimaryForeground } from '@/lib/themeColors';
 
 const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAreaManager'), { ssr: false });
 
@@ -286,6 +287,7 @@ export default function AdminSettingsPage() {
         ) {
             const primary = publishedTheme.value.primary;
             document.documentElement.style.setProperty('--primary', primary);
+            document.documentElement.style.setProperty('--primary-foreground', getPrimaryForeground(primary));
             document.documentElement.style.setProperty('--ring', primary);
             window.sessionStorage.setItem('onlinebar_theme_primary', primary);
         }
