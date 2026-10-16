@@ -94,24 +94,42 @@ export default async function TicketEventPage({ params }: PageProps) {
             </div>
             <div className="mt-5 space-y-3">
               {event.ticket_types.map(ticketType => {
-                const notOpen = ticketType.sales_start_at && new Date(ticketType.sales_start_at).getTime() > now;
-                const closed = ticketType.sales_end_at && new Date(ticketType.sales_end_at).getTime() <= now;
-                const schedule = notOpen
-                  ? `Sales open ${formatEventDate(ticketType.sales_start_at!, event.timezone)}`
-                  : closed ? 'Sales window has ended' : 'Purchase unavailable';
+                const soldOut = ticketType.remaining <= 0;
+                const notOpen = !ticketType.wave_open
+                  || Boolean(ticketType.sales_start_at && new Date(ticketType.sales_start_at).getTime() > now);
+                const closed = Boolean(ticketType.sales_end_at && new Date(ticketType.sales_end_at).getTime() <= now);
+                const schedule = soldOut
+                  ? 'Sold out'
+                  : closed
+                    ? 'Sales window has ended'
+                    : notOpen
+                      ? ticketType.activation_mode === 'scheduled' && ticketType.sales_start_at
+                        ? `Sales open ${formatEventDate(ticketType.sales_start_at, event.timezone)}`
+                        : ticketType.activation_mode === 'previous_sold_out'
+                          ? 'Opens when the previous wave sells out or closes'
+                          : 'Awaiting owner activation'
+                      : ticketType.wave_number !== null
+                        ? `Wave open · ${ticketType.remaining.toLocaleString('en-KE')} remaining`
+                        : 'Ticket option available';
                 return (
                   <article key={ticketType.id} className="rounded-2xl border border-white/[0.08] bg-black/15 p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="flex min-w-0 items-start gap-3">
                         <span className="rounded-xl border border-orange-300/15 bg-orange-300/10 p-2.5 text-orange-200"><Ticket size={17} /></span>
-                        <div className="min-w-0"><h3 className="font-black text-white">{ticketType.name}</h3><p className="mt-1 text-xs leading-5 text-slate-400">{ticketType.description || 'Entry for one guest. Check the event details before the night.'}</p><p className="mt-2 text-[10px] text-slate-500">Limit: {ticketType.min_per_order}–{ticketType.max_per_order} per order</p></div>
+                        <div className="min-w-0">
+                          {ticketType.wave_number !== null && <p className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-orange-200">{ticketType.wave_label} · {ticketType.admission_type}</p>}
+                          <h3 className="font-black text-white">{ticketType.name}</h3>
+                          <p className="mt-1 text-xs leading-5 text-slate-400">{ticketType.description || 'Entry for one guest. Check the event details before the night.'}</p>
+                          {ticketType.benefits.length > 0 && <p className="mt-2 text-[10px] leading-5 text-violet-200">{ticketType.benefits.join(' · ')}</p>}
+                          <p className="mt-2 text-[10px] text-slate-500">Limit: {ticketType.min_per_order}–{ticketType.max_per_order} per order{ticketType.wave_number !== null ? ` · ${ticketType.wave_theme.replaceAll('-', ' & ')}` : ''}</p>
+                        </div>
                       </div>
                       <p className="shrink-0 text-lg font-black text-orange-100">{formatPrice(ticketType.price_minor, ticketType.currency)}</p>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-3">
                       <span className="text-[10px] font-semibold text-slate-500">{schedule}</span>
                       <button type="button" disabled aria-disabled="true" title="Online checkout and verified payment are not available yet" className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-xl bg-white/10 px-4 text-xs font-black text-slate-400">
-                        {notOpen ? 'Not on sale yet' : closed ? 'Sales ended' : 'Purchases paused'}
+                        {soldOut ? 'Sold out' : notOpen ? 'Not on sale yet' : closed ? 'Sales ended' : 'Checkout not live'}
                       </button>
                     </div>
                   </article>

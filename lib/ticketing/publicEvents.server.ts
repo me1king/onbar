@@ -11,8 +11,19 @@ export type PublicTicketType = {
   currency: string;
   min_per_order: number;
   max_per_order: number;
+  capacity: number;
+  remaining: number;
+  benefits: string[];
   sales_start_at: string | null;
   sales_end_at: string | null;
+  status: string;
+  wave_number: number | null;
+  admission_type: string;
+  wave_label: string;
+  activation_mode: 'scheduled' | 'previous_sold_out' | 'manual';
+  wave_theme: 'obsidian-gold' | 'crimson-black' | 'electric-violet';
+  wave_manual_open: boolean;
+  wave_open: boolean;
 };
 
 export type PublicTicketEvent = {
@@ -47,7 +58,8 @@ const eventFields = [
 
 const tierFields = [
   'id', 'event_id', 'name', 'description', 'price_minor', 'currency',
-  'min_per_order', 'max_per_order', 'sales_start_at', 'sales_end_at'
+  'min_per_order', 'max_per_order', 'capacity', 'benefits', 'sales_start_at', 'sales_end_at',
+  'status', 'wave_number', 'admission_type', 'wave_label', 'activation_mode', 'wave_theme', 'wave_manual_open'
 ].join(',');
 
 function isMissingTicketingSchema(error: { code?: string }) {
@@ -102,19 +114,64 @@ async function getPublicEvents(): Promise<PublicEventsResult> {
   const ticketTypesResult = await database.from('ticketing_ticket_types')
     .select(tierFields)
     .in('event_id', rows.map(event => event.id))
-    .eq('status', 'active')
     .order('price_minor', { ascending: true });
   if (ticketTypesResult.error) {
+    if (/wave_number|admission_type|wave_label|activation_mode|wave_theme|wave_manual_open/i.test(ticketTypesResult.error.message || '')) {
+      return { ok: false, message: 'Ticket releases are being prepared. Apply supabase/TICKETING_WAVES_MIGRATION.sql in the Online Bar Supabase project.' };
+    }
     console.error('[PublicTicketing] Could not load active ticket tiers:', ticketTypesResult.error);
     return { ok: false, message: 'Ticket options could not be loaded right now. Please try again later.' };
   }
 
-  const typesByEvent = new Map<string, PublicTicketType[]>();
-  for (const ticketType of (ticketTypesResult.data || []) as unknown as PublicTicketType[]) {
-    typesByEvent.set(ticketType.event_id, [...(typesByEvent.get(ticketType.event_id) || []), ticketType]);
+  const allTicketTypes = (ticketTypesResult.data || []) as unknown as PublicTicketType[];
+  const availabilityResult = rows.length
+    ? await database.rpc('ticketing_public_wave_availability', { p_event_ids: rows.map(event => event.id) })
+    : { data: [], error: null };
+  if (availabilityResult.error) {
+    if (availabilityResult.error.code === 'PGRST202'
+      || /ticketing_public_wave_availability/i.test(availabilityResult.error.message || '')) {
+      return { ok: false, message: 'Ticket availability is being prepared. Apply supabase/TICKETING_WAVES_MIGRATION.sql in the Online Bar Supabase project.' };
+    }
+    console.error('[PublicTicketing] Could not load ticket availability:', availabilityResult.error);
+    return { ok: false, message: 'Ticket availability could not be loaded right now. Please try again later.' };
   }
 
+  const availabilityRows = availabilityResult.data as unknown as Array<{
+    ticket_type_id: string;
+    remaining: number;
+    wave_open: boolean;
+  }> | null;
+  if (!Array.isArray(availabilityRows) || availabilityRows.some(availability =>
+    typeof availability.ticket_type_id !== 'string'
+    || !Number.isSafeInteger(availability.remaining)
+    || typeof availability.wave_open !== 'boolean')) {
+    console.error('[PublicTicketing] Availability query returned an invalid response shape.');
+    return { ok: false, message: 'Ticket availability could not be loaded right now. Please try again later.' };
+  }
+  const availabilityByType = new Map(availabilityRows.map(availability => [
+    availability.ticket_type_id,
+    availability
+  ]));
+  const activeTicketTypes = allTicketTypes.filter(ticketType => ticketType.status === 'active');
+  if (activeTicketTypes.some(ticketType => !availabilityByType.has(ticketType.id))) {
+    console.error('[PublicTicketing] Availability response omitted an active ticket type.');
+    return { ok: false, message: 'Ticket availability could not be loaded right now. Please try again later.' };
+  }
+
+  const typesByEvent = new Map<string, PublicTicketType[]>();
   const now = Date.now();
+  for (const ticketType of activeTicketTypes) {
+    const availability = availabilityByType.get(ticketType.id);
+    if (!availability) continue;
+    const waveOpen = availability.wave_open
+      && (!ticketType.sales_start_at || new Date(ticketType.sales_start_at).getTime() <= now)
+      && (!ticketType.sales_end_at || new Date(ticketType.sales_end_at).getTime() > now);
+    typesByEvent.set(ticketType.event_id, [
+      ...(typesByEvent.get(ticketType.event_id) || []),
+      { ...ticketType, remaining: availability.remaining, wave_open: waveOpen }
+    ]);
+  }
+
   const events = rows
     .map(event => ({
       id: event.id,

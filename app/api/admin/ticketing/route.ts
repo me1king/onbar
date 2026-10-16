@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from '@/lib/serverSupabase';
 export const dynamic = 'force-dynamic';
 
 const eventFields = 'id,organizer_id,title,slug,description,venue_name,venue_address,city,timezone,starts_at,ends_at,doors_open_at,age_limit,capacity,service_fee_minor,status,cancellation_policy,cover_image_url,published_at,created_at,updated_at';
-const ticketTypeFields = 'id,event_id,name,description,price_minor,currency,capacity,min_per_order,max_per_order,sales_start_at,sales_end_at,benefits,status,created_at,updated_at';
+const ticketTypeFields = 'id,event_id,name,description,price_minor,currency,capacity,min_per_order,max_per_order,sales_start_at,sales_end_at,benefits,status,created_at,updated_at,wave_number,admission_type,wave_label,activation_mode,wave_theme,wave_manual_open';
 
 async function authorize() {
   const session = await getAdminSession();
@@ -42,6 +42,13 @@ function parseMoney(value: unknown) {
   return Number.isSafeInteger(amount) ? amount : null;
 }
 
+function parseBenefits(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((benefit): benefit is string => typeof benefit === 'string')) return null;
+  const benefits = value.map(benefit => benefit.trim()).filter(Boolean);
+  return benefits.length <= 20 && benefits.every(benefit => benefit.length <= 200) ? benefits : null;
+}
+
 function missingMigration(error: { code?: string; message?: string }) {
   return error.code === '42P01' || error.code === 'PGRST205'
     || (error.message || '').toLowerCase().includes('ticketing_');
@@ -76,6 +83,10 @@ export async function GET() {
     ? await database.from('ticketing_ticket_types').select(ticketTypeFields).in('event_id', eventIds).order('created_at')
     : { data: [], error: null };
   if (ticketTypesResult.error) {
+    if (missingMigration(ticketTypesResult.error)
+      && /wave_number|admission_type|wave_label|activation_mode|wave_theme|wave_manual_open/i.test(ticketTypesResult.error.message || '')) {
+      return NextResponse.json({ error: 'Apply supabase/TICKETING_WAVES_MIGRATION.sql after the Ticketing core, service-fee, security and live-operations migrations.' }, { status: 503 });
+    }
     console.error('[TicketingAdmin] Could not load ticket tiers:', ticketTypesResult.error);
     return NextResponse.json({ error: 'Ticket tiers could not be loaded.' }, { status: 503 });
   }
@@ -188,6 +199,178 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The draft event could not be saved.' }, { status: 503 });
     }
     return NextResponse.json({ event: { ...(data as Record<string, unknown>), ticket_types: [] } }, { status: 201 });
+  }
+
+  if (body.action === 'create_ticket_wave') {
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const admissionType = typeof body.admissionType === 'string' ? body.admissionType.trim() : '';
+    const waveLabel = typeof body.waveLabel === 'string' ? body.waveLabel.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const waveNumber = Number(body.waveNumber);
+    const priceMinor = parseMoney(body.price);
+    const capacity = Number(body.capacity);
+    const minPerOrder = Number(body.minPerOrder ?? 1);
+    const maxPerOrder = Number(body.maxPerOrder ?? 10);
+    const activationMode = body.activationMode;
+    const waveTheme = body.waveTheme;
+    const salesStartAt = body.salesStartAt ? parseDate(body.salesStartAt) : null;
+    const salesEndAt = body.salesEndAt ? parseDate(body.salesEndAt) : null;
+    const benefits = parseBenefits(body.benefits);
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      || !['General Admission', 'VIP', 'Group Package', 'Backstage / Exclusive'].includes(admissionType)
+      || !Number.isInteger(waveNumber) || waveNumber < 1 || waveNumber > 3
+      || waveLabel.length < 2 || waveLabel.length > 100 || description.length > 2_000
+      || priceMinor === null || priceMinor < 1
+      || !Number.isSafeInteger(capacity) || capacity < 1 || capacity > 1_000_000
+      || !Number.isSafeInteger(minPerOrder) || !Number.isSafeInteger(maxPerOrder)
+      || minPerOrder < 1 || maxPerOrder < minPerOrder || maxPerOrder > 100
+      || !['scheduled', 'previous_sold_out', 'manual'].includes(String(activationMode))
+      || !['obsidian-gold', 'crimson-black', 'electric-violet'].includes(String(waveTheme))
+      || (activationMode === 'scheduled' && !salesStartAt)
+      || (body.salesStartAt && !salesStartAt) || (body.salesEndAt && !salesEndAt)
+      || (salesStartAt && salesEndAt && new Date(salesEndAt) <= new Date(salesStartAt))
+      || !benefits) {
+      return NextResponse.json({ error: 'Enter a valid wave number, admission type, price, allocation, activation rule, theme and sale window.' }, { status: 400 });
+    }
+
+    const { data, error } = await database.rpc('ticketing_create_event_wave', {
+      p_event_id: eventId,
+      p_admission_type: admissionType,
+      p_wave_number: waveNumber,
+      p_wave_label: waveLabel,
+      p_price_minor: priceMinor,
+      p_capacity: capacity,
+      p_min_per_order: minPerOrder,
+      p_max_per_order: maxPerOrder,
+      p_activation_mode: activationMode,
+      p_wave_theme: waveTheme,
+      p_sales_start_at: salesStartAt,
+      p_sales_end_at: salesEndAt,
+      p_description: description,
+      p_benefits: benefits,
+      p_actor_email: session.email || ''
+    });
+    if (error || !data) {
+      if (error?.code === '23514') return NextResponse.json({ error: 'This wave allocation exceeds event capacity.' }, { status: 400 });
+      if (error?.code === '23505') return NextResponse.json({ error: 'That admission type already has a ticket in this wave.' }, { status: 409 });
+      if (error?.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 409 });
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event was not found.' }, { status: 404 });
+      if (error?.code === '22023') return NextResponse.json({ error: 'Wave configuration is invalid. Add earlier waves in sequence before choosing sell-out activation.' }, { status: 400 });
+      console.error('[TicketingAdmin] Could not create ticket wave:', error);
+      return NextResponse.json({ error: 'Ticket wave could not be saved. Confirm that TICKETING_WAVES_MIGRATION.sql has been applied.' }, { status: 503 });
+    }
+    return NextResponse.json({ ticketType: data }, { status: 201 });
+  }
+
+  if (body.action === 'update_ticket_wave') {
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const ticketTypeId = typeof body.ticketTypeId === 'string' ? body.ticketTypeId : '';
+    const waveLabel = typeof body.waveLabel === 'string' ? body.waveLabel.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const priceMinor = parseMoney(body.price);
+    const capacity = Number(body.capacity);
+    const minPerOrder = Number(body.minPerOrder ?? 1);
+    const maxPerOrder = Number(body.maxPerOrder ?? 10);
+    const activationMode = body.activationMode;
+    const waveTheme = body.waveTheme;
+    const salesStartAt = body.salesStartAt ? parseDate(body.salesStartAt) : null;
+    const salesEndAt = body.salesEndAt ? parseDate(body.salesEndAt) : null;
+    const benefits = parseBenefits(body.benefits);
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ticketTypeId)
+      || waveLabel.length < 2 || waveLabel.length > 100 || description.length > 2_000
+      || priceMinor === null || priceMinor < 1
+      || !Number.isSafeInteger(capacity) || capacity < 1 || capacity > 1_000_000
+      || !Number.isSafeInteger(minPerOrder) || !Number.isSafeInteger(maxPerOrder)
+      || minPerOrder < 1 || maxPerOrder < minPerOrder || maxPerOrder > 100
+      || !['scheduled', 'previous_sold_out', 'manual'].includes(String(activationMode))
+      || !['obsidian-gold', 'crimson-black', 'electric-violet'].includes(String(waveTheme))
+      || (activationMode === 'scheduled' && !salesStartAt)
+      || (body.salesStartAt && !salesStartAt) || (body.salesEndAt && !salesEndAt)
+      || (salesStartAt && salesEndAt && new Date(salesEndAt) <= new Date(salesStartAt))
+      || !benefits) {
+      return NextResponse.json({ error: 'Enter a valid wave label, price, allocation, opening rule, theme and sale window.' }, { status: 400 });
+    }
+
+    const { data, error } = await database.rpc('ticketing_update_event_wave', {
+      p_event_id: eventId,
+      p_ticket_type_id: ticketTypeId,
+      p_wave_label: waveLabel,
+      p_price_minor: priceMinor,
+      p_capacity: capacity,
+      p_min_per_order: minPerOrder,
+      p_max_per_order: maxPerOrder,
+      p_activation_mode: activationMode,
+      p_wave_theme: waveTheme,
+      p_sales_start_at: salesStartAt,
+      p_sales_end_at: salesEndAt,
+      p_description: description,
+      p_benefits: benefits,
+      p_actor_email: session.email || ''
+    });
+    if (error || !data) {
+      if (error?.code === '23514') return NextResponse.json({ error: 'This wave allocation exceeds event capacity.' }, { status: 400 });
+      if (error?.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 409 });
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event or wave was not found.' }, { status: 404 });
+      if (error?.code === '22023') return NextResponse.json({ error: 'Wave configuration is invalid.' }, { status: 400 });
+      console.error('[TicketingAdmin] Could not update ticket wave:', error);
+      return NextResponse.json({ error: 'Ticket wave could not be updated. Confirm that TICKETING_WAVES_MIGRATION.sql has been applied.' }, { status: 503 });
+    }
+    return NextResponse.json({ ticketType: data });
+  }
+
+  if (body.action === 'set_ticket_wave_status') {
+    if (session?.role.toLowerCase() !== 'owner') {
+      return NextResponse.json({ error: 'Only the platform owner can pause or resume a release wave.' }, { status: 403 });
+    }
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const ticketTypeId = typeof body.ticketTypeId === 'string' ? body.ticketTypeId : '';
+    const status = body.status === 'active' || body.status === 'paused' ? body.status : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ticketTypeId)
+      || !status) {
+      return NextResponse.json({ error: 'Select a valid wave and status.' }, { status: 400 });
+    }
+    const { data, error } = await database.rpc('ticketing_set_wave_status', {
+      p_event_id: eventId,
+      p_ticket_type_id: ticketTypeId,
+      p_status: status,
+      p_actor_email: session?.email || ''
+    });
+    if (error || !data) {
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected wave was not found.' }, { status: 404 });
+      console.error('[TicketingAdmin] Could not update ticket wave status:', error);
+      return NextResponse.json({ error: 'Ticket wave status could not be updated. Confirm that TICKETING_WAVES_MIGRATION.sql has been applied.' }, { status: 503 });
+    }
+    return NextResponse.json({ ticketType: data });
+  }
+
+  if (body.action === 'set_manual_ticket_wave_open') {
+    if (session?.role.toLowerCase() !== 'owner') {
+      return NextResponse.json({ error: 'Only the platform owner can manually open a release wave.' }, { status: 403 });
+    }
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const ticketTypeId = typeof body.ticketTypeId === 'string' ? body.ticketTypeId : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ticketTypeId)
+      || typeof body.open !== 'boolean') {
+      return NextResponse.json({ error: 'Select a valid manually activated wave.' }, { status: 400 });
+    }
+    const { data, error } = await database.rpc('ticketing_set_manual_wave_open', {
+      p_event_id: eventId,
+      p_ticket_type_id: ticketTypeId,
+      p_open: body.open,
+      p_actor_email: session?.email || ''
+    });
+    if (error || !data) {
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected wave was not found.' }, { status: 404 });
+      if (error?.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 409 });
+      console.error('[TicketingAdmin] Could not manually open ticket wave:', error);
+      return NextResponse.json({ error: 'Manual wave activation could not be updated. Confirm that TICKETING_WAVES_MIGRATION.sql has been applied.' }, { status: 503 });
+    }
+    return NextResponse.json({ ticketType: data });
   }
 
   if (body.action === 'create_ticket_type') {

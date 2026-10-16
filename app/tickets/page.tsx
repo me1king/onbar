@@ -33,8 +33,10 @@ function formatPrice(amount: number, currency: string) {
 }
 
 function EventCard({ event }: { event: PublicTicketEvent }) {
-  const prices = event.ticket_types.map(ticketType => ticketType.price_minor);
-  const lowestPrice = Math.min(...prices);
+  const availableTicketTypes = event.ticket_types.filter(ticketType => ticketType.wave_open && ticketType.remaining > 0);
+  const lowestPrice = availableTicketTypes.length
+    ? Math.min(...availableTicketTypes.map(ticketType => ticketType.price_minor))
+    : null;
 
   return (
     <article className="group overflow-hidden rounded-3xl border border-white/10 bg-[#17121e] shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-1 hover:border-orange-300/30 hover:shadow-orange-950/20">
@@ -57,11 +59,20 @@ function EventCard({ event }: { event: PublicTicketEvent }) {
           {event.doors_open_at && <span className="inline-flex items-center gap-2"><Clock3 size={14} className="text-orange-300" />Doors {formatEventDate(event.doors_open_at, event.timezone)}</span>}
         </div>
         <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-400">{event.description || 'Get ready for a night out. Event details and ticket options are available here.'}</p>
+        {event.ticket_types.some(ticketType => ticketType.wave_number !== null) && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {event.ticket_types.filter(ticketType => ticketType.wave_number !== null).map(ticketType => (
+            <span key={ticketType.id} className="rounded-full border border-orange-300/15 bg-orange-300/5 px-3 py-1 text-[9px] font-bold text-orange-100">
+              {ticketType.wave_label} · {ticketType.admission_type}
+            </span>
+          ))}
+        </div>
+        )}
         <div className="mt-5 flex flex-wrap items-end justify-between gap-4 border-t border-white/[0.08] pt-4">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500">Tickets from</p>
-            <p className="mt-1 text-lg font-black text-orange-100">{formatPrice(lowestPrice, event.ticket_types[0]?.currency || 'KES')}</p>
-          </div>
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500">{lowestPrice === null ? 'Next release' : 'Tickets from'}</p>
+          <p className="mt-1 text-lg font-black text-orange-100">{lowestPrice === null ? 'No wave open' : formatPrice(lowestPrice, event.ticket_types[0]?.currency || 'KES')}</p>
+        </div>
           <Link href={`/tickets/${encodeURIComponent(event.slug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-4 text-xs font-black text-[#170d18] transition hover:bg-orange-300">
             Event & tickets <ChevronRight size={15} />
           </Link>

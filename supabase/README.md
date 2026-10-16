@@ -41,3 +41,15 @@ exist after applying it.
 The admin APIs use the server-side `SUPABASE_SERVICE_ROLE_KEY`. Keep that key
 server-only; the recovery migration denies direct browser access to its finance
 tables.
+
+## Ticketing release waves
+
+For the Online Bar Admin Ticketing module, apply
+`TICKETING_CORE_MIGRATION.sql`, `TICKETING_SERVICE_FEE_ADMIN_MIGRATION.sql`,
+`TICKETING_SECURITY_MIGRATION.sql`, and
+`TICKETING_LIVE_OPERATIONS_MIGRATION.sql` first, then apply
+`TICKETING_WAVES_MIGRATION.sql`. The final migration adds admission-specific
+Wave I/II/III configuration, audited admin controls, transactional reservation
+gates, and the server-side availability query used by public event listings.
+Do not enable customer sales: verified checkout and ticket issuance are still
+disabled in this release.
