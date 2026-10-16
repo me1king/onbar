@@ -183,6 +183,13 @@ export default function AdminSettingsPage() {
     const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
     const [heroPreview, setHeroPreview] = useState<string | null>(null);
 
+    useEffect(() => {
+        if (!/^#[\da-f]{6}$/i.test(theme.primary)) return;
+        document.documentElement.style.setProperty('--primary', theme.primary);
+        document.documentElement.style.setProperty('--primary-foreground', getPrimaryForeground(theme.primary));
+        document.documentElement.style.setProperty('--ring', theme.primary);
+    }, [theme.primary]);
+
     const logoInputRef = useRef<HTMLInputElement>(null);
     const faviconInputRef = useRef<HTMLInputElement>(null);
     const heroInputRef = useRef<HTMLInputElement>(null);
