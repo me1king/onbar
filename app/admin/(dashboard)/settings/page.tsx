@@ -530,7 +530,7 @@ export default function AdminSettingsPage() {
                         onClick={() => setActiveTab(tab.id as TabId)}
                         className={cn(
                             "flex items-center gap-3 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 border-2 border-transparent",
-                            activeTab === tab.id ? "bg-primary text-background border-primary shadow-lg shadow-primary/20" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                            activeTab === tab.id ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                         )}
                     >
                         <tab.icon className="h-4 w-4" />
@@ -1884,7 +1884,7 @@ export default function AdminSettingsPage() {
                     <Button
                         disabled={savingKey !== null}
                         onClick={handlePublishAll}
-                        className="flex-1 h-16 rounded-2xl bg-primary text-background font-black uppercase tracking-[0.2em] text-xs hover:bg-primary/90 transition-all active:scale-95 shadow-xl shadow-primary/20 group"
+                        className="flex-1 h-16 rounded-2xl bg-primary text-primary-foreground font-black uppercase tracking-[0.2em] text-xs hover:bg-primary/90 transition-all active:scale-95 shadow-xl shadow-primary/20 group"
                     >
                         {savingKey === 'all' ? <Loader2 className="h-5 w-5 animate-spin mr-3" /> : <Rocket className="h-5 w-5 mr-3 group-hover:translate-y-[-2px] group-hover:translate-x-[2px] transition-transform" />}
                         Sync All Bar Data

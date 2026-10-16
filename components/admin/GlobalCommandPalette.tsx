@@ -167,7 +167,7 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPalet
                                     onMouseEnter={() => setActiveIndex(idx)}
                                     className={cn(
                                         "w-full flex items-center gap-6 p-4 rounded-[1.8rem] transition-all text-left group",
-                                        activeIndex === idx ? "bg-primary text-background shadow-xl shadow-primary/20 scale-[1.02]" : "hover:bg-secondary"
+                                        activeIndex === idx ? "bg-primary text-primary-foreground shadow-xl shadow-primary/20 scale-[1.02]" : "hover:bg-secondary"
                                     )}
                                 >
                                     <div className={cn(
