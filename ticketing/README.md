@@ -5,6 +5,7 @@ The Ticketing control centre is an isolated Online Bar Admin module at `/admin/t
 ## Current phase
 
 - Admin can create private event drafts and ticket tiers with KES prices, capacity, purchase limits, sale windows, venue, dates, age limit, description, and cancellation policy.
+- Admins can configure a fixed per-ticket service fee from the Online Bar Ticketing dashboard. Fee changes are locked and audited in the database; already-created orders are not rewritten. The public checkout is still disabled, so this setting will affect customer pricing only after the verified checkout release is enabled.
 - The public `/tickets` and `/tickets/[slug]` pages show only future events belonging to approved organizers and explicitly marked on sale, with a Halloween-night theme and published tier prices. Purchase controls remain disabled; there is no public checkout.
 - Server-side validation prevents invalid dates, price formats, purchase limits, and tier allocations beyond an event's stated capacity.
 - The core migration establishes isolated records for organizers, events, ticket tiers, reservations, orders, payment attempts and webhook deduplication, individual tickets, gate check-ins, refunds, promotions, notification jobs, and audit history.
@@ -31,7 +32,7 @@ These are product targets, not features that the current draft-only phase claims
 
 ## Database setup
 
-Apply `supabase/TICKETING_CORE_MIGRATION.sql`, then `supabase/TICKETING_SECURITY_MIGRATION.sql`, then `supabase/TICKETING_LIVE_OPERATIONS_MIGRATION.sql` to the same Supabase project used by Online Bar Admin. The migrations use only the `ticketing_*` namespace, enable RLS, revoke direct browser access, and grant server-side access to `service_role` only where needed. Security case activity and security events are append-only to the application service role; case assignment/status changes run through an audited database function. The live operations journal records only allowlisted operational metadata. Review all SQL files and confirm the target project before applying them.
+Apply `supabase/TICKETING_CORE_MIGRATION.sql`, then `supabase/TICKETING_SERVICE_FEE_ADMIN_MIGRATION.sql`, `supabase/TICKETING_SECURITY_MIGRATION.sql`, and `supabase/TICKETING_LIVE_OPERATIONS_MIGRATION.sql` to the same Supabase project used by Online Bar Admin. The migrations use only the `ticketing_*` namespace, enable RLS, revoke direct browser access, and grant server-side access to `service_role` only where needed. Service-fee changes are recorded in the append-only ticketing audit history. Security case activity and security events are append-only to the application service role; case assignment/status changes run through an audited database function. The live operations journal records only allowlisted operational metadata. Review all SQL files and confirm the target project before applying them.
 
 The platform must keep its service-role key server-side. API access to the Admin control centre requires an authenticated Online Bar owner or admin session. Do not put payment credentials in client-side environment variables.
 

@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '@/lib/serverSupabase';
 
 export const dynamic = 'force-dynamic';
 
-const eventFields = 'id,organizer_id,title,slug,description,venue_name,venue_address,city,timezone,starts_at,ends_at,doors_open_at,age_limit,capacity,status,cancellation_policy,cover_image_url,published_at,created_at,updated_at';
+const eventFields = 'id,organizer_id,title,slug,description,venue_name,venue_address,city,timezone,starts_at,ends_at,doors_open_at,age_limit,capacity,service_fee_minor,status,cancellation_policy,cover_image_url,published_at,created_at,updated_at';
 const ticketTypeFields = 'id,event_id,name,description,price_minor,currency,capacity,min_per_order,max_per_order,sales_start_at,sales_end_at,benefits,status,created_at,updated_at';
 
 async function authorize() {
@@ -48,7 +48,7 @@ function missingMigration(error: { code?: string; message?: string }) {
 }
 
 export async function GET() {
-  const { response } = await authorize();
+  const { session, response } = await authorize();
   if (response) return response;
   const database = createServerSupabaseClient();
   if (!database) return NextResponse.json({ error: 'Ticketing storage is not configured.' }, { status: 503 });
@@ -63,7 +63,7 @@ export async function GET() {
   if (queryError) {
     if (missingMigration(queryError)) {
       return NextResponse.json({
-        error: 'Apply supabase/TICKETING_CORE_MIGRATION.sql to the shared Supabase project to initialize the isolated Ticketing system.'
+        error: 'Apply the documented Ticketing migrations, including TICKETING_SERVICE_FEE_ADMIN_MIGRATION.sql, to the shared Supabase project.'
       }, { status: 503 });
     }
     console.error('[TicketingAdmin] Could not load ticketing dashboard:', queryError);
@@ -90,7 +90,8 @@ export async function GET() {
       events: eventCount.count || 0,
       tickets: ticketCount.count || 0,
       orders: orderCount.count || 0
-    }
+    },
+    canPublish: session?.role.toLowerCase() === 'owner'
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
@@ -108,6 +109,31 @@ export async function POST(request: Request) {
     body = await request.json() as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: 'A valid ticketing request is required.' }, { status: 400 });
+  }
+
+  if (body.action === 'update_event_service_fee') {
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const serviceFeeMinor = parseMoney(body.serviceFee);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      || serviceFeeMinor === null || serviceFeeMinor > 100_000_000) {
+      return NextResponse.json({ error: 'Enter a valid event and per-ticket service fee.' }, { status: 400 });
+    }
+
+    const { data, error } = await database.rpc('ticketing_update_event_service_fee', {
+      p_event_id: eventId,
+      p_service_fee_minor: serviceFeeMinor,
+      p_actor_email: session?.email || '',
+      p_allow_on_sale: session?.role.toLowerCase() === 'owner'
+    });
+    if (error || !data) {
+      if (error?.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 409 });
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event was not found.' }, { status: 404 });
+      if (error?.code === '22023') return NextResponse.json({ error: 'The service fee is invalid.' }, { status: 400 });
+      if (error?.code === '42501') return NextResponse.json({ error: error.message }, { status: 403 });
+      console.error('[TicketingAdmin] Could not update event service fee:', error);
+      return NextResponse.json({ error: 'The service fee could not be updated.' }, { status: 503 });
+    }
+    return NextResponse.json({ event: data });
   }
 
   if (body.action === 'create_event') {

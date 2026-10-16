@@ -51,6 +51,7 @@ type TicketEvent = {
   ends_at: string;
   age_limit: number | null;
   capacity: number | null;
+  service_fee_minor: number;
   status: string;
   created_at: string;
   ticket_types: TicketType[];
@@ -59,6 +60,7 @@ type TicketEvent = {
 type DashboardData = {
   events: TicketEvent[];
   totals: { events: number; tickets: number; orders: number };
+  canPublish: boolean;
 };
 
 const inputClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-[#17121e] px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400/15';
@@ -208,8 +210,57 @@ function TierForm({ event, onCreated, onCancel }: { event: TicketEvent; onCreate
   );
 }
 
-function EventCard({ event, onRefresh }: { event: TicketEvent; onRefresh: () => void }) {
+function ServiceFeeForm({ event, onSaved, onCancel }: { event: TicketEvent; onSaved: () => void; onCancel: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(formData: FormData) {
+    setSaving(true);
+    setError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_event_service_fee',
+          eventId: event.id,
+          serviceFee: formData.get('serviceFee')
+        })
+      }));
+      onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The service fee could not be updated.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form action={submit} className="mb-5 rounded-xl border border-orange-300/15 bg-[#100d17] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-black text-white">Control service fee</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-400">Set one fixed fee per ticket in KES. Existing orders keep their saved totals.</p>
+        </div>
+        <button type="button" onClick={onCancel} className="rounded-lg px-2 py-1 text-xs font-bold text-slate-400 hover:bg-white/5">Close</button>
+      </div>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className={`${labelClass} min-w-44 flex-1`}>Fee per ticket (KES)
+          <input className={inputClass} name="serviceFee" type="number" min="0" max="1000000" step="0.01" required defaultValue={(event.service_fee_minor / 100).toFixed(2)} />
+        </label>
+        <button disabled={saving} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-4 text-sm font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
+          <Wallet size={15} /> {saving ? 'Saving…' : 'Save service fee'}
+        </button>
+      </div>
+      <p className="mt-2 text-[10px] leading-4 text-slate-500">Online Bar’s ticket checkout is not enabled yet; this setting is ready for the verified checkout release.</p>
+      {error && <p role="alert" className="mt-3 rounded-lg border border-red-200/20 bg-red-950/20 p-3 text-xs text-red-200">{error}</p>}
+    </form>
+  );
+}
+
+function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPublish: boolean; onRefresh: () => void }) {
   const [addingTier, setAddingTier] = useState(false);
+  const [editingServiceFee, setEditingServiceFee] = useState(false);
   const allocated = event.ticket_types.reduce((total, tier) => total + tier.capacity, 0);
   return (
     <article className="overflow-hidden rounded-2xl border border-white/10 bg-[#17121e] shadow-xl shadow-black/20">
@@ -237,6 +288,15 @@ function EventCard({ event, onRefresh }: { event: TicketEvent; onRefresh: () => 
           <div className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Tier allocation</p><p className="mt-1 text-sm font-black text-white">{allocated.toLocaleString('en-KE')}{event.capacity ? ` / ${event.capacity.toLocaleString('en-KE')}` : ''}</p></div>
           <div className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Event ends</p><p className="mt-1 text-sm font-black text-white">{eventDate(event.ends_at)}</p></div>
         </div>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.025] p-3">
+          <p className="text-xs text-slate-300">Service fee: <strong className="text-white">{money(event.service_fee_minor)} per ticket</strong></p>
+          {(['draft', 'scheduled'].includes(event.status) || (event.status === 'on_sale' && canPublish)) && (
+            <button type="button" onClick={() => setEditingServiceFee(value => !value)} className="min-h-9 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
+              {editingServiceFee ? 'Close fee control' : 'Control service fee'}
+            </button>
+          )}
+        </div>
+        {editingServiceFee && <ServiceFeeForm event={event} onCancel={() => setEditingServiceFee(false)} onSaved={() => { setEditingServiceFee(false); onRefresh(); }} />}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h4 className="text-sm font-black text-white">Ticket tiers</h4>
@@ -375,7 +435,7 @@ export default function TicketingPage() {
               {!query && <button type="button" onClick={() => setAddingEvent(true)} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18] hover:bg-orange-300"><Plus size={16} /> Create event draft</button>}
             </div>
           )}
-          {visibleEvents.map(event => <EventCard key={event.id} event={event} onRefresh={() => void load()} />)}
+          {visibleEvents.map(event => <EventCard key={event.id} event={event} canPublish={data?.canPublish ?? false} onRefresh={() => void load()} />)}
         </section>
 
         <footer className="rounded-2xl border border-orange-300/15 bg-[#17121e] p-5">
