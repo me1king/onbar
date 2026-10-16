@@ -354,7 +354,7 @@ export default function ProductDetailClient({
   };
 
   return (
-    <div className="bg-brand-cream/50 min-h-screen pt-4 sm:pt-10 pb-24 px-2 sm:px-6 flex flex-col items-center gap-12 text-left selection:bg-brand-red/10 animate-in fade-in duration-700 font-sans antialiased">
+    <div className="bg-background min-h-screen pt-4 sm:pt-10 pb-24 px-2 sm:px-6 flex flex-col items-center gap-12 text-left selection:bg-brand-red/10 animate-in fade-in duration-700 font-sans antialiased">
 
       {/* 🏛️ ELITE PRODUCT GRID STAGE (Oaks Style) */}
       <Card className="max-w-6xl w-full min-w-0 bg-white rounded-[2rem] sm:rounded-[3rem] shadow-2xl overflow-hidden relative flex flex-col lg:flex-row min-h-[90dvh] border-none">

@@ -49,7 +49,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { getPrimaryForeground } from '@/lib/themeColors';
+import { applyPrimaryTheme } from '@/lib/themeColors';
 
 const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAreaManager'), { ssr: false });
 
@@ -118,7 +118,7 @@ const DEFAULTS = {
 const THEME_PRESETS = {
     classic: {
         label: 'Classic Online Bar',
-        description: 'Restore the familiar yellow primary color.',
+        description: 'Restore the familiar yellow primary color with clean white surfaces.',
         colors: { primary: '#F5A000', secondary: '#0F172A', accent: '#5B5BFF' }
     },
     midnight: {
@@ -185,9 +185,7 @@ export default function AdminSettingsPage() {
 
     useEffect(() => {
         if (!/^#[\da-f]{6}$/i.test(theme.primary)) return;
-        document.documentElement.style.setProperty('--primary', theme.primary);
-        document.documentElement.style.setProperty('--primary-foreground', getPrimaryForeground(theme.primary));
-        document.documentElement.style.setProperty('--ring', theme.primary);
+        applyPrimaryTheme(theme.primary);
     }, [theme.primary]);
 
     const logoInputRef = useRef<HTMLInputElement>(null);
@@ -293,9 +291,7 @@ export default function AdminSettingsPage() {
             && /^#[\da-f]{6}$/i.test(publishedTheme.value.primary)
         ) {
             const primary = publishedTheme.value.primary;
-            document.documentElement.style.setProperty('--primary', primary);
-            document.documentElement.style.setProperty('--primary-foreground', getPrimaryForeground(primary));
-            document.documentElement.style.setProperty('--ring', primary);
+            applyPrimaryTheme(primary);
             window.sessionStorage.setItem('onlinebar_theme_primary', primary);
         }
     };

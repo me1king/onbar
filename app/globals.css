@@ -83,8 +83,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    background-color: #F9F4EC !important;
-    color: #10231f !important;
+    background-color: var(--background) !important;
+    color: var(--foreground) !important;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
