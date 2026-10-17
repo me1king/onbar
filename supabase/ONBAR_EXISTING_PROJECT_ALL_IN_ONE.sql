@@ -3123,6 +3123,22 @@ ALTER TABLE public.merchant_applications
     ADD COLUMN IF NOT EXISTS latitude NUMERIC,
     ADD COLUMN IF NOT EXISTS longitude NUMERIC;
 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'merchant_applications_coordinates_check'
+          AND conrelid = 'public.merchant_applications'::regclass
+    ) THEN
+        ALTER TABLE public.merchant_applications
+            ADD CONSTRAINT merchant_applications_coordinates_check CHECK (
+                (latitude IS NULL AND longitude IS NULL)
+                OR (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180)
+            );
+    END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.allocate_tracked_product_on_order_item()
 RETURNS TRIGGER
 LANGUAGE plpgsql

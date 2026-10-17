@@ -87,6 +87,7 @@ export default function MerchantOnboarding() {
   const [requirementsLoaded, setRequirementsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedApplicationId, setSubmittedApplicationId] = useState('');
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,8 +173,9 @@ export default function MerchantOnboarding() {
 
     try {
       const response = await fetch('/api/merchant-applications', { method: 'POST', body: payload });
-      const result = await response.json() as { error?: string };
+      const result = await response.json() as { id?: string; error?: string };
       if (!response.ok) throw new Error(result.error || 'Your application could not be submitted.');
+      setSubmittedApplicationId(result.id || '');
       setSubmitted(true);
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : 'Your application could not be submitted.');
@@ -194,6 +196,13 @@ export default function MerchantOnboarding() {
           <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
             OnBar will review your business details and documents. A merchant ID is assigned after approval. Your business will not become active automatically.
           </p>
+          {submittedApplicationId && <p className="mt-4 text-xs font-semibold text-slate-500">Application reference: {submittedApplicationId}</p>}
+          <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
+            Track your application and, after approval, manage linked orders and inventory in the Partner Workspace. Sign in with a verified account using the same email address you submitted.
+          </p>
+          <Link href="/merchant/network" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-primary px-6 text-sm font-black uppercase text-white hover:opacity-90">
+            Open Partner Workspace
+          </Link>
           <Link href="/" className="mt-8 inline-flex text-sm font-bold text-primary hover:underline">Return to OnBar</Link>
         </Card>
       </main>

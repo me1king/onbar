@@ -74,6 +74,26 @@ CREATE TABLE IF NOT EXISTS public.merchant_applications (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.merchant_applications
+    ADD COLUMN IF NOT EXISTS latitude NUMERIC(10, 7),
+    ADD COLUMN IF NOT EXISTS longitude NUMERIC(10, 7);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'merchant_applications_coordinates_check'
+          AND conrelid = 'public.merchant_applications'::regclass
+    ) THEN
+        ALTER TABLE public.merchant_applications
+            ADD CONSTRAINT merchant_applications_coordinates_check CHECK (
+                (latitude IS NULL AND longitude IS NULL)
+                OR (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180)
+            );
+    END IF;
+END;
+$$;
+
 CREATE INDEX IF NOT EXISTS merchant_applications_status_created_idx
     ON public.merchant_applications (status, created_at DESC);
 CREATE INDEX IF NOT EXISTS merchant_applications_area_idx
