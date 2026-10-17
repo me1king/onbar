@@ -654,7 +654,7 @@ export default function TicketingPage() {
               <span className="block text-sm font-black text-white">Readiness &amp; security controls</span>
               <span className="mt-1 block text-xs text-slate-400">Current payment, ticket authenticity and gate-operation status</span>
             </span>
-            <span className="shrink-0 rounded-full border border-amber-200/15 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">Foundation phase</span>
+            <span className="shrink-0 rounded-full border border-amber-200/15 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">Sandbox verification required</span>
           </summary>
           <div className="border-t border-white/10 p-5 sm:p-6">
         <section aria-labelledby="trust-heading" className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#19171d] to-[#111016] p-4 sm:p-5">
@@ -662,31 +662,31 @@ export default function TicketingPage() {
             <div>
               <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100"><ShieldAlert size={14} /> Trust &amp; security centre</div>
               <h2 id="trust-heading" className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">Keep the tricks out. Keep the tickets real.</h2>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">A clear view of the controls in the attached security blueprint. Readiness labels reflect this build; this panel is not a live fraud-monitoring feed.</p>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">Checkout, ticket wallets and gate scanning are implemented. Production configuration and a controlled sandbox rehearsal are still required; this panel is not a live fraud-monitoring feed.</p>
             </div>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Not live" body="Provider callbacks, amount matching and payment reconciliation are not connected." />
-            <SecurityControl icon={KeyRound} title="Authentic ticket" state="Not live" body="Ticket credential issuance, customer delivery and revocation are not connected." />
-            <SecurityControl icon={ScanLine} title="Gate admission" state="Scanner built · migration required" body="A separate /scanner workspace now supports verified staff sign-in, event-scoped assignments, camera/manual credential scans and atomic server check-in. Apply the scanner migration before use." />
-            <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Draft and tier writes create audit entries; MFA, dual approval and a security case feed are not live." />
+            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Sandbox test required" body="Paystack callbacks are signature-checked and independently verified against the ticket order. Production checkout currently fails closed until its encryption key is configured; verify webhook delivery and amount matching in sandbox." />
+            <SecurityControl icon={KeyRound} title="Authentic ticket" state="Sandbox test required" body="Ticket credentials are issued only after verified payment, stored hashed and encrypted, and shown in the guest wallet. Email delivery and cross-device recovery are not configured." />
+            <SecurityControl icon={ScanLine} title="Gate admission" state="Verify migration & rehearse" body="The separate /scanner workspace supports verified staff, event-scoped assignments and atomic server check-in. Confirm the scanner migration is applied, then test a paid ticket and duplicate scan." />
+            <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Ticketing changes are audited and scanner access is event-scoped. MFA enforcement, dual approval and automated fraud monitoring are not live." />
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-5 text-slate-400">
             <ShieldCheck size={15} className="mt-0.5 shrink-0 text-amber-200" />
-            <p>QR screenshots and payment messages are not proof of a valid ticket. Enable sales only after the payment, credential, admission and oversight controls are implemented and tested end-to-end.</p>
+            <p>QR screenshots and payment messages are not proof of a valid ticket. Keep live sales closed until production credentials, database migrations, an on-sale event and the payment-to-wallet-to-gate sandbox rehearsal are verified.</p>
           </div>
         </section>
 
         <section className="grid gap-3 md:grid-cols-3">
           <Feature icon={ShieldCheck} title="Isolated ticket records" body="Ticketing uses its own event, tier, reservation, payment, ticket, refund and check-in data." />
-          <Feature icon={Clock3} title="Reservation foundation" body="The database foundation supports short holds and inventory locking; public checkout is not connected." />
+          <Feature icon={Clock3} title="Reserved checkout" body="Public checkout uses server-priced tickets and atomic inventory reservations. Confirm reservation expiry behavior during the sandbox rehearsal." />
           <Feature icon={Users} title="Isolated staff scanner" body="Gate staff sign into /scanner with their own verified account and can validate only events assigned by an admin." />
         </section>
           </div>
         </details>
 
         <footer className="rounded-2xl border border-amber-200/10 bg-[#111016] p-5">
-          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">Sales remain locked</p><p className="mt-1 text-xs leading-5 text-slate-400">Do not publish or accept customer payments until server-verified provider callbacks, atomic reservation expiry, idempotent ticket issuance, customer ownership checks, refund reconciliation and online gate validation are implemented and tested.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
+          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">Live sales remain locked pending verification</p><p className="mt-1 text-xs leading-5 text-slate-400">Configure production secrets, confirm the ticketing and scanner migrations, publish an approved event and complete a controlled sandbox payment-to-wallet-to-gate test before accepting live payments.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
         </footer>
       </div>
     </main>
@@ -701,7 +701,7 @@ function Feature({ icon: Icon, title, body }: { icon: typeof Ticket; title: stri
   return <article className="rounded-2xl border border-white/10 bg-[#17121e] p-4 shadow-lg shadow-black/10"><div className="flex items-center gap-2 text-orange-300"><Icon size={16} /><h3 className="text-xs font-black uppercase tracking-wide text-slate-200">{title}</h3></div><p className="mt-2 text-xs leading-5 text-slate-400">{body}</p></article>;
 }
 
-function SecurityControl({ icon: Icon, title, state, body }: { icon: typeof Ticket; title: string; state: 'Not live' | 'Foundation' | 'Scanner built · migration required'; body: string }) {
+function SecurityControl({ icon: Icon, title, state, body }: { icon: typeof Ticket; title: string; state: string; body: string }) {
   const isFoundation = state === 'Foundation';
   return (
     <article className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
