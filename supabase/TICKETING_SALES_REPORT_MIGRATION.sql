@@ -91,7 +91,7 @@ BEGIN
                orders.total_minor, orders.paid_at, events.title AS event_title
         FROM public.ticketing_orders AS orders
         JOIN public.ticketing_events AS events ON events.id = orders.event_id
-        WHERE orders.status = 'paid'
+        WHERE orders.status IN ('paid', 'refund_pending', 'partially_refunded', 'refunded')
           AND orders.paid_at IS NOT NULL
           AND (p_since IS NULL OR orders.paid_at >= p_since)
           AND (p_until IS NULL OR orders.paid_at < p_until)
@@ -121,7 +121,7 @@ BEGIN
                orders.total_minor, events.title AS event_title
         FROM public.ticketing_orders AS orders
         JOIN public.ticketing_events AS events ON events.id = orders.event_id
-        WHERE orders.status = 'paid'
+        WHERE orders.status IN ('paid', 'refund_pending', 'partially_refunded', 'refunded')
           AND orders.paid_at IS NOT NULL
           AND (p_since IS NULL OR orders.paid_at >= p_since)
           AND (p_until IS NULL OR orders.paid_at < p_until)
@@ -158,7 +158,7 @@ BEGIN
                orders.total_minor, orders.paid_at, events.title AS event_title
         FROM public.ticketing_orders AS orders
         JOIN public.ticketing_events AS events ON events.id = orders.event_id
-        WHERE orders.status = 'paid'
+        WHERE orders.status IN ('paid', 'refund_pending', 'partially_refunded', 'refunded')
           AND orders.paid_at IS NOT NULL
           AND (p_since IS NULL OR orders.paid_at >= p_since)
           AND (p_until IS NULL OR orders.paid_at < p_until)
@@ -194,7 +194,8 @@ BEGIN
     INTO v_refunded_minor
     FROM public.ticketing_refunds AS refunds
     JOIN public.ticketing_orders AS orders ON orders.id = refunds.order_id
-    WHERE orders.status = 'paid'
+    WHERE orders.status IN ('paid', 'refund_pending', 'partially_refunded', 'refunded')
+      AND orders.paid_at IS NOT NULL
       AND refunds.status = 'succeeded'
       AND (p_since IS NULL OR orders.paid_at >= p_since)
       AND (p_until IS NULL OR orders.paid_at < p_until);
