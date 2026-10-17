@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, CalendarDays, Clock3, Ghost, MapPin, ShieldAlert, ShieldCheck, Ticket } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Clock3, Ghost, MapPin, Navigation, ShieldAlert, ShieldCheck, Ticket } from 'lucide-react';
 import { getPublicTicketEvent } from '@/lib/ticketing/publicEvents.server';
 import TicketCheckoutButton from '@/app/tickets/TicketCheckoutButton';
 import TicketingBrand from '@/app/tickets/TicketingBrand';
@@ -68,6 +68,12 @@ export default async function TicketEventPage({ params }: PageProps) {
   if (!event) notFound();
 
   const now = Date.now();
+  const venueQuery = event.venue_latitude !== null && event.venue_longitude !== null
+    ? `${event.venue_latitude},${event.venue_longitude}`
+    : `${event.venue_name}, ${event.venue_address}, ${event.city}`;
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueQuery)}`;
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(venueQuery)}`;
+  const transitUrl = `${directionsUrl}&travelmode=transit`;
   return (
     <>
     <TicketingBrand />
@@ -90,6 +96,20 @@ export default async function TicketEventPage({ params }: PageProps) {
               {event.doors_open_at && <EventDetail icon={Clock3} title="Doors open" value={formatEventDate(event.doors_open_at, event.timezone)} />}
               {event.age_limit !== null && <EventDetail icon={ShieldCheck} title="Age requirement" value={`${event.age_limit}+`} />}
             </div>
+            <nav aria-label="Venue directions" className="mt-6 flex flex-wrap gap-2">
+              <a href={mapsUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/15 px-4 text-xs font-bold text-white transition hover:border-orange-200/30 hover:bg-white/5">
+                <MapPin size={15} /> View on Google Maps
+              </a>
+              <a href={directionsUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/15 px-4 text-xs font-bold text-white transition hover:border-orange-200/30 hover:bg-white/5">
+                <Navigation size={15} /> Get directions
+              </a>
+              <a href={transitUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/15 px-4 text-xs font-bold text-white transition hover:border-orange-200/30 hover:bg-white/5">
+                <Navigation size={15} /> Find transport
+              </a>
+              <a href="#arrival-guide" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/15 px-4 text-xs font-bold text-white transition hover:border-orange-200/30 hover:bg-white/5">
+                <MapPin size={15} /> Venue &amp; entry guide
+              </a>
+            </nav>
           </div>
         </header>
 
@@ -169,6 +189,29 @@ export default async function TicketEventPage({ params }: PageProps) {
                 <li className="flex gap-2"><Ticket size={15} className="mt-0.5 shrink-0 text-orange-200" />A screenshot or payment message is not proof of a valid ticket.</li>
                 <li className="flex gap-2"><MapPin size={15} className="mt-0.5 shrink-0 text-orange-200" />Venue: {event.venue_name}, {event.city}.</li>
               </ul>
+            </section>
+            <section id="arrival-guide" className="scroll-mt-6 rounded-3xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
+              <h2 className="text-sm font-black text-white">Venue &amp; arrival guide</h2>
+              <p className="mt-2 text-xs text-slate-300">{event.venue_name} · {event.city}</p>
+              <div className="mt-4 space-y-4 text-xs leading-5 text-slate-400">
+                <div>
+                  <h3 className="font-bold text-white">Entrance</h3>
+                  <p className="mt-1 whitespace-pre-wrap">{event.entrance_guide || 'Entrance details have not been published yet.'}</p>
+                </div>
+                <div>
+                  <h3 className="font-bold text-white">Parking</h3>
+                  <p className="mt-1 whitespace-pre-wrap">{event.parking_guide || 'Parking information has not been published yet.'}</p>
+                </div>
+                <div>
+                  <h3 className="font-bold text-white">Public transport &amp; arrival</h3>
+                  <p className="mt-1 whitespace-pre-wrap">{event.transport_guide || 'Transport and arrival guidance have not been published yet. Please check back before travelling.'}</p>
+                </div>
+              </div>
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3 text-[10px] text-slate-500">
+                {event.venue_latitude !== null && event.venue_longitude !== null
+                  ? 'Directions use the venue pin set by the event organizer.'
+                  : 'Directions use the venue address until the organizer adds a precise Google Maps pin.'}
+              </div>
             </section>
             {event.cancellation_policy && (
               <section className="rounded-3xl border border-white/10 bg-[#17121e] p-5 sm:p-6">

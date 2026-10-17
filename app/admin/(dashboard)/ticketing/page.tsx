@@ -52,6 +52,11 @@ type TicketEvent = {
   venue_name: string;
   venue_address: string;
   city: string;
+  venue_latitude: number | null;
+  venue_longitude: number | null;
+  entrance_guide: string;
+  parking_guide: string;
+  transport_guide: string;
   timezone: string;
   starts_at: string;
   ends_at: string;
@@ -162,6 +167,117 @@ function EventForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
         </button>
         <p className="self-center text-xs text-slate-400">Checkout and server-side payment verification are implemented. Configure the event and ticket wave here, then publish it when you are ready to open sales.</p>
       </div>
+    </form>
+  );
+}
+
+function VenueLocationForm({ event, onSaved, onCancel }: { event: TicketEvent; onSaved: () => void; onCancel: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [locationMessage, setLocationMessage] = useState('');
+  const [latitude, setLatitude] = useState(event.venue_latitude === null ? '' : String(event.venue_latitude));
+  const [longitude, setLongitude] = useState(event.venue_longitude === null ? '' : String(event.venue_longitude));
+
+  async function submit(formData: FormData) {
+    setSaving(true);
+    setError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_event_venue',
+          eventId: event.id,
+          venueName: formData.get('venueName'),
+          venueAddress: formData.get('venueAddress'),
+          city: formData.get('city'),
+          latitude,
+          longitude,
+          entranceGuide: formData.get('entranceGuide'),
+          parkingGuide: formData.get('parkingGuide'),
+          transportGuide: formData.get('transportGuide')
+        })
+      }));
+      onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Venue details could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function useCurrentLocation() {
+    setLocationMessage('');
+    if (!navigator.geolocation) {
+      setLocationMessage('This browser does not provide location access. Enter the coordinates from Google Maps instead.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        setLatitude(position.coords.latitude.toFixed(6));
+        setLongitude(position.coords.longitude.toFixed(6));
+        setLocationMessage('Device coordinates loaded. Confirm the pin is at the venue entrance before saving.');
+      },
+      cause => setLocationMessage(cause.code === cause.PERMISSION_DENIED
+        ? 'Location permission was denied. Enter the venue coordinates from Google Maps instead.'
+        : 'The device location could not be read. Enter the venue coordinates from Google Maps instead.'),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  return (
+    <form action={submit} className="mt-4 rounded-xl border border-orange-200/15 bg-[#100d17] p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-black text-white">Venue pin & guest arrival guide</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-400">Coordinates power the public map, directions and transit links. In Google Maps, right-click the venue pin and copy the latitude/longitude pair.</p>
+        </div>
+        <button type="button" onClick={onCancel} className="text-xs font-bold text-slate-400">Close</button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className={labelClass}>Venue name
+          <input className={inputClass} name="venueName" required minLength={2} maxLength={180} defaultValue={event.venue_name} />
+        </label>
+        <label className={labelClass}>City
+          <input className={inputClass} name="city" required minLength={2} maxLength={100} defaultValue={event.city} />
+        </label>
+        <label className={`${labelClass} sm:col-span-2`}>Full venue address
+          <input className={inputClass} name="venueAddress" required minLength={5} maxLength={500} defaultValue={event.venue_address} />
+        </label>
+        <label className={labelClass}>Latitude
+          <input className={inputClass} name="latitude" type="number" min="-90" max="90" step="any" value={latitude} onChange={event => setLatitude(event.target.value)} placeholder="-1.286389" />
+        </label>
+        <label className={labelClass}>Longitude
+          <input className={inputClass} name="longitude" type="number" min="-180" max="180" step="any" value={longitude} onChange={event => setLongitude(event.target.value)} placeholder="36.817223" />
+        </label>
+        <div className="sm:col-span-2">
+          <button type="button" onClick={useCurrentLocation} className="min-h-10 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
+            Use this device&apos;s location
+          </button>
+          {locationMessage && <p role="status" className="mt-2 text-xs text-slate-300">{locationMessage}</p>}
+        </div>
+        <label className={labelClass}>Entrance &amp; gate instructions
+          <textarea className={`${inputClass} min-h-20 py-3`} name="entranceGuide" maxLength={2000} defaultValue={event.entrance_guide} placeholder="Which entrance should ticket holders use?" />
+        </label>
+        <label className={labelClass}>Parking information
+          <textarea className={`${inputClass} min-h-20 py-3`} name="parkingGuide" maxLength={2000} defaultValue={event.parking_guide} placeholder="Parking availability, location and fees." />
+        </label>
+        <label className={`${labelClass} sm:col-span-2`}>Public transport &amp; arrival notes
+          <textarea className={`${inputClass} min-h-20 py-3`} name="transportGuide" maxLength={2000} defaultValue={event.transport_guide} placeholder="Nearby stops, landmarks and other helpful arrival guidance." />
+        </label>
+      </div>
+      {error && <p role="alert" className="mt-3 rounded-lg border border-red-200/20 bg-red-950/20 p-3 text-xs text-red-200">{error}</p>}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-orange-400 px-4 text-xs font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
+          <MapPin size={14} /> {saving ? 'Saving venue…' : 'Save venue & map pin'}
+        </button>
+        {event.venue_latitude !== null && event.venue_longitude !== null && (
+          <a href={`https://www.google.com/maps/search/?api=1&query=${event.venue_latitude},${event.venue_longitude}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-bold text-slate-200 hover:bg-white/5">
+            <ArrowUpRight size={14} /> Check saved pin
+          </a>
+        )}
+      </div>
+      <p className="mt-3 text-[10px] leading-4 text-slate-500">If you use device location, allow browser location access and confirm the result points to the venue—not your current position elsewhere.</p>
     </form>
   );
 }
@@ -419,6 +535,7 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
   const [statusError, setStatusError] = useState('');
   const [eventStatusSaving, setEventStatusSaving] = useState(false);
   const [editingServiceFee, setEditingServiceFee] = useState(false);
+  const [editingVenue, setEditingVenue] = useState(false);
   const allocated = event.ticket_types.reduce((total, tier) => total + tier.capacity, 0);
 
   async function setWaveStatus(tier: TicketType, status: 'active' | 'paused') {
@@ -505,13 +622,22 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
           <div className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Event ends</p><p className="mt-1 text-sm font-black text-white">{eventDate(event.ends_at)}</p></div>
         </div>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.025] p-3">
-          <p className="text-xs text-slate-300">Service fee: <strong className="text-white">{money(event.service_fee_minor)} per ticket</strong></p>
-          {(['draft', 'scheduled'].includes(event.status) || (event.status === 'on_sale' && canPublish)) && (
-            <button type="button" onClick={() => setEditingServiceFee(value => !value)} className="min-h-9 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
-              {editingServiceFee ? 'Close fee control' : 'Control service fee'}
+          <div className="flex flex-wrap items-center gap-4">
+            <p className="text-xs text-slate-300">Service fee: <strong className="text-white">{money(event.service_fee_minor)} per ticket</strong></p>
+            <p className="text-xs text-slate-300">Map pin: <strong className="text-white">{event.venue_latitude !== null && event.venue_longitude !== null ? `${event.venue_latitude}, ${event.venue_longitude}` : 'Not set'}</strong></p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setEditingVenue(value => !value)} className="min-h-9 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
+              {editingVenue ? 'Close venue controls' : 'Edit venue & map pin'}
             </button>
-          )}
+            {(['draft', 'scheduled'].includes(event.status) || (event.status === 'on_sale' && canPublish)) && (
+              <button type="button" onClick={() => setEditingServiceFee(value => !value)} className="min-h-9 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
+                {editingServiceFee ? 'Close fee control' : 'Control service fee'}
+              </button>
+            )}
+          </div>
         </div>
+        {editingVenue && <VenueLocationForm event={event} onCancel={() => setEditingVenue(false)} onSaved={() => { setEditingVenue(false); onRefresh(); }} />}
         {editingServiceFee && <ServiceFeeForm event={event} onCancel={() => setEditingServiceFee(false)} onSaved={() => { setEditingServiceFee(false); onRefresh(); }} />}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
