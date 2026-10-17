@@ -64,31 +64,37 @@ BEGIN
        OR now() < v_doors_open_at OR now() >= v_ends_at THEN
         v_result := 'event_closed';
     ELSE
-        SELECT ticket, orders.status
-        INTO v_ticket, v_order_status
+        SELECT ticket.*
+        INTO v_ticket
         FROM public.ticketing_tickets ticket
-        JOIN public.ticketing_order_items item ON item.id = ticket.order_item_id
-        JOIN public.ticketing_orders orders ON orders.id = item.order_id
         WHERE ticket.credential_hash = p_credential_hash
         FOR UPDATE OF ticket;
 
         IF NOT FOUND THEN
             v_result := 'invalid';
-        ELSIF v_ticket.event_id <> p_event_id THEN
-            v_result := 'wrong_event';
-        ELSIF v_order_status <> 'paid' THEN
-            v_result := 'unpaid';
-        ELSIF v_ticket.status = 'checked_in' THEN
-            v_result := 'already_used';
-        ELSIF v_ticket.status = 'refunded' THEN
-            v_result := 'refunded';
-        ELSIF v_ticket.status IN ('revoked', 'transferred') THEN
-            v_result := 'revoked';
         ELSE
-            v_result := 'accepted';
-            UPDATE public.ticketing_tickets
-            SET status = 'checked_in', checked_in_at = now()
-            WHERE id = v_ticket.id;
+            SELECT orders.status
+            INTO v_order_status
+            FROM public.ticketing_order_items item
+            JOIN public.ticketing_orders orders ON orders.id = item.order_id
+            WHERE item.id = v_ticket.order_item_id;
+
+            IF v_ticket.event_id <> p_event_id THEN
+                v_result := 'wrong_event';
+            ELSIF v_order_status IS DISTINCT FROM 'paid' THEN
+                v_result := 'unpaid';
+            ELSIF v_ticket.status = 'checked_in' THEN
+                v_result := 'already_used';
+            ELSIF v_ticket.status = 'refunded' THEN
+                v_result := 'refunded';
+            ELSIF v_ticket.status IN ('revoked', 'transferred') THEN
+                v_result := 'revoked';
+            ELSE
+                v_result := 'accepted';
+                UPDATE public.ticketing_tickets
+                SET status = 'checked_in', checked_in_at = now()
+                WHERE id = v_ticket.id;
+            END IF;
         END IF;
     END IF;
 
