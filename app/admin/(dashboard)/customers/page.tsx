@@ -556,7 +556,7 @@ export default function AdminCustomersPage() {
                             <Phone className="h-3.5 w-3.5" />
                         </a>
                         <span className="font-bold text-slate-500 text-xs">
-                          {role === 'owner' ? customer.phone : `${customer.phone.substring(0, 4)}****${customer.phone.substring(customer.phone.length - 2)}`}
+                          {role === 'owner' || role === 'admin' ? customer.phone : `${customer.phone.substring(0, 4)}****${customer.phone.substring(customer.phone.length - 2)}`}
                         </span>
                       </div>
                     </td>

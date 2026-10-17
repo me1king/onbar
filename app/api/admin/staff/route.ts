@@ -45,7 +45,14 @@ export async function GET() {
       ? 'Staff database schema is missing. Run supabase/FINAL_ESTABLISHMENT_SQL.sql, supabase/AUTH_SECURITY_MIGRATION.sql, and supabase/ADMIN_DASHBOARD_RECOVERY_MIGRATION.sql.'
       : `Could not load team records: ${error.message}` }, { status: 500 });
   }
-  return NextResponse.json({ staff: data || [] }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  const staff = (data || []).map(member => {
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(String(member.role).toUpperCase())) return member;
+    return {
+      ...member,
+      ...Object.fromEntries(permissionFields.map(permission => [permission, true]))
+    };
+  });
+  return NextResponse.json({ staff }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
 export async function POST(request: Request) {
@@ -108,6 +115,19 @@ export async function PATCH(request: Request) {
       || typeof body.field !== 'string' || !(permissionFields as readonly string[]).includes(body.field)
       || typeof body.value !== 'boolean') {
     return NextResponse.json({ error: 'A valid staff ID and permission update are required.' }, { status: 400 });
+  }
+  const { data: member, error: memberError } = await access.database
+    .from('staff')
+    .select('role')
+    .eq('id', body.id)
+    .maybeSingle();
+  if (memberError) {
+    console.error('[AdminStaff] Could not check staff role before permission update:', memberError);
+    return NextResponse.json({ error: `Could not verify staff role: ${memberError.message}` }, { status: 500 });
+  }
+  if (!member) return NextResponse.json({ error: 'Staff member was not found.' }, { status: 404 });
+  if (['ADMIN', 'SUPER_ADMIN'].includes(String(member.role).toUpperCase())) {
+    return NextResponse.json({ error: 'Permissions are assigned by the admin role and cannot be changed individually.' }, { status: 409 });
   }
   const { error } = await access.database.from('staff').update({ [body.field]: body.value }).eq('id', body.id);
   if (error) {

@@ -8,9 +8,9 @@ export const dynamic = 'force-dynamic';
 async function getAuditClient(ownerOnly = false) {
     const cookieStore = await cookies();
     const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
-    const canViewLogs = session?.role === 'owner'
+    const canViewLogs = session?.role === 'owner' || session?.role === 'admin'
         || session?.permissions?.can_view_audit_logs === true;
-    if (!session || (ownerOnly ? session.role !== 'owner' : !canViewLogs)) {
+    if (!session || (ownerOnly ? !['owner', 'admin'].includes(session.role) : !canViewLogs)) {
         return {
             response: NextResponse.json({ error: 'Audit log access required.' }, { status: 403 })
         };

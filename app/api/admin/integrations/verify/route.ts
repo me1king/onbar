@@ -8,7 +8,7 @@ export async function POST(request: Request) {
         const cookieStore = await cookies();
         const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
 
-        if (!session || session.role !== 'owner') {
+        if (!session || !['owner', 'admin'].includes(session.role)) {
             return NextResponse.json({ error: "Unauthorized Command" }, { status: 401 });
         }
 

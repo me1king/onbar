@@ -2,6 +2,27 @@ function getSessionSecret() {
   return process.env.ADMIN_SESSION_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
 }
 
+const fullAdminPermissions = [
+  'can_view_revenue',
+  'can_manage_inventory',
+  'can_manage_orders',
+  'can_delete_items',
+  'can_execute_payouts',
+  'can_view_audit_logs',
+  'can_manage_settings',
+  'can_manage_staff',
+  'can_view_sensitive_data',
+  'can_view_sensitive_rider_data',
+  'can_manage_communications',
+  'can_manage_customer_care',
+  'can_manage_broadcast',
+  'can_manage_marketing',
+  'can_manage_affiliates',
+  'can_manage_blog',
+  'can_manage_media',
+  'can_manage_kitchen',
+] as const;
+
 /**
  * Universal Base64 Encoder (Safe for Unicode and Edge Runtime)
  */
@@ -139,9 +160,16 @@ export async function verifySessionCookie(value?: string): Promise<{
       ))
     ) return null;
 
+    const normalizedRole = session.role.trim().toLowerCase();
+    const isFullAdmin = normalizedRole === 'admin' || normalizedRole === 'super_admin';
+    const permissions = session.permissions as Record<string, boolean | string[]>;
+    const effectivePermissions = isFullAdmin
+        ? { ...permissions, ...Object.fromEntries(fullAdminPermissions.map(permission => [permission, true])), is_administrator: true }
+        : permissions;
+
     return {
-        role: session.role,
-        permissions: session.permissions as Record<string, boolean | string[]>,
+        role: normalizedRole === 'super_admin' ? 'admin' : normalizedRole,
+        permissions: effectivePermissions,
         supplier_id: typeof session.supplier_id === 'string' ? session.supplier_id : null,
         email: typeof session.email === 'string' ? session.email : undefined
     };

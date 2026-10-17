@@ -215,7 +215,7 @@ export default function SecurityHub() {
                                             <h3 className="font-black text-foreground uppercase text-lg tracking-tighter leading-none">{t.description}</h3>
                                         </div>
                                     </div>
-                                    {role === 'owner' ? <div className="flex gap-2">
+                                    {role === 'owner' || role === 'admin' ? <div className="flex gap-2">
                                         <Button
                                             size="sm"
                                             disabled={actionInProgress === t.id || !t.ip_address || t.ip_address === 'unknown'}

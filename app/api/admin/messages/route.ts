@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 async function getAdminDatabase() {
   const cookieStore = await cookies();
   const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
-  const canManageMessages = session?.role === 'owner'
+  const canManageMessages = session?.role === 'owner' || session?.role === 'admin'
     || session?.permissions?.can_manage_customer_care === true
     || session?.permissions?.can_manage_communications === true;
   if (!session || !canManageMessages) {
@@ -94,8 +94,8 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   const cookieStore = await cookies();
   const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
-  if (session?.role !== 'owner') {
-    return NextResponse.json({ error: 'Owner access is required to delete customer messages.' }, { status: 403 });
+  if (!session || !['owner', 'admin'].includes(session.role)) {
+    return NextResponse.json({ error: 'Admin access is required to delete customer messages.' }, { status: 403 });
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();

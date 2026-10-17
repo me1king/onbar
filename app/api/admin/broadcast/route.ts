@@ -7,10 +7,10 @@ import { createMarketingUnsubscribeToken } from '@/lib/marketingUnsubscribe';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-async function getOwnerSession() {
+async function getAdminSession() {
     const cookieStore = await cookies();
     const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
-    return session?.role === 'owner' ? session : null;
+    return session && ['owner', 'admin'].includes(session.role) ? session : null;
 }
 
 function getAdminDatabase() {
@@ -23,8 +23,8 @@ function getAdminDatabase() {
 }
 
 export async function GET() {
-    if (!await getOwnerSession()) {
-        return NextResponse.json({ error: 'Owner access required.' }, { status: 401 });
+    if (!await getAdminSession()) {
+        return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
     }
     const adminDatabase = getAdminDatabase();
     if (!adminDatabase) {
@@ -75,7 +75,7 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         // SECURITY: Verify authorized admin session
-        const session = await getOwnerSession();
+        const session = await getAdminSession();
         if (!session) {
             return NextResponse.json({ error: "Unauthorized Access Detected" }, { status: 401 });
         }

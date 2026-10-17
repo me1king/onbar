@@ -10,6 +10,7 @@ async function getAuthorizedClient(requireSecurityPermission = true) {
   const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
   if (!session || (requireSecurityPermission && (
     session.role !== 'owner'
+    && session.role !== 'admin'
     && session.permissions?.can_manage_settings !== true
     && session.permissions?.can_view_audit_logs !== true
   ))) {
@@ -112,8 +113,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true });
   }
 
-  if (result.session.role !== 'owner') {
-    return NextResponse.json({ error: 'Only the owner can change security threat status or block an origin.' }, { status: 403 });
+  if (result.session.role !== 'owner' && result.session.role !== 'admin') {
+    return NextResponse.json({ error: 'Admin access is required to change security threat status or block an origin.' }, { status: 403 });
   }
   if (
     (body.action !== 'ignore' && body.action !== 'block')

@@ -32,6 +32,10 @@ import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 import { ROLE_PERMISSIONS, Role, Permission } from '@/lib/engines/identityEngine';
 
+function hasRoleBasedFullAccess(role: string) {
+  return ['admin', 'super_admin'].includes(role.toLowerCase());
+}
+
 interface StaffMember {
   id: string;
   email: string;
@@ -83,6 +87,12 @@ export default function AdminStaffPage() {
 
   // Sync Permissions with Role Choice
   React.useEffect(() => {
+    if (newRole === 'SUPER_ADMIN') {
+      setPermissions(currentPermissions => Object.fromEntries(
+        Object.keys(currentPermissions).map(key => [key, true])
+      ));
+      return;
+    }
     const rolePerms = ROLE_PERMISSIONS[newRole] || [];
     const newPerms: Record<string, boolean> = {};
 
@@ -274,11 +284,14 @@ export default function AdminStaffPage() {
                                   <button
                                     key={key}
                                     type="button"
+                                    disabled={newRole === 'SUPER_ADMIN'}
                                     onClick={() => setPermissions({...permissions, [key]: !val})}
                                     className={cn(
                                         "px-3 py-2 rounded-xl border transition-all text-[8px] font-black uppercase flex justify-between items-center",
-                                        val ? "bg-primary text-white border-primary" : "bg-slate-50 text-slate-400 border-slate-100"
+                                        val ? "bg-primary text-white border-primary" : "bg-slate-50 text-slate-400 border-slate-100",
+                                        newRole === 'SUPER_ADMIN' && "cursor-not-allowed opacity-80"
                                     )}
+                                    title={newRole === 'SUPER_ADMIN' ? 'Super Admin receives full access by role.' : undefined}
                                   >
                                       {key.replace('can_', '').replace(/_/g, ' ')}
                                       {val ? <Lock size={10} /> : <Plus size={10} />}
@@ -368,13 +381,17 @@ export default function AdminStaffPage() {
                                                   <button
                                                     key={p.k}
                                                     onClick={() => updatePermission(member.id, p.k, !member[p.k as keyof StaffMember])}
+                                                    disabled={hasRoleBasedFullAccess(member.role)}
                                                     className={cn(
                                                         "h-7 w-7 rounded-lg flex items-center justify-center border transition-all",
                                                         member[p.k as keyof StaffMember]
                                                             ? "bg-primary text-white border-primary shadow-sm shadow-primary/20"
-                                                            : "bg-slate-50 text-slate-300 border-slate-100 hover:border-slate-200"
+                                                            : "bg-slate-50 text-slate-300 border-slate-100 hover:border-slate-200",
+                                                        hasRoleBasedFullAccess(member.role) && "cursor-not-allowed"
                                                     )}
-                                                    title={p.k.replace('can_', '').replace(/_/g, ' ')}
+                                                    title={hasRoleBasedFullAccess(member.role)
+                                                        ? 'Full access is assigned by role.'
+                                                        : p.k.replace('can_', '').replace(/_/g, ' ')}
                                                   >
                                                       <p.i size={12} strokeWidth={3} />
                                                   </button>

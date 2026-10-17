@@ -26,7 +26,7 @@ export function hasAdminPermission(
 ): boolean {
   return Boolean(
     session &&
-    (session.role.toLowerCase() === 'owner' || session.permissions[permission] === true)
+    (['owner', 'admin', 'super_admin'].includes(session.role.toLowerCase()) || session.permissions[permission] === true)
   );
 }
 

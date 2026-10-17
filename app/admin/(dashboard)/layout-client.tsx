@@ -219,7 +219,7 @@ export default function AdminLayoutClient({
     ]},
     { group: 'ENTERPRISE', items: [
       { name: 'Launch Readiness', href: '/admin/launch', icon: ShieldCheck, minRole: 'admin' },
-      { name: 'Staff Control', href: '/admin/staff', icon: ShieldCheck, minRole: 'owner' },
+      { name: 'Staff Control', href: '/admin/staff', icon: ShieldCheck, minRole: 'admin' },
       { name: 'Audit Logs', href: '/admin/audit', icon: HistoryIcon, permission: 'can_view_audit_logs' },
       { name: 'Security Hub', href: '/admin/security', icon: SecurityIcon, permission: 'can_manage_settings' },
       { name: 'Bar Settings', href: '/admin/settings', icon: Settings, permission: 'can_manage_settings' },
