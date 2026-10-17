@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle,
   ArrowUpRight,
   BadgeCheck,
   CalendarDays,
@@ -161,7 +160,7 @@ function EventForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
         <button disabled={saving} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
           <CheckCircle2 size={16} /> {saving ? 'Saving draft…' : 'Save event draft'}
         </button>
-        <p className="self-center text-xs text-slate-400">Checkout and server-side payment verification are implemented. Complete a sandbox payment-to-wallet-to-gate rehearsal before accepting live payments.</p>
+        <p className="self-center text-xs text-slate-400">Checkout and server-side payment verification are implemented. Configure the event and ticket wave here, then publish it when you are ready to open sales.</p>
       </div>
     </form>
   );
@@ -406,7 +405,7 @@ function ServiceFeeForm({ event, onSaved, onCancel }: { event: TicketEvent; onSa
           <Wallet size={15} /> {saving ? 'Saving…' : 'Save service fee'}
         </button>
       </div>
-      <p className="mt-2 text-[10px] leading-4 text-slate-500">Online Bar’s ticket checkout is not enabled yet; this setting is ready for the verified checkout release.</p>
+      <p className="mt-2 text-[10px] leading-4 text-slate-500">The fee is calculated server-side and included in each new ticket checkout total. Existing orders keep their original fee snapshot.</p>
       {error && <p role="alert" className="mt-3 rounded-lg border border-red-200/20 bg-red-950/20 p-3 text-xs text-red-200">{error}</p>}
     </form>
   );
@@ -689,11 +688,11 @@ export default function TicketingPage() {
           )}
         </section>
 
-        <section role="status" className="relative overflow-hidden rounded-2xl border border-orange-400/25 bg-gradient-to-r from-orange-950/50 via-[#20131f] to-[#171220] p-4 sm:p-5">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-orange-400/10 blur-3xl" />
+        <section role="status" className="relative overflow-hidden rounded-2xl border border-emerald-400/20 bg-gradient-to-r from-emerald-950/35 via-[#171c19] to-[#171220] p-4 sm:p-5">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
           <div className="relative flex items-start gap-3">
-            <span className="rounded-xl border border-orange-300/20 bg-orange-300/10 p-2 text-orange-300"><AlertTriangle size={18} /></span>
-            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-orange-100">Ticket sales stay in their own ledger</p><span className="rounded-full border border-orange-300/20 bg-orange-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-orange-200">Ticketing only</span></div><p className="mt-1 text-xs leading-5 text-orange-50/70">Verified ticket orders, payment attempts, refunds and fees are stored in ticketing-specific records and reported separately from beverage orders and product sales. Checkout remains safely blocked unless production database, Paystack and ticket-encryption settings all pass server-side validation.</p><Link href="/admin/ticketing/sales" className="mt-2 inline-flex text-xs font-black text-amber-200 underline underline-offset-2">Open the dedicated ticket sales ledger</Link></div>
+            <span className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-2 text-emerald-200"><ShieldCheck size={18} /></span>
+            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-emerald-100">Ticket checkout is implemented; event sales are owner-controlled</p><span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-100">Separate ticket ledger</span></div><p className="mt-1 text-xs leading-5 text-emerald-50/75">Paystack checkout, server-verified payment callbacks, ticket issuance and guest-wallet access are implemented. Ticket orders, payment attempts and fees stay in ticketing-specific records, separate from beverage orders and product inventory. To make an event visible to guests, configure its confirmed details and an available ticket wave, then use the owner-only publish control on its event card. Production checkout still requires valid server configuration.</p><Link href="/admin/ticketing/sales" className="mt-2 inline-flex text-xs font-black text-amber-200 underline underline-offset-2">Open the dedicated ticket sales ledger</Link></div>
           </div>
         </section>
 
@@ -723,7 +722,7 @@ export default function TicketingPage() {
               <span className="block text-sm font-black text-white">Readiness &amp; security controls</span>
               <span className="mt-1 block text-xs text-slate-400">Current payment, ticket authenticity and gate-operation status</span>
             </span>
-            <span className="shrink-0 rounded-full border border-amber-200/15 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">Sandbox verification required</span>
+            <span className="shrink-0 rounded-full border border-amber-200/15 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">Owner-controlled release</span>
           </summary>
           <div className="border-t border-white/10 p-5 sm:p-6">
         <section aria-labelledby="trust-heading" className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#19171d] to-[#111016] p-4 sm:p-5">
@@ -731,31 +730,31 @@ export default function TicketingPage() {
             <div>
               <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100"><ShieldAlert size={14} /> Trust &amp; security centre</div>
               <h2 id="trust-heading" className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">Keep the tricks out. Keep the tickets real.</h2>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">Checkout, ticket wallets and gate scanning are implemented. Production configuration and a controlled sandbox rehearsal are still required; this panel is not a live fraud-monitoring feed.</p>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">Checkout, verified payment handling, ticket issuance, guest wallets and online scanning are implemented. Event publication and production checkout remain gated by the owner and server-side readiness checks; this panel is not a live fraud-monitoring feed.</p>
             </div>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Sandbox test required" body="Paystack callbacks are signature-checked and independently verified against the ticket order. A no-charge production preflight passed configuration checks; verify webhook delivery, amount matching and order fulfillment with sandbox credentials." />
-            <SecurityControl icon={KeyRound} title="Authentic ticket" state="Sandbox test required" body="Ticket credentials are issued only after verified payment, stored hashed and encrypted, and shown in the guest wallet. Email delivery and cross-device recovery are not configured." />
-            <SecurityControl icon={ScanLine} title="Gate admission" state="Sandbox rehearsal required" body="The separate /scanner workspace and its production check-in and staff-assignment RPCs are present. Assign event staff, then test a sandbox ticket and duplicate-scan rejection." />
+            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Server verified" body="Paystack callbacks are signature-checked and independently verified against the ticket order before fulfillment. Only matching verified transactions issue tickets." />
+            <SecurityControl icon={KeyRound} title="Authentic ticket" state="Encrypted & verified" body="Ticket credentials are issued after verified payment, stored hashed and encrypted, and delivered to the guest wallet through the ticket access flow." />
+            <SecurityControl icon={ScanLine} title="Gate admission" state="Online scanner" body="The separate /scanner workspace supports server-validated check-ins and assigned staff. Apply the scanner migration, assign event staff, and use an issued ticket for admission." />
             <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Ticketing changes are audited and scanner access is event-scoped. MFA enforcement, dual approval and automated fraud monitoring are not live." />
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-5 text-slate-400">
             <ShieldCheck size={15} className="mt-0.5 shrink-0 text-amber-200" />
-            <p>QR screenshots and payment messages are not proof of a valid ticket. The no-charge production preflight passed, but no complete sandbox payment-to-wallet-to-gate rehearsal has been verified. Do not accept live payments until that rehearsal passes for an approved on-sale event.</p>
+            <p>QR screenshots and payment messages are not proof of a valid ticket. Each event must pass the server-side publication checks and have an available ticket wave before guests can check out. Use the scanner only after its migration and event staff assignments are complete.</p>
           </div>
         </section>
 
         <section className="grid gap-3 md:grid-cols-3">
           <Feature icon={ShieldCheck} title="Isolated ticket records" body="Ticketing uses its own event, tier, reservation, payment, ticket, refund and check-in data." />
-          <Feature icon={Clock3} title="Reserved checkout" body="Public checkout uses server-priced tickets and atomic inventory reservations. Confirm reservation expiry behavior during the sandbox rehearsal." />
+          <Feature icon={Clock3} title="Reserved checkout" body="Public checkout uses server-priced tickets and atomic inventory reservations. The server verifies payment before issuing tickets; event availability is controlled from the event card above." />
           <Feature icon={Users} title="Isolated staff scanner" body="Gate staff sign into /scanner with their own verified account and can validate only events assigned by an admin." />
         </section>
           </div>
         </details>
 
         <footer className="rounded-2xl border border-amber-200/10 bg-[#111016] p-5">
-          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">Sandbox end-to-end verification still required</p><p className="mt-1 text-xs leading-5 text-slate-400">Production configuration checks and checkout, payment-verification, scanner check-in and staff-assignment RPCs are present. Before taking live payments, create and approve an event and ticket tier, then verify a sandbox payment, wallet ticket, gate scan and duplicate-scan rejection.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
+          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">You control when each event goes on sale</p><p className="mt-1 text-xs leading-5 text-slate-400">Create the event and ticket wave here, then use the owner-only publish control to list it publicly or pause sales. Checkout verifies payment server-side before issuing tickets. The public listing stays empty until an event has actually been opened for sales; no event or ticket offer is created automatically.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
         </footer>
       </div>
     </main>
