@@ -81,7 +81,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
-  const { response } = await authorize();
+  const { session, response } = await authorize();
   if (response) return response;
   const database = createServerSupabaseClient();
   if (!database) return NextResponse.json({ error: 'Ticketing storage is not configured.' }, { status: 503 });
@@ -96,17 +96,19 @@ export async function POST(request: Request) {
   if (body.action === 'revoke') {
     const assignmentId = typeof body.assignmentId === 'string' ? body.assignmentId : '';
     if (!uuidPattern.test(assignmentId)) return NextResponse.json({ error: 'Select a valid gate assignment.' }, { status: 400 });
-    const { data, error } = await database.from('ticketing_staff_assignments')
-      .update({ active: false })
-      .eq('id', assignmentId)
-      .eq('role', 'gate_staff')
-      .select('id')
-      .maybeSingle();
+    const { data, error } = await database.rpc('ticketing_revoke_gate_staff', {
+      p_assignment_id: assignmentId,
+      p_actor_email: session?.email || ''
+    });
     if (error) {
+      if (error.code === 'P0002') return NextResponse.json({ error: 'The gate assignment was not found.' }, { status: 404 });
       console.error('[TicketingStaff] Could not revoke gate assignment:', error);
       return NextResponse.json({ error: 'The gate assignment could not be revoked.' }, { status: 503 });
     }
-    if (!data) return NextResponse.json({ error: 'The gate assignment was not found.' }, { status: 404 });
+    if (!data) {
+      console.error('[TicketingStaff] Revoke operation returned no assignment.');
+      return NextResponse.json({ error: 'The gate assignment could not be verified.' }, { status: 503 });
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -131,17 +133,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The staff member must verify their Supabase sign-in email before gate access is assigned.' }, { status: 409 });
     }
 
-    const { data, error } = await database.from('ticketing_staff_assignments')
-      .upsert({
-        event_id: eventId,
-        user_id: user.id,
-        role: 'gate_staff',
-        gate_name: gateName,
-        active: true
-      }, { onConflict: 'event_id,user_id,role' })
-      .select('id,event_id,user_id,role,gate_name,active,created_at')
-      .single();
-    if (error) throw error;
+    const { data, error } = await database.rpc('ticketing_assign_gate_staff', {
+      p_event_id: eventId,
+      p_user_id: user.id,
+      p_gate_name: gateName,
+      p_actor_email: session?.email || ''
+    });
+    if (error) {
+      if (error.code === 'P0002') return NextResponse.json({ error: 'The selected event was not found.' }, { status: 404 });
+      if (error.code === 'P0001') return NextResponse.json({ error: 'The staff account must have a verified email.' }, { status: 409 });
+      throw error;
+    }
+    if (!data) throw new Error('Gate assignment RPC returned no assignment.');
     return NextResponse.json({ assignment: { ...data, email: user.email } }, { status: 201 });
   } catch (error) {
     console.error('[TicketingStaff] Could not assign gate access:', error);
