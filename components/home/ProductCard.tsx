@@ -193,7 +193,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
                     loading="lazy"
                     quality={90}
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
-                    className="object-contain scale-[1.15] drop-shadow-[0_18px_16px_rgba(15,23,42,0.24)] transition-transform duration-700 group-hover:scale-125"
+                    className="object-contain scale-[1.15] mix-blend-multiply drop-shadow-[0_18px_16px_rgba(15,23,42,0.24)] transition-transform duration-700 group-hover:scale-125"
                     onError={() => setImageError(true)}
                   />
                 ) : (

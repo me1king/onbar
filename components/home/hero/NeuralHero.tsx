@@ -114,7 +114,7 @@ export default function NeuralHero() {
                                     unoptimized
                                     sizes="(max-width: 1024px) 100vw, 50vw"
                                     onError={() => setImageFailed(true)}
-                                    className="object-contain p-8 drop-shadow-[0_28px_28px_rgba(60,30,10,0.22)] sm:p-12"
+                                    className="object-contain px-8 pt-7 pb-28 mix-blend-multiply drop-shadow-[0_28px_28px_rgba(60,30,10,0.22)] sm:px-12 sm:pt-10 sm:pb-32"
                                     priority
                                 />
                             ) : (
