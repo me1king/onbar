@@ -11,6 +11,8 @@
   --popover-foreground: #10231f;
   --primary: #D91C1C;
   --primary-foreground: #F9F4EC;
+  --brand-secondary: #10231f;
+  --brand-accent: #F9F4EC;
   --secondary: #E9EFEA;
   --secondary-foreground: #10231f;
   --muted: #F3EDE4;
@@ -57,6 +59,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-accent: var(--brand-accent);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);

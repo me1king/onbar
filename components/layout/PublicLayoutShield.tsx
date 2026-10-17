@@ -8,7 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, Suspense, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useSettings, type StoreSettings } from '@/lib/useSettings';
-import { applyPrimaryTheme } from '@/lib/themeColors';
+import { applyThemeColors, normalizeThemeColors, THEME_UPDATED_EVENT, type ThemeColors } from '@/lib/themeColors';
 import { Loader2 } from 'lucide-react';
 import CustomerAnnouncementHost from './CustomerAnnouncementHost';
 import LocationOnboarding from './LocationOnboarding';
@@ -70,21 +70,31 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
     const settings = initialSettings || hookSettings;
     const [mounted, setMounted] = useState(false);
     const [newsletterVisible, setNewsletterVisible] = useState(false);
+    const [activeTheme, setActiveTheme] = useState<ThemeColors>(settings.theme_config);
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
     useEffect(() => {
+        setActiveTheme(settings.theme_config);
+    }, [settings.theme_config]);
+
+    useEffect(() => {
+        const handleThemeUpdate = (event: Event) => {
+            const detail = (event as CustomEvent<unknown>).detail;
+            const theme = normalizeThemeColors(detail);
+            if (theme) setActiveTheme(theme);
+        };
+        window.addEventListener(THEME_UPDATED_EVENT, handleThemeUpdate);
+        return () => window.removeEventListener(THEME_UPDATED_EVENT, handleThemeUpdate);
+    }, []);
+
+    useEffect(() => {
         if (!mounted) return;
-        const cachedPrimary = window.sessionStorage.getItem('onlinebar_theme_primary');
-        const configuredPrimary = cachedPrimary || settings.theme_config.primary;
-        const primary = /^#[\da-f]{6}$/i.test(configuredPrimary)
-            ? configuredPrimary
-            : '#D91C1C';
-        applyPrimaryTheme(primary);
-        if (cachedPrimary) window.sessionStorage.removeItem('onlinebar_theme_primary');
-    }, [mounted, pathname, settings.theme_config.primary]);
+        const theme = normalizeThemeColors(activeTheme);
+        if (theme) applyThemeColors(theme);
+    }, [activeTheme, mounted, pathname]);
 
     useEffect(() => {
         if (!mounted) return;

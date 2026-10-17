@@ -291,7 +291,7 @@ export default function AdminLayoutClient({
                     </div>
                     {!isSidebarCollapsed && (
                         <div className="animate-in fade-in duration-500 text-left min-w-0 flex-1">
-                              <p className="font-black text-foreground uppercase tracking-tight text-sm truncate">Online Bar</p>
+                              <p className="font-black text-brand-secondary uppercase tracking-tight text-sm truncate">Online Bar</p>
                               <p className="text-[9px] font-black text-primary uppercase tracking-[0.2em] mt-1.5 truncate">Admin dashboard</p>
                     </div>
                     )}
@@ -324,7 +324,7 @@ export default function AdminLayoutClient({
                             isSidebarCollapsed ? "justify-center p-3.5" : "gap-4 px-5 py-3",
                             isActive(item.href)
                               ? "bg-primary text-white shadow-lg shadow-primary/20"
-                              : "text-slate-400 hover:bg-slate-50 hover:text-foreground"
+                              : "text-slate-400 hover:bg-brand-accent/10 hover:text-foreground"
                           )}
                         >
                           <item.icon className={cn(

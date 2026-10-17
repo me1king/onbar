@@ -49,7 +49,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { applyPrimaryTheme } from '@/lib/themeColors';
+import { applyThemeColors, normalizeThemeColors, THEME_UPDATED_EVENT } from '@/lib/themeColors';
 
 const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAreaManager'), { ssr: false });
 
@@ -184,9 +184,9 @@ export default function AdminSettingsPage() {
     const [heroPreview, setHeroPreview] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!/^#[\da-f]{6}$/i.test(theme.primary)) return;
-        applyPrimaryTheme(theme.primary);
-    }, [theme.primary]);
+        const validTheme = normalizeThemeColors(theme);
+        if (validTheme) applyThemeColors(validTheme);
+    }, [theme]);
 
     const logoInputRef = useRef<HTMLInputElement>(null);
     const faviconInputRef = useRef<HTMLInputElement>(null);
@@ -231,7 +231,7 @@ export default function AdminSettingsPage() {
                         });
                     }
                     if (item.key === 'promotions') setPromotions(item.value as typeof DEFAULTS.promotions);
-                    if (item.key === 'theme_config') setTheme(item.value as typeof DEFAULTS.theme_config);
+                    if (item.key === 'theme_config') setTheme({ ...DEFAULTS.theme_config, ...item.value });
                     if (item.key === 'seo_config') setSeo(item.value as typeof DEFAULTS.seo_config);
                     if (item.key === 'social_links') setSocial(item.value as typeof DEFAULTS.social_links);
                     if (item.key === 'store_info') setStore(item.value as typeof DEFAULTS.store_info);
@@ -273,6 +273,11 @@ export default function AdminSettingsPage() {
     };
 
     const saveSettings = async (settings: { key: string; value: unknown; is_published?: boolean }[]) => {
+        const themeSetting = settings.find(setting => setting.key === 'theme_config' && setting.is_published !== false);
+        if (themeSetting && !normalizeThemeColors(themeSetting.value)) {
+            throw new Error('Theme colors must each be a valid six-digit hex color.');
+        }
+
         const response = await fetch('/api/admin/settings', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -282,17 +287,11 @@ export default function AdminSettingsPage() {
         if (!response.ok) throw new Error(result.error || 'Settings could not be saved.');
 
         const publishedTheme = settings.find(setting => setting.key === 'theme_config' && setting.is_published !== false);
-        if (
-            publishedTheme
-            && typeof publishedTheme.value === 'object'
-            && publishedTheme.value !== null
-            && 'primary' in publishedTheme.value
-            && typeof publishedTheme.value.primary === 'string'
-            && /^#[\da-f]{6}$/i.test(publishedTheme.value.primary)
-        ) {
-            const primary = publishedTheme.value.primary;
-            applyPrimaryTheme(primary);
-            window.sessionStorage.setItem('onlinebar_theme_primary', primary);
+        if (publishedTheme) {
+            const colors = normalizeThemeColors(publishedTheme.value);
+            if (!colors) throw new Error('Theme colors must each be a valid six-digit hex color.');
+            applyThemeColors(colors);
+            window.dispatchEvent(new CustomEvent(THEME_UPDATED_EVENT, { detail: colors }));
         }
     };
 
