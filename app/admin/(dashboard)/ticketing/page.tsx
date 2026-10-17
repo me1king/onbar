@@ -490,7 +490,7 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
                 <Plus size={14} /> Add tier
               </button>
               <button type="button" onClick={() => setAddingWave(value => !value)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-orange-300/20 bg-orange-300/5 px-3 text-xs font-black text-orange-100 hover:bg-orange-300/10">
-                <Plus size={14} /> Add release wave
+                <Wallet size={14} /> Set prices & waves
               </button>
             </> : <span className="self-center text-xs font-semibold text-slate-500">Ticket terms locked for this event state</span>}
           </div>
@@ -559,6 +559,8 @@ export default function TicketingPage() {
     if (!normalized) return data?.events || [];
     return (data?.events || []).filter(event => `${event.title} ${event.venue_name} ${event.city}`.toLowerCase().includes(normalized));
   }, [data, query]);
+  const canSetPrices = (data?.events || []).some(event => ['draft', 'scheduled'].includes(event.status));
+  const hasEvents = Boolean(data?.events.length);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#0d0a12] px-4 py-6 text-white sm:px-6 lg:px-8">
@@ -587,6 +589,37 @@ export default function TicketingPage() {
             <Metric icon={Wallet} label="Orders recorded" value={data?.totals.orders} />
           </div>
         </header>
+
+        <section aria-labelledby="ticket-pricing-heading" className="rounded-2xl border border-orange-300/30 bg-gradient-to-r from-[#291721] via-[#211421] to-[#17121e] p-5 shadow-lg shadow-black/20 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">Admin · ticket pricing</p>
+              <h2 id="ticket-pricing-heading" className="mt-1 text-xl font-black text-white">Set ticket prices here</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                Choose an event below, then click <strong className="text-orange-100">Set prices &amp; waves</strong> to enter the KES price, allocation, benefits and opening rule for each admission type and Wave I, II or III.
+              </p>
+            </div>
+            <button type="button" onClick={() => {
+              if (!hasEvents) {
+                setAddingEvent(true);
+                return;
+              }
+              document.getElementById('ticket-event-vault')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18] shadow-lg shadow-orange-950/30 transition hover:bg-orange-300">
+              <Wallet size={17} /> {hasEvents ? 'Go to ticket prices' : 'Create event to set prices'}
+            </button>
+          </div>
+          {!loading && data && !canSetPrices && hasEvents && (
+            <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-300/5 p-3 text-xs leading-5 text-amber-100/80">
+              Existing event ticket terms are locked in this event state. Create a draft or scheduled event to configure new prices; paid order terms must not be silently changed.
+            </p>
+          )}
+          {error && /TICKETING_WAVES_MIGRATION\.sql/i.test(error) && (
+            <p role="alert" className="mt-3 rounded-xl border border-red-300/20 bg-red-950/30 p-3 text-xs leading-5 text-red-100">
+              Pricing controls need the ticket-wave database migration first. Apply <code>supabase/TICKETING_WAVES_MIGRATION.sql</code> to the Online Bar Supabase project after the core, service-fee, security and live-operations migrations, then refresh this page.
+            </p>
+          )}
+        </section>
 
         <section role="status" className="relative overflow-hidden rounded-2xl border border-orange-400/25 bg-gradient-to-r from-orange-950/50 via-[#20131f] to-[#171220] p-4 sm:p-5">
           <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-orange-400/10 blur-3xl" />
@@ -625,7 +658,7 @@ export default function TicketingPage() {
 
         {addingEvent && <EventForm onCancel={() => setAddingEvent(false)} onCreated={() => { setAddingEvent(false); void load(); }} />}
 
-        <section className="space-y-4">
+        <section id="ticket-event-vault" className="scroll-mt-6 space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">Event vault</div><h2 className="mt-1 text-xl font-black tracking-tight text-white">Your events</h2><p className="mt-1 text-sm text-slate-400">Create private drafts, then add ticket tiers and allocations.</p></div>
             <label className="relative block w-full sm:w-72"><span className="sr-only">Search events</span><input value={query} onChange={event => setQuery(event.target.value)} className={inputClass} placeholder="Search events, venues or cities" /></label>
