@@ -171,7 +171,7 @@ export default function TicketingGateStaffPage() {
             : <p className="rounded-xl border border-dashed border-white/10 py-8 text-center text-sm text-slate-500">{data.events.length ? 'No staff are assigned to this event yet.' : 'Create an event draft before assigning gate staff.'}</p>}
         </section>
 
-        <p className="text-xs leading-5 text-slate-500">The scanner requires a live connection. Do not admit a guest based on a screenshot or an offline scan result. Checkout and ticket issuance are still gated in this build, so there are no customer tickets to validate yet.</p>
+        <p className="text-xs leading-5 text-slate-500">The scanner requires a live connection. Do not admit a guest based on a screenshot or an offline scan result. Checkout and ticket issuance are implemented, but the complete sandbox payment-to-wallet-to-gate flow has not yet been rehearsed. Assign staff to an event and verify a sandbox ticket before relying on gate admission.</p>
       </div>
     </main>
   );

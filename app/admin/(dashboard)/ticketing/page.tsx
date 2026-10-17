@@ -161,7 +161,7 @@ function EventForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
         <button disabled={saving} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
           <CheckCircle2 size={16} /> {saving ? 'Saving draft…' : 'Save event draft'}
         </button>
-        <p className="self-center text-xs text-slate-400">Publishing and ticket sales remain disabled until checkout and payment verification are connected.</p>
+        <p className="self-center text-xs text-slate-400">Checkout and server-side payment verification are implemented. Complete a sandbox payment-to-wallet-to-gate rehearsal before accepting live payments.</p>
       </div>
     </form>
   );
@@ -666,14 +666,14 @@ export default function TicketingPage() {
             </div>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Sandbox test required" body="Paystack callbacks are signature-checked and independently verified against the ticket order. Production checkout currently fails closed until its encryption key is configured; verify webhook delivery and amount matching in sandbox." />
+            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Sandbox test required" body="Paystack callbacks are signature-checked and independently verified against the ticket order. A no-charge production preflight passed configuration checks; verify webhook delivery, amount matching and order fulfillment with sandbox credentials." />
             <SecurityControl icon={KeyRound} title="Authentic ticket" state="Sandbox test required" body="Ticket credentials are issued only after verified payment, stored hashed and encrypted, and shown in the guest wallet. Email delivery and cross-device recovery are not configured." />
-            <SecurityControl icon={ScanLine} title="Gate admission" state="Verify migration & rehearse" body="The separate /scanner workspace supports verified staff, event-scoped assignments and atomic server check-in. Confirm the scanner migration is applied, then test a paid ticket and duplicate scan." />
+            <SecurityControl icon={ScanLine} title="Gate admission" state="Sandbox rehearsal required" body="The separate /scanner workspace and its production check-in and staff-assignment RPCs are present. Assign event staff, then test a sandbox ticket and duplicate-scan rejection." />
             <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Ticketing changes are audited and scanner access is event-scoped. MFA enforcement, dual approval and automated fraud monitoring are not live." />
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-5 text-slate-400">
             <ShieldCheck size={15} className="mt-0.5 shrink-0 text-amber-200" />
-            <p>QR screenshots and payment messages are not proof of a valid ticket. Keep live sales closed until production credentials, database migrations, an on-sale event and the payment-to-wallet-to-gate sandbox rehearsal are verified.</p>
+            <p>QR screenshots and payment messages are not proof of a valid ticket. The no-charge production preflight passed, but no complete sandbox payment-to-wallet-to-gate rehearsal has been verified. Do not accept live payments until that rehearsal passes for an approved on-sale event.</p>
           </div>
         </section>
 
@@ -686,7 +686,7 @@ export default function TicketingPage() {
         </details>
 
         <footer className="rounded-2xl border border-amber-200/10 bg-[#111016] p-5">
-          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">Live sales remain locked pending verification</p><p className="mt-1 text-xs leading-5 text-slate-400">Configure production secrets, confirm the ticketing and scanner migrations, publish an approved event and complete a controlled sandbox payment-to-wallet-to-gate test before accepting live payments.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
+          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">Sandbox end-to-end verification still required</p><p className="mt-1 text-xs leading-5 text-slate-400">Production configuration checks and checkout, payment-verification, scanner check-in and staff-assignment RPCs are present. Before taking live payments, create and approve an event and ticket tier, then verify a sandbox payment, wallet ticket, gate scan and duplicate-scan rejection.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
         </footer>
       </div>
     </main>
