@@ -262,7 +262,7 @@ export default function AdminLayoutClient({
           <NotificationCenter isOpen={isNotificationsOpen} setIsOpen={setIsNotificationsOpen} />
 
           {/* Mobile Header */}
-          <div className="lg:hidden flex items-center justify-between px-4 py-4 bg-background border-b border-border sticky top-0 z-50 shadow-sm backdrop-blur-xl bg-background/80">
+          <div className="lg:hidden flex items-center justify-between px-4 py-4 bg-background border-b border-border sticky top-0 z-50 shadow-sm">
             <div className="flex items-center gap-2">
               <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
                 <Wine className="h-5 w-5 text-white" />
@@ -383,10 +383,10 @@ export default function AdminLayoutClient({
           )}
 
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col min-w-0 min-h-0 lg:h-screen lg:overflow-hidden bg-slate-50/50">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 lg:h-screen lg:overflow-hidden bg-background">
 
               {/* TOP NAVIGATION BAR */}
-              <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-6 shrink-0 z-40 hidden lg:flex sticky top-0">
+              <header className="h-16 bg-background border-b border-border flex items-center justify-between px-6 shrink-0 z-40 hidden lg:flex sticky top-0">
                   <div className="flex items-center gap-4">
                       <button
                         onClick={() => setIsSearchOpen(true)}
