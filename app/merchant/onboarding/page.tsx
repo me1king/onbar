@@ -19,6 +19,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { isFoodBusinessType, merchantBusinessTypes, type MerchantBusinessType } from '@/lib/merchantApplications';
+import {
+  merchantWeekdays,
+  normalizeMerchantOperatingHours,
+  type MerchantOperatingHours,
+  type MerchantWeekday
+} from '@/lib/merchantAvailability';
 
 type DocumentType =
   | 'business_registration'
@@ -37,7 +43,15 @@ const businessTypeLabels: Record<MerchantBusinessType, string> = {
   delivery_partner: 'Delivery Partner'
 };
 
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const weekdayLabels: Record<MerchantWeekday, string> = {
+  monday: 'Monday',
+  tuesday: 'Tuesday',
+  wednesday: 'Wednesday',
+  thursday: 'Thursday',
+  friday: 'Friday',
+  saturday: 'Saturday',
+  sunday: 'Sunday'
+};
 const documentLabels: Record<DocumentType, string> = {
   business_registration: 'Business registration',
   county_license: 'County business licence',
@@ -71,15 +85,15 @@ export default function MerchantOnboarding() {
   const [preparationCapacity, setPreparationCapacity] = useState('');
   const [deliveryRadiusKm, setDeliveryRadiusKm] = useState('');
   const [collectionAvailable, setCollectionAvailable] = useState(false);
-  const [hours, setHours] = useState<Record<string, string>>({
-    monday: '09:00-22:00',
-    tuesday: '09:00-22:00',
-    wednesday: '09:00-22:00',
-    thursday: '09:00-22:00',
-    friday: '09:00-23:00',
-    saturday: '10:00-23:00',
-    sunday: '10:00-20:00'
-  });
+  const [hours, setHours] = useState<MerchantOperatingHours>(() => normalizeMerchantOperatingHours({
+    monday: { enabled: true, open: '09:00', close: '22:00' },
+    tuesday: { enabled: true, open: '09:00', close: '22:00' },
+    wednesday: { enabled: true, open: '09:00', close: '22:00' },
+    thursday: { enabled: true, open: '09:00', close: '22:00' },
+    friday: { enabled: true, open: '09:00', close: '23:00' },
+    saturday: { enabled: true, open: '10:00', close: '23:00' },
+    sunday: { enabled: true, open: '10:00', close: '20:00' }
+  }));
   const [documents, setDocuments] = useState<Partial<Record<DocumentType, File>>>({});
   const [expiryDates, setExpiryDates] = useState<Partial<Record<DocumentType, string>>>({});
   const [requirements, setRequirements] = useState<DocumentRequirement[]>([]);
@@ -319,22 +333,66 @@ export default function MerchantOnboarding() {
                 Customer collection is available
               </label>
               <div className="rounded-2xl border border-slate-200 p-4">
-                <p className="mb-3 flex items-center gap-2 text-xs font-black uppercase text-slate-700"><MapPin size={15} /> Operating hours by day</p>
+                <p className="mb-1 flex items-center gap-2 text-xs font-black uppercase text-slate-700"><MapPin size={15} /> Operating hours by day</p>
+                <p className="mb-3 text-xs text-slate-500">Use East Africa Time (Nairobi). Closed days will not receive new order allocations.</p>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {days.map(day => {
-                    const key = day.toLowerCase();
-                    return (
-                      <label key={key} className="grid grid-cols-[90px_1fr] items-center gap-2 text-xs font-bold text-slate-500">
-                        {day}
-                        <Input value={hours[key] || ''} onChange={event => setHours(current => ({ ...current, [key]: event.target.value.slice(0, 40) }))} placeholder="Closed or 09:00-22:00" className="h-10 rounded-lg text-sm" />
+                  {merchantWeekdays.map(day => {
+                    const dayHours = hours[day];
+                    return <div key={day} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3">
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={dayHours.enabled}
+                          onChange={event => setHours(current => ({
+                            ...current,
+                            [day]: { ...current[day], enabled: event.target.checked }
+                          }))}
+                          className="h-4 w-4 accent-primary"
+                        />
+                        {weekdayLabels[day]}
+                        {!dayHours.enabled && <span className="ml-auto text-slate-400">Closed</span>}
                       </label>
-                    );
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                        <label className="text-[10px] font-bold uppercase text-slate-400">Opens
+                          <Input
+                            type="time"
+                            required={dayHours.enabled}
+                            disabled={!dayHours.enabled}
+                            value={dayHours.open}
+                            onChange={event => setHours(current => ({
+                              ...current,
+                              [day]: { ...current[day], open: event.target.value }
+                            }))}
+                            className="mt-1 h-10 rounded-lg px-2 text-sm"
+                          />
+                        </label>
+                        <span className="pt-4 text-xs text-slate-400">to</span>
+                        <label className="text-[10px] font-bold uppercase text-slate-400">Closes
+                          <Input
+                            type="time"
+                            required={dayHours.enabled}
+                            disabled={!dayHours.enabled}
+                            value={dayHours.close}
+                            onChange={event => setHours(current => ({
+                              ...current,
+                              [day]: { ...current[day], close: event.target.value }
+                            }))}
+                            className="mt-1 h-10 rounded-lg px-2 text-sm"
+                          />
+                        </label>
+                      </div>
+                    </div>;
                   })}
                 </div>
+                {merchantWeekdays.some(day => hours[day].enabled && hours[day].open === hours[day].close) && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">For an open day, opening and closing times must be different.</p>}
               </div>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setStep(1)} className="h-12 rounded-xl"><ArrowLeft size={16} className="mr-2" /> Back</Button>
-                <Button onClick={() => setStep(3)} className="h-12 flex-1 rounded-xl font-black uppercase">
+                <Button
+                  disabled={merchantWeekdays.some(day => hours[day].enabled && hours[day].open === hours[day].close)}
+                  onClick={() => setStep(3)}
+                  className="h-12 flex-1 rounded-xl font-black uppercase"
+                >
                   Continue <ArrowRight size={16} className="ml-2" />
                 </Button>
               </div>

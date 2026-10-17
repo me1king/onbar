@@ -6,6 +6,11 @@ import {
   type MerchantDocumentRequirement,
   type MerchantApplicationDocument
 } from '@/lib/merchantApplications';
+import {
+  isValidMerchantOperatingHours,
+  normalizeMerchantOperatingHours,
+  type MerchantOperatingHours
+} from '@/lib/merchantAvailability';
 
 export const dynamic = 'force-dynamic';
 
@@ -126,7 +131,7 @@ export async function POST(request: Request) {
   const radiusRaw = value(form, 'deliveryRadiusKm', 10);
   const collectionAvailable = value(form, 'collectionAvailable', 5) === 'true';
   let operatingAreas: string[];
-  let operatingHours: Record<string, string>;
+  let operatingHours: MerchantOperatingHours;
 
   try {
     const areasValue = JSON.parse(value(form, 'operatingAreas', 2_000)) as unknown;
@@ -139,9 +144,10 @@ export async function POST(request: Request) {
       throw new Error('Invalid operating hours.');
     }
     operatingAreas = [...new Set(areasValue.map(area => area.trim()))];
-    operatingHours = Object.fromEntries(Object.entries(hoursValue)
-      .filter(([day, hours]) => /^[a-z]{3,9}$/i.test(day) && typeof hours === 'string')
-      .slice(0, 7)) as Record<string, string>;
+    operatingHours = normalizeMerchantOperatingHours(hoursValue);
+    if (!isValidMerchantOperatingHours(operatingHours)) {
+      throw new Error('Invalid operating hours.');
+    }
   } catch {
     return NextResponse.json({ error: 'Provide valid operating areas and hours.' }, { status: 400 });
   }

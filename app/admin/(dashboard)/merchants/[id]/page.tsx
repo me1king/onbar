@@ -7,6 +7,7 @@ import { ArrowLeft, FileText, Loader2, PackageSearch, ShieldCheck, Store } from 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { isMerchantOpenAt, merchantWeekdays, normalizeMerchantOperatingHours } from '@/lib/merchantAvailability';
 
 interface MerchantDocument {
   id: string;
@@ -32,7 +33,8 @@ interface MerchantApplication {
   latitude: number | null;
   longitude: number | null;
   operating_areas: string[];
-  operating_hours: Record<string, string>;
+  operating_hours: Record<string, unknown>;
+  accepting_orders: boolean;
   cuisine_or_category: string | null;
   preparation_capacity: number | null;
   delivery_radius_km: number | null;
@@ -228,6 +230,10 @@ export default function MerchantStorePage() {
           </div>
         </div>
         <Detail label="Collection" value={application.collection_available ? 'Available' : 'Not listed'} />
+        <Detail
+          label="Order availability"
+          value={application.accepting_orders && isMerchantOpenAt(application.operating_hours) ? 'Online and within operating hours' : application.accepting_orders ? 'Outside operating hours' : 'Offline; not accepting new orders'}
+        />
         <Detail label="Application submitted" value={dateTime(application.submitted_at)} />
         <Detail label="Last reviewed" value={application.reviewed_at ? `${dateTime(application.reviewed_at)} by ${application.reviewed_by || 'Admin'}` : null} />
         <Detail label="Latest review note" value={application.review_note} />
@@ -251,7 +257,10 @@ export default function MerchantStorePage() {
         <Card className="rounded-2xl border-0 p-5 shadow-sm">
           <h2 className="mb-4 text-sm font-black uppercase text-slate-900">Operating hours</h2>
           <div className="grid gap-2 sm:grid-cols-2">
-            {Object.entries(application.operating_hours || {}).map(([day, hours]) => <Detail key={day} label={day} value={hours} />)}
+            {merchantWeekdays.map(day => {
+              const hours = normalizeMerchantOperatingHours(application.operating_hours)[day];
+              return <Detail key={day} label={day} value={hours.enabled ? `${hours.open} – ${hours.close}` : 'Closed'} />;
+            })}
             {!Object.keys(application.operating_hours || {}).length && <p className="text-sm text-slate-500">No operating hours were provided.</p>}
           </div>
         </Card>

@@ -45,7 +45,9 @@ CREATE TABLE IF NOT EXISTS public.merchant_applications (
 
 ALTER TABLE public.merchant_applications
     ADD COLUMN IF NOT EXISTS latitude NUMERIC(10, 7),
-    ADD COLUMN IF NOT EXISTS longitude NUMERIC(10, 7);
+    ADD COLUMN IF NOT EXISTS longitude NUMERIC(10, 7),
+    ADD COLUMN IF NOT EXISTS accepting_orders BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS availability_updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 DO $$
 BEGIN
@@ -67,6 +69,150 @@ CREATE INDEX IF NOT EXISTS merchant_applications_status_created_idx
     ON public.merchant_applications (status, created_at DESC);
 CREATE INDEX IF NOT EXISTS merchant_applications_area_idx
     ON public.merchant_applications USING GIN (operating_areas);
+
+CREATE OR REPLACE FUNCTION public.merchant_schedule_interval_contains(
+    p_day JSONB,
+    p_time TIME,
+    p_previous_day BOOLEAN DEFAULT false
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    enabled BOOLEAN := false;
+    open_text TEXT;
+    close_text TEXT;
+    open_time TIME;
+    close_time TIME;
+    legacy_hours TEXT;
+BEGIN
+    IF jsonb_typeof(p_day) = 'string' THEN
+        legacy_hours := p_day #>> '{}';
+        IF legacy_hours !~ '^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$' THEN
+            RETURN false;
+        END IF;
+        open_text := substring(legacy_hours from 1 for 5);
+        close_text := substring(legacy_hours from 7 for 5);
+        enabled := open_text <> close_text;
+    ELSIF jsonb_typeof(p_day) = 'object' THEN
+        enabled := coalesce(p_day->'enabled' = 'true'::JSONB, false);
+        open_text := p_day->>'open';
+        close_text := p_day->>'close';
+        IF open_text !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+           OR close_text !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN
+            RETURN false;
+        END IF;
+    ELSE
+        RETURN false;
+    END IF;
+
+    IF NOT enabled THEN
+        RETURN false;
+    END IF;
+    open_time := open_text::TIME;
+    close_time := close_text::TIME;
+    IF open_time = close_time THEN
+        RETURN false;
+    ELSIF open_time < close_time THEN
+        RETURN NOT p_previous_day AND p_time >= open_time AND p_time < close_time;
+    ELSIF p_previous_day THEN
+        RETURN p_time < close_time;
+    END IF;
+    RETURN p_time >= open_time;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.merchant_is_open(
+    p_operating_hours JSONB,
+    p_at TIMESTAMPTZ DEFAULT now()
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    local_time TIMESTAMP;
+    weekday_number INTEGER;
+    weekdays TEXT[] := ARRAY['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    current_day TEXT;
+    previous_day TEXT;
+    current_clock TIME;
+BEGIN
+    IF jsonb_typeof(p_operating_hours) <> 'object' THEN
+        RETURN false;
+    END IF;
+    local_time := p_at AT TIME ZONE 'Africa/Nairobi';
+    weekday_number := extract(isodow FROM local_time)::INTEGER;
+    current_day := weekdays[weekday_number];
+    previous_day := weekdays[CASE WHEN weekday_number = 1 THEN 7 ELSE weekday_number - 1 END];
+    current_clock := local_time::TIME;
+
+    RETURN public.merchant_schedule_interval_contains(p_operating_hours->current_day, current_clock, false)
+        OR public.merchant_schedule_interval_contains(p_operating_hours->previous_day, current_clock, true);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.update_merchant_availability(
+    p_application_id UUID,
+    p_operating_hours JSONB,
+    p_accepting_orders BOOLEAN,
+    p_actor TEXT
+)
+RETURNS public.merchant_applications
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    updated_application public.merchant_applications;
+    weekday TEXT;
+    day_hours JSONB;
+BEGIN
+    IF jsonb_typeof(p_operating_hours) <> 'object'
+       OR p_accepting_orders IS NULL
+       OR p_actor IS NULL OR char_length(trim(p_actor)) < 1 THEN
+        RAISE EXCEPTION 'A complete weekly schedule, availability and actor are required.';
+    END IF;
+    FOREACH weekday IN ARRAY ARRAY['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    LOOP
+        day_hours := p_operating_hours->weekday;
+        IF jsonb_typeof(day_hours) IS DISTINCT FROM 'object'
+           OR jsonb_typeof(day_hours->'enabled') IS DISTINCT FROM 'boolean'
+           OR coalesce(day_hours->>'open', '') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+           OR coalesce(day_hours->>'close', '') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+           OR (day_hours->>'enabled' = 'true' AND day_hours->>'open' = day_hours->>'close') THEN
+            RAISE EXCEPTION 'The operating hours for % are invalid.', weekday;
+        END IF;
+    END LOOP;
+
+    UPDATE public.merchant_applications
+    SET operating_hours = p_operating_hours,
+        accepting_orders = p_accepting_orders,
+        availability_updated_at = now(),
+        updated_at = now()
+    WHERE id = p_application_id AND status = 'approved'
+    RETURNING * INTO updated_application;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'An approved merchant application is required to update availability.';
+    END IF;
+
+    INSERT INTO public.merchant_application_events (application_id, event_type, actor, details)
+    VALUES (
+        p_application_id,
+        'availability_updated',
+        trim(p_actor),
+        jsonb_build_object(
+            'accepting_orders', p_accepting_orders,
+            'operating_hours', p_operating_hours,
+            'timezone', 'Africa/Nairobi'
+        )
+    );
+    RETURN updated_application;
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS public.merchant_document_requirements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -316,6 +462,15 @@ BEGIN
         WHERE a.id = NEW.application_id AND a.status = 'approved'
     ) THEN
         RAISE EXCEPTION 'Only an approved merchant can record fulfilment events.';
+    END IF;
+    IF NEW.event_type = 'accepted' AND NOT EXISTS (
+        SELECT 1
+        FROM public.merchant_applications a
+        WHERE a.id = NEW.application_id
+          AND a.accepting_orders
+          AND public.merchant_is_open(a.operating_hours, now())
+    ) THEN
+        RAISE EXCEPTION 'A merchant must be online and within operating hours to accept a new order.';
     END IF;
     IF NOT EXISTS (
         SELECT 1
@@ -611,6 +766,8 @@ DECLARE
     batch_product BIGINT;
     quantity_received INTEGER;
     application_status TEXT;
+    application_accepting BOOLEAN;
+    application_open BOOLEAN;
     order_product BIGINT;
     order_quantity INTEGER;
     parent_order_id BIGINT;
@@ -622,8 +779,10 @@ DECLARE
     already_traced INTEGER;
     available_quantity INTEGER;
 BEGIN
-    SELECT b.expiry_at, b.product_id, b.quantity_received, a.status
-    INTO batch_expiry, batch_product, quantity_received, application_status
+    SELECT b.expiry_at, b.product_id, b.quantity_received, a.status,
+           a.accepting_orders, public.merchant_is_open(a.operating_hours, now())
+    INTO batch_expiry, batch_product, quantity_received, application_status,
+         application_accepting, application_open
     FROM public.merchant_product_batches b
     JOIN public.merchant_applications a ON a.id = b.application_id
     WHERE b.id = NEW.batch_id
@@ -681,15 +840,38 @@ BEGIN
     )) > application_radius THEN
         RAISE EXCEPTION 'Merchant is outside its configured delivery radius for this order.';
     END IF;
-    SELECT coalesce(sum(quantity), 0)::INTEGER INTO already_traced
-    FROM public.merchant_order_item_trace
-    WHERE order_item_id = NEW.order_item_id
-      AND (TG_OP <> 'UPDATE' OR id <> NEW.id);
+    SELECT coalesce(sum(greatest(trace.quantity - coalesce(returned.quantity, 0), 0)), 0)::INTEGER
+    INTO already_traced
+    FROM public.merchant_order_item_trace trace
+    LEFT JOIN LATERAL (
+        SELECT coalesce(sum(movement.quantity_delta), 0)::INTEGER AS quantity
+        FROM public.merchant_inventory_movements movement
+        WHERE movement.batch_id = trace.batch_id
+          AND movement.order_item_id = trace.order_item_id
+          AND movement.movement_type = 'returned'
+          AND movement.note = 'Returned for offline merchant redistribution'
+    ) returned ON true
+    WHERE trace.order_item_id = NEW.order_item_id
+      AND (TG_OP <> 'UPDATE' OR trace.id <> NEW.id);
     IF already_traced + NEW.quantity > coalesce(order_quantity, 1) THEN
         RAISE EXCEPTION 'Batch trace quantity cannot exceed the order item quantity.';
     END IF;
     IF application_status <> 'approved' THEN
         RAISE EXCEPTION 'Only an approved merchant can fulfil an order.';
+    END IF;
+    IF NOT coalesce(application_accepting, false) OR NOT coalesce(application_open, false) THEN
+        RAISE EXCEPTION 'Merchant is offline or outside operating hours and cannot receive a new order allocation.';
+    END IF;
+    IF EXISTS (
+        SELECT 1
+        FROM public.merchant_product_batches batch
+        JOIN public.merchant_fulfillment_events event
+          ON event.application_id = batch.application_id
+        WHERE batch.id = NEW.batch_id
+          AND event.order_id = parent_order.id
+          AND event.event_type = 'rejected'
+    ) THEN
+        RAISE EXCEPTION 'A merchant that rejected this order cannot receive another allocation for it.';
     END IF;
     IF EXISTS (
         SELECT 1
@@ -819,11 +1001,49 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF EXISTS (
-        SELECT 1
-        FROM public.merchant_order_item_trace trace
-        WHERE trace.order_item_id = NEW.id
-    ) THEN
+    SELECT greatest(
+        coalesce(NEW.quantity, 1)
+        - coalesce(sum(greatest(trace.quantity - coalesce(returned.quantity, 0), 0)), 0),
+        0
+    )::INTEGER
+    INTO remaining_quantity
+    FROM public.merchant_order_item_trace trace
+    JOIN public.merchant_product_batches traced_batch ON traced_batch.id = trace.batch_id
+    JOIN public.merchant_applications traced_merchant ON traced_merchant.id = traced_batch.application_id
+    LEFT JOIN LATERAL (
+        SELECT coalesce(sum(movement.quantity_delta), 0)::INTEGER AS quantity
+        FROM public.merchant_inventory_movements movement
+        WHERE movement.batch_id = trace.batch_id
+          AND movement.order_item_id = trace.order_item_id
+          AND movement.movement_type = 'returned'
+          AND movement.note = 'Returned for offline merchant redistribution'
+    ) returned ON true
+    WHERE trace.order_item_id = NEW.id
+      AND traced_merchant.status = 'approved'
+      AND (traced_batch.expiry_at IS NULL OR traced_batch.expiry_at >= CURRENT_DATE)
+      AND NOT EXISTS (
+          SELECT 1 FROM public.merchant_batch_holds hold
+          WHERE hold.batch_id = traced_batch.id AND hold.released_at IS NULL
+      )
+      AND (
+          (
+              traced_merchant.accepting_orders
+              AND public.merchant_is_open(traced_merchant.operating_hours, now())
+              AND NOT EXISTS (
+                  SELECT 1 FROM public.merchant_fulfillment_events rejected
+                  WHERE rejected.order_id = parent_order.id
+                    AND rejected.application_id = traced_merchant.id
+                    AND rejected.event_type = 'rejected'
+              )
+          )
+          OR EXISTS (
+              SELECT 1 FROM public.merchant_fulfillment_events accepted
+              WHERE accepted.order_id = parent_order.id
+                AND accepted.application_id = traced_merchant.id
+                AND accepted.event_type = 'accepted'
+          )
+      );
+    IF remaining_quantity <= 0 THEN
         RETURN NEW;
     END IF;
 
@@ -842,6 +1062,14 @@ BEGIN
         JOIN public.orders order_header ON order_header.id = NEW.order_id
         WHERE b.product_id = NEW.product_id
           AND application.status = 'approved'
+          AND application.accepting_orders
+          AND public.merchant_is_open(application.operating_hours, now())
+          AND NOT EXISTS (
+              SELECT 1 FROM public.merchant_fulfillment_events rejected
+              WHERE rejected.order_id = parent_order.id
+                AND rejected.application_id = application.id
+                AND rejected.event_type = 'rejected'
+          )
           AND application.latitude IS NOT NULL
           AND application.longitude IS NOT NULL
           AND application.delivery_radius_km IS NOT NULL
@@ -1095,5 +1323,7 @@ GRANT USAGE, SELECT ON SEQUENCE public.merchant_batch_hold_events_id_seq TO serv
 GRANT USAGE, SELECT ON SEQUENCE public.merchant_trace_access_events_id_seq TO service_role;
 REVOKE ALL ON FUNCTION public.review_merchant_application(UUID, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.review_merchant_application(UUID, TEXT, TEXT, TEXT) TO service_role;
+REVOKE ALL ON FUNCTION public.update_merchant_availability(UUID, JSONB, BOOLEAN, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.update_merchant_availability(UUID, JSONB, BOOLEAN, TEXT) TO service_role;
 REVOKE ALL ON FUNCTION public.receive_merchant_product_batch(UUID, BIGINT, TEXT, TEXT, DATE, INTEGER, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.receive_merchant_product_batch(UUID, BIGINT, TEXT, TEXT, DATE, INTEGER, TEXT, TEXT) TO service_role;

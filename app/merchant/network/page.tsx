@@ -19,6 +19,13 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  isMerchantOpenAt,
+  merchantWeekdays,
+  normalizeMerchantOperatingHours,
+  type MerchantOperatingHours,
+  type MerchantWeekday
+} from '@/lib/merchantAvailability';
 import { supabase } from '@/lib/supabaseClient';
 
 type PartnerEvent = { event_type: string; details: Record<string, unknown> | null; created_at: string };
@@ -77,7 +84,9 @@ type PartnerApplication = {
     latitude: number | null;
     longitude: number | null;
     operating_areas: string[];
-    operating_hours: Record<string, string>;
+    operating_hours: Record<string, unknown>;
+    accepting_orders: boolean;
+    availability_updated_at: string;
     cuisine_or_category: string | null;
     preparation_capacity: number | null;
     delivery_radius_km: number | null;
@@ -156,7 +165,15 @@ const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'incidents', label: 'Reports', icon: AlertTriangle },
   { id: 'business', label: 'Business profile', icon: Building2 }
 ];
-const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const weekdayLabels: Record<MerchantWeekday, string> = {
+  monday: 'Monday',
+  tuesday: 'Tuesday',
+  wednesday: 'Wednesday',
+  thursday: 'Thursday',
+  friday: 'Friday',
+  saturday: 'Saturday',
+  sunday: 'Sunday'
+};
 
 function dateTime(value: string): string {
   const parsed = new Date(value);
@@ -192,9 +209,17 @@ export default function OnBarPartnerNetworkPage() {
   const [loginError, setLoginError] = useState('');
   const [batchForm, setBatchForm] = useState({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '' });
   const [incidentForm, setIncidentForm] = useState({ link: '', category: 'other', description: '' });
+  const [scheduleDraft, setScheduleDraft] = useState<MerchantOperatingHours>(() => normalizeMerchantOperatingHours(null));
+  const [acceptingOrdersDraft, setAcceptingOrdersDraft] = useState(false);
 
   const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
   const canOperate = selected?.application.status === 'approved';
+
+  useEffect(() => {
+    if (!selected) return;
+    setScheduleDraft(normalizeMerchantOperatingHours(selected.application.operating_hours));
+    setAcceptingOrdersDraft(selected.application.accepting_orders);
+  }, [selectedId, selected]);
 
   const loadWorkspace = useCallback(async (token: string) => {
     setLoading(true);
@@ -434,6 +459,19 @@ export default function OnBarPartnerNetworkPage() {
     if (saved) setIncidentForm({ link: '', category: 'other', description: '' });
   };
 
+  const submitAvailability = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selected) return;
+    await apiAction({
+      operation: 'update_availability',
+      applicationId: selected.application.id,
+      operatingHours: scheduleDraft,
+      acceptingOrders: acceptingOrdersDraft
+    }, acceptingOrdersDraft
+      ? 'Hours saved. New paid orders can route here only while you are open and accepting orders.'
+      : 'Hours saved. This business is offline for new orders; existing assigned orders remain visible.');
+  };
+
   if (isRecovering) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
@@ -554,7 +592,12 @@ export default function OnBarPartnerNetworkPage() {
                 <h2 className="mt-2 text-2xl font-black text-slate-900">{application.business_name}</h2>
                 <p className="mt-1 text-sm text-slate-500">{businessLabels[application.business_type] || application.business_type} · {application.town}, {application.county}</p>
               </div>
-              <span className={`rounded-full px-4 py-2 text-xs font-black uppercase ${statusClass(application.status)}`}>{statusLabels[application.status] || application.status}</span>
+              <div className="flex flex-wrap gap-2">
+                <span className={`rounded-full px-4 py-2 text-xs font-black uppercase ${statusClass(application.status)}`}>{statusLabels[application.status] || application.status}</span>
+                {application.status === 'approved' && <span className={`rounded-full px-4 py-2 text-xs font-black uppercase ${application.accepting_orders && isMerchantOpenAt(application.operating_hours) ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                  {application.accepting_orders && isMerchantOpenAt(application.operating_hours) ? 'Open · accepting new orders' : application.accepting_orders ? 'Closed by schedule' : 'Offline · not accepting'}
+                </span>}
+              </div>
             </section>
             {application.review_note && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950"><strong>Latest review update:</strong> {application.review_note}</section>}
             {application.status !== 'approved' && <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -679,6 +722,89 @@ export default function OnBarPartnerNetworkPage() {
         {!loading && overview && section === 'business' && (
           <section className="space-y-5">
             <div><h2 className="text-xl font-black text-slate-900">Business profile</h2><p className="mt-1 text-sm text-slate-500">Application and contact details submitted to OnBar.</p></div>
+            <form onSubmit={submitAvailability} className="rounded-2xl bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h3 className="flex items-center gap-2 font-black text-slate-900"><Clock3 size={18} /> Order availability & operating hours</h3>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Set your local operating hours in East Africa Time (Nairobi). Paid orders are allocated only to approved, nearby partners with available stock who are online and open at allocation time. Overnight shifts are supported.</p>
+                </div>
+                <span className={`rounded-full px-3 py-1.5 text-xs font-black uppercase ${application.accepting_orders ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
+                  {application.accepting_orders ? 'Accepting orders' : 'Offline'}
+                </span>
+              </div>
+              {!canOperate && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Availability controls unlock after OnBar approves this business.</p>}
+              <label className={`mt-5 flex items-start gap-3 rounded-xl border p-4 ${canOperate ? 'cursor-pointer border-slate-200' : 'border-slate-100 opacity-60'}`}>
+                <input
+                  type="checkbox"
+                  checked={acceptingOrdersDraft}
+                  disabled={!canOperate || working}
+                  onChange={event => setAcceptingOrdersDraft(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-primary"
+                />
+                <span>
+                  <span className="block text-sm font-bold text-slate-800">I am online and accepting new orders</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">Turn this off for a temporary closure, even if today’s schedule says you are open.</span>
+                </span>
+              </label>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {merchantWeekdays.map(day => {
+                  const hours = scheduleDraft[day];
+                  return <div key={day} className="grid gap-3 rounded-xl border border-slate-200 p-3">
+                    <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={hours.enabled}
+                        disabled={!canOperate || working}
+                        onChange={event => setScheduleDraft(current => ({
+                          ...current,
+                          [day]: { ...current[day], enabled: event.target.checked }
+                        }))}
+                        className="h-4 w-4 accent-primary"
+                      />
+                      {weekdayLabels[day]}
+                      {!hours.enabled && <span className="ml-auto text-xs font-semibold text-slate-400">Closed</span>}
+                    </label>
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                      <label className="text-[10px] font-bold uppercase text-slate-400">Opens
+                        <Input
+                          type="time"
+                          required={hours.enabled}
+                          disabled={!canOperate || working || !hours.enabled}
+                          value={hours.open}
+                          onChange={event => setScheduleDraft(current => ({
+                            ...current,
+                            [day]: { ...current[day], open: event.target.value }
+                          }))}
+                          className="mt-1 h-10 rounded-lg px-2 text-sm"
+                        />
+                      </label>
+                      <span className="pt-4 text-xs text-slate-400">to</span>
+                      <label className="text-[10px] font-bold uppercase text-slate-400">Closes
+                        <Input
+                          type="time"
+                          required={hours.enabled}
+                          disabled={!canOperate || working || !hours.enabled}
+                          value={hours.close}
+                          onChange={event => setScheduleDraft(current => ({
+                            ...current,
+                            [day]: { ...current[day], close: event.target.value }
+                          }))}
+                          className="mt-1 h-10 rounded-lg px-2 text-sm"
+                        />
+                      </label>
+                    </div>
+                  </div>;
+                })}
+              </div>
+              {merchantWeekdays.some(day => scheduleDraft[day].enabled && scheduleDraft[day].open === scheduleDraft[day].close) && <p role="alert" className="mt-3 text-sm font-semibold text-rose-700">For an open day, opening and closing times must be different.</p>}
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs leading-5 text-slate-500">Going offline prevents new allocations; orders already assigned to you remain visible and still need fulfillment updates.</p>
+                <Button type="submit" disabled={!canOperate || working || merchantWeekdays.some(day => scheduleDraft[day].enabled && scheduleDraft[day].open === scheduleDraft[day].close)} className="h-11 rounded-xl font-black uppercase">
+                  {working && <Loader2 size={16} className="mr-2 animate-spin" />} Save availability
+                </Button>
+              </div>
+              {application.availability_updated_at && <p className="mt-3 text-[10px] text-slate-400">Last saved {dateTime(application.availability_updated_at)}</p>}
+            </form>
             <div className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
               <article className="rounded-2xl bg-white p-6 shadow-sm">
                 <h3 className="flex items-center gap-2 font-black text-slate-900"><Building2 size={18} /> Business details</h3>
@@ -700,8 +826,11 @@ export default function OnBarPartnerNetworkPage() {
               </article>
               <article className="rounded-2xl bg-white p-6 shadow-sm">
                 <h3 className="font-black text-slate-900">Operating hours</h3>
-                <dl className="mt-4 space-y-3">{days.map(day => <div key={day} className="flex justify-between gap-4 text-sm"><dt className="font-semibold capitalize text-slate-600">{day}</dt><dd className="text-right text-slate-800">{application.operating_hours?.[day] || 'Not provided'}</dd></div>)}</dl>
-                <div className="mt-6 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-600">Profile changes are reviewed and managed by OnBar. Contact support to request a correction. Payout details are not managed in this workspace.</div>
+                <dl className="mt-4 space-y-3">{merchantWeekdays.map(day => {
+                  const hours = scheduleDraft[day];
+                  return <div key={day} className="flex justify-between gap-4 text-sm"><dt className="font-semibold capitalize text-slate-600">{weekdayLabels[day]}</dt><dd className="text-right text-slate-800">{hours.enabled ? `${hours.open} – ${hours.close}` : 'Closed'}</dd></div>;
+                })}</dl>
+                <div className="mt-6 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-600">Business profile identity changes are managed by OnBar. Contact support to request a correction. Payout details are not managed in this workspace.</div>
                 <Link href="/contact" className="mt-4 inline-flex text-sm font-bold text-primary underline">Contact OnBar support</Link>
               </article>
             </div>

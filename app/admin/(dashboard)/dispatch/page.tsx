@@ -139,6 +139,7 @@ export default function AdminDispatchPage() {
     const [selectedRider, setSelectedRider] = useState<Rider | null>(null);
     const [demandZones, setDemandZones] = useState<{ lat: number, lng: number, intensity: number }[]>([]);
     const [assigning, setAssigning] = useState<number | null>(null);
+    const [retryingAllocation, setRetryingAllocation] = useState<number | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [overrideRiders, setOverrideRiders] = useState<Record<number, string>>({});
     const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
@@ -272,6 +273,40 @@ export default function AdminDispatchPage() {
             setAssigning(null);
         }
     }, [orders, overrideReasons, fetchData]);
+
+    const retryMerchantAllocation = React.useCallback(async (orderId: number) => {
+        setRetryingAllocation(orderId);
+        setMessage(null);
+        try {
+            const response = await fetch('/api/admin/dispatch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId, operation: 'retry_merchant_allocation' })
+            });
+            const result = await response.json() as {
+                error?: string;
+                message?: string;
+                allocation?: {
+                    fully_allocated?: boolean;
+                    unallocated_items?: Array<{ product_name: string; requested_quantity: number; allocated_quantity: number }>;
+                };
+            };
+            if (!response.ok) throw new Error(result.error || 'Merchant stock could not be redistributed.');
+            const remaining = result.allocation?.unallocated_items || [];
+            const remainingText = remaining.length
+                ? ` Still needed: ${remaining.map(item => `${item.product_name} ${item.allocated_quantity}/${item.requested_quantity}`).join(', ')}.`
+                : '';
+            setMessage({
+                type: result.allocation?.fully_allocated ? 'success' : 'error',
+                text: `${result.message || 'Merchant availability rechecked.'}${remainingText}`
+            });
+            await fetchData();
+        } catch (error) {
+            setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Merchant stock could not be redistributed.' });
+        } finally {
+            setRetryingAllocation(null);
+        }
+    }, [fetchData]);
 
     const handleVerifyRider = React.useCallback(async (phone: string) => {
         try {
@@ -453,6 +488,18 @@ export default function AdminDispatchPage() {
                                         </div>
 
                                         <div className="flex flex-col md:flex-row gap-3">
+                                            {!order.fulfillment.ready && order.fulfillment.productChecks.some(check => check.reservedQuantity < check.quantity) && (
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={() => void retryMerchantAllocation(order.id)}
+                                                    disabled={retryingAllocation === order.id || assigning === order.id}
+                                                    className="h-12 rounded-xl border-amber-300 px-5 text-[10px] font-black uppercase tracking-widest text-amber-800"
+                                                >
+                                                    {retryingAllocation === order.id
+                                                        ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking shops</>
+                                                        : 'Retry available shops'}
+                                                </Button>
+                                            )}
                                             <Button
                                                 onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
                                                 disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}

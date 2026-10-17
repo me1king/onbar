@@ -51,7 +51,9 @@ ALTER TABLE public.rider_status
 
 ALTER TABLE public.merchant_applications
     ADD COLUMN IF NOT EXISTS latitude NUMERIC,
-    ADD COLUMN IF NOT EXISTS longitude NUMERIC;
+    ADD COLUMN IF NOT EXISTS longitude NUMERIC,
+    ADD COLUMN IF NOT EXISTS accepting_orders BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS availability_updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 CREATE OR REPLACE FUNCTION public.allocate_tracked_product_on_order_item()
 RETURNS TRIGGER
@@ -96,10 +98,53 @@ BEGIN
     INTO has_payment_proof
     USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price;
 
-    IF NOT has_payment_proof OR EXISTS (
-        SELECT 1 FROM public.merchant_order_item_trace trace
-        WHERE trace.order_item_id = NEW.id
-    ) THEN
+    IF NOT has_payment_proof THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT greatest(
+        coalesce(NEW.quantity, 1)
+        - coalesce(sum(greatest(trace.quantity - coalesce(returned.quantity, 0), 0)), 0),
+        0
+    )::INTEGER
+    INTO remaining_quantity
+    FROM public.merchant_order_item_trace trace
+    JOIN public.merchant_product_batches traced_batch ON traced_batch.id = trace.batch_id
+    JOIN public.merchant_applications traced_merchant ON traced_merchant.id = traced_batch.application_id
+    LEFT JOIN LATERAL (
+        SELECT coalesce(sum(movement.quantity_delta), 0)::INTEGER AS quantity
+        FROM public.merchant_inventory_movements movement
+        WHERE movement.batch_id = trace.batch_id
+          AND movement.order_item_id = trace.order_item_id
+          AND movement.movement_type = 'returned'
+          AND movement.note = 'Returned for offline merchant redistribution'
+    ) returned ON true
+    WHERE trace.order_item_id = NEW.id
+      AND traced_merchant.status = 'approved'
+      AND (traced_batch.expiry_at IS NULL OR traced_batch.expiry_at >= CURRENT_DATE)
+      AND NOT EXISTS (
+          SELECT 1 FROM public.merchant_batch_holds hold
+          WHERE hold.batch_id = traced_batch.id AND hold.released_at IS NULL
+      )
+      AND (
+          (
+              traced_merchant.accepting_orders
+              AND public.merchant_is_open(traced_merchant.operating_hours, now())
+              AND NOT EXISTS (
+                  SELECT 1 FROM public.merchant_fulfillment_events rejected
+                  WHERE rejected.order_id = parent_order.id
+                    AND rejected.application_id = traced_merchant.id
+                    AND rejected.event_type = 'rejected'
+              )
+          )
+          OR EXISTS (
+              SELECT 1 FROM public.merchant_fulfillment_events accepted
+              WHERE accepted.order_id = parent_order.id
+                AND accepted.application_id = traced_merchant.id
+                AND accepted.event_type = 'accepted'
+          )
+      );
+    IF remaining_quantity <= 0 THEN
         RETURN NEW;
     END IF;
 
@@ -117,6 +162,14 @@ BEGIN
         JOIN public.merchant_applications application ON application.id = b.application_id
         WHERE b.product_id = NEW.product_id
           AND application.status = 'approved'
+          AND application.accepting_orders
+          AND public.merchant_is_open(application.operating_hours, now())
+          AND NOT EXISTS (
+              SELECT 1 FROM public.merchant_fulfillment_events rejected
+              WHERE rejected.order_id = parent_order.id
+                AND rejected.application_id = application.id
+                AND rejected.event_type = 'rejected'
+          )
           AND application.latitude IS NOT NULL
           AND application.longitude IS NOT NULL
           AND application.delivery_radius_km IS NOT NULL
@@ -315,6 +368,182 @@ REVOKE ALL ON public.dispatch_decisions FROM PUBLIC, anon, authenticated;
 GRANT ALL ON public.dispatch_decisions TO service_role;
 GRANT USAGE, SELECT ON SEQUENCE public.dispatch_decisions_id_seq TO service_role;
 
+CREATE OR REPLACE FUNCTION public.retry_paid_order_merchant_allocation(
+    p_order_id BIGINT,
+    p_actor TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    target_order public.orders%ROWTYPE;
+    item_record RECORD;
+    allocated_quantity INTEGER;
+    retried_items INTEGER := 0;
+    unallocated_items JSONB := '[]'::JSONB;
+BEGIN
+    IF p_actor IS NULL OR char_length(trim(p_actor)) < 1 THEN
+        RAISE EXCEPTION 'An administrator identity is required to retry merchant allocation.';
+    END IF;
+    SELECT * INTO target_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'code', 'ORDER_NOT_FOUND', 'error', 'Order not found.');
+    END IF;
+    IF lower(coalesce(target_order.status, '')) <> 'paid'
+       OR target_order.payment_verified_at IS NULL
+       OR lower(coalesce(target_order.payment_method, '')) <> 'paystack'
+       OR target_order.checkout_request_id IS NULL
+       OR NOT EXISTS (
+           SELECT 1 FROM public.payment_confirmations confirmation
+           WHERE confirmation.order_id = target_order.id
+             AND confirmation.provider = 'Paystack'
+             AND confirmation.reference = target_order.checkout_request_id
+             AND confirmation.amount_kobo = round(target_order.total_price * 100)::BIGINT
+             AND confirmation.currency = 'KES'
+       ) THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'code', 'PAYMENT_NOT_CONFIRMED',
+            'error', 'Retry is limited to orders with a matching server-verified Paystack payment.'
+        );
+    END IF;
+    IF target_order.rider_phone IS NOT NULL
+       AND target_order.status IN ('Dispatched', 'Out for Delivery', 'Delivered') THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'code', 'ORDER_ALREADY_DISPATCHED',
+            'error', 'Merchant allocation cannot be changed after rider dispatch.'
+        );
+    END IF;
+
+    FOR item_record IN
+        SELECT item.id, item.product_id, coalesce(item.quantity, 1)::INTEGER AS quantity,
+               product.name AS product_name
+        FROM public.order_items item
+        LEFT JOIN public.products product ON product.id = item.product_id
+        WHERE item.order_id = target_order.id
+          AND item.product_id IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM public.merchant_product_batches tracked
+              WHERE tracked.product_id = item.product_id
+          )
+        ORDER BY item.id
+    LOOP
+        INSERT INTO public.merchant_inventory_movements (
+            batch_id, movement_type, quantity_delta, order_id, order_item_id, actor, note
+        )
+        SELECT traced.batch_id,
+               'returned',
+               (traced.traced_quantity - coalesce(previous_return.returned_quantity, 0))::INTEGER,
+               target_order.id,
+               item_record.id,
+               trim(p_actor),
+               'Returned for offline merchant redistribution'
+        FROM (
+            SELECT trace.batch_id, sum(trace.quantity)::INTEGER AS traced_quantity
+            FROM public.merchant_order_item_trace trace
+            WHERE trace.order_item_id = item_record.id
+            GROUP BY trace.batch_id
+        ) traced
+        JOIN public.merchant_product_batches batch ON batch.id = traced.batch_id
+        JOIN public.merchant_applications application ON application.id = batch.application_id
+        LEFT JOIN LATERAL (
+            SELECT coalesce(sum(movement.quantity_delta), 0)::INTEGER AS returned_quantity
+            FROM public.merchant_inventory_movements movement
+            WHERE movement.batch_id = traced.batch_id
+              AND movement.order_item_id = item_record.id
+              AND movement.movement_type = 'returned'
+              AND movement.note = 'Returned for offline merchant redistribution'
+        ) previous_return ON true
+        WHERE application.status = 'approved'
+          AND (
+              NOT application.accepting_orders
+              OR NOT public.merchant_is_open(application.operating_hours, now())
+              OR EXISTS (
+                  SELECT 1 FROM public.merchant_fulfillment_events rejected
+                  WHERE rejected.order_id = target_order.id
+                    AND rejected.application_id = application.id
+                    AND rejected.event_type = 'rejected'
+              )
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM public.merchant_fulfillment_events accepted
+              WHERE accepted.order_id = target_order.id
+                AND accepted.application_id = application.id
+                AND accepted.event_type = 'accepted'
+          )
+          AND traced.traced_quantity > coalesce(previous_return.returned_quantity, 0);
+
+        BEGIN
+            UPDATE public.order_items
+            SET quantity = item_record.quantity
+            WHERE id = item_record.id;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING 'Merchant allocation retry for order item % did not complete: %',
+                item_record.id, SQLERRM;
+        END;
+
+        SELECT coalesce(sum(greatest(trace.quantity - coalesce(returned.quantity, 0), 0)), 0)::INTEGER
+        INTO allocated_quantity
+        FROM public.merchant_order_item_trace trace
+        JOIN public.merchant_product_batches batch ON batch.id = trace.batch_id
+        JOIN public.merchant_applications application ON application.id = batch.application_id
+        LEFT JOIN LATERAL (
+            SELECT coalesce(sum(movement.quantity_delta), 0)::INTEGER AS quantity
+            FROM public.merchant_inventory_movements movement
+            WHERE movement.batch_id = trace.batch_id
+              AND movement.order_item_id = trace.order_item_id
+              AND movement.movement_type = 'returned'
+              AND movement.note = 'Returned for offline merchant redistribution'
+        ) returned ON true
+        WHERE trace.order_item_id = item_record.id
+          AND application.status = 'approved'
+          AND (batch.expiry_at IS NULL OR batch.expiry_at >= CURRENT_DATE)
+          AND NOT EXISTS (
+              SELECT 1 FROM public.merchant_batch_holds hold
+              WHERE hold.batch_id = batch.id AND hold.released_at IS NULL
+          )
+          AND (
+              (
+                  application.accepting_orders
+                  AND public.merchant_is_open(application.operating_hours, now())
+                  AND NOT EXISTS (
+                      SELECT 1 FROM public.merchant_fulfillment_events rejected
+                      WHERE rejected.order_id = target_order.id
+                        AND rejected.application_id = application.id
+                        AND rejected.event_type = 'rejected'
+                  )
+              )
+              OR EXISTS (
+                  SELECT 1 FROM public.merchant_fulfillment_events accepted
+                  WHERE accepted.order_id = target_order.id
+                    AND accepted.application_id = application.id
+                    AND accepted.event_type = 'accepted'
+              )
+          );
+        retried_items := retried_items + 1;
+        IF allocated_quantity < item_record.quantity THEN
+            unallocated_items := unallocated_items || jsonb_build_array(jsonb_build_object(
+                'order_item_id', item_record.id,
+                'product_name', coalesce(item_record.product_name, 'Product'),
+                'requested_quantity', item_record.quantity,
+                'allocated_quantity', allocated_quantity
+            ));
+        END IF;
+    END LOOP;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'order_id', target_order.id,
+        'retried_items', retried_items,
+        'fully_allocated', jsonb_array_length(unallocated_items) = 0,
+        'unallocated_items', unallocated_items
+    );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.assign_paid_order_rider(
     p_order_id BIGINT,
     p_rider_phone TEXT,
@@ -457,3 +686,5 @@ $$;
 
 REVOKE ALL ON FUNCTION public.assign_paid_order_rider(BIGINT, TEXT, TEXT, BOOLEAN, TEXT, JSONB) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.assign_paid_order_rider(BIGINT, TEXT, TEXT, BOOLEAN, TEXT, JSONB) TO service_role;
+REVOKE ALL ON FUNCTION public.retry_paid_order_merchant_allocation(BIGINT, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.retry_paid_order_merchant_allocation(BIGINT, TEXT) TO service_role;

@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { isValidMerchantOperatingHours } from '@/lib/merchantAvailability';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,7 +87,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
@@ -122,7 +123,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
       : Promise.resolve({ data: [], error: null }),
     batchIds.length
       ? database.from('merchant_inventory_movements')
-        .select('id, batch_id, movement_type, quantity_delta, note, created_at')
+        .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
         .in('batch_id', batchIds).order('created_at', { ascending: false }).limit(2000)
       : Promise.resolve({ data: [], error: null }),
     batchIds.length
@@ -185,12 +186,16 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
       .map(item => ({
         ...item,
         product_name: productRows.find(product => product.id === item.product_id)?.name || 'Product',
-        merchant_quantity: traceRows
-          .filter(trace => Number(trace.order_item_id) === Number(item.id))
-          .reduce((total, trace) => {
-            const batch = batchRows.find(candidate => candidate.id === trace.batch_id);
-            return batch ? total + Number(trace.quantity) : total;
-          }, 0)
+        merchant_quantity: Math.max(0,
+          traceRows
+            .filter(trace => Number(trace.order_item_id) === Number(item.id))
+            .reduce((total, trace) => total + Number(trace.quantity), 0)
+          - (movements || [])
+            .filter(movement => Number(movement.order_item_id) === Number(item.id)
+              && movement.movement_type === 'returned'
+              && movement.note === 'Returned for offline merchant redistribution')
+            .reduce((total, movement) => total + Number(movement.quantity_delta), 0)
+        )
       }))
       .filter(item => item.merchant_quantity > 0);
     const orderEvents = (fulfillment || []).filter(event => Number(event.order_id) === Number(order.id));
@@ -235,7 +240,7 @@ export async function GET(request: Request) {
   try {
     const { data: applications, error } = await context.database
       .from('merchant_applications')
-      .select('id, merchant_code, business_name, trading_name, business_type, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, documents, status, review_note, submitted_at, reviewed_at, updated_at')
+      .select('id, merchant_code, business_name, trading_name, business_type, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, documents, status, review_note, submitted_at, reviewed_at, updated_at')
       .eq('email', context.actor)
       .order('submitted_at', { ascending: false })
       .limit(25);
@@ -289,6 +294,27 @@ export async function POST(request: Request) {
   if (!application) return NextResponse.json({ error: 'That business is not linked to your verified account.' }, { status: 404 });
   if (application.status !== 'approved') {
     return NextResponse.json({ error: 'Only currently approved partners can make operational updates.' }, { status: 403 });
+  }
+
+  if (body.operation === 'update_availability') {
+    if (!isValidMerchantOperatingHours(body.operatingHours) || typeof body.acceptingOrders !== 'boolean') {
+      return NextResponse.json({ error: 'Set valid opening and closing times for every day and choose whether you are accepting new orders.' }, { status: 400 });
+    }
+    const { data, error } = await context.database.rpc('update_merchant_availability', {
+      p_application_id: application.id,
+      p_operating_hours: body.operatingHours,
+      p_accepting_orders: body.acceptingOrders,
+      p_actor: context.actor
+    });
+    if (error) {
+      console.error('[MerchantNetwork] Could not update partner availability:', error);
+      return NextResponse.json({
+        error: /approved merchant application/i.test(error.message)
+          ? 'Only an approved business can change order availability.'
+          : 'Business hours could not be saved. Confirm the merchant availability migration is installed.'
+      }, { status: 503 });
+    }
+    return NextResponse.json({ application: data });
   }
 
   if (body.operation === 'receive_batch') {
@@ -360,13 +386,31 @@ export async function POST(request: Request) {
     const batchIds = (batches || []).map(batch => batch.id);
     const { data: traces, error: tracesError } = batchIds.length
       ? await context.database.from('merchant_order_item_trace')
-        .select('order_item_id').in('batch_id', batchIds)
+        .select('order_item_id, batch_id, quantity').in('batch_id', batchIds)
       : { data: [], error: null };
     if (tracesError) {
       console.error('[MerchantNetwork] Could not verify fulfillment order trace:', tracesError);
       return NextResponse.json({ error: 'The order could not be verified.' }, { status: 503 });
     }
-    const itemIds = [...new Set((traces || []).map(trace => trace.order_item_id))];
+    const { data: returnedMovements, error: returnError } = batchIds.length
+      ? await context.database.from('merchant_inventory_movements')
+        .select('order_item_id, batch_id, quantity_delta')
+        .eq('movement_type', 'returned')
+        .eq('note', 'Returned for offline merchant redistribution')
+        .in('batch_id', batchIds)
+      : { data: [], error: null };
+    if (returnError) {
+      console.error('[MerchantNetwork] Could not verify returned inventory:', returnError);
+      return NextResponse.json({ error: 'The order allocation could not be verified.' }, { status: 503 });
+    }
+    const activeTraces = (traces || []).filter(trace => {
+      const returnedQuantity = (returnedMovements || [])
+        .filter(movement => movement.batch_id === trace.batch_id
+          && Number(movement.order_item_id) === Number(trace.order_item_id))
+        .reduce((total, movement) => total + Number(movement.quantity_delta), 0);
+      return Number(trace.quantity) > returnedQuantity;
+    });
+    const itemIds = [...new Set(activeTraces.map(trace => trace.order_item_id))];
     const { data: linkedItem, error: itemError } = itemIds.length
       ? await context.database.from('order_items')
         .select('id').eq('order_id', orderId).in('id', itemIds).limit(1).maybeSingle()

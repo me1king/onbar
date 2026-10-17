@@ -98,7 +98,8 @@ const labels: Record<string, string> = {
   approved: 'Approved',
   rejected: 'Rejected',
   suspended: 'Suspended',
-  expired: 'Expired'
+  expired: 'Expired',
+  availability_updated: 'Availability updated'
 };
 
 function statusClass(status: MerchantApplicationStatus) {

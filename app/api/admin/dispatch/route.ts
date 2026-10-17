@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
+import { isMerchantOpenAt } from '@/lib/merchantAvailability';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,7 @@ type Rider = {
 
 type MerchantTrace = {
   order_item_id: number;
+  batch_id: string;
   quantity: number;
   batch?: {
     product_id?: number;
@@ -58,6 +60,8 @@ type MerchantTrace = {
       id?: string;
       business_name?: string;
       status?: string;
+      accepting_orders?: boolean;
+      operating_hours?: Record<string, unknown>;
       delivery_radius_km?: number | string | null;
       latitude?: number | string | null;
       longitude?: number | string | null;
@@ -140,7 +144,7 @@ async function assessVendors(
   if (itemIds.length > 0) {
     const { data, error } = await database
       .from('merchant_order_item_trace')
-      .select('order_item_id, quantity, batch:merchant_product_batches(product_id, expiry_at, holds:merchant_batch_holds(id, released_at), application:merchant_applications(id, business_name, status, delivery_radius_km, latitude, longitude))')
+      .select('order_item_id, quantity, batch:merchant_product_batches(product_id, expiry_at, holds:merchant_batch_holds(id, released_at), application:merchant_applications(id, business_name, status, accepting_orders, operating_hours, delivery_radius_km, latitude, longitude))')
       .in('order_item_id', itemIds);
 
     if (error) {
@@ -148,6 +152,18 @@ async function assessVendors(
     } else {
       traces = (data || []) as unknown as MerchantTrace[];
     }
+  }
+  const { data: returnedMovements, error: returnedMovementsError } = itemIds.length
+    ? await database
+      .from('merchant_inventory_movements')
+      .select('order_item_id, batch_id, quantity_delta')
+      .eq('movement_type', 'returned')
+      .eq('note', 'Returned for offline merchant redistribution')
+      .in('order_item_id', itemIds)
+    : { data: [], error: null };
+  if (returnedMovementsError) {
+    reasons.push('Merchant inventory return records are unavailable; allocation totals cannot be verified.');
+    traces = [];
   }
   if (!eventsAvailable && items.length > 0) {
     reasons.push('Merchant fulfillment acceptance records are unavailable; apply MERCHANT_OPERATIONS_MIGRATION.sql.');
@@ -181,12 +197,26 @@ async function assessVendors(
     const itemTraces = traces.filter(trace => Number(trace.order_item_id) === item.id);
     let allocatedQuantity = 0;
     for (const trace of itemTraces) {
+      const returnedQuantity = (returnedMovements || [])
+        .filter(movement => movement.batch_id === trace.batch_id
+          && Number(movement.order_item_id) === Number(trace.order_item_id))
+        .reduce((total, movement) => total + Number(movement.quantity_delta || 0), 0);
+      const activeQuantity = Math.max(0, Number(trace.quantity || 0) - returnedQuantity);
+      if (activeQuantity <= 0) continue;
       const batch = trace.batch;
       const merchant = batch?.application;
       if (!batch || Number(batch.product_id) !== item.product_id || !merchant || merchant.status !== 'approved') continue;
       if (batch.expiry_at && batch.expiry_at < new Date().toISOString().slice(0, 10)) continue;
       if (batch.holds?.some(hold => hold.released_at === null)) continue;
-      allocatedQuantity += Number(trace.quantity || 0);
+      const merchantAccepted = events.some(event =>
+        event.application_id === merchant.id && event.event_type === 'accepted'
+      );
+      const merchantRejected = events.some(event =>
+        event.application_id === merchant.id && event.event_type === 'rejected'
+      );
+      const isOnline = merchant.accepting_orders !== false && isMerchantOpenAt(merchant.operating_hours);
+      if ((!isOnline || merchantRejected) && !merchantAccepted) continue;
+      allocatedQuantity += activeQuantity;
 
       if (merchant.id) {
         selectedVendorIds.add(merchant.id);
@@ -213,8 +243,14 @@ async function assessVendors(
           reasons.push(`${merchant.business_name || 'A selected merchant'} is ${distance.toFixed(1)} km away, beyond its ${radiusKm} km delivery radius.`);
         }
       }
-      if (merchant.id && !events.some(event => event.application_id === merchant.id && event.event_type === 'accepted')) {
-        reasons.push(`${merchant.business_name || 'A selected merchant'} has not accepted this order.`);
+      if (merchant.id && !merchantAccepted) {
+        if (merchantRejected) {
+          reasons.push(`${merchant.business_name || 'A selected merchant'} declined this order; retry allocation to an available merchant before dispatch.`);
+        } else if (!isOnline) {
+          reasons.push(`${merchant.business_name || 'A selected merchant'} is offline or outside its operating hours; this order needs allocation to an available merchant before dispatch.`);
+        } else {
+          reasons.push(`${merchant.business_name || 'A selected merchant'} has not accepted this order.`);
+        }
       }
     }
     if (allocatedQuantity < quantity) {
@@ -497,13 +533,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Dispatch database access is not configured. Set SUPABASE_SERVICE_ROLE_KEY on the server.' }, { status: 503 });
   }
 
-  let body: { orderId?: unknown; mode?: unknown; riderPhone?: unknown; reason?: unknown };
+  let body: { orderId?: unknown; mode?: unknown; riderPhone?: unknown; reason?: unknown; operation?: unknown };
   try {
     body = await request.json() as typeof body;
   } catch {
     return NextResponse.json({ error: 'A valid dispatch request is required.' }, { status: 400 });
   }
   const orderId = Number(body.orderId);
+  if (body.operation === 'retry_merchant_allocation') {
+    if (!Number.isSafeInteger(orderId) || orderId <= 0) {
+      return NextResponse.json({ error: 'A valid paid order is required.' }, { status: 400 });
+    }
+    const { data, error } = await database.rpc('retry_paid_order_merchant_allocation', {
+      p_order_id: orderId,
+      p_actor: session.email || session.role
+    });
+    if (error) {
+      console.error('[AdminDispatch] Merchant allocation retry failed:', error);
+      return NextResponse.json({
+        error: /retry_paid_order_merchant_allocation|schema cache/i.test(error.message)
+          ? 'Merchant allocation retry is not installed. Apply the latest merchant operations and dispatch migrations.'
+          : 'Merchant allocation could not be retried.'
+      }, { status: 503 });
+    }
+    const result = data as {
+      success?: boolean;
+      error?: string;
+      code?: string;
+      fully_allocated?: boolean;
+      unallocated_items?: Array<{ product_name: string; requested_quantity: number; allocated_quantity: number }>;
+    } | null;
+    if (!result?.success) {
+      return NextResponse.json({ error: result?.error || 'The paid order could not be reallocated.', code: result?.code }, { status: 409 });
+    }
+    return NextResponse.json({
+      allocation: result,
+      message: result.fully_allocated
+        ? 'Merchant stock was redistributed to currently available approved businesses.'
+        : 'Available businesses were checked, but some stock is still unavailable. The paid order remains in the dispatch review queue.'
+    });
+  }
+
   const mode = body.mode;
   const riderPhone = typeof body.riderPhone === 'string' ? body.riderPhone.trim() : '';
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
