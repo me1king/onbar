@@ -589,6 +589,40 @@ export default function TicketingPage() {
           </div>
         </header>
 
+        <section aria-labelledby="ticketing-steps-heading" className="rounded-2xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
+          <div className="mb-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Quick start</p>
+            <h2 id="ticketing-steps-heading" className="mt-1 text-lg font-black text-white">Manage ticketing in four steps</h2>
+            <p className="mt-1 text-xs text-slate-400">Everything stays in this ticketing area; ticket money and records stay separate from shop sales.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <button type="button" onClick={() => setAddingEvent(true)} className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-left transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">1 · Event</span>
+              <span className="mt-1 block text-sm font-black text-white">{hasEvents ? `Review ${data?.totals.events ?? 0} event${data?.totals.events === 1 ? '' : 's'}` : 'Create your first event'}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">{hasEvents ? 'Create another event draft here, or review existing events in the vault below.' : 'Add the event name, venue, date and guest details.'}</span>
+            </button>
+            <button type="button" onClick={() => document.getElementById('ticket-event-vault')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-left transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">2 · Tickets</span>
+              <span className="mt-1 block text-sm font-black text-white">Set prices &amp; release waves</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">Choose admission, KES price, ticket allocation and sales opening time.</span>
+            </button>
+            <Link href="/admin/ticketing/staff" className="rounded-xl border border-white/10 bg-white/[0.025] p-4 transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">3 · Gate team</span>
+              <span className="mt-1 block text-sm font-black text-white">Assign scanner staff</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">Give each verified staff account access only to its assigned event.</span>
+            </Link>
+            <div className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">4 · Run the event</span>
+              <span className="mt-1 block text-sm font-black text-white">Track sales &amp; gate scans</span>
+              <span className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold">
+                <Link href="/admin/ticketing/sales" className="text-amber-200 underline underline-offset-2">Sales ledger</Link>
+                <Link href="/admin/ticketing/live" className="text-amber-200 underline underline-offset-2">Live operations</Link>
+                <Link href="/scanner" className="text-amber-200 underline underline-offset-2">Open scanner</Link>
+              </span>
+            </div>
+          </div>
+        </section>
+
         <section aria-labelledby="ticket-pricing-heading" className="rounded-2xl border border-amber-200/20 bg-gradient-to-r from-[#201913] via-[#19161a] to-[#131217] p-5 shadow-lg shadow-black/20 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
