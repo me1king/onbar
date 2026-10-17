@@ -89,7 +89,7 @@ export default function TicketCheckoutButton({
   }
 
   if (maximum < minPerOrder) {
-    return <span className="text-[10px] font-semibold text-slate-500">Not enough tickets remain for the minimum order</span>;
+    return <span className="ticket-theme-muted text-[10px] font-semibold">Not enough tickets remain for the minimum order</span>;
   }
 
   return (
@@ -103,8 +103,8 @@ export default function TicketCheckoutButton({
           <Ticket size={14} /> Buy tickets
         </button>
       ) : (
-        <form onSubmit={beginCheckout} className="grid w-full gap-2 rounded-xl border border-orange-300/20 bg-black/20 p-3 sm:w-[19rem]">
-          <label className="grid gap-1 text-[10px] font-bold text-slate-300">
+        <form onSubmit={beginCheckout} className="ticket-theme-panel grid w-full gap-2 rounded-xl border p-3 shadow-lg shadow-slate-900/5 sm:w-[19rem]">
+          <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
             Name
             <input
               autoComplete="name"
@@ -112,10 +112,10 @@ export default function TicketCheckoutButton({
               required
               value={name}
               onChange={event => { setName(event.target.value); keys.current = null; }}
-              className="min-h-10 rounded-lg border border-white/10 bg-[#0d0a12] px-3 text-xs text-white outline-none focus:border-orange-300/60"
+              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
           </label>
-          <label className="grid gap-1 text-[10px] font-bold text-slate-300">
+          <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
             Buyer email for payment
             <input
               autoComplete="email"
@@ -124,35 +124,35 @@ export default function TicketCheckoutButton({
               required
               value={email}
               onChange={event => { setEmail(event.target.value); keys.current = null; }}
-              className="min-h-10 rounded-lg border border-white/10 bg-[#0d0a12] px-3 text-xs text-white outline-none focus:border-orange-300/60"
+              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
           </label>
-          <label className="grid gap-1 text-[10px] font-bold text-slate-300">
+          <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
             Quantity
             <select
               value={quantity}
               onChange={event => { setQuantity(Number(event.target.value)); keys.current = null; }}
-              className="min-h-10 rounded-lg border border-white/10 bg-[#0d0a12] px-3 text-xs text-white outline-none focus:border-orange-300/60"
+              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             >
               {Array.from({ length: maximum - minPerOrder + 1 }, (_, index) => minPerOrder + index).map(value => (
                 <option key={value} value={value}>{value}</option>
               ))}
             </select>
           </label>
-          <p className="text-[10px] text-slate-400">
+          <p className="ticket-theme-copy text-[10px]">
             Total: {formatPrice((priceMinor + feeMinor) * quantity, currency)} · includes service fee
           </p>
-          {error && <p role="alert" className="text-[10px] leading-4 text-rose-300">{error}</p>}
+          {error && <p role="alert" className="text-[10px] leading-4 text-rose-700">{error}</p>}
           <div className="flex gap-2">
             <button type="submit" disabled={busy} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-orange-400 px-3 text-xs font-black text-[#170d18] disabled:opacity-60">
               {busy ? <LoaderCircle size={14} className="animate-spin" /> : null}
               {busy ? 'Preparing…' : priceMinor + feeMinor === 0 ? 'Get free tickets' : 'Continue to payment'}
             </button>
-            <button type="button" disabled={busy} onClick={() => { setIsOpen(false); keys.current = null; }} className="min-h-10 rounded-lg border border-white/10 px-3 text-xs font-bold text-slate-300">
+            <button type="button" disabled={busy} onClick={() => { setIsOpen(false); keys.current = null; }} className="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-bold text-slate-700">
               Cancel
             </button>
           </div>
-          <p className="text-[9px] leading-4 text-slate-500">Card and M-Pesa mobile money are processed by Paystack. Tickets are issued only after server verification.</p>
+          <p className="ticket-theme-muted text-[9px] leading-4">Card and M-Pesa mobile money are processed by Paystack. Tickets are issued only after server verification.</p>
         </form>
       )}
     </div>

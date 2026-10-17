@@ -52,11 +52,11 @@ export default async function TicketEventPage({ params }: PageProps) {
     return (
       <>
       <TicketingBrand />
-      <main className="min-h-[70vh] bg-[#0d0a12] px-4 py-16 text-white sm:px-6">
-        <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-[#17121e] p-8 text-center">
-          <Ghost className="mx-auto text-orange-300" size={30} />
-          <h1 className="mt-4 text-2xl font-black">The event details are resting in the crypt</h1>
-          <p className="mt-2 text-sm text-slate-400">{result.message}</p>
+      <main className="ticket-theme-page min-h-[70vh] px-4 py-16 sm:px-6">
+        <div className="ticket-theme-panel mx-auto max-w-3xl rounded-3xl border p-8 text-center shadow-sm">
+          <Ghost className="ticket-theme-accent mx-auto" size={30} />
+          <h1 className="ticket-theme-text mt-4 text-2xl font-black">The event details are resting in the crypt</h1>
+          <p className="ticket-theme-copy mt-2 text-sm">{result.message}</p>
           <Link href="/tickets" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18]">Back to events</Link>
         </div>
       </main>
@@ -77,19 +77,19 @@ export default async function TicketEventPage({ params }: PageProps) {
   return (
     <>
     <TicketingBrand />
-    <main className="relative min-h-screen overflow-hidden bg-[#0d0a12] px-4 py-8 text-white sm:px-6 sm:py-12">
-      <div aria-hidden="true" className="pointer-events-none absolute -left-36 top-24 h-96 w-96 rounded-full bg-orange-500/10 blur-[110px]" />
-      <div aria-hidden="true" className="pointer-events-none absolute -right-32 top-[34rem] h-96 w-96 rounded-full bg-violet-600/10 blur-[110px]" />
+    <main className="ticket-theme-page relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 sm:py-12">
+      <div aria-hidden="true" className="pointer-events-none absolute -left-36 top-24 h-96 w-96 rounded-full bg-orange-200/35 blur-[110px]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -right-32 top-[34rem] h-96 w-96 rounded-full bg-violet-200/25 blur-[110px]" />
       <div className="relative mx-auto max-w-6xl space-y-6">
-        <Link href="/tickets" className="inline-flex items-center gap-2 text-xs font-bold text-orange-200 transition hover:text-white"><ArrowLeft size={14} /> All events</Link>
-        <header className="relative isolate overflow-hidden rounded-[2rem] border border-orange-300/15 bg-gradient-to-br from-[#39172a] via-[#261329] to-[#15101d] p-6 shadow-2xl shadow-black/30 sm:p-10 lg:p-14">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 -z-10 h-80 w-80 rounded-full bg-orange-500/20 blur-[90px]" />
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-72 w-72 rounded-full bg-violet-500/15 blur-[90px]" />
+        <Link href="/tickets" className="ticket-theme-accent inline-flex items-center gap-2 text-xs font-bold transition hover:opacity-75"><ArrowLeft size={14} /> All events</Link>
+        <header className="ticket-theme-hero relative isolate overflow-hidden rounded-[2rem] border p-6 shadow-xl shadow-slate-900/5 sm:p-10 lg:p-14">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 -z-10 h-80 w-80 rounded-full bg-orange-100/80 blur-[90px]" />
+          <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-72 w-72 rounded-full bg-violet-100/70 blur-[90px]" />
           <div className="relative max-w-4xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-100"><Ghost size={14} /> Official Midnight Society KE event</div>
-            <p className="mt-7 text-[10px] font-black uppercase tracking-[0.2em] text-orange-200/75">{event.city} · After dark</p>
-            <h1 className="mt-2 text-4xl font-black leading-[0.98] tracking-tight sm:text-6xl">{event.title}<span className="text-orange-400">.</span></h1>
-            <p className="mt-5 max-w-2xl text-sm leading-6 text-slate-200/80 sm:text-base">{event.description || 'The details are in. Get ready for an unforgettable night.'}</p>
+            <div className="ticket-theme-accent-soft inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em]"><Ghost size={14} /> Official Midnight Society KE event</div>
+            <p className="ticket-theme-accent mt-7 text-[10px] font-black uppercase tracking-[0.2em]">{event.city} · After dark</p>
+            <h1 className="ticket-theme-text mt-2 text-4xl font-black leading-[0.98] tracking-tight sm:text-6xl">{event.title}<span className="ticket-theme-accent">.</span></h1>
+            <p className="ticket-theme-copy mt-5 max-w-2xl text-sm leading-6 sm:text-base">{event.description || 'The details are in. Get ready for an unforgettable night.'}</p>
             <div className="mt-7 grid gap-3 sm:grid-cols-2">
               <EventDetail icon={CalendarDays} title="When" value={formatEventDate(event.starts_at, event.timezone)} />
               <EventDetail icon={MapPin} title="Where" value={`${event.venue_name}${event.venue_address ? ` · ${event.venue_address}` : ''}`} />
@@ -97,16 +97,16 @@ export default async function TicketEventPage({ params }: PageProps) {
               {event.age_limit !== null && <EventDetail icon={ShieldCheck} title="Age requirement" value={`${event.age_limit}+`} />}
             </div>
             <nav aria-label="Venue directions" className="mt-6 flex flex-wrap gap-2">
-              <a href={mapsUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/15 px-4 text-xs font-bold text-white transition hover:border-orange-200/30 hover:bg-white/5">
+              <a href={mapsUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
                 <MapPin size={15} /> View on Google Maps
               </a>
-              <a href={directionsUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/15 px-4 text-xs font-bold text-white transition hover:border-orange-200/30 hover:bg-white/5">
+              <a href={directionsUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
                 <Navigation size={15} /> Get directions
               </a>
-              <a href={transitUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/15 px-4 text-xs font-bold text-white transition hover:border-orange-200/30 hover:bg-white/5">
+              <a href={transitUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
                 <Navigation size={15} /> Find transport
               </a>
-              <a href="#arrival-guide" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/15 px-4 text-xs font-bold text-white transition hover:border-orange-200/30 hover:bg-white/5">
+              <a href="#arrival-guide" className="ticket-theme-panel inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
                 <MapPin size={15} /> Venue &amp; entry guide
               </a>
             </nav>
@@ -114,10 +114,10 @@ export default async function TicketEventPage({ params }: PageProps) {
         </header>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
-          <section className="rounded-3xl border border-white/10 bg-[#17121e] p-5 shadow-xl shadow-black/20 sm:p-7">
+          <section className="ticket-theme-panel rounded-3xl border p-5 shadow-lg shadow-slate-900/5 sm:p-7">
             <div className="flex flex-wrap items-end justify-between gap-3">
-              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">Choose your haunt</p><h2 className="mt-1 text-2xl font-black">Ticket options</h2></div>
-              <span className="text-xs text-slate-500">{event.ticket_types.length} {event.ticket_types.length === 1 ? 'ticket type' : 'ticket types'}</span>
+              <div><p className="ticket-theme-accent text-[10px] font-black uppercase tracking-[0.18em]">Choose your haunt</p><h2 className="ticket-theme-text mt-1 text-2xl font-black">Ticket options</h2></div>
+              <span className="ticket-theme-muted text-xs">{event.ticket_types.length} {event.ticket_types.length === 1 ? 'ticket type' : 'ticket types'}</span>
             </div>
             <div className="mt-5 space-y-3">
               {event.ticket_types.map(ticketType => {
@@ -139,24 +139,24 @@ export default async function TicketEventPage({ params }: PageProps) {
                         ? `Wave open · ${ticketType.remaining.toLocaleString('en-KE')} remaining`
                         : 'Ticket option available';
                 return (
-                  <article key={ticketType.id} className="rounded-2xl border border-white/[0.08] bg-black/15 p-4 sm:p-5">
+                  <article key={ticketType.id} className="ticket-theme-panel-muted rounded-2xl border p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="flex min-w-0 items-start gap-3">
-                        <span className="rounded-xl border border-orange-300/15 bg-orange-300/10 p-2.5 text-orange-200"><Ticket size={17} /></span>
+                        <span className="ticket-theme-accent-soft rounded-xl border p-2.5"><Ticket size={17} /></span>
                         <div className="min-w-0">
-                          {ticketType.wave_number !== null && <p className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-orange-200">{ticketType.wave_label} · {ticketType.admission_type}</p>}
-                          <h3 className="font-black text-white">{ticketType.name}</h3>
-                          <p className="mt-1 text-xs leading-5 text-slate-400">{ticketType.description || 'Entry for one guest. Check the event details before the night.'}</p>
-                          {ticketType.benefits.length > 0 && <p className="mt-2 text-[10px] leading-5 text-violet-200">{ticketType.benefits.join(' · ')}</p>}
-                          <p className="mt-2 text-[10px] text-slate-500">Limit: {ticketType.min_per_order}–{ticketType.max_per_order} per order{ticketType.wave_number !== null ? ` · ${ticketType.wave_theme.replaceAll('-', ' & ')}` : ''}</p>
+                          {ticketType.wave_number !== null && <p className="ticket-theme-accent mb-1 text-[9px] font-black uppercase tracking-[0.16em]">{ticketType.wave_label} · {ticketType.admission_type}</p>}
+                          <h3 className="ticket-theme-text font-black">{ticketType.name}</h3>
+                          <p className="ticket-theme-copy mt-1 text-xs leading-5">{ticketType.description || 'Entry for one guest. Check the event details before the night.'}</p>
+                          {ticketType.benefits.length > 0 && <p className="ticket-theme-accent mt-2 text-[10px] leading-5">{ticketType.benefits.join(' · ')}</p>}
+                          <p className="ticket-theme-muted mt-2 text-[10px]">Limit: {ticketType.min_per_order}–{ticketType.max_per_order} per order{ticketType.wave_number !== null ? ` · ${ticketType.wave_theme.replaceAll('-', ' & ')}` : ''}</p>
                         </div>
                       </div>
-                      <p className="shrink-0 text-lg font-black text-orange-100">{formatPrice(ticketType.price_minor, ticketType.currency)}</p>
+                      <p className="ticket-theme-accent shrink-0 text-lg font-black">{formatPrice(ticketType.price_minor, ticketType.currency)}</p>
                     </div>
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-3">
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3" style={{ borderColor: 'var(--ticket-border)' }}>
                       <span className="text-[10px] font-semibold text-slate-500">{schedule}</span>
                       {soldOut || notOpen || closed ? (
-                        <button type="button" disabled aria-disabled="true" className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-xl bg-white/10 px-4 text-xs font-black text-slate-400">
+                        <button type="button" disabled aria-disabled="true" className="ticket-theme-panel-muted ticket-theme-muted inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-xl border px-4 text-xs font-black">
                           {soldOut ? 'Sold out' : notOpen ? 'Not on sale yet' : 'Sales ended'}
                         </button>
                       ) : (
@@ -179,49 +179,49 @@ export default async function TicketEventPage({ params }: PageProps) {
           </section>
 
           <aside className="space-y-4">
-            <section role="status" className="rounded-3xl border border-orange-300/20 bg-gradient-to-br from-orange-950/35 to-[#1b1221] p-5 sm:p-6">
-              <div className="flex items-start gap-3"><span className="rounded-xl bg-orange-300/10 p-2 text-orange-200"><ShieldAlert size={18} /></span><div><h2 className="text-sm font-black text-orange-100">Secure checkout</h2><p className="mt-2 text-xs leading-5 text-orange-50/70">Payments are processed by Paystack using card or M-Pesa mobile money. Tickets appear in your wallet only after the payment is verified server-side.</p></div></div>
+            <section role="status" className="ticket-theme-accent-soft rounded-3xl border p-5 sm:p-6">
+              <div className="flex items-start gap-3"><span className="rounded-xl border border-current/15 bg-white/70 p-2"><ShieldAlert size={18} /></span><div><h2 className="ticket-theme-text text-sm font-black">Secure checkout</h2><p className="ticket-theme-copy mt-2 text-xs leading-5">Payments are processed by Paystack using card or M-Pesa mobile money. Tickets appear in your wallet only after the payment is verified server-side.</p></div></div>
             </section>
-            <section className="rounded-3xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
-              <h2 className="text-sm font-black text-white">The real-ticket promise</h2>
-              <ul className="mt-3 space-y-3 text-xs leading-5 text-slate-400">
-                <li className="flex gap-2"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-violet-200" />We will only issue a ticket after payment is verified server-side.</li>
-                <li className="flex gap-2"><Ticket size={15} className="mt-0.5 shrink-0 text-orange-200" />A screenshot or payment message is not proof of a valid ticket.</li>
-                <li className="flex gap-2"><MapPin size={15} className="mt-0.5 shrink-0 text-orange-200" />Venue: {event.venue_name}, {event.city}.</li>
+            <section className="ticket-theme-panel rounded-3xl border p-5 sm:p-6">
+              <h2 className="ticket-theme-text text-sm font-black">The real-ticket promise</h2>
+              <ul className="ticket-theme-copy mt-3 space-y-3 text-xs leading-5">
+                <li className="flex gap-2"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-violet-700" />We will only issue a ticket after payment is verified server-side.</li>
+                <li className="flex gap-2"><Ticket size={15} className="mt-0.5 shrink-0 text-orange-700" />A screenshot or payment message is not proof of a valid ticket.</li>
+                <li className="flex gap-2"><MapPin size={15} className="mt-0.5 shrink-0 text-orange-700" />Venue: {event.venue_name}, {event.city}.</li>
               </ul>
             </section>
-            <section id="arrival-guide" className="scroll-mt-6 rounded-3xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
-              <h2 className="text-sm font-black text-white">Venue &amp; arrival guide</h2>
-              <p className="mt-2 text-xs text-slate-300">{event.venue_name} · {event.city}</p>
-              <div className="mt-4 space-y-4 text-xs leading-5 text-slate-400">
+            <section id="arrival-guide" className="ticket-theme-panel scroll-mt-6 rounded-3xl border p-5 sm:p-6">
+              <h2 className="ticket-theme-text text-sm font-black">Venue &amp; arrival guide</h2>
+              <p className="ticket-theme-copy mt-2 text-xs">{event.venue_name} · {event.city}</p>
+              <div className="ticket-theme-copy mt-4 space-y-4 text-xs leading-5">
                 <div>
-                  <h3 className="font-bold text-white">Entrance</h3>
+                  <h3 className="ticket-theme-text font-bold">Entrance</h3>
                   <p className="mt-1 whitespace-pre-wrap">{event.entrance_guide || 'Entrance details have not been published yet.'}</p>
                 </div>
                 <div>
-                  <h3 className="font-bold text-white">Parking</h3>
+                  <h3 className="ticket-theme-text font-bold">Parking</h3>
                   <p className="mt-1 whitespace-pre-wrap">{event.parking_guide || 'Parking information has not been published yet.'}</p>
                 </div>
                 <div>
-                  <h3 className="font-bold text-white">Public transport &amp; arrival</h3>
+                  <h3 className="ticket-theme-text font-bold">Public transport &amp; arrival</h3>
                   <p className="mt-1 whitespace-pre-wrap">{event.transport_guide || 'Transport and arrival guidance have not been published yet. Please check back before travelling.'}</p>
                 </div>
               </div>
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3 text-[10px] text-slate-500">
+              <div className="ticket-theme-panel-muted ticket-theme-copy mt-4 rounded-xl border p-3 text-[10px]" style={{ borderColor: 'var(--ticket-border)' }}>
                 {event.venue_latitude !== null && event.venue_longitude !== null
                   ? 'Directions use the venue pin set by the event organizer.'
                   : 'Directions use the venue address until the organizer adds a precise Google Maps pin.'}
               </div>
             </section>
             {event.cancellation_policy && (
-              <section className="rounded-3xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
-                <h2 className="text-sm font-black text-white">Cancellation policy</h2>
-                <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-400">{event.cancellation_policy}</p>
+              <section className="ticket-theme-panel rounded-3xl border p-5 sm:p-6">
+                <h2 className="ticket-theme-text text-sm font-black">Cancellation policy</h2>
+                <p className="ticket-theme-copy mt-2 whitespace-pre-wrap text-xs leading-5">{event.cancellation_policy}</p>
               </section>
             )}
           </aside>
         </div>
-        <footer className="border-t border-white/[0.08] pt-5 text-center text-[10px] text-slate-500">ONLINE BAR Ticketing · No tricks, no fake confirmations.</footer>
+        <footer className="ticket-theme-muted border-t pt-5 text-center text-[10px]" style={{ borderColor: 'var(--ticket-border)' }}>ONLINE BAR Ticketing · No tricks, no fake confirmations.</footer>
       </div>
     </main>
     </>
@@ -230,9 +230,9 @@ export default async function TicketEventPage({ params }: PageProps) {
 
 function EventDetail({ icon: Icon, title, value }: { icon: typeof Ticket; title: string; value: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-3.5">
-      <Icon size={16} className="mt-0.5 shrink-0 text-orange-200" />
-      <div><p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">{title}</p><p className="mt-1 text-xs leading-5 text-white/90">{value}</p></div>
+    <div className="ticket-theme-panel-muted flex items-start gap-3 rounded-2xl border p-3.5">
+      <Icon size={16} className="ticket-theme-accent mt-0.5 shrink-0" />
+      <div><p className="ticket-theme-muted text-[9px] font-black uppercase tracking-[0.15em]">{title}</p><p className="ticket-theme-text mt-1 text-xs leading-5">{value}</p></div>
     </div>
   );
 }

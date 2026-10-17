@@ -36,6 +36,21 @@
   --titanium-border: #d8d0c6;
   --titanium-bg: #F9F4EC;
 
+  --ticket-page: #0d0a12;
+  --ticket-panel: #17121e;
+  --ticket-panel-muted: #110e17;
+  --ticket-hero: linear-gradient(135deg, #39172a, #261329 58%, #15101d);
+  --ticket-text: #f8fafc;
+  --ticket-copy: #cbd5e1;
+  --ticket-muted: #94a3b8;
+  --ticket-border: rgb(255 255 255 / 12%);
+  --ticket-accent: #fdba74;
+  --ticket-accent-strong: #fb923c;
+  --ticket-accent-soft: rgb(251 146 60 / 12%);
+  --ticket-accent-border: rgb(253 186 116 / 24%);
+  --ticket-subtle: rgb(0 0 0 / 18%);
+  --ticket-shadow: rgb(0 0 0 / 24%);
+
   color-scheme: light;
 }
 
@@ -48,6 +63,208 @@
   --secondary: #E9EFEA;
   --border: #d8d0c6;
   --ring: #D91C1C;
+}
+
+html[data-ticket-theme='midnight'] {
+  --ticket-page: #0d0a12;
+  --ticket-panel: #17121e;
+  --ticket-panel-muted: #110e17;
+  --ticket-hero: linear-gradient(135deg, #39172a, #261329 58%, #15101d);
+  --ticket-text: #f8fafc;
+  --ticket-copy: #cbd5e1;
+  --ticket-muted: #94a3b8;
+  --ticket-border: rgb(255 255 255 / 12%);
+  --ticket-accent: #fdba74;
+  --ticket-accent-strong: #fb923c;
+  --ticket-accent-soft: rgb(251 146 60 / 12%);
+  --ticket-accent-border: rgb(253 186 116 / 24%);
+  --ticket-subtle: rgb(0 0 0 / 18%);
+  --ticket-shadow: rgb(0 0 0 / 24%);
+}
+
+html[data-ticket-theme='official-white'] {
+  --ticket-page: #f8fafc;
+  --ticket-panel: #ffffff;
+  --ticket-panel-muted: #f8fafc;
+  --ticket-hero: linear-gradient(135deg, #fff7ed, #ffffff 58%, #fffbeb);
+  --ticket-text: #0f172a;
+  --ticket-copy: #475569;
+  --ticket-muted: #64748b;
+  --ticket-border: #e2e8f0;
+  --ticket-accent: #c2410c;
+  --ticket-accent-strong: #ea580c;
+  --ticket-accent-soft: #fff7ed;
+  --ticket-accent-border: #fed7aa;
+  --ticket-subtle: #f8fafc;
+  --ticket-shadow: rgb(15 23 42 / 6%);
+}
+
+html[data-ticket-theme='royal-violet'] {
+  --ticket-page: #f5f3ff;
+  --ticket-panel: #ffffff;
+  --ticket-panel-muted: #f5f3ff;
+  --ticket-hero: linear-gradient(135deg, #ede9fe, #ffffff 58%, #f5f3ff);
+  --ticket-text: #2e1065;
+  --ticket-copy: #5b4b78;
+  --ticket-muted: #77688f;
+  --ticket-border: #ddd6fe;
+  --ticket-accent: #6d28d9;
+  --ticket-accent-strong: #5b21b6;
+  --ticket-accent-soft: #f5f3ff;
+  --ticket-accent-border: #c4b5fd;
+  --ticket-subtle: #faf9ff;
+  --ticket-shadow: rgb(46 16 101 / 8%);
+}
+
+html[data-ticket-theme='emerald'] {
+  --ticket-page: #ecfdf5;
+  --ticket-panel: #ffffff;
+  --ticket-panel-muted: #f0fdf4;
+  --ticket-hero: linear-gradient(135deg, #d1fae5, #ffffff 58%, #ecfdf5);
+  --ticket-text: #064e3b;
+  --ticket-copy: #3f6359;
+  --ticket-muted: #5b7a70;
+  --ticket-border: #a7f3d0;
+  --ticket-accent: #047857;
+  --ticket-accent-strong: #065f46;
+  --ticket-accent-soft: #ecfdf5;
+  --ticket-accent-border: #6ee7b7;
+  --ticket-subtle: #f0fdf4;
+  --ticket-shadow: rgb(6 78 59 / 8%);
+}
+
+.ticket-theme-page {
+  background: var(--ticket-page);
+  color: var(--ticket-text);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.ticket-theme-page,
+.ticket-theme-header,
+.ticket-admin-theme {
+  color-scheme: dark;
+}
+
+html[data-ticket-theme='official-white'] .ticket-theme-page,
+html[data-ticket-theme='official-white'] .ticket-theme-header,
+html[data-ticket-theme='official-white'] .ticket-admin-theme,
+html[data-ticket-theme='royal-violet'] .ticket-theme-page,
+html[data-ticket-theme='royal-violet'] .ticket-theme-header,
+html[data-ticket-theme='royal-violet'] .ticket-admin-theme,
+html[data-ticket-theme='emerald'] .ticket-theme-page,
+html[data-ticket-theme='emerald'] .ticket-theme-header,
+html[data-ticket-theme='emerald'] .ticket-admin-theme {
+  color-scheme: light;
+}
+
+.ticket-theme-header {
+  background: var(--ticket-page);
+  color: var(--ticket-text);
+}
+
+.ticket-admin-theme {
+  background: var(--ticket-page);
+  color: var(--ticket-text);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="bg-[#17121e]"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="bg-[#100d17]"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="bg-[#111016]"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="bg-[#0d0a12]"] {
+  background: var(--ticket-panel) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="bg-gradient-to-"] {
+  background: var(--ticket-hero) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="bg-black/"] {
+  background: var(--ticket-subtle) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="border-white/"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="border-amber-200/"] {
+  border-color: var(--ticket-border) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class~="text-white"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class~="text-slate-200"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class~="text-slate-300"] {
+  color: var(--ticket-text) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class~="text-slate-400"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class~="text-slate-500"] {
+  color: var(--ticket-copy) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="text-amber-100"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="text-amber-200"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="text-amber-300"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="text-orange-100"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="text-orange-200"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) .ticket-admin-theme [class*="text-orange-300"] {
+  color: var(--ticket-accent) !important;
+}
+
+.ticket-theme-panel {
+  background: var(--ticket-panel);
+  border-color: var(--ticket-border);
+  color: var(--ticket-text);
+}
+
+.ticket-theme-panel-muted {
+  background: var(--ticket-panel-muted);
+  border-color: var(--ticket-border);
+}
+
+.ticket-theme-input {
+  border-color: var(--ticket-border);
+  background: var(--ticket-panel);
+  color: var(--ticket-text);
+}
+
+.ticket-theme-hero {
+  background: var(--ticket-hero);
+  border-color: var(--ticket-border);
+}
+
+.ticket-theme-logo {
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.3rem 0.55rem;
+}
+
+.ticket-theme-text {
+  color: var(--ticket-text);
+}
+
+.ticket-theme-copy {
+  color: var(--ticket-copy);
+}
+
+.ticket-theme-muted {
+  color: var(--ticket-muted);
+}
+
+.ticket-theme-accent {
+  color: var(--ticket-accent);
+}
+
+.ticket-theme-accent-soft {
+  border-color: var(--ticket-accent-border);
+  background: var(--ticket-accent-soft);
+  color: var(--ticket-accent);
+}
+
+.ticket-theme-subtle {
+  border-color: var(--ticket-border);
+  background: var(--ticket-subtle);
+}
+
+.ticket-theme-shadow {
+  --tw-shadow-color: var(--ticket-shadow);
 }
 
 @theme {

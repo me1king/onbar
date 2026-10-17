@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import TicketThemePicker from '@/app/tickets/TicketThemePicker';
 import {
   ArrowUpRight,
   BadgeCheck,
@@ -723,7 +724,7 @@ export default function TicketingPage() {
   const hasEvents = Boolean(data?.events.length);
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#0d0a12] px-4 py-6 text-white sm:px-6 lg:px-8">
+    <main className="ticket-admin-theme relative min-h-screen overflow-hidden bg-[#0d0a12] px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="relative mx-auto max-w-7xl space-y-6">
         <header className="overflow-hidden rounded-3xl border border-amber-200/15 bg-gradient-to-br from-[#201913] via-[#151319] to-[#0e0d12] p-5 shadow-2xl shadow-black/20 sm:p-8">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
@@ -731,6 +732,9 @@ export default function TicketingPage() {
               <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/20 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-200"><Ghost size={14} /> Midnight Society KE <span className="text-amber-100/40">/</span> Ticketing</div>
               <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Event command<span className="text-amber-300">.</span></h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Manage event drafts, ticket pricing and release waves from one place. Ticketing records stay separate from drink orders, product stock and existing payouts.</p>
+              <div className="mt-5 inline-flex rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <TicketThemePicker />
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/admin/ticketing/sales" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Wallet size={15} /> Ticket sales</Link>
