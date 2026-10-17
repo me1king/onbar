@@ -3,6 +3,7 @@ import { Product } from '@/types/product';
 import BeverageCommandPage from '@/app/beverages/page';
 import CategoryCatalog from './CategoryCatalog';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import { isSpiritProductCategory, spiritCategoryPostgrestFilter } from '@/lib/productCategories';
 
 interface CategoryPageProps {
   params: Promise<{ slug: string }>;
@@ -33,6 +34,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         query = query.eq('is_featured', true);
       } else if (categorySlug === 'gifts') {
         query = query.or('is_souvenir.eq.true,category.ilike.%gift%,category.ilike.%souvenir%,sub_category.ilike.%gift%');
+      } else if (categorySlug === 'spirits') {
+        query = query.or(spiritCategoryPostgrestFilter());
       } else {
         query = query.ilike('category', `%${categorySlug}%`);
       }
@@ -42,7 +45,10 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         console.error('Could not load category catalogue:', error);
         fetchError = 'Could not load products. Please try again later.';
       } else {
-        products = ((data || []) as Product[]).filter(isStorefrontProductVisible);
+        products = ((data || []) as Product[]).filter(product =>
+          isStorefrontProductVisible(product)
+          && (categorySlug !== 'spirits' || isSpiritProductCategory(product.category))
+        );
       }
     } catch (error) {
       console.error('Could not load category catalogue:', error);

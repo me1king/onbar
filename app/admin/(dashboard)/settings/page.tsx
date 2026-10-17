@@ -50,6 +50,8 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { applyThemeColors, normalizeThemeColors, THEME_UPDATED_EVENT } from '@/lib/themeColors';
+import { isSpiritProductCategory, spiritCategoryPostgrestFilter } from '@/lib/productCategories';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAreaManager'), { ssr: false });
 
@@ -173,6 +175,7 @@ export default function AdminSettingsPage() {
     });
 
     const [expandedIntegration, setExpandedIntegration] = useState<string | null>(null);
+    const [promotionSyncMessage, setPromotionSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const [activeTab, setActiveTab] = useState<TabId>('identity');
 
@@ -846,31 +849,87 @@ export default function AdminSettingsPage() {
                                         <Button
                                             type="button"
                                             onClick={async () => {
-                                                if (!supabase) return;
-                                                try {
-                                                    // Fetch top items to mark as active sale items
-                                                    const { data: drinks } = await supabase.from('products').select('id, price, old_price').limit(10);
-                                                    if (drinks) {
-                                                        const discount = promotions.discount_percent || 20;
-                                                        const updates = drinks.map(d => ({
-                                                            id: d.id,
-                                                            is_on_offer: true,
-                                                            old_price: d.old_price ? d.old_price : Math.round(d.price * (1 + discount / 100))
-                                                        }));
+                                                setPromotionSyncMessage(null);
+                                                if (!supabase) {
+                                                    setPromotionSyncMessage({ type: 'error', text: 'Product data is unavailable. No discounts were changed.' });
+                                                    return;
+                                                }
+                                                const discount = Number(promotions.discount_percent);
+                                                if (!Number.isInteger(discount) || discount < 1 || discount > 99) {
+                                                    setPromotionSyncMessage({ type: 'error', text: 'Enter a whole-number spirit discount from 1% to 99%.' });
+                                                    return;
+                                                }
 
-                                                        for (const u of updates) {
-                                                            await supabase.from('products').update({ is_on_offer: u.is_on_offer, old_price: u.old_price }).eq('id', u.id);
-                                                        }
-                                                        alert(`Happy Hour Discount (${discount}%) synced across ${drinks.length} drinks! All items now live in /shop/category/sale`);
+                                                try {
+                                                    const { data: products, error: productsError } = await supabase
+                                                        .from('products')
+                                                        .select('id, name, category, price, old_price, stock, status, hide_product, is_available_now')
+                                                        .or(spiritCategoryPostgrestFilter());
+                                                    if (productsError) throw productsError;
+
+                                                    const spirits = (products || []).filter(product =>
+                                                        isSpiritProductCategory(product.category)
+                                                        && isStorefrontProductVisible(product)
+                                                        && Number(product.stock) > 0
+                                                    );
+                                                    if (spirits.length === 0) {
+                                                        setPromotionSyncMessage({ type: 'error', text: 'No in-stock, published spirit products were found. No discounts were changed.' });
+                                                        return;
                                                     }
+
+                                                    let updatedCount = 0;
+                                                    for (const product of spirits) {
+                                                        const currentPrice = Number(product.price);
+                                                        const previousPrice = Number(product.old_price);
+                                                        const originalPrice = Number.isFinite(previousPrice) && previousPrice > currentPrice
+                                                            ? previousPrice
+                                                            : currentPrice;
+                                                        if (!Number.isFinite(originalPrice) || originalPrice <= 0) {
+                                                            throw new Error(`Cannot calculate a valid price for ${product.name || 'a spirit product'}.`);
+                                                        }
+
+                                                        const { error: updateError } = await supabase
+                                                            .from('products')
+                                                            .update({
+                                                                is_on_offer: true,
+                                                                old_price: originalPrice,
+                                                                price: Math.round(originalPrice * (1 - discount / 100))
+                                                            })
+                                                            .eq('id', product.id);
+                                                        if (updateError) {
+                                                            throw new Error(
+                                                                `Could not update ${product.name || 'a spirit product'}: ${updateError.message}`
+                                                                + (updatedCount ? ` ${updatedCount} earlier spirit discounts were already updated.` : '')
+                                                            );
+                                                        }
+                                                        updatedCount += 1;
+                                                    }
+
+                                                    setPromotionSyncMessage({
+                                                        type: 'success',
+                                                        text: `${discount}% discount applied to ${updatedCount} in-stock spirit products. Beer, wine, soft drinks and mixers were not changed.`
+                                                    });
                                                 } catch (err: unknown) {
-                                                    alert(`Sync Error: ${(err as Error).message}`);
+                                                    setPromotionSyncMessage({
+                                                        type: 'error',
+                                                        text: err instanceof Error ? err.message : 'Spirit discounts could not be applied.'
+                                                    });
                                                 }
                                             }}
                                             className="w-full h-14 rounded-2xl bg-emerald-600 text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-emerald-500 transition-all flex items-center justify-center gap-2"
                                         >
-                                            <Zap size={18} className="fill-current" /> Sync Happy Hour Discounts to Sale Category (/shop/category/sale)
+                                            <Zap size={18} className="fill-current" /> Apply discount to in-stock spirits
                                         </Button>
+                                        {promotionSyncMessage && (
+                                            <p role={promotionSyncMessage.type === 'error' ? 'alert' : 'status'} className={cn(
+                                                'mt-3 rounded-xl border px-4 py-3 text-sm leading-relaxed',
+                                                promotionSyncMessage.type === 'error'
+                                                    ? 'border-red-200 bg-red-50 text-red-800'
+                                                    : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                            )}>
+                                                {promotionSyncMessage.text}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             </Card>
