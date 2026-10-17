@@ -564,23 +564,19 @@ export default function TicketingPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#0d0a12] px-4 py-6 text-white sm:px-6 lg:px-8">
-      <div aria-hidden="true" className="pointer-events-none absolute -left-36 top-20 h-96 w-96 rounded-full bg-orange-500/10 blur-[110px]" />
-      <div aria-hidden="true" className="pointer-events-none absolute -right-32 top-[34rem] h-96 w-96 rounded-full bg-violet-600/10 blur-[110px]" />
       <div className="relative mx-auto max-w-7xl space-y-6">
-        <header className="relative isolate overflow-hidden rounded-3xl border border-orange-300/15 bg-gradient-to-br from-[#281626] via-[#1b1221] to-[#120e18] p-6 shadow-2xl shadow-black/30 sm:p-9">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-24 -z-10 h-72 w-72 rounded-full bg-orange-500/15 blur-[75px]" />
-          <div aria-hidden="true" className="pointer-events-none absolute bottom-[-8rem] right-1/3 -z-10 h-64 w-64 rounded-full bg-violet-500/10 blur-[80px]" />
-          <div className="flex flex-wrap items-start justify-between gap-6">
+        <header className="overflow-hidden rounded-3xl border border-amber-200/15 bg-gradient-to-br from-[#201913] via-[#151319] to-[#0e0d12] p-5 shadow-2xl shadow-black/20 sm:p-8">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
             <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-200"><Ghost size={14} /> Halloween night shift <span className="text-orange-100/40">/</span> Ticketing</div>
-              <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Tickets after dark<span className="text-orange-400">.</span></h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">A haunted-by-design command centre for your events, ticket tiers and trust controls. Event ticket data stays isolated from drink orders, product stock and existing payouts.</p>
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/20 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-200"><Ghost size={14} /> Midnight Society KE <span className="text-amber-100/40">/</span> Ticketing</div>
+              <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Event command<span className="text-amber-300">.</span></h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Manage event drafts, ticket pricing and release waves from one place. Ticketing records stay separate from drink orders, product stock and existing payouts.</p>
             </div>
-            <div className="flex gap-2">
-              <Link href="/admin/ticketing/security" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-300/20 bg-violet-300/5 px-4 text-sm font-bold text-violet-100 transition hover:bg-violet-300/10"><ShieldAlert size={15} /> Trust centre</Link>
-              <Link href="/admin/ticketing/live" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-300/5 px-4 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/10"><ScanLine size={15} /> Live operations</Link>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/admin/ticketing/security" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ShieldAlert size={15} /> Trust centre</Link>
+              <Link href="/admin/ticketing/live" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Live operations</Link>
               <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.03] px-4 text-sm font-bold text-white transition hover:border-white/25 hover:bg-white/10 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>
-              <button type="button" onClick={() => setAddingEvent(value => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-4 text-sm font-black text-[#170d18] shadow-lg shadow-orange-950/30 transition hover:bg-orange-300"><Plus size={16} /> New event</button>
+              <button type="button" onClick={() => setAddingEvent(value => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-300 px-4 text-sm font-black text-[#170d18] shadow-lg shadow-black/20 transition hover:bg-amber-200"><Plus size={16} /> New event</button>
             </div>
           </div>
           <div className="mt-7 grid gap-3 sm:grid-cols-3">
@@ -590,13 +586,13 @@ export default function TicketingPage() {
           </div>
         </header>
 
-        <section aria-labelledby="ticket-pricing-heading" className="rounded-2xl border border-orange-300/30 bg-gradient-to-r from-[#291721] via-[#211421] to-[#17121e] p-5 shadow-lg shadow-black/20 sm:p-6">
+        <section aria-labelledby="ticket-pricing-heading" className="rounded-2xl border border-amber-200/20 bg-gradient-to-r from-[#201913] via-[#19161a] to-[#131217] p-5 shadow-lg shadow-black/20 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">Admin · ticket pricing</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Admin · ticket pricing</p>
               <h2 id="ticket-pricing-heading" className="mt-1 text-xl font-black text-white">Set ticket prices here</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                Choose an event below, then click <strong className="text-orange-100">Set prices &amp; waves</strong> to enter the KES price, allocation, benefits and opening rule for each admission type and Wave I, II or III.
+                Choose an event below, then set the KES price, allocation, benefits and opening rule for each admission type and Wave I, II or III.
               </p>
             </div>
             <button type="button" onClick={() => {
@@ -605,7 +601,7 @@ export default function TicketingPage() {
                 return;
               }
               document.getElementById('ticket-event-vault')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }} className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18] shadow-lg shadow-orange-950/30 transition hover:bg-orange-300">
+            }} className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-[#170d18] shadow-lg shadow-black/20 transition hover:bg-amber-200">
               <Wallet size={17} /> {hasEvents ? 'Go to ticket prices' : 'Create event to set prices'}
             </button>
           </div>
@@ -629,14 +625,42 @@ export default function TicketingPage() {
           </div>
         </section>
 
-        <section aria-labelledby="trust-heading" className="overflow-hidden rounded-3xl border border-violet-300/15 bg-gradient-to-br from-[#1a1421] to-[#120f18] p-5 shadow-xl shadow-black/20 sm:p-7">
+        {addingEvent && <EventForm onCancel={() => setAddingEvent(false)} onCreated={() => { setAddingEvent(false); void load(); }} />}
+
+        <section id="ticket-event-vault" className="scroll-mt-6 space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Event vault</div><h2 className="mt-1 text-xl font-black tracking-tight text-white">Your events</h2><p className="mt-1 text-sm text-slate-400">Create private drafts, then add ticket tiers and allocations.</p></div>
+            <label className="relative block w-full sm:w-72"><span className="sr-only">Search events</span><input value={query} onChange={event => setQuery(event.target.value)} className={inputClass} placeholder="Search events, venues or cities" /></label>
+          </div>
+          {error && <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-950/30 p-4 text-sm text-red-200">{error}<button type="button" onClick={() => void load()} className="ml-2 font-black underline">Try again</button></div>}
+          {loading && !data && <div className="rounded-2xl border border-white/10 bg-[#17121e] p-10 text-center text-sm text-slate-400">Opening the event vault…</div>}
+          {!loading && !error && visibleEvents.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-white/15 bg-[#17121e]/80 p-10 text-center">
+              <CalendarDays className="mx-auto text-amber-200" size={30} />
+              <h3 className="mt-3 text-lg font-black text-white">{query ? 'No matching events' : 'The vault is waiting for its first event'}</h3>
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">{query ? 'Try another event name, venue or city.' : 'Create a private event draft, add ticket tiers, then complete payment and security setup before opening sales.'}</p>
+              {!query && <button type="button" onClick={() => setAddingEvent(true)} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-[#170d18] hover:bg-amber-200"><Plus size={16} /> Create event draft</button>}
+            </div>
+          )}
+          {visibleEvents.map(event => <EventCard key={event.id} event={event} canPublish={data?.canPublish ?? false} onRefresh={() => void load()} />)}
+        </section>
+
+        <details className="group overflow-hidden rounded-2xl border border-white/10 bg-[#111016]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 transition hover:bg-white/[0.025] sm:px-6 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-sm font-black text-white">Readiness &amp; security controls</span>
+              <span className="mt-1 block text-xs text-slate-400">Current payment, ticket authenticity and gate-operation status</span>
+            </span>
+            <span className="shrink-0 rounded-full border border-amber-200/15 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">Foundation phase</span>
+          </summary>
+          <div className="border-t border-white/10 p-5 sm:p-6">
+        <section aria-labelledby="trust-heading" className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#19171d] to-[#111016] p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-200"><ShieldAlert size={14} /> Trust & security centre</div>
+              <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100"><ShieldAlert size={14} /> Trust &amp; security centre</div>
               <h2 id="trust-heading" className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">Keep the tricks out. Keep the tickets real.</h2>
               <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">A clear view of the controls in the attached security blueprint. Readiness labels reflect this build; this panel is not a live fraud-monitoring feed.</p>
             </div>
-            <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-violet-200">Foundation phase</span>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Not live" body="Provider callbacks, amount matching and payment reconciliation are not connected." />
@@ -645,7 +669,7 @@ export default function TicketingPage() {
             <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Draft and tier writes create audit entries; MFA, dual approval and a security case feed are not live." />
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-5 text-slate-400">
-            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-violet-300" />
+            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-amber-200" />
             <p>QR screenshots and payment messages are not proof of a valid ticket. Enable sales only after the payment, credential, admission and oversight controls are implemented and tested end-to-end.</p>
           </div>
         </section>
@@ -655,29 +679,11 @@ export default function TicketingPage() {
           <Feature icon={Clock3} title="Reservation foundation" body="The database foundation supports short holds and inventory locking; public checkout is not connected." />
           <Feature icon={Users} title="Admin-only workspace" body="Ticket administration is restricted to platform owners and admins." />
         </section>
-
-        {addingEvent && <EventForm onCancel={() => setAddingEvent(false)} onCreated={() => { setAddingEvent(false); void load(); }} />}
-
-        <section id="ticket-event-vault" className="scroll-mt-6 space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">Event vault</div><h2 className="mt-1 text-xl font-black tracking-tight text-white">Your events</h2><p className="mt-1 text-sm text-slate-400">Create private drafts, then add ticket tiers and allocations.</p></div>
-            <label className="relative block w-full sm:w-72"><span className="sr-only">Search events</span><input value={query} onChange={event => setQuery(event.target.value)} className={inputClass} placeholder="Search events, venues or cities" /></label>
           </div>
-          {error && <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-950/30 p-4 text-sm text-red-200">{error}<button type="button" onClick={() => void load()} className="ml-2 font-black underline">Try again</button></div>}
-          {loading && !data && <div className="rounded-2xl border border-white/10 bg-[#17121e] p-10 text-center text-sm text-slate-400">Opening the event vault…</div>}
-          {!loading && !error && visibleEvents.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-white/15 bg-[#17121e]/80 p-10 text-center">
-              <CalendarDays className="mx-auto text-orange-300" size={30} />
-              <h3 className="mt-3 text-lg font-black text-white">{query ? 'No matching events' : 'The vault is waiting for its first event'}</h3>
-              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">{query ? 'Try another event name, venue or city.' : 'Create a private event draft, add ticket tiers, then complete payment and security setup before opening sales.'}</p>
-              {!query && <button type="button" onClick={() => setAddingEvent(true)} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18] hover:bg-orange-300"><Plus size={16} /> Create event draft</button>}
-            </div>
-          )}
-          {visibleEvents.map(event => <EventCard key={event.id} event={event} canPublish={data?.canPublish ?? false} onRefresh={() => void load()} />)}
-        </section>
+        </details>
 
-        <footer className="rounded-2xl border border-orange-300/15 bg-[#17121e] p-5">
-          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-orange-300" size={19} /><div><p className="text-sm font-black text-white">Release gate: not cleared</p><p className="mt-1 text-xs leading-5 text-slate-400">Do not publish or accept customer payments until server-verified provider callbacks, atomic reservation expiry, idempotent ticket issuance, customer ownership checks, refund reconciliation and online gate validation are implemented and tested.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
+        <footer className="rounded-2xl border border-amber-200/10 bg-[#111016] p-5">
+          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">Sales remain locked</p><p className="mt-1 text-xs leading-5 text-slate-400">Do not publish or accept customer payments until server-verified provider callbacks, atomic reservation expiry, idempotent ticket issuance, customer ownership checks, refund reconciliation and online gate validation are implemented and tested.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
         </footer>
       </div>
     </main>
