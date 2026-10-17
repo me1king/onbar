@@ -573,6 +573,8 @@ export default function TicketingPage() {
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Manage event drafts, ticket pricing and release waves from one place. Ticketing records stay separate from drink orders, product stock and existing payouts.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Link href="/admin/ticketing/staff" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Users size={15} /> Gate staff</Link>
+              <Link href="/scanner" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Open scanner</Link>
               <Link href="/admin/ticketing/security" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ShieldAlert size={15} /> Trust centre</Link>
               <Link href="/admin/ticketing/live" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Live operations</Link>
               <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.03] px-4 text-sm font-bold text-white transition hover:border-white/25 hover:bg-white/10 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>
@@ -621,7 +623,7 @@ export default function TicketingPage() {
           <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-orange-400/10 blur-3xl" />
           <div className="relative flex items-start gap-3">
             <span className="rounded-xl border border-orange-300/20 bg-orange-300/10 p-2 text-orange-300"><AlertTriangle size={18} /></span>
-            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-orange-100">Sales are locked for now</p><span className="rounded-full border border-orange-300/20 bg-orange-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-orange-200">No live checkout</span></div><p className="mt-1 text-xs leading-5 text-orange-50/70">Payment verification, customer checkout, ticket issuance and gate scanning are not live. Events remain private drafts; no customer payment or ticket will be claimed without server verification.</p></div>
+            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-orange-100">Sales are locked for now</p><span className="rounded-full border border-orange-300/20 bg-orange-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-orange-200">No live checkout</span></div><p className="mt-1 text-xs leading-5 text-orange-50/70">Payment verification, customer checkout and ticket issuance are not live. The scanner is implemented but still needs its migration, staff assignments and issued tickets before it can admit guests. No customer payment or ticket will be claimed without server verification.</p></div>
           </div>
         </section>
 
@@ -665,7 +667,7 @@ export default function TicketingPage() {
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Not live" body="Provider callbacks, amount matching and payment reconciliation are not connected." />
             <SecurityControl icon={KeyRound} title="Authentic ticket" state="Not live" body="Ticket credential issuance, customer delivery and revocation are not connected." />
-            <SecurityControl icon={ScanLine} title="Gate admission" state="Foundation" body="A database check-in primitive exists; there is no staff scanner or event-scoped access yet." />
+            <SecurityControl icon={ScanLine} title="Gate admission" state="Scanner built · migration required" body="A separate /scanner workspace now supports verified staff sign-in, event-scoped assignments, camera/manual credential scans and atomic server check-in. Apply the scanner migration before use." />
             <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Draft and tier writes create audit entries; MFA, dual approval and a security case feed are not live." />
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-5 text-slate-400">
@@ -677,7 +679,7 @@ export default function TicketingPage() {
         <section className="grid gap-3 md:grid-cols-3">
           <Feature icon={ShieldCheck} title="Isolated ticket records" body="Ticketing uses its own event, tier, reservation, payment, ticket, refund and check-in data." />
           <Feature icon={Clock3} title="Reservation foundation" body="The database foundation supports short holds and inventory locking; public checkout is not connected." />
-          <Feature icon={Users} title="Admin-only workspace" body="Ticket administration is restricted to platform owners and admins." />
+          <Feature icon={Users} title="Isolated staff scanner" body="Gate staff sign into /scanner with their own verified account and can validate only events assigned by an admin." />
         </section>
           </div>
         </details>
@@ -698,7 +700,7 @@ function Feature({ icon: Icon, title, body }: { icon: typeof Ticket; title: stri
   return <article className="rounded-2xl border border-white/10 bg-[#17121e] p-4 shadow-lg shadow-black/10"><div className="flex items-center gap-2 text-orange-300"><Icon size={16} /><h3 className="text-xs font-black uppercase tracking-wide text-slate-200">{title}</h3></div><p className="mt-2 text-xs leading-5 text-slate-400">{body}</p></article>;
 }
 
-function SecurityControl({ icon: Icon, title, state, body }: { icon: typeof Ticket; title: string; state: 'Not live' | 'Foundation'; body: string }) {
+function SecurityControl({ icon: Icon, title, state, body }: { icon: typeof Ticket; title: string; state: 'Not live' | 'Foundation' | 'Scanner built · migration required'; body: string }) {
   const isFoundation = state === 'Foundation';
   return (
     <article className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">

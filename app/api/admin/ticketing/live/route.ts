@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     database.from('ticketing_payment_attempts').select('id', { count: 'exact', head: true }).in('status', ['pending', 'unknown', 'reconciliation_required']),
     database.from('ticketing_reservations').select('id', { count: 'exact', head: true }).eq('status', 'reserved').gt('expires_at', new Date().toISOString()),
     database.from('ticketing_checkins').select('id', { count: 'exact', head: true }).eq('result', 'accepted'),
-    database.from('ticketing_checkins').select('id', { count: 'exact', head: true }).in('result', ['already_used', 'invalid', 'refunded', 'revoked', 'wrong_event']),
+    database.from('ticketing_checkins').select('id', { count: 'exact', head: true }).in('result', ['already_used', 'invalid', 'refunded', 'revoked', 'wrong_event', 'unpaid', 'event_closed']),
     database.from('ticketing_refunds').select('id', { count: 'exact', head: true }).in('status', ['requested', 'approved', 'processing', 'reconciliation_required'])
   ]);
   const metricResults = [

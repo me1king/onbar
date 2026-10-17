@@ -110,7 +110,7 @@ export function canAccessRoute(
         [['/admin/payouts'], 'CAN_EXECUTE_PAYOUTS'],
         [['/admin/staff'], 'CAN_MANAGE_STAFF'],
         [['/admin/audit', '/admin/security'], 'CAN_VIEW_AUDIT_LOGS'],
-        [['/admin/settings'], 'CAN_MANAGE_SETTINGS'],
+        [['/admin/settings', '/admin/ticketing'], 'CAN_MANAGE_SETTINGS'],
         [['/admin/marketing', '/admin/growth', '/admin/broadcast', '/admin/blog', '/admin/content', '/admin/subscribers', '/admin/coupons', '/admin/media', '/admin/experience'], 'CAN_MANAGE_MARKETING'],
         [['/admin/communications', '/admin/messages', '/admin/abandoned', '/admin/support', '/admin/customers'], 'CAN_MANAGE_COMMUNICATIONS'],
         [['/admin/orders', '/admin/dispatch', '/admin/delivery', '/admin/riders', '/admin/operations', '/admin/merchants', '/admin/traceability'], 'CAN_MANAGE_ORDERS'],

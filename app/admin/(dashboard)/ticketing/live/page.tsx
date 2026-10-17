@@ -248,7 +248,7 @@ export default function TicketingLivePage() {
 
         <aside className="rounded-2xl border border-orange-300/15 bg-orange-300/[0.04] p-4 text-xs leading-5 text-orange-50/70">
           <p className="font-black text-orange-100">Current release limits</p>
-          <p className="mt-1">Checkout, provider-verified payment callbacks, ticket wallet/QR issuance and authorized gate scanning are not active in this build. Metrics show stored database records only; zero counts do not mean a live payment or scan system has been verified. Web browsers cannot reliably detect screenshots. Android ticket-wallet screenshot protection remains dependent on the native wallet screen, which has not been built yet.</p>
+          <p className="mt-1">Checkout, provider-verified payment callbacks and ticket wallet/QR issuance are not active. The isolated scanner is implemented, but requires its migration, event staff assignments and issued tickets before it can be used for admission. Metrics show stored database records only; zero counts do not mean a live payment or scan system has been verified. Web browsers cannot reliably detect screenshots. Android ticket-wallet screenshot protection remains dependent on the native wallet screen, which has not been built yet.</p>
         </aside>
       </div>
     </main>

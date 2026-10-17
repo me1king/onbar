@@ -106,7 +106,7 @@ const releaseControls = [
   { icon: LockKeyhole, title: 'Customer & organizer isolation', state: 'Not connected', description: 'There are no customer wallet or organizer-facing Ticketing endpoints yet to exercise isolation against.' },
   { icon: WalletCards, title: 'M-Pesa payment integrity', state: 'Not connected', description: 'No Daraja checkout, authenticated callback, transaction reconciliation or refund flow is active.' },
   { icon: Ticket, title: 'Rotating ticket credentials', state: 'Not connected', description: 'No customer ticket wallet or five-minute QR credential endpoint has been implemented.' },
-  { icon: ScanLine, title: 'Authorized gate scanning', state: 'Database foundation', description: 'An atomic check-in database primitive exists; scanner sessions and event-scoped staff authorization are not live.' },
+  { icon: ScanLine, title: 'Authorized gate scanning', state: 'Scanner built · gated', description: 'The isolated scanner supports verified staff sign-in and event-scoped assignments. Apply the scanner migration and issue real tickets before live admission.' },
   { icon: FileClock, title: 'Protected incident evidence', state: 'Case activity only', description: 'This centre records case changes in append-only logs; automated threat detections are not wired into those logs.' },
   { icon: Fingerprint, title: 'Recovery & backup drills', state: 'Not connected', description: 'Backup health, restore tests and emergency recovery have no verified signal in this module.' },
   { icon: ShieldCheck, title: 'Production release gate', state: 'Not cleared', description: 'The Ticketing core and security migrations must be reviewed and applied before database-backed use.' }
