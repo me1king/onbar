@@ -80,7 +80,7 @@ export default function AllProductsPage() {
 
   return (
     <div className="min-h-screen bg-white py-16 px-4 sm:px-6 lg:px-8 text-left">
-      <div className="max-w-7xl mx-auto">
+      <div className="mx-auto max-w-screen-2xl">
         <header className="mb-16 border-b border-slate-100 pb-10 flex flex-col md:flex-row justify-between items-end gap-6">
           <div>
             <h1 className="text-5xl font-black tracking-tighter text-foreground uppercase">The Bar Menu</h1>
@@ -127,7 +127,7 @@ export default function AllProductsPage() {
             <p className="text-slate-400 font-black uppercase tracking-[0.2em]">The cellar is currently empty.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:gap-x-8 sm:gap-y-12 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {products.map((item) => (
               <ProductCard key={item.id} product={item} />
             ))}

@@ -263,7 +263,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-24 flex flex-col items-center gap-4">
+      <div className="mx-auto flex max-w-screen-2xl flex-col items-center gap-4 px-4 py-24">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px]">Syncing Catalog...</p>
       </div>
@@ -271,7 +271,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 pb-24 text-left scroll-mt-32 pt-6 sm:px-6" id="catalog-start">
+    <div className="mx-auto max-w-screen-2xl px-3 pb-24 pt-6 text-left scroll-mt-32 sm:px-6" id="catalog-start">
 
     <header className="mb-8 space-y-2 px-2 sm:mb-10">
       <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">Browse the live menu</p>
@@ -399,7 +399,7 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
 
       {filteredProducts.length > 0 ? (
         <div className="space-y-12">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-6 lg:gap-8">
+          <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {filteredProducts.slice(0, visibleCount).map((product) => (
               <ProductCard key={product.id} product={product} userTier={userTier} />
             ))}

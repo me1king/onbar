@@ -143,9 +143,9 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
 
   return (
     <>
-      <Card className="group relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white text-left text-foreground shadow-md transition-all duration-500 hover:shadow-xl sm:min-h-[420px] sm:rounded-[3.5rem]">
+      <Card className="group relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white text-left text-foreground shadow-sm transition-all duration-300 hover:shadow-lg sm:rounded-2xl">
         {/* Visual Container */}
-        <div className="relative aspect-square min-w-0 overflow-hidden rounded-lg border border-amber-100/80 bg-gradient-to-br from-amber-50 via-white to-rose-50 p-1.5 sm:m-4 sm:rounded-[2.5rem] sm:p-2">
+        <div className="relative aspect-square min-w-0 overflow-hidden rounded-lg bg-gradient-to-br from-amber-50 via-white to-rose-50 p-1.5 sm:m-2 sm:rounded-xl sm:p-1.5">
             <div aria-hidden="true" className="pointer-events-none absolute inset-[14%] rounded-full bg-white/90 blur-2xl" />
 
             {/* Premium Locked Overlay */}
@@ -192,7 +192,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
                     fill
                     loading="lazy"
                     quality={90}
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, (max-width: 1536px) 20vw, 16vw"
                     className="object-contain scale-[1.15] mix-blend-multiply drop-shadow-[0_18px_16px_rgba(15,23,42,0.24)] transition-transform duration-700 group-hover:scale-125"
                     onError={() => setImageError(true)}
                   />
@@ -203,7 +203,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
         </div>
 
         {/* Content Node */}
-        <CardContent className="flex min-w-0 flex-1 flex-col space-y-2.5 p-3 pt-2.5 sm:space-y-4 sm:p-6 sm:pt-8">
+        <CardContent className="flex min-w-0 flex-1 flex-col space-y-2 p-2.5 pt-2 sm:space-y-2.5 sm:p-3 sm:pt-2.5">
             {/* Price Line */}
             <div className="space-y-0.5 sm:space-y-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3">

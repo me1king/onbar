@@ -101,7 +101,7 @@ export default function PersonalizedFeed() {
     if (loading || suggestedProducts.length === 0) return null;
 
     return (
-        <section className="max-w-7xl mx-auto px-4 py-24 sm:px-6 lg:px-8 border-t border-slate-50 animate-in fade-in slide-in-from-bottom-8 duration-1000 text-left">
+        <section className="mx-auto max-w-screen-2xl px-4 py-24 sm:px-6 lg:px-8 border-t border-slate-50 animate-in fade-in slide-in-from-bottom-8 duration-1000 text-left">
             <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-16">
                 <div className="space-y-4">
                     <Badge className="bg-primary/10 text-primary border-none font-black uppercase text-[9px] px-3 py-1 rounded-full">
@@ -119,7 +119,7 @@ export default function PersonalizedFeed() {
                 </Link>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                 {suggestedProducts.map((product) => (
                     <ProductCard key={product.id} product={product} />
                 ))}

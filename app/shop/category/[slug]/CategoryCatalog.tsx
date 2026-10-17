@@ -127,7 +127,7 @@ export default function CategoryCatalog({
             {error}
           </div>
         ) : visibleProducts.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3 py-6 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 py-6 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {visibleProducts.map(product => <ProductCard key={product.id} product={product} />)}
           </div>
         ) : (
