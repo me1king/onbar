@@ -147,10 +147,10 @@ function EventForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
         <label className={`${labelClass} sm:col-span-2`}>Event name<input className={inputClass} name="title" required minLength={3} maxLength={160} placeholder="Midnight Society KE" /></label>
         <label className={labelClass}>Venue<input className={inputClass} name="venueName" required minLength={2} maxLength={180} placeholder="Venue name" /></label>
         <label className={labelClass}>City<input className={inputClass} name="city" required minLength={2} maxLength={100} defaultValue="Nairobi" /></label>
-        <label className={`${labelClass} sm:col-span-2`}>Venue address<input className={inputClass} name="venueAddress" maxLength={500} placeholder="Street, area, directions" /></label>
-        <label className={labelClass}>Event starts<input className={inputClass} name="startsAt" type="datetime-local" required /></label>
-        <label className={labelClass}>Event ends<input className={inputClass} name="endsAt" type="datetime-local" required /></label>
-        <label className={labelClass}>Doors open (optional)<input className={inputClass} name="doorsOpenAt" type="datetime-local" /></label>
+        <label className={`${labelClass} sm:col-span-2`}>Full venue address<input className={inputClass} name="venueAddress" required minLength={5} maxLength={500} placeholder="Street, area, and directions" /></label>
+        <label className={labelClass}>Event starts (EAT)<input className={inputClass} name="startsAt" type="datetime-local" required /></label>
+        <label className={labelClass}>Event ends (EAT)<input className={inputClass} name="endsAt" type="datetime-local" required /></label>
+        <label className={labelClass}>Doors open (EAT, optional)<input className={inputClass} name="doorsOpenAt" type="datetime-local" /></label>
         <label className={labelClass}>Capacity (optional)<input className={inputClass} name="capacity" type="number" min="1" max="1000000" placeholder="Set venue limit" /></label>
         <label className={labelClass}>Minimum age (optional)<input className={inputClass} name="ageLimit" type="number" min="0" max="120" placeholder="No restriction" /></label>
         <label className={`${labelClass} sm:col-span-2`}>Event description<textarea className={`${inputClass} min-h-24 py-3`} name="description" maxLength={10000} placeholder="Tell guests what the event is about." /></label>
@@ -335,10 +335,10 @@ function TicketWaveForm({ event, ticketType, onSaved, onCancel }: {
             <option value="manual">Only when I activate it</option>
           </select>
         </label>
-        <label className={labelClass}>Sales open
+        <label className={labelClass}>Sales open (EAT)
           <input className={inputClass} name="salesStartAt" type="datetime-local" required={activationMode === 'scheduled'} disabled={activationMode !== 'scheduled'} value={salesStartAt} onChange={change => setSalesStartAt(change.target.value)} />
         </label>
-        <label className={labelClass}>Sales close (optional)
+        <label className={labelClass}>Sales close (EAT, optional)
           <input className={inputClass} name="salesEndAt" type="datetime-local" defaultValue={dateTimeInput(ticketType?.sales_end_at || null)} />
         </label>
         {!hasPreviousWave && waveNumber > 1 && <p className="text-xs text-amber-200 sm:col-span-2 lg:col-span-3">Create the preceding wave for {admissionType} before using automatic sell-out activation.</p>}
@@ -418,6 +418,7 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
   const [editingWaveId, setEditingWaveId] = useState<string | null>(null);
   const [waveSavingId, setWaveSavingId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState('');
+  const [eventStatusSaving, setEventStatusSaving] = useState(false);
   const [editingServiceFee, setEditingServiceFee] = useState(false);
   const allocated = event.ticket_types.reduce((total, tier) => total + tier.capacity, 0);
 
@@ -444,6 +445,29 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
     }
   }
 
+  async function setEventSalesStatus(status: 'on_sale' | 'scheduled') {
+    if (status === 'on_sale' && !window.confirm(`Open public ticket sales for "${event.title}"? Verify the event details, ticket price, allocation and opening wave before continuing.`)) {
+      return;
+    }
+    if (status === 'scheduled' && !window.confirm(`Pause ticket sales for "${event.title}"? Existing paid tickets will remain valid.`)) {
+      return;
+    }
+    setEventStatusSaving(true);
+    setStatusError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_event_sales_status', eventId: event.id, status })
+      }));
+      onRefresh();
+    } catch (cause) {
+      setStatusError(cause instanceof Error ? cause.message : 'Event sales status could not be changed.');
+    } finally {
+      setEventStatusSaving(false);
+    }
+  }
+
   return (
     <article className="overflow-hidden rounded-2xl border border-white/10 bg-[#17121e] shadow-xl shadow-black/20">
       <div className="border-b border-white/10 bg-gradient-to-r from-[#211326] via-[#251526] to-[#17121e] p-5 text-white sm:p-6">
@@ -462,6 +486,17 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
             <p className="text-[10px] font-bold uppercase tracking-wider text-orange-100/60">Ticket types</p>
           </div>
         </div>
+        {canPublish && ['draft', 'scheduled', 'on_sale'].includes(event.status) && (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-200/15 bg-black/20 p-3">
+            <div>
+              <p className="text-xs font-black text-white">{event.status === 'on_sale' ? 'Public event listing is live' : 'Event is not public yet'}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{event.status === 'on_sale' ? 'Pause sales to remove the event from public ticket listings.' : 'Complete the event and ticket wave, then open sales to publish this event.'}</p>
+            </div>
+            <button type="button" onClick={() => void setEventSalesStatus(event.status === 'on_sale' ? 'scheduled' : 'on_sale')} disabled={eventStatusSaving} className={`min-h-10 rounded-lg px-4 text-xs font-black disabled:opacity-50 ${event.status === 'on_sale' ? 'border border-red-300/20 bg-red-300/5 text-red-100 hover:bg-red-300/10' : 'bg-orange-300 text-[#170d18] hover:bg-orange-200'}`}>
+              {eventStatusSaving ? 'Updating…' : event.status === 'on_sale' ? 'Pause public sales' : 'Open event for public sales'}
+            </button>
+          </div>
+        )}
         {event.description && <p className="mt-4 max-w-3xl text-sm leading-6 text-white/75">{event.description}</p>}
       </div>
       <div className="p-5 sm:p-6">
@@ -666,7 +701,7 @@ export default function TicketingPage() {
 
         <section id="ticket-event-vault" className="scroll-mt-6 space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Event vault</div><h2 className="mt-1 text-xl font-black tracking-tight text-white">Your events</h2><p className="mt-1 text-sm text-slate-400">Create private drafts, then add ticket tiers and allocations.</p></div>
+            <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Event vault</div><h2 className="mt-1 text-xl font-black tracking-tight text-white">Your events</h2>            <p className="mt-1 text-sm text-slate-400">Create a draft, configure an available ticket wave, then open or pause public sales here as the owner.</p></div>
             <label className="relative block w-full sm:w-72"><span className="sr-only">Search events</span><input value={query} onChange={event => setQuery(event.target.value)} className={inputClass} placeholder="Search events, venues or cities" /></label>
           </div>
           {error && <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-950/30 p-4 text-sm text-red-200">{error}<button type="button" onClick={() => void load()} className="ml-2 font-black underline">Try again</button></div>}

@@ -122,6 +122,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'A valid ticketing request is required.' }, { status: 400 });
   }
 
+  if (body.action === 'set_event_sales_status') {
+    if (session?.role.toLowerCase() !== 'owner') {
+      return NextResponse.json({ error: 'Only the platform owner can publish an event or pause public sales.' }, { status: 403 });
+    }
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const status = body.status === 'on_sale' || body.status === 'scheduled' ? body.status : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId) || !status) {
+      return NextResponse.json({ error: 'Select a valid event and sales status.' }, { status: 400 });
+    }
+
+    if (status === 'on_sale' && process.env.NODE_ENV === 'production') {
+      const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim() || '';
+      const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY?.trim() || '';
+      let encryptionKeyIsValid = false;
+      try {
+        encryptionKeyIsValid = Buffer.from(process.env.TICKETING_CREDENTIAL_ENCRYPTION_KEY?.trim() || '', 'base64').length === 32;
+      } catch {
+        encryptionKeyIsValid = false;
+      }
+      if (!secretKey.startsWith('sk_live_') || !publicKey.startsWith('pk_live_') || !encryptionKeyIsValid) {
+        return NextResponse.json({
+          error: 'Live sales require matching live Paystack credentials and a valid ticket-encryption key in the production environment.'
+        }, { status: 503 });
+      }
+    }
+
+    const { data, error } = await database.rpc('ticketing_set_event_sales_status', {
+      p_event_id: eventId,
+      p_status: status,
+      p_actor_email: session.email || ''
+    });
+    if (error || !data) {
+      if (error?.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 409 });
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event was not found.' }, { status: 404 });
+      if (error?.code === '22023') return NextResponse.json({ error: error.message }, { status: 400 });
+      console.error('[TicketingAdmin] Could not update event sales status:', error);
+      return NextResponse.json({
+        error: 'Event publication could not be completed. Apply supabase/TICKETING_EVENT_PUBLISHING_MIGRATION.sql and retry.'
+      }, { status: 503 });
+    }
+    return NextResponse.json({ event: data });
+  }
+
   if (body.action === 'update_event_service_fee') {
     const eventId = typeof body.eventId === 'string' ? body.eventId : '';
     const serviceFeeMinor = parseMoney(body.serviceFee);
