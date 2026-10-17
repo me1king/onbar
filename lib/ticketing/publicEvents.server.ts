@@ -39,6 +39,7 @@ export type PublicTicketEvent = {
   ends_at: string;
   doors_open_at: string | null;
   age_limit: number | null;
+  service_fee_minor: number;
   cover_image_url: string | null;
   cancellation_policy: string;
   ticket_types: PublicTicketType[];
@@ -53,7 +54,7 @@ type PublicEventsResult =
 const eventFields = [
   'id', 'organizer_id', 'title', 'slug', 'description', 'venue_name', 'venue_address',
   'city', 'timezone', 'starts_at', 'ends_at', 'doors_open_at', 'age_limit',
-  'cover_image_url', 'cancellation_policy'
+  'service_fee_minor', 'cover_image_url', 'cancellation_policy'
 ].join(',');
 
 const tierFields = [
@@ -186,6 +187,7 @@ async function getPublicEvents(): Promise<PublicEventsResult> {
       ends_at: event.ends_at,
       doors_open_at: event.doors_open_at,
       age_limit: event.age_limit,
+      service_fee_minor: Number(event.service_fee_minor),
       cover_image_url: event.cover_image_url,
       cancellation_policy: event.cancellation_policy,
       ticket_types: typesByEvent.get(event.id) || []

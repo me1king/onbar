@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { getPublicBaseUrl } from "@/lib/utils";
 import { recordVerifiedPaystackPayment } from "@/lib/paystackServer";
+import { createTicketCredentials } from "@/lib/ticketing/credentials.server";
+import { verifyPaystackTicketTransaction } from "@/lib/ticketing/paystack.server";
 
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
 
@@ -31,6 +33,98 @@ export async function POST(request: Request) {
         }
 
         const event = JSON.parse(body);
+        const ticketReference = typeof event.data?.reference === 'string' ? event.data.reference : '';
+        if (ticketReference && ['charge.success', 'charge.failed'].includes(event.event)) {
+            const { data: ticketAttempt, error: ticketAttemptError } = await database
+                .from('ticketing_payment_attempts')
+                .select('id,order_id,amount_minor,status')
+                .eq('provider', 'paystack')
+                .eq('provider_reference', ticketReference)
+                .maybeSingle();
+
+            if (ticketAttemptError && !['42P01', 'PGRST205'].includes(ticketAttemptError.code || '')) {
+                console.error('[TicketingPaystack] Could not look up payment attempt:', ticketAttemptError);
+                return NextResponse.json({ error: 'Ticketing payment lookup failed.' }, { status: 500 });
+            }
+            if (ticketAttemptError) {
+                console.warn('[TicketingPaystack] Commerce migration is not installed; continuing with existing shop-order processing.');
+            }
+
+            if (!ticketAttemptError && ticketAttempt) {
+                if (event.event === 'charge.failed') {
+                    return NextResponse.json({ received: true, message: 'Ticketing payment failed.' });
+                }
+                if (ticketAttempt.status === 'succeeded' || ticketAttempt.status === 'reconciliation_required') {
+                    return NextResponse.json({
+                        received: true,
+                        message: ticketAttempt.status === 'succeeded'
+                            ? 'Ticketing payment already processed.'
+                            : 'Ticketing payment awaits manual reconciliation.'
+                    });
+                }
+
+                try {
+                    const transaction = await verifyPaystackTicketTransaction(ticketReference);
+                    const { data: ticketOrder, error: ticketOrderError } = await database
+                        .from('ticketing_orders')
+                        .select('id,status,total_minor,buyer_email,event_id')
+                        .eq('id', ticketAttempt.order_id)
+                        .maybeSingle();
+                    if (ticketOrderError) throw ticketOrderError;
+                    if (!ticketOrder) throw new Error('The ticket order for this payment could not be found.');
+
+                    const providerStatusMismatch = transaction.status !== 'success';
+                    const transactionDetailsMismatch = transaction.reference !== ticketReference
+                        || transaction.currency !== 'KES'
+                        || transaction.amount !== Number(ticketAttempt.amount_minor)
+                        || transaction.amount !== Number(ticketOrder.total_minor)
+                        || transaction.customer?.email?.toLowerCase() !== ticketOrder.buyer_email.toLowerCase();
+                    if (providerStatusMismatch || transactionDetailsMismatch) {
+                        const { error: reviewError } = await database.rpc('ticketing_flag_payment_for_review', {
+                            p_payment_reference: ticketReference,
+                            p_reason: providerStatusMismatch ? 'provider_status_mismatch' : 'transaction_details_mismatch'
+                        });
+                        if (reviewError) throw reviewError;
+                        console.error('[TicketingPaystack] Verified callback requires manual payment review.', ticketReference);
+                        return NextResponse.json({ received: true, message: 'Payment requires manual reconciliation.' });
+                    }
+
+                    const { data: orderItems, error: itemsError } = await database
+                        .from('ticketing_order_items')
+                        .select('quantity')
+                        .eq('order_id', ticketOrder.id);
+                    if (itemsError) throw itemsError;
+                    const quantity = (orderItems || []).reduce((total, item) => total + Number(item.quantity), 0);
+                    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+                        throw new Error('Ticket order quantity is outside the supported range.');
+                    }
+                    const credentials = createTicketCredentials(quantity);
+                    const { data: confirmation, error: confirmationError } = await database.rpc('ticketing_confirm_checkout', {
+                        p_payment_reference: ticketReference,
+                        p_amount_minor: transaction.amount,
+                        p_currency: transaction.currency,
+                        p_credentials: credentials.map(({ credential_hash, credential_ciphertext }) => ({
+                            credential_hash,
+                            credential_ciphertext
+                        }))
+                    });
+                    if (confirmationError) throw confirmationError;
+                    const confirmationResult = confirmation as { status?: string } | null;
+                    if (!confirmationResult || !['paid', 'reconciliation_required'].includes(confirmationResult.status || '')) {
+                        throw new Error('Ticketing payment confirmation returned an invalid status.');
+                    }
+                    return NextResponse.json({
+                        received: true,
+                        message: confirmationResult.status === 'paid'
+                            ? 'Ticket payment verified and tickets issued.'
+                            : 'Payment verified; order requires manual reconciliation.'
+                    });
+                } catch (ticketPaymentError) {
+                    console.error('[TicketingPaystack] Could not verify and fulfill ticket payment:', ticketPaymentError);
+                    return NextResponse.json({ error: 'Ticket payment confirmation failed.' }, { status: 500 });
+                }
+            }
+        }
 
         // 1.5 Log the event for Anomaly Detection
         if (event.data) {

@@ -108,7 +108,7 @@ export default async function TicketDiscoveryPage() {
 
         <section role="status" className="flex items-start gap-3 rounded-2xl border border-orange-300/20 bg-orange-950/25 p-4">
           <ShieldCheck className="mt-0.5 shrink-0 text-orange-200" size={18} />
-          <div><p className="text-sm font-black text-orange-100">Checkout is still being secured</p><p className="mt-1 text-xs leading-5 text-orange-50/70">This page only lists approved-organizer events marked on sale. Online checkout and verified M-Pesa payment are not live yet, so ticket purchases cannot be completed here.</p></div>
+          <div><p className="text-sm font-black text-orange-100">Official tickets, verified before entry</p><p className="mt-1 text-xs leading-5 text-orange-50/70">Buy with card or M-Pesa mobile money through Paystack. Your tickets are issued only after payment confirmation is independently verified.</p></div>
         </section>
 
         <section className="space-y-5">

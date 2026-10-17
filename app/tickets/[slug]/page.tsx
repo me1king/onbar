@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, CalendarDays, Clock3, Ghost, MapPin, ShieldAlert, ShieldCheck, Ticket } from 'lucide-react';
 import { getPublicTicketEvent } from '@/lib/ticketing/publicEvents.server';
+import TicketCheckoutButton from '@/app/tickets/TicketCheckoutButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,9 +129,22 @@ export default async function TicketEventPage({ params }: PageProps) {
                     </div>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-3">
                       <span className="text-[10px] font-semibold text-slate-500">{schedule}</span>
-                      <button type="button" disabled aria-disabled="true" title="Online checkout and verified payment are not available yet" className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-xl bg-white/10 px-4 text-xs font-black text-slate-400">
-                        {soldOut ? 'Sold out' : notOpen ? 'Not on sale yet' : closed ? 'Sales ended' : 'Checkout not live'}
-                      </button>
+                      {soldOut || notOpen || closed ? (
+                        <button type="button" disabled aria-disabled="true" className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-xl bg-white/10 px-4 text-xs font-black text-slate-400">
+                          {soldOut ? 'Sold out' : notOpen ? 'Not on sale yet' : 'Sales ended'}
+                        </button>
+                      ) : (
+                        <TicketCheckoutButton
+                          eventId={event.id}
+                          ticketTypeId={ticketType.id}
+                          minPerOrder={ticketType.min_per_order}
+                          maxPerOrder={ticketType.max_per_order}
+                          remaining={ticketType.remaining}
+                          priceMinor={ticketType.price_minor}
+                          feeMinor={event.service_fee_minor}
+                          currency={ticketType.currency}
+                        />
+                      )}
                     </div>
                   </article>
                 );
@@ -140,7 +154,7 @@ export default async function TicketEventPage({ params }: PageProps) {
 
           <aside className="space-y-4">
             <section role="status" className="rounded-3xl border border-orange-300/20 bg-gradient-to-br from-orange-950/35 to-[#1b1221] p-5 sm:p-6">
-              <div className="flex items-start gap-3"><span className="rounded-xl bg-orange-300/10 p-2 text-orange-200"><ShieldAlert size={18} /></span><div><h2 className="text-sm font-black text-orange-100">Purchases are not open</h2><p className="mt-2 text-xs leading-5 text-orange-50/70">This event listing is for discovery only. We have not connected verified M-Pesa checkout or ticket issuance, so no payment can be taken and no ticket can be issued here.</p></div></div>
+              <div className="flex items-start gap-3"><span className="rounded-xl bg-orange-300/10 p-2 text-orange-200"><ShieldAlert size={18} /></span><div><h2 className="text-sm font-black text-orange-100">Secure checkout</h2><p className="mt-2 text-xs leading-5 text-orange-50/70">Payments are processed by Paystack using card or M-Pesa mobile money. Tickets appear in your wallet only after the payment is verified server-side.</p></div></div>
             </section>
             <section className="rounded-3xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
               <h2 className="text-sm font-black text-white">The real-ticket promise</h2>
