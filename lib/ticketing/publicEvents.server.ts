@@ -34,6 +34,11 @@ export type PublicTicketEvent = {
   venue_name: string;
   venue_address: string;
   city: string;
+  venue_latitude: number | null;
+  venue_longitude: number | null;
+  entrance_guide: string;
+  parking_guide: string;
+  transport_guide: string;
   timezone: string;
   starts_at: string;
   ends_at: string;
@@ -53,7 +58,8 @@ type PublicEventsResult =
 
 const eventFields = [
   'id', 'organizer_id', 'title', 'slug', 'description', 'venue_name', 'venue_address',
-  'city', 'timezone', 'starts_at', 'ends_at', 'doors_open_at', 'age_limit',
+  'city', 'venue_latitude', 'venue_longitude', 'entrance_guide', 'parking_guide', 'transport_guide',
+  'timezone', 'starts_at', 'ends_at', 'doors_open_at', 'age_limit',
   'service_fee_minor', 'cover_image_url', 'cancellation_policy'
 ].join(',');
 
@@ -182,6 +188,11 @@ async function getPublicEvents(): Promise<PublicEventsResult> {
       venue_name: event.venue_name,
       venue_address: event.venue_address,
       city: event.city,
+      venue_latitude: event.venue_latitude === null ? null : Number(event.venue_latitude),
+      venue_longitude: event.venue_longitude === null ? null : Number(event.venue_longitude),
+      entrance_guide: event.entrance_guide || '',
+      parking_guide: event.parking_guide || '',
+      transport_guide: event.transport_guide || '',
       timezone: event.timezone,
       starts_at: event.starts_at,
       ends_at: event.ends_at,

@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '@/lib/serverSupabase';
 
 export const dynamic = 'force-dynamic';
 
-const eventFields = 'id,organizer_id,title,slug,description,venue_name,venue_address,city,timezone,starts_at,ends_at,doors_open_at,age_limit,capacity,service_fee_minor,status,cancellation_policy,cover_image_url,published_at,created_at,updated_at';
+const eventFields = 'id,organizer_id,title,slug,description,venue_name,venue_address,city,venue_latitude,venue_longitude,entrance_guide,parking_guide,transport_guide,timezone,starts_at,ends_at,doors_open_at,age_limit,capacity,service_fee_minor,status,cancellation_policy,cover_image_url,published_at,created_at,updated_at';
 const ticketTypeFields = 'id,event_id,name,description,price_minor,currency,capacity,min_per_order,max_per_order,sales_start_at,sales_end_at,benefits,status,created_at,updated_at,wave_number,admission_type,wave_label,activation_mode,wave_theme,wave_manual_open';
 
 async function authorize() {
@@ -160,6 +160,64 @@ export async function POST(request: Request) {
       console.error('[TicketingAdmin] Could not update event sales status:', error);
       return NextResponse.json({
         error: 'Event publication could not be completed. Apply supabase/TICKETING_EVENT_PUBLISHING_MIGRATION.sql and retry.'
+      }, { status: 503 });
+    }
+    return NextResponse.json({ event: data });
+  }
+
+  if (body.action === 'update_event_venue') {
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const venueName = typeof body.venueName === 'string' ? body.venueName.trim() : '';
+    const venueAddress = typeof body.venueAddress === 'string' ? body.venueAddress.trim() : '';
+    const city = typeof body.city === 'string' ? body.city.trim() : '';
+    const parseCoordinate = (value: unknown) => {
+      if (value === '' || value === null || value === undefined) return { valid: true, value: null };
+      if (typeof value !== 'number' && typeof value !== 'string') return { valid: false, value: null };
+      const normalized = typeof value === 'string' ? value.trim() : value;
+      if (normalized === '') return { valid: false, value: null };
+      const coordinate = typeof normalized === 'number' ? normalized : Number(normalized);
+      return { valid: Number.isFinite(coordinate), value: coordinate };
+    };
+    const latitude = parseCoordinate(body.latitude);
+    const longitude = parseCoordinate(body.longitude);
+    const latitudeValue = latitude.value;
+    const longitudeValue = longitude.value;
+    const entranceGuide = typeof body.entranceGuide === 'string' ? body.entranceGuide.trim() : '';
+    const parkingGuide = typeof body.parkingGuide === 'string' ? body.parkingGuide.trim() : '';
+    const transportGuide = typeof body.transportGuide === 'string' ? body.transportGuide.trim() : '';
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      || venueName.length < 2 || venueName.length > 180
+      || venueAddress.length < 5 || venueAddress.length > 500
+      || city.length < 2 || city.length > 100
+      || !latitude.valid || !longitude.valid
+      || ((latitudeValue === null) !== (longitudeValue === null))
+      || (latitudeValue !== null && (!Number.isFinite(latitudeValue) || latitudeValue < -90 || latitudeValue > 90))
+      || (longitudeValue !== null && (!Number.isFinite(longitudeValue) || longitudeValue < -180 || longitudeValue > 180))
+      || entranceGuide.length > 2000 || parkingGuide.length > 2000 || transportGuide.length > 2000) {
+      return NextResponse.json({
+        error: 'Enter a valid venue, city, complete address, paired map coordinates, and arrival notes under 2,000 characters each.'
+      }, { status: 400 });
+    }
+
+    const { data, error } = await database.rpc('ticketing_update_event_venue', {
+      p_event_id: eventId,
+      p_venue_name: venueName,
+      p_venue_address: venueAddress,
+      p_city: city,
+      p_venue_latitude: latitudeValue,
+      p_venue_longitude: longitudeValue,
+      p_entrance_guide: entranceGuide,
+      p_parking_guide: parkingGuide,
+      p_transport_guide: transportGuide,
+      p_actor_email: session.email || ''
+    });
+    if (error || !data) {
+      if (error?.code === '22023') return NextResponse.json({ error: error.message }, { status: 400 });
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event was not found.' }, { status: 404 });
+      console.error('[TicketingAdmin] Could not update event venue:', error);
+      return NextResponse.json({
+        error: 'Venue details could not be saved. Apply supabase/TICKETING_VENUE_LOCATION_MIGRATION.sql and retry.'
       }, { status: 503 });
     }
     return NextResponse.json({ event: data });

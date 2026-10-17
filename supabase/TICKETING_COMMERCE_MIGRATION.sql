@@ -2,6 +2,11 @@
 -- Apply after the core, service-fee, waves, and scanner migrations.
 BEGIN;
 
+-- The checkout function below creates KES-only payment attempts and omits this
+-- value in its insert, so the schema default must match the supported currency.
+ALTER TABLE public.ticketing_payment_attempts
+    ALTER COLUMN currency SET DEFAULT 'KES';
+
 ALTER TABLE public.ticketing_orders
     ADD COLUMN IF NOT EXISTS access_token_hash TEXT;
 
@@ -166,10 +171,10 @@ BEGIN
     );
 
     INSERT INTO public.ticketing_payment_attempts (
-        order_id, provider, provider_reference, idempotency_key, amount_minor, status
+        order_id, provider, provider_reference, idempotency_key, amount_minor, currency, status
     ) VALUES (
         v_order.id, v_provider, p_payment_reference, p_idempotency_key,
-        v_total, 'pending'
+        v_total, 'KES', 'pending'
     ) RETURNING * INTO v_attempt;
 
     RETURN jsonb_build_object(
