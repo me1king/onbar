@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { CalendarDays, ChevronRight, Clock3, Ghost, MapPin, ShieldCheck, Ticket } from 'lucide-react';
 import { getPublicTicketEvents, type PublicTicketEvent } from '@/lib/ticketing/publicEvents.server';
+import TicketingBrand from '@/app/tickets/TicketingBrand';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,6 +87,8 @@ export default async function TicketDiscoveryPage() {
   const result = await getPublicTicketEvents();
 
   return (
+    <>
+    <TicketingBrand />
     <main className="relative min-h-screen overflow-hidden bg-[#0d0a12] px-4 py-8 text-white sm:px-6 sm:py-12">
       <div aria-hidden="true" className="pointer-events-none absolute -left-40 top-24 h-[28rem] w-[28rem] rounded-full bg-orange-500/10 blur-[120px]" />
       <div aria-hidden="true" className="pointer-events-none absolute -right-40 top-[38rem] h-[28rem] w-[28rem] rounded-full bg-violet-600/10 blur-[120px]" />
@@ -95,7 +98,7 @@ export default async function TicketDiscoveryPage() {
           <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-80 w-80 rounded-full bg-violet-500/15 blur-[90px]" />
           <div className="relative grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
             <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-orange-100"><Ghost size={14} /> ONLINE BAR · Halloween nights</div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-orange-100"><Ghost size={14} /> Midnight Society KE · Official events</div>
               <p className="mt-6 text-[10px] font-black uppercase tracking-[0.25em] text-violet-200">The night is yours</p>
               <h1 className="mt-2 text-4xl font-black leading-[0.98] tracking-tight text-white sm:text-6xl lg:text-7xl">Find your<br />after-dark<span className="text-orange-400">.</span></h1>
               <p className="mt-5 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">Discover events worth staying up for. Choose your night, check the details, and find ticket options in one spooky little corner of ONLINE BAR.</p>
@@ -135,5 +138,6 @@ export default async function TicketDiscoveryPage() {
         </footer>
       </div>
     </main>
+    </>
   );
 }

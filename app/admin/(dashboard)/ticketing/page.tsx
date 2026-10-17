@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle,
   ArrowUpRight,
   BadgeCheck,
   CalendarDays,
@@ -147,10 +146,10 @@ function EventForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
         <label className={`${labelClass} sm:col-span-2`}>Event name<input className={inputClass} name="title" required minLength={3} maxLength={160} placeholder="Midnight Society KE" /></label>
         <label className={labelClass}>Venue<input className={inputClass} name="venueName" required minLength={2} maxLength={180} placeholder="Venue name" /></label>
         <label className={labelClass}>City<input className={inputClass} name="city" required minLength={2} maxLength={100} defaultValue="Nairobi" /></label>
-        <label className={`${labelClass} sm:col-span-2`}>Venue address<input className={inputClass} name="venueAddress" maxLength={500} placeholder="Street, area, directions" /></label>
-        <label className={labelClass}>Event starts<input className={inputClass} name="startsAt" type="datetime-local" required /></label>
-        <label className={labelClass}>Event ends<input className={inputClass} name="endsAt" type="datetime-local" required /></label>
-        <label className={labelClass}>Doors open (optional)<input className={inputClass} name="doorsOpenAt" type="datetime-local" /></label>
+        <label className={`${labelClass} sm:col-span-2`}>Full venue address<input className={inputClass} name="venueAddress" required minLength={5} maxLength={500} placeholder="Street, area, and directions" /></label>
+        <label className={labelClass}>Event starts (EAT)<input className={inputClass} name="startsAt" type="datetime-local" required /></label>
+        <label className={labelClass}>Event ends (EAT)<input className={inputClass} name="endsAt" type="datetime-local" required /></label>
+        <label className={labelClass}>Doors open (EAT, optional)<input className={inputClass} name="doorsOpenAt" type="datetime-local" /></label>
         <label className={labelClass}>Capacity (optional)<input className={inputClass} name="capacity" type="number" min="1" max="1000000" placeholder="Set venue limit" /></label>
         <label className={labelClass}>Minimum age (optional)<input className={inputClass} name="ageLimit" type="number" min="0" max="120" placeholder="No restriction" /></label>
         <label className={`${labelClass} sm:col-span-2`}>Event description<textarea className={`${inputClass} min-h-24 py-3`} name="description" maxLength={10000} placeholder="Tell guests what the event is about." /></label>
@@ -161,7 +160,7 @@ function EventForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: (
         <button disabled={saving} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
           <CheckCircle2 size={16} /> {saving ? 'Saving draft…' : 'Save event draft'}
         </button>
-        <p className="self-center text-xs text-slate-400">Publishing and ticket sales remain disabled until checkout and payment verification are connected.</p>
+        <p className="self-center text-xs text-slate-400">Checkout and server-side payment verification are implemented. Configure the event and ticket wave here, then publish it when you are ready to open sales.</p>
       </div>
     </form>
   );
@@ -335,10 +334,10 @@ function TicketWaveForm({ event, ticketType, onSaved, onCancel }: {
             <option value="manual">Only when I activate it</option>
           </select>
         </label>
-        <label className={labelClass}>Sales open
+        <label className={labelClass}>Sales open (EAT)
           <input className={inputClass} name="salesStartAt" type="datetime-local" required={activationMode === 'scheduled'} disabled={activationMode !== 'scheduled'} value={salesStartAt} onChange={change => setSalesStartAt(change.target.value)} />
         </label>
-        <label className={labelClass}>Sales close (optional)
+        <label className={labelClass}>Sales close (EAT, optional)
           <input className={inputClass} name="salesEndAt" type="datetime-local" defaultValue={dateTimeInput(ticketType?.sales_end_at || null)} />
         </label>
         {!hasPreviousWave && waveNumber > 1 && <p className="text-xs text-amber-200 sm:col-span-2 lg:col-span-3">Create the preceding wave for {admissionType} before using automatic sell-out activation.</p>}
@@ -406,7 +405,7 @@ function ServiceFeeForm({ event, onSaved, onCancel }: { event: TicketEvent; onSa
           <Wallet size={15} /> {saving ? 'Saving…' : 'Save service fee'}
         </button>
       </div>
-      <p className="mt-2 text-[10px] leading-4 text-slate-500">Online Bar’s ticket checkout is not enabled yet; this setting is ready for the verified checkout release.</p>
+      <p className="mt-2 text-[10px] leading-4 text-slate-500">The fee is calculated server-side and included in each new ticket checkout total. Existing orders keep their original fee snapshot.</p>
       {error && <p role="alert" className="mt-3 rounded-lg border border-red-200/20 bg-red-950/20 p-3 text-xs text-red-200">{error}</p>}
     </form>
   );
@@ -418,6 +417,7 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
   const [editingWaveId, setEditingWaveId] = useState<string | null>(null);
   const [waveSavingId, setWaveSavingId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState('');
+  const [eventStatusSaving, setEventStatusSaving] = useState(false);
   const [editingServiceFee, setEditingServiceFee] = useState(false);
   const allocated = event.ticket_types.reduce((total, tier) => total + tier.capacity, 0);
 
@@ -444,6 +444,29 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
     }
   }
 
+  async function setEventSalesStatus(status: 'on_sale' | 'scheduled') {
+    if (status === 'on_sale' && !window.confirm(`Open public ticket sales for "${event.title}"? Verify the event details, ticket price, allocation and opening wave before continuing.`)) {
+      return;
+    }
+    if (status === 'scheduled' && !window.confirm(`Pause ticket sales for "${event.title}"? Existing paid tickets will remain valid.`)) {
+      return;
+    }
+    setEventStatusSaving(true);
+    setStatusError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_event_sales_status', eventId: event.id, status })
+      }));
+      onRefresh();
+    } catch (cause) {
+      setStatusError(cause instanceof Error ? cause.message : 'Event sales status could not be changed.');
+    } finally {
+      setEventStatusSaving(false);
+    }
+  }
+
   return (
     <article className="overflow-hidden rounded-2xl border border-white/10 bg-[#17121e] shadow-xl shadow-black/20">
       <div className="border-b border-white/10 bg-gradient-to-r from-[#211326] via-[#251526] to-[#17121e] p-5 text-white sm:p-6">
@@ -462,6 +485,17 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
             <p className="text-[10px] font-bold uppercase tracking-wider text-orange-100/60">Ticket types</p>
           </div>
         </div>
+        {canPublish && ['draft', 'scheduled', 'on_sale'].includes(event.status) && (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-200/15 bg-black/20 p-3">
+            <div>
+              <p className="text-xs font-black text-white">{event.status === 'on_sale' ? 'Public event listing is live' : 'Event is not public yet'}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{event.status === 'on_sale' ? 'Pause sales to remove the event from public ticket listings.' : 'Complete the event and ticket wave, then open sales to publish this event.'}</p>
+            </div>
+            <button type="button" onClick={() => void setEventSalesStatus(event.status === 'on_sale' ? 'scheduled' : 'on_sale')} disabled={eventStatusSaving} className={`min-h-10 rounded-lg px-4 text-xs font-black disabled:opacity-50 ${event.status === 'on_sale' ? 'border border-red-300/20 bg-red-300/5 text-red-100 hover:bg-red-300/10' : 'bg-orange-300 text-[#170d18] hover:bg-orange-200'}`}>
+              {eventStatusSaving ? 'Updating…' : event.status === 'on_sale' ? 'Pause public sales' : 'Open event for public sales'}
+            </button>
+          </div>
+        )}
         {event.description && <p className="mt-4 max-w-3xl text-sm leading-6 text-white/75">{event.description}</p>}
       </div>
       <div className="p-5 sm:p-6">
@@ -573,6 +607,7 @@ export default function TicketingPage() {
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Manage event drafts, ticket pricing and release waves from one place. Ticketing records stay separate from drink orders, product stock and existing payouts.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Link href="/admin/ticketing/sales" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Wallet size={15} /> Ticket sales</Link>
               <Link href="/admin/ticketing/staff" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Users size={15} /> Gate staff</Link>
               <Link href="/scanner" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Open scanner</Link>
               <Link href="/admin/ticketing/security" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ShieldAlert size={15} /> Trust centre</Link>
@@ -587,6 +622,40 @@ export default function TicketingPage() {
             <Metric icon={Wallet} label="Orders recorded" value={data?.totals.orders} />
           </div>
         </header>
+
+        <section aria-labelledby="ticketing-steps-heading" className="rounded-2xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
+          <div className="mb-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Quick start</p>
+            <h2 id="ticketing-steps-heading" className="mt-1 text-lg font-black text-white">Manage ticketing in four steps</h2>
+            <p className="mt-1 text-xs text-slate-400">Everything stays in this ticketing area; ticket money and records stay separate from shop sales.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <button type="button" onClick={() => setAddingEvent(true)} className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-left transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">1 · Event</span>
+              <span className="mt-1 block text-sm font-black text-white">{hasEvents ? `Review ${data?.totals.events ?? 0} event${data?.totals.events === 1 ? '' : 's'}` : 'Create your first event'}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">{hasEvents ? 'Create another event draft here, or review existing events in the vault below.' : 'Add the event name, venue, date and guest details.'}</span>
+            </button>
+            <button type="button" onClick={() => document.getElementById('ticket-event-vault')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-left transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">2 · Tickets</span>
+              <span className="mt-1 block text-sm font-black text-white">Set prices &amp; release waves</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">Choose admission, KES price, ticket allocation and sales opening time.</span>
+            </button>
+            <Link href="/admin/ticketing/staff" className="rounded-xl border border-white/10 bg-white/[0.025] p-4 transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">3 · Gate team</span>
+              <span className="mt-1 block text-sm font-black text-white">Assign scanner staff</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">Give each verified staff account access only to its assigned event.</span>
+            </Link>
+            <div className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">4 · Run the event</span>
+              <span className="mt-1 block text-sm font-black text-white">Track sales &amp; gate scans</span>
+              <span className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold">
+                <Link href="/admin/ticketing/sales" className="text-amber-200 underline underline-offset-2">Sales ledger</Link>
+                <Link href="/admin/ticketing/live" className="text-amber-200 underline underline-offset-2">Live operations</Link>
+                <Link href="/scanner" className="text-amber-200 underline underline-offset-2">Open scanner</Link>
+              </span>
+            </div>
+          </div>
+        </section>
 
         <section aria-labelledby="ticket-pricing-heading" className="rounded-2xl border border-amber-200/20 bg-gradient-to-r from-[#201913] via-[#19161a] to-[#131217] p-5 shadow-lg shadow-black/20 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -619,11 +688,11 @@ export default function TicketingPage() {
           )}
         </section>
 
-        <section role="status" className="relative overflow-hidden rounded-2xl border border-orange-400/25 bg-gradient-to-r from-orange-950/50 via-[#20131f] to-[#171220] p-4 sm:p-5">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-orange-400/10 blur-3xl" />
+        <section role="status" className="relative overflow-hidden rounded-2xl border border-emerald-400/20 bg-gradient-to-r from-emerald-950/35 via-[#171c19] to-[#171220] p-4 sm:p-5">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
           <div className="relative flex items-start gap-3">
-            <span className="rounded-xl border border-orange-300/20 bg-orange-300/10 p-2 text-orange-300"><AlertTriangle size={18} /></span>
-            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-orange-100">Sales are locked for now</p><span className="rounded-full border border-orange-300/20 bg-orange-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-orange-200">No live checkout</span></div><p className="mt-1 text-xs leading-5 text-orange-50/70">Payment verification, customer checkout and ticket issuance are not live. The scanner is implemented but still needs its migration, staff assignments and issued tickets before it can admit guests. No customer payment or ticket will be claimed without server verification.</p></div>
+            <span className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-2 text-emerald-200"><ShieldCheck size={18} /></span>
+            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-emerald-100">Ticket checkout is implemented; event sales are owner-controlled</p><span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-100">Separate ticket ledger</span></div><p className="mt-1 text-xs leading-5 text-emerald-50/75">Paystack checkout, server-verified payment callbacks, ticket issuance and guest-wallet access are implemented. Ticket orders, payment attempts and fees stay in ticketing-specific records, separate from beverage orders and product inventory. To make an event visible to guests, configure its confirmed details and an available ticket wave, then use the owner-only publish control on its event card. Production checkout still requires valid server configuration.</p><Link href="/admin/ticketing/sales" className="mt-2 inline-flex text-xs font-black text-amber-200 underline underline-offset-2">Open the dedicated ticket sales ledger</Link></div>
           </div>
         </section>
 
@@ -631,7 +700,7 @@ export default function TicketingPage() {
 
         <section id="ticket-event-vault" className="scroll-mt-6 space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Event vault</div><h2 className="mt-1 text-xl font-black tracking-tight text-white">Your events</h2><p className="mt-1 text-sm text-slate-400">Create private drafts, then add ticket tiers and allocations.</p></div>
+            <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Event vault</div><h2 className="mt-1 text-xl font-black tracking-tight text-white">Your events</h2>            <p className="mt-1 text-sm text-slate-400">Create a draft, configure an available ticket wave, then open or pause public sales here as the owner.</p></div>
             <label className="relative block w-full sm:w-72"><span className="sr-only">Search events</span><input value={query} onChange={event => setQuery(event.target.value)} className={inputClass} placeholder="Search events, venues or cities" /></label>
           </div>
           {error && <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-950/30 p-4 text-sm text-red-200">{error}<button type="button" onClick={() => void load()} className="ml-2 font-black underline">Try again</button></div>}
@@ -653,7 +722,7 @@ export default function TicketingPage() {
               <span className="block text-sm font-black text-white">Readiness &amp; security controls</span>
               <span className="mt-1 block text-xs text-slate-400">Current payment, ticket authenticity and gate-operation status</span>
             </span>
-            <span className="shrink-0 rounded-full border border-amber-200/15 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">Foundation phase</span>
+            <span className="shrink-0 rounded-full border border-amber-200/15 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">Owner-controlled release</span>
           </summary>
           <div className="border-t border-white/10 p-5 sm:p-6">
         <section aria-labelledby="trust-heading" className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#19171d] to-[#111016] p-4 sm:p-5">
@@ -661,31 +730,31 @@ export default function TicketingPage() {
             <div>
               <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100"><ShieldAlert size={14} /> Trust &amp; security centre</div>
               <h2 id="trust-heading" className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">Keep the tricks out. Keep the tickets real.</h2>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">A clear view of the controls in the attached security blueprint. Readiness labels reflect this build; this panel is not a live fraud-monitoring feed.</p>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">Checkout, verified payment handling, ticket issuance, guest wallets and online scanning are implemented. Event publication and production checkout remain gated by the owner and server-side readiness checks; this panel is not a live fraud-monitoring feed.</p>
             </div>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Not live" body="Provider callbacks, amount matching and payment reconciliation are not connected." />
-            <SecurityControl icon={KeyRound} title="Authentic ticket" state="Not live" body="Ticket credential issuance, customer delivery and revocation are not connected." />
-            <SecurityControl icon={ScanLine} title="Gate admission" state="Scanner built · migration required" body="A separate /scanner workspace now supports verified staff sign-in, event-scoped assignments, camera/manual credential scans and atomic server check-in. Apply the scanner migration before use." />
-            <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Draft and tier writes create audit entries; MFA, dual approval and a security case feed are not live." />
+            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Server verified" body="Paystack callbacks are signature-checked and independently verified against the ticket order before fulfillment. Only matching verified transactions issue tickets." />
+            <SecurityControl icon={KeyRound} title="Authentic ticket" state="Encrypted & verified" body="Ticket credentials are issued after verified payment, stored hashed and encrypted, and delivered to the guest wallet through the ticket access flow." />
+            <SecurityControl icon={ScanLine} title="Gate admission" state="Online scanner" body="The separate /scanner workspace supports server-validated check-ins and assigned staff. Apply the scanner migration, assign event staff, and use an issued ticket for admission." />
+            <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Ticketing changes are audited and scanner access is event-scoped. MFA enforcement, dual approval and automated fraud monitoring are not live." />
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-5 text-slate-400">
             <ShieldCheck size={15} className="mt-0.5 shrink-0 text-amber-200" />
-            <p>QR screenshots and payment messages are not proof of a valid ticket. Enable sales only after the payment, credential, admission and oversight controls are implemented and tested end-to-end.</p>
+            <p>QR screenshots and payment messages are not proof of a valid ticket. Each event must pass the server-side publication checks and have an available ticket wave before guests can check out. Use the scanner only after its migration and event staff assignments are complete.</p>
           </div>
         </section>
 
         <section className="grid gap-3 md:grid-cols-3">
           <Feature icon={ShieldCheck} title="Isolated ticket records" body="Ticketing uses its own event, tier, reservation, payment, ticket, refund and check-in data." />
-          <Feature icon={Clock3} title="Reservation foundation" body="The database foundation supports short holds and inventory locking; public checkout is not connected." />
+          <Feature icon={Clock3} title="Reserved checkout" body="Public checkout uses server-priced tickets and atomic inventory reservations. The server verifies payment before issuing tickets; event availability is controlled from the event card above." />
           <Feature icon={Users} title="Isolated staff scanner" body="Gate staff sign into /scanner with their own verified account and can validate only events assigned by an admin." />
         </section>
           </div>
         </details>
 
         <footer className="rounded-2xl border border-amber-200/10 bg-[#111016] p-5">
-          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">Sales remain locked</p><p className="mt-1 text-xs leading-5 text-slate-400">Do not publish or accept customer payments until server-verified provider callbacks, atomic reservation expiry, idempotent ticket issuance, customer ownership checks, refund reconciliation and online gate validation are implemented and tested.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
+          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">You control when each event goes on sale</p><p className="mt-1 text-xs leading-5 text-slate-400">Create the event and ticket wave here, then use the owner-only publish control to list it publicly or pause sales. Checkout verifies payment server-side before issuing tickets. The public listing stays empty until an event has actually been opened for sales; no event or ticket offer is created automatically.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
         </footer>
       </div>
     </main>
@@ -700,7 +769,7 @@ function Feature({ icon: Icon, title, body }: { icon: typeof Ticket; title: stri
   return <article className="rounded-2xl border border-white/10 bg-[#17121e] p-4 shadow-lg shadow-black/10"><div className="flex items-center gap-2 text-orange-300"><Icon size={16} /><h3 className="text-xs font-black uppercase tracking-wide text-slate-200">{title}</h3></div><p className="mt-2 text-xs leading-5 text-slate-400">{body}</p></article>;
 }
 
-function SecurityControl({ icon: Icon, title, state, body }: { icon: typeof Ticket; title: string; state: 'Not live' | 'Foundation' | 'Scanner built · migration required'; body: string }) {
+function SecurityControl({ icon: Icon, title, state, body }: { icon: typeof Ticket; title: string; state: string; body: string }) {
   const isFoundation = state === 'Foundation';
   return (
     <article className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">

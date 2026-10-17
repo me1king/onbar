@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, CalendarDays, Clock3, Ghost, MapPin, ShieldAlert, ShieldCheck, Ticket } from 'lucide-react';
 import { getPublicTicketEvent } from '@/lib/ticketing/publicEvents.server';
 import TicketCheckoutButton from '@/app/tickets/TicketCheckoutButton';
+import TicketingBrand from '@/app/tickets/TicketingBrand';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,8 @@ export default async function TicketEventPage({ params }: PageProps) {
 
   if (!result.ok) {
     return (
+      <>
+      <TicketingBrand />
       <main className="min-h-[70vh] bg-[#0d0a12] px-4 py-16 text-white sm:px-6">
         <div className="mx-auto max-w-3xl rounded-3xl border border-white/10 bg-[#17121e] p-8 text-center">
           <Ghost className="mx-auto text-orange-300" size={30} />
@@ -57,6 +60,7 @@ export default async function TicketEventPage({ params }: PageProps) {
           <Link href="/tickets" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18]">Back to events</Link>
         </div>
       </main>
+      </>
     );
   }
 
@@ -65,6 +69,8 @@ export default async function TicketEventPage({ params }: PageProps) {
 
   const now = Date.now();
   return (
+    <>
+    <TicketingBrand />
     <main className="relative min-h-screen overflow-hidden bg-[#0d0a12] px-4 py-8 text-white sm:px-6 sm:py-12">
       <div aria-hidden="true" className="pointer-events-none absolute -left-36 top-24 h-96 w-96 rounded-full bg-orange-500/10 blur-[110px]" />
       <div aria-hidden="true" className="pointer-events-none absolute -right-32 top-[34rem] h-96 w-96 rounded-full bg-violet-600/10 blur-[110px]" />
@@ -74,7 +80,7 @@ export default async function TicketEventPage({ params }: PageProps) {
           <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 -z-10 h-80 w-80 rounded-full bg-orange-500/20 blur-[90px]" />
           <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-72 w-72 rounded-full bg-violet-500/15 blur-[90px]" />
           <div className="relative max-w-4xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-100"><Ghost size={14} /> Official ONLINE BAR event</div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-100"><Ghost size={14} /> Official Midnight Society KE event</div>
             <p className="mt-7 text-[10px] font-black uppercase tracking-[0.2em] text-orange-200/75">{event.city} · After dark</p>
             <h1 className="mt-2 text-4xl font-black leading-[0.98] tracking-tight sm:text-6xl">{event.title}<span className="text-orange-400">.</span></h1>
             <p className="mt-5 max-w-2xl text-sm leading-6 text-slate-200/80 sm:text-base">{event.description || 'The details are in. Get ready for an unforgettable night.'}</p>
@@ -175,6 +181,7 @@ export default async function TicketEventPage({ params }: PageProps) {
         <footer className="border-t border-white/[0.08] pt-5 text-center text-[10px] text-slate-500">ONLINE BAR Ticketing · No tricks, no fake confirmations.</footer>
       </div>
     </main>
+    </>
   );
 }
 

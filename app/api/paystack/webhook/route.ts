@@ -52,7 +52,18 @@ export async function POST(request: Request) {
 
             if (!ticketAttemptError && ticketAttempt) {
                 if (event.event === 'charge.failed') {
-                    return NextResponse.json({ received: true, message: 'Ticketing payment failed.' });
+                    const { data: failureResult, error: failureError } = await database.rpc('ticketing_fail_checkout', {
+                        p_payment_reference: ticketReference
+                    });
+                    if (failureError) {
+                        console.error('[TicketingPaystack] Could not record failed ticket payment:', failureError);
+                        return NextResponse.json({ error: 'Ticket payment failure could not be recorded.' }, { status: 500 });
+                    }
+                    if (!failureResult || !['payment_failed', 'paid', 'reconciliation_required'].includes(failureResult.status)) {
+                        console.error('[TicketingPaystack] Failed ticket payment returned an invalid status.');
+                        return NextResponse.json({ error: 'Ticket payment failure could not be confirmed.' }, { status: 500 });
+                    }
+                    return NextResponse.json({ received: true, message: 'Ticketing payment failure recorded.' });
                 }
                 if (ticketAttempt.status === 'succeeded' || ticketAttempt.status === 'reconciliation_required') {
                     return NextResponse.json({
