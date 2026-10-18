@@ -171,11 +171,12 @@ export async function POST(request: Request) {
 
   const orderId = Number(body.orderId);
   const status = body.status;
-  if (!Number.isSafeInteger(orderId) || orderId < 1 || !['Paid', 'Dispatched', 'Delivered'].includes(String(status))) {
+  if (!Number.isSafeInteger(orderId) || orderId < 1
+    || !['Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
     return NextResponse.json({ error: 'A valid order and notification status are required.' }, { status: 400 });
   }
-  if (internal && status !== 'Paid') {
-    return NextResponse.json({ error: 'Internal notifications may only report verified payments.' }, { status: 403 });
+  if (internal && !['Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
+    return NextResponse.json({ error: 'This delivery status cannot be sent as an internal notification.' }, { status: 403 });
   }
 
   const database = createServerSupabaseClient();
@@ -217,7 +218,7 @@ export async function POST(request: Request) {
   const channels = preferenceResult.data?.channels
     ? CUSTOMER_NOTIFICATION_CHANNELS.filter(channel => preferenceResult.data?.channels?.includes(channel))
     : rule.channels;
-  const trackingUrl = `${getPublicBaseUrl()}/track`;
+  const trackingUrl = `${getPublicBaseUrl()}/track?id=${encodeURIComponent(String(orderId))}`;
   const name = order.customer_name || 'there';
   const subject = renderTemplate(rule.subject, name, orderId, trackingUrl, status as CustomerNotificationStatus);
   const message = renderTemplate(rule.message, name, orderId, trackingUrl, status as CustomerNotificationStatus);

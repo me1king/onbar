@@ -1,4 +1,4 @@
-export const CUSTOMER_NOTIFICATION_STATUSES = ['Paid', 'Dispatched', 'Delivered'] as const;
+export const CUSTOMER_NOTIFICATION_STATUSES = ['Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'] as const;
 export type CustomerNotificationStatus = typeof CUSTOMER_NOTIFICATION_STATUSES[number];
 
 export const CUSTOMER_NOTIFICATION_CHANNELS = ['email', 'whatsapp', 'sms'] as const;
@@ -32,6 +32,18 @@ export const DEFAULT_CUSTOMER_NOTIFICATION_CONFIG: CustomerNotificationConfig = 
     channels: ['email'],
     subject: 'Your order #{orderId} is on the way',
     message: 'Hi {name}, your order #{orderId} has been dispatched and is on the way. Track your order: {trackingUrl}'
+  },
+  'Picked Up': {
+    enabled: true,
+    channels: ['email'],
+    subject: 'Your order #{orderId} has been collected',
+    message: 'Hi {name}, your order #{orderId} has been collected from the shop and is being prepared for delivery. Track your order: {trackingUrl}'
+  },
+  'Out for Delivery': {
+    enabled: true,
+    channels: ['email'],
+    subject: 'Your order #{orderId} is out for delivery',
+    message: 'Hi {name}, your order #{orderId} is on its way to you now. Track its progress here: {trackingUrl}'
   },
   Delivered: {
     enabled: true,

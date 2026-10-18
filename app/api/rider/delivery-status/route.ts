@@ -89,9 +89,41 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (walletError) console.error('[RiderDelivery] Status saved but wallet refresh failed:', walletError);
 
+  let notificationWarning: string | undefined;
+  const notificationSecret = process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
+  if (['Picked Up', 'Out for Delivery', 'Delivered'].includes(updatedStatus)) {
+    if (!notificationSecret) {
+      notificationWarning = 'Delivery status was saved, but automatic customer messages are not configured on the server.';
+    } else {
+      try {
+        const notificationResponse = await fetch(new URL('/api/admin/notify-customer', request.url), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${notificationSecret}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ orderId, status: updatedStatus }),
+          cache: 'no-store'
+        });
+        const notificationResult = await notificationResponse.json() as { error?: string; ok?: boolean };
+        if (!notificationResponse.ok || notificationResult.ok === false) {
+          notificationWarning = notificationResult.error || 'Delivery status was saved, but a customer notification could not be sent.';
+        }
+      } catch (notificationError) {
+        console.error('[RiderDelivery] Customer notification request failed:', notificationError);
+        notificationWarning = 'Delivery status was saved, but a customer notification could not be sent.';
+      }
+    }
+  }
+
   return NextResponse.json({
     status: updatedStatus,
     wallet: wallet || undefined,
-    ...(walletError ? { warning: 'Delivery status is saved, but wallet totals could not be refreshed.' } : {})
+    ...((walletError || notificationWarning) ? {
+      warning: [
+        walletError ? 'Delivery status is saved, but wallet totals could not be refreshed.' : null,
+        notificationWarning
+      ].filter(Boolean).join(' ')
+    } : {})
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

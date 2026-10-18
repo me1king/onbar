@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Search, Package, Truck, CheckCircle, Clock, AlertCircle, MapPin, ShieldCheck, MessageSquare, Cookie, Zap, ArrowRight, Loader2 } from 'lucide-react';
+import { Search, Package, Truck, CheckCircle, Clock, AlertCircle, MapPin, Navigation, ShieldCheck, MessageSquare, Cookie, Zap, ArrowRight, Loader2 } from 'lucide-react';
 import { formatPrice, cn, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -17,13 +17,13 @@ interface OrderDetails {
   id: number;
   status: string;
   customer_name: string;
-  customer_phone: string;
   total_price: number;
   created_at: string;
   payment_method: string;
   rider_name?: string | null;
-  rider_phone?: string | null;
   delivery_eta_minutes?: number | null;
+  rider_location?: { latitude: number; longitude: number; updatedAt: string } | null;
+  rider_location_message?: string | null;
 }
 
 interface QuickSnack {
@@ -45,8 +45,10 @@ const STEPS = [
 ];
 
 function TrackingContent() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [orderId, setOrderId] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [order, setOrder] = useState<OrderDetails | null>(null);
+  const [trackingToken, setTrackingToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snacks, setSnacks] = useState<QuickSnack[]>([]);
@@ -71,101 +73,87 @@ function TrackingContent() {
       fetchSnacks();
   }, []);
 
-  const fetchOrder = async (query: string) => {
-    if (!supabase || !query.trim()) return;
+  const fetchOrder = useCallback(async (id: string, phone: string) => {
+    if (!id.trim() || !phone.trim()) return;
     setLoading(true);
     setError(null);
-
-    const failsafe = setTimeout(() => {
-        setLoading(false);
-    }, 3000);
-
     try {
-      const cleanQuery = query.trim();
-      const isIdSearch = !isNaN(Number(cleanQuery));
-
-      let dbQuery = supabase
-        .from('orders')
-        .select('*');
-
-      if (isIdSearch) {
-        dbQuery = dbQuery.eq('id', Number(cleanQuery));
-      } else {
-        dbQuery = dbQuery.or(`customer_phone.eq.${cleanQuery},customer_name.ilike.%${cleanQuery}%`);
+      const response = await fetch('/api/delivery/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: id.trim(), phone: phone.trim() }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as {
+        order?: OrderDetails;
+        token?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.order || !result.token) {
+        throw new Error(result.error || 'Order or contact details did not match.');
       }
-
-      const { data, error: fetchError } = await dbQuery
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (fetchError || !data) {
-        setError(`No order found for "${cleanQuery}". Enter a valid Order ID or phone number.`);
-        setOrder(null);
-      } else {
-        setOrder(data as OrderDetails);
-      }
-    } catch (err: unknown) {
-      console.error("Track Error:", err);
-      setError("Lookup encountered an issue. Please try again.");
+      setOrder(result.order);
+      setTrackingToken(result.token);
+    } catch (err) {
+      console.error('Track Error:', err);
+      setError(err instanceof Error ? err.message : 'Order tracking could not be loaded.');
       setOrder(null);
+      setTrackingToken('');
     } finally {
-      clearTimeout(failsafe);
       setLoading(false);
     }
-  };
+  }, []);
 
-  // 1. Auto-load logic (Member memory & Deep Link)
+  const refreshTracking = useCallback(async (token: string) => {
+    try {
+      const response = await fetch('/api/delivery/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as { order?: OrderDetails; error?: string };
+      if (!response.ok || !result.order) {
+        if (response.status === 401) {
+          setTrackingToken('');
+          setError(result.error || 'Tracking access expired. Verify your order again.');
+          setOrder(null);
+        }
+        return;
+      }
+      setOrder(result.order);
+    } catch (error) {
+      console.error('[DeliveryTracking] Live refresh failed:', error);
+    }
+  }, []);
+
+  // Deep links prefill the order ID; a signed-in customer can verify with their profile phone.
   useEffect(() => {
     const urlId = searchParams?.get('id');
 
     async function initialLoad() {
-        if (urlId) {
-            setSearchQuery(urlId);
-            fetchOrder(urlId);
-            return;
-        }
-
-        // Check if member is logged in
-        if (supabase) {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                // Fetch member's profile for phone
-                const { data: profile } = await supabase.from('profiles').select('phone_number').eq('id', session.user.id).single();
-                const searchId = profile?.phone_number || session.user.email;
-                if (searchId) fetchOrder(searchId);
-            }
-        }
+      if (urlId) setOrderId(urlId);
+      if (!supabase) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data: profile } = await supabase.from('profiles')
+        .select('phone_number')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (profile?.phone_number) {
+        setCustomerPhone(profile.phone_number);
+        if (urlId) void fetchOrder(urlId, profile.phone_number);
+      }
     }
-    initialLoad();
-  }, [searchParams]);
+    void initialLoad();
+  }, [searchParams, fetchOrder]);
 
-  // 2. Real-time "Magic" Listener
+  // Refresh only the explicitly verified order; never subscribe to unrestricted order-row payloads.
   useEffect(() => {
-    if (!supabase || !order) return;
-
-    const channel = supabase
-        .channel(`track-order-${order.id}`)
-        .on(
-            'postgres_changes',
-            {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'orders',
-                filter: `id=eq.${order.id}`,
-            },
-            (payload) => {
-                setOrder(payload.new as OrderDetails);
-            }
-        )
-        .subscribe();
-
-    return () => {
-        if (supabase) {
-            supabase.removeChannel(channel);
-        }
-    };
-  }, [order]);
+    if (!trackingToken) return;
+    const interval = window.setInterval(() => void refreshTracking(trackingToken), 30_000);
+    return () => window.clearInterval(interval);
+  }, [trackingToken, refreshTracking]);
 
   const getStatusIndex = (status: string) => {
     const idx = STEPS.findIndex(s => s.id.toLowerCase() === status.toLowerCase());
@@ -191,21 +179,34 @@ function TrackingContent() {
 
         <Card className="rounded-[3rem] border border-slate-100 shadow-2xl shadow-slate-200/50 mb-12 overflow-hidden bg-white">
             <CardContent className="p-8 sm:p-14 bg-slate-50/30">
-                <form onSubmit={(e) => { e.preventDefault(); fetchOrder(searchQuery); }} className="space-y-6">
-                    <div className="flex flex-col md:flex-row gap-4">
+                <form onSubmit={(e) => { e.preventDefault(); void fetchOrder(orderId, customerPhone); }} className="space-y-6">
+                    <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
                         <div className="relative flex-1">
                             <Input
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Order ID or Phone Number"
-                                className="h-20 rounded-[1.8rem] border-slate-200 bg-white pl-16 text-lg font-black shadow-inner focus:ring-primary focus:border-primary"
+                                value={orderId}
+                                onChange={(e) => setOrderId(e.target.value)}
+                                inputMode="numeric"
+                                autoComplete="off"
+                                placeholder="Order number"
+                                aria-label="Order number"
+                                className="h-16 rounded-2xl border-slate-200 bg-white pl-14 text-base font-black shadow-inner focus:ring-primary focus:border-primary"
                             />
-                            <Search className="absolute left-6 top-1/2 -translate-y-1/2 h-6 w-6 text-slate-300" />
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
                         </div>
-                        <Button type="submit" disabled={loading} className="h-20 px-12 rounded-[1.8rem] bg-primary text-white font-black uppercase text-sm tracking-widest shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-95 shrink-0">
+                        <Input
+                            value={customerPhone}
+                            onChange={(e) => setCustomerPhone(e.target.value)}
+                            type="tel"
+                            autoComplete="tel"
+                            placeholder="Phone used at checkout"
+                            aria-label="Phone number used at checkout"
+                            className="h-16 rounded-2xl border-slate-200 bg-white px-5 text-base font-bold shadow-inner focus:ring-primary focus:border-primary"
+                        />
+                        <Button type="submit" disabled={loading || !orderId.trim() || !customerPhone.trim()} className="h-16 px-8 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-95 shrink-0">
                             {loading ? <Loader2 className="animate-spin" /> : 'Locate Order'}
                         </Button>
                     </div>
+                    <p className="text-xs font-medium text-slate-500">For your privacy, confirm both the order number and the phone number used at checkout.</p>
                     {error && (
                         <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center gap-3 animate-in slide-in-from-top-2">
                             <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
@@ -359,7 +360,7 @@ function TrackingContent() {
 
                         {/* Contextual Action: WhatsApp Dispatch */}
                         {['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status) && (
-                            <div className="mt-12 p-8 bg-indigo-50 rounded-3xl border border-indigo-100 flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse">
+                            <div className="mt-12 p-8 bg-indigo-50 rounded-3xl border border-indigo-100 flex flex-col md:flex-row items-center justify-between gap-6">
                                 <div className="flex items-center gap-4">
                                     <div className="h-12 w-12 rounded-2xl bg-white flex items-center justify-center text-indigo-600 shadow-sm"><Truck className="h-6 w-6" /></div>
                                     <div>
@@ -367,22 +368,46 @@ function TrackingContent() {
                                             {order.rider_name ? `Runner ${order.rider_name} is moving!` : 'Your delivery is moving!'}
                                         </p>
                                         <p className="text-indigo-600 text-[10px] font-bold uppercase">
-                                            {order.rider_name ? 'Our premium runner is approaching your location.' : 'Our runner is approaching your location.'}
+                                            {order.status === 'Out for Delivery' ? 'Your order is on its way to the delivery address.' : 'Your order is being prepared for the journey.'}
                                         </p>
                                     </div>
                                 </div>
                                 <Button
-                                    onClick={() => {
-                                        if (order.rider_phone) {
-                                            window.open(`https://wa.me/${order.rider_phone.replace(/\D/g, '')}?text=Hello ${order.rider_name}! I am tracking Order #${order.id}. What is your ETA?`, '_blank');
-                                        } else {
-                                            handleWhatsAppDispatch();
-                                        }
-                                    }}
+                                    onClick={handleWhatsAppDispatch}
                                     className="h-12 px-8 rounded-xl bg-primary hover:bg-primary/90 text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20"
                                 >
-                                    <MessageSquare className="h-4 w-4 mr-2" /> {order.rider_name ? `Message ${order.rider_name}` : 'Message Dispatch'}
+                                    <MessageSquare className="h-4 w-4 mr-2" /> Message Dispatch
                                 </Button>
+                            </div>
+                        )}
+
+                        {order.status === 'Out for Delivery' && (
+                            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-5">
+                                {order.rider_location ? (
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="flex items-start gap-3">
+                                            <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                            <div>
+                                                <p className="text-xs font-black uppercase tracking-wide text-foreground">Live rider position</p>
+                                                <p className="mt-1 text-xs text-slate-500">
+                                                    Updated {new Date(order.rider_location.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Position is approximate for privacy.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <a
+                                            href={`https://www.google.com/maps/search/?api=1&query=${order.rider_location.latitude},${order.rider_location.longitude}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:border-primary/30 hover:text-primary"
+                                        >
+                                            <MapPin className="h-4 w-4" /> View approximate location
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs font-semibold text-slate-500">
+                                        {order.rider_location_message || 'Live rider location will appear here when a fresh GPS update is available.'}
+                                    </p>
+                                )}
                             </div>
                         )}
 
