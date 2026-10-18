@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { BatteryMedium, ChevronRight } from 'lucide-react';
@@ -70,6 +70,17 @@ interface LiveDispatchMapProps {
     activeRoutes?: { id: string, polyline: string, color?: string }[];
 }
 
+function FitActiveRoutes({ routes }: { routes: NonNullable<LiveDispatchMapProps['activeRoutes']> }) {
+  const map = useMap();
+  useEffect(() => {
+    const points = routes.flatMap(route => decodePolyline(route.polyline));
+    if (points.length > 1) {
+      map.fitBounds(points, { padding: [48, 48], maxZoom: 15, animate: true });
+    }
+  }, [map, routes]);
+  return null;
+}
+
 export default function LiveDispatchMap({ riders, demandZones = [], showDemand = true, onSelectRider, activeRoutes = [] }: LiveDispatchMapProps) {
   useEffect(() => {
     fixLeafletIcons();
@@ -85,13 +96,14 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
   );
 
   return (
-    <div className="w-full h-full relative rounded-[3rem] overflow-hidden border-8 border-white shadow-2xl z-0 group text-left">
+    <div className="w-full h-full relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner z-0 group text-left">
       <MapContainer
         center={center}
         zoom={13}
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
       >
+        <FitActiveRoutes routes={activeRoutes} />
         {/* 🗺️ Premium Voyager Tiles (Google Maps style) */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'

@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { isMerchantOpenAt } from '@/lib/merchantAvailability';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
+import { routingEngine, type GeoPoint } from '@/lib/engines/routingEngine';
 
 export const dynamic = 'force-dynamic';
 
@@ -280,84 +281,121 @@ async function assessVendors(
   };
 }
 
-function recommendRiders(
+function eligibleRiders(riders: Rider[], loads: Map<string, number>) {
+  const now = Date.now();
+  return riders.filter(rider =>
+    rider.verification_status === 'Verified'
+    && ['Idle', 'Delivering'].includes(rider.status || '')
+    && Boolean(rider.updated_at
+      && now >= new Date(rider.updated_at).getTime()
+      && now - new Date(rider.updated_at).getTime() <= 15 * 60 * 1000)
+    && (loads.get(rider.rider_phone) || 0) < Math.max(1, Number(rider.max_deliveries || 3))
+  );
+}
+
+function coordinateKey(point: GeoPoint) {
+  return `${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`;
+}
+
+type RoadLookup = Map<string, Map<string, { distanceMeters: number; durationSeconds: number }>>;
+
+async function buildRoadDistanceLookup(
   riders: Rider[],
   loads: Map<string, number>,
   vendorLocations: Array<{ latitude: number; longitude: number }>
-) {
+): Promise<{ lookup: RoadLookup; error: string | null }> {
+  const lookup: RoadLookup = new Map();
   const now = Date.now();
+  const locatedRiders = eligibleRiders(riders, loads).flatMap(rider => {
+    const latitude = numberOrNull(rider.last_known_lat);
+    const longitude = numberOrNull(rider.last_known_lng);
+    const locationTime = rider.location_updated_at ? new Date(rider.location_updated_at).getTime() : 0;
+    if (!validCoordinates(latitude, longitude) || locationTime <= 0 || now < locationTime || now - locationTime > 5 * 60 * 1000) return [];
+    return [{
+      rider,
+      point: { latitude: latitude!, longitude: longitude! },
+      activeLoad: loads.get(rider.rider_phone) || 0,
+      healthScore: Number(rider.health_score || 0)
+    }];
+  }).sort((a, b) =>
+    (a.activeLoad - b.activeLoad) || (b.healthScore - a.healthScore)
+  ).slice(0, 50);
+
+  const uniqueLocations = Array.from(new Map(vendorLocations
+    .filter(location => validCoordinates(location.latitude, location.longitude))
+    .map(location => [coordinateKey(location), location] as const)).values());
+  if (locatedRiders.length === 0 || uniqueLocations.length === 0) return { lookup, error: null };
+  if (!routingEngine.hasOsrmProvider()) {
+    return { lookup, error: 'OSRM_BASE_URL is not configured on the server.' };
+  }
+
+  try {
+    for (let offset = 0; offset < uniqueLocations.length; offset += 50) {
+      const locations = uniqueLocations.slice(offset, offset + 50);
+      const matrix = await routingEngine.computeRoadDistanceMatrix(
+        locatedRiders.map(candidate => candidate.point),
+        locations
+      );
+      locations.forEach((location, destinationIndex) => {
+        const ridersAtLocation = new Map<string, { distanceMeters: number; durationSeconds: number }>();
+        locatedRiders.forEach((candidate, sourceIndex) => {
+          const distanceMeters = matrix.distancesMeters[sourceIndex]?.[destinationIndex];
+          const durationSeconds = matrix.durationsSeconds[sourceIndex]?.[destinationIndex];
+          if (distanceMeters !== null && distanceMeters !== undefined
+            && durationSeconds !== null && durationSeconds !== undefined) {
+            ridersAtLocation.set(candidate.rider.rider_phone, { distanceMeters, durationSeconds });
+          }
+        });
+        lookup.set(coordinateKey(location), ridersAtLocation);
+      });
+    }
+    return { lookup, error: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'OSRM road routing is unavailable.';
+    console.error('[AdminDispatch] OSRM road-distance ranking failed:', message);
+    return { lookup: new Map(), error: message };
+  }
+}
+
+function recommendRiders(
+  riders: Rider[],
+  loads: Map<string, number>,
+  vendorLocations: Array<{ latitude: number; longitude: number }>,
+  roadLookup: RoadLookup,
+  routingError: string | null
+) {
   const validVendorLocations = vendorLocations.filter(location =>
     validCoordinates(location.latitude, location.longitude)
   );
-
-  const candidates = riders
-    .filter(rider =>
-      rider.verification_status === 'Verified'
-      && ['Idle', 'Delivering'].includes(rider.status || '')
-      && Boolean(rider.updated_at && now - new Date(rider.updated_at).getTime() <= 15 * 60 * 1000)
-      && (loads.get(rider.rider_phone) || 0) < Math.max(1, Number(rider.max_deliveries || 3))
-    )
-    .map(rider => {
-      const riderLat = numberOrNull(rider.last_known_lat);
-      const riderLng = numberOrNull(rider.last_known_lng);
-      const locationUpdated = rider.location_updated_at ? new Date(rider.location_updated_at).getTime() : 0;
-      const locationFresh = locationUpdated > 0 && now - locationUpdated <= 15 * 60 * 1000;
-      let distance: number | null = null;
-      if (validCoordinates(riderLat, riderLng) && locationFresh && validVendorLocations.length > 0) {
-        const remainingStops = [...validVendorLocations];
-        let routeLat = riderLat!;
-        let routeLng = riderLng!;
-        let routeDistance = 0;
-        while (remainingStops.length > 0) {
-          let closestIndex = 0;
-          let closestDistance = distanceKm(
-            routeLat,
-            routeLng,
-            remainingStops[0].latitude,
-            remainingStops[0].longitude
-          );
-          for (let index = 1; index < remainingStops.length; index += 1) {
-            const candidateDistance = distanceKm(
-              routeLat,
-              routeLng,
-              remainingStops[index].latitude,
-              remainingStops[index].longitude
-            );
-            if (candidateDistance < closestDistance) {
-              closestDistance = candidateDistance;
-              closestIndex = index;
-            }
-          }
-          const [nextStop] = remainingStops.splice(closestIndex, 1);
-          routeDistance += closestDistance;
-          routeLat = nextStop.latitude;
-          routeLng = nextStop.longitude;
-        }
-        distance = routeDistance;
-      }
-      const activeLoad = loads.get(rider.rider_phone) || 0;
-      const maxDeliveries = Math.max(1, Number(rider.max_deliveries || 3));
-      const healthScore = Number(rider.health_score || 0);
-      const workloadRatio = activeLoad / maxDeliveries;
-      const suitabilityScore = (distance ?? 0)
-        + workloadRatio * 8
-        - Math.min(100, Math.max(0, healthScore)) * 0.02;
-      return {
-        riderPhone: rider.rider_phone,
-        riderName: rider.rider_name,
-        status: rider.status,
-        activeLoad,
-        maxDeliveries,
-        distanceKm: distance === null ? null : Number(distance.toFixed(2)),
-        locationAvailable: distance !== null,
-        healthScore,
-        suitabilityScore: Number(suitabilityScore.toFixed(2))
-      };
-    })
-    .sort((a, b) => {
-      if (a.locationAvailable !== b.locationAvailable) return a.locationAvailable ? -1 : 1;
-      return a.suitabilityScore - b.suitabilityScore;
-    });
+  const candidates = eligibleRiders(riders, loads).map(rider => {
+    let route: { distanceMeters: number; durationSeconds: number } | undefined;
+    for (const location of validVendorLocations) {
+      const candidateRoute = roadLookup.get(coordinateKey(location))?.get(rider.rider_phone);
+      if (candidateRoute && (!route || candidateRoute.distanceMeters < route.distanceMeters)) route = candidateRoute;
+    }
+    const activeLoad = loads.get(rider.rider_phone) || 0;
+    const maxDeliveries = Math.max(1, Number(rider.max_deliveries || 3));
+    const healthScore = Number(rider.health_score || 0);
+    const distance = route?.distanceMeters ?? null;
+    const suitabilityScore = (distance === null ? 100_000 : distance / 1000)
+      + (activeLoad / maxDeliveries) * 8
+      - Math.min(100, Math.max(0, healthScore)) * 0.02;
+    return {
+      riderPhone: rider.rider_phone,
+      riderName: rider.rider_name,
+      status: rider.status,
+      activeLoad,
+      maxDeliveries,
+      distanceKm: distance === null ? null : Number((distance / 1000).toFixed(2)),
+      etaMinutes: route ? Math.ceil(route.durationSeconds / 60) : null,
+      locationAvailable: distance !== null,
+      healthScore,
+      suitabilityScore
+    };
+  }).sort((a, b) => {
+    if (a.locationAvailable !== b.locationAvailable) return a.locationAvailable ? -1 : 1;
+    return a.suitabilityScore - b.suitabilityScore;
+  });
 
   return {
     candidates,
@@ -366,8 +404,10 @@ function recommendRiders(
       ? 'Selected merchant pickup coordinates are missing; rider-to-pickup distance cannot be ranked.'
       : candidates.length === 0
         ? 'No verified rider has a recent online heartbeat, an idle/delivering status, and available capacity.'
-        : !candidates.some(candidate => candidate.locationAvailable)
-          ? 'Eligible riders do not have a fresh GPS location for pickup-distance ranking.'
+        : routingError
+            ? 'OSRM road-route calculation is unavailable. Check the OSRM_BASE_URL service configuration.'
+          : !candidates.some(candidate => candidate.locationAvailable)
+            ? 'Eligible riders need a fresh GPS position and a routable road path to the pickup.'
         : null
   };
 }
@@ -460,22 +500,35 @@ async function loadDispatchData(database: SupabaseClient) {
     itemsByOrder.set(item.order_id, lines);
   }
 
-  const jobs = await Promise.all(orders.map(async order => {
+  const preparedJobs = await Promise.all(orders.map(async order => {
     const items = itemsByOrder.get(order.id) || [];
     const orderEvents = (eventData || [])
       .filter(event => Number(event.order_id) === order.id)
       .map(event => ({ application_id: event.application_id, event_type: event.event_type }));
     const fulfillment = await assessVendors(database, order, items, orderEvents, !eventError);
-    const riderRecommendation = recommendRiders(riders, loads, fulfillment.selectedVendorLocations);
     return {
       ...order,
       items,
-      fulfillment,
+      fulfillment
+    };
+  }));
+  const allVendorLocations = preparedJobs.flatMap(job => job.fulfillment.selectedVendorLocations);
+  const roadDistances = await buildRoadDistanceLookup(riders, loads, allVendorLocations);
+  const jobs = preparedJobs.map(job => {
+    const riderRecommendation = recommendRiders(
+      riders,
+      loads,
+      job.fulfillment.selectedVendorLocations,
+      roadDistances.lookup,
+      roadDistances.error
+    );
+    return {
+      ...job,
       riderCandidates: riderRecommendation.candidates,
       recommendedRider: riderRecommendation.recommended,
       riderAvailabilityReason: riderRecommendation.reason
     };
-  }));
+  });
 
   return {
     jobs,

@@ -2,6 +2,8 @@ function getSessionSecret() {
   return process.env.ADMIN_SESSION_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
 }
 
+export const ADMIN_SESSION_TTL_SECONDS = 30 * 60;
+
 const fullAdminPermissions = [
   'can_view_revenue',
   'can_manage_inventory',
@@ -89,12 +91,14 @@ export async function createSessionCookie(
     email = ''
 ) {
   const token = crypto.randomUUID();
+  const issuedAt = Date.now();
   const payload = JSON.stringify({
     role,
     permissions,
     supplier_id,
     email,
-    expiresAt: Date.now() + 24 * 60 * 60 * 1000
+    issuedAt,
+    expiresAt: issuedAt + ADMIN_SESSION_TTL_SECONDS * 1000
   });
 
   const base64Payload = toBase64(payload);
@@ -149,15 +153,18 @@ export async function verifySessionCookie(value?: string): Promise<{
       permissions?: unknown;
       supplier_id?: unknown;
       email?: unknown;
+      issuedAt?: unknown;
       expiresAt?: unknown;
     };
     if (
       typeof session.role !== 'string'
       || typeof session.permissions !== 'object'
       || session.permissions === null
-      || (session.expiresAt !== undefined && (
-        typeof session.expiresAt !== 'number' || session.expiresAt <= Date.now()
-      ))
+      || typeof session.issuedAt !== 'number'
+      || typeof session.expiresAt !== 'number'
+      || session.issuedAt > Date.now()
+      || session.expiresAt <= Date.now()
+      || session.expiresAt - session.issuedAt > ADMIN_SESSION_TTL_SECONDS * 1000
     ) return null;
 
     const normalizedRole = session.role.trim().toLowerCase();

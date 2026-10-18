@@ -11,7 +11,7 @@ export interface GeoPoint {
 }
 
 export interface ComputedRoute {
-    provider: 'google' | 'mapbox';
+    provider: 'osrm' | 'google' | 'mapbox';
     distanceMeters: number;
     distanceKm: number;
     durationSeconds: number;
@@ -27,12 +27,36 @@ export interface ComputedRoute {
     calculatedAt: string;
 }
 
+export interface RoadDistanceMatrix {
+    distancesMeters: Array<Array<number | null>>;
+    durationsSeconds: Array<Array<number | null>>;
+}
+
+interface OsrmRouteResponse {
+    code?: string;
+    message?: string;
+    routes?: Array<{
+        distance?: number;
+        duration?: number;
+        geometry?: string;
+    }>;
+}
+
+interface OsrmTableResponse {
+    code?: string;
+    message?: string;
+    distances?: Array<Array<number | null>>;
+    durations?: Array<Array<number | null>>;
+}
+
 class RoutingEngine {
     private static instance: RoutingEngine;
     private apiKey: string | undefined;
+    private osrmBaseUrl: string | undefined;
 
     private constructor() {
         this.apiKey = process.env.GOOGLE_MAPS_API_KEY;
+        this.osrmBaseUrl = process.env.OSRM_BASE_URL?.trim().replace(/\/+$/, '');
     }
 
     public static getInstance(): RoutingEngine {
@@ -42,12 +66,22 @@ class RoutingEngine {
         return RoutingEngine.instance;
     }
 
+    public hasOsrmProvider(): boolean {
+        return Boolean(this.osrmBaseUrl);
+    }
+
     /**
      * Computes the fastest motorcycle route between two points.
      */
     public async computeFastestRoute(origin: GeoPoint, destination: GeoPoint): Promise<ComputedRoute> {
+        this.validatePoint(origin);
+        this.validatePoint(destination);
+
+        if (this.osrmBaseUrl) {
+            return this.computeOsrmRoute(origin, destination);
+        }
         if (!this.apiKey) {
-            throw new Error("ROUTING: GOOGLE_MAPS_API_KEY is missing from environment.");
+            throw new Error('ROUTING: Set OSRM_BASE_URL to an OSRM service to enable road routing.');
         }
 
         try {
@@ -90,6 +124,96 @@ class RoutingEngine {
         } catch (err) {
             console.error("❌ [ROUTING_ENGINE] Route calculation failed:", err);
             throw err;
+        }
+    }
+
+    public async computeRoadDistanceMatrix(
+        sources: GeoPoint[],
+        destinations: GeoPoint[]
+    ): Promise<RoadDistanceMatrix> {
+        if (!this.osrmBaseUrl) {
+            throw new Error('ROUTING: Set OSRM_BASE_URL to an OSRM service to enable road-distance ranking.');
+        }
+        if (sources.length === 0 || destinations.length === 0 || sources.length > 50 || destinations.length > 50) {
+            throw new Error('ROUTING: A distance matrix must contain 1–50 origins and 1–50 destinations.');
+        }
+        [...sources, ...destinations].forEach(point => this.validatePoint(point));
+
+        const coordinates = [...sources, ...destinations]
+            .map(point => `${point.longitude},${point.latitude}`)
+            .join(';');
+        const sourceIndexes = sources.map((_, index) => index).join(';');
+        const destinationIndexes = destinations.map((_, index) => index + sources.length).join(';');
+        const url = new URL(`${this.osrmBaseUrl}/table/v1/driving/${coordinates}`);
+        url.searchParams.set('sources', sourceIndexes);
+        url.searchParams.set('destinations', destinationIndexes);
+        url.searchParams.set('annotations', 'distance,duration');
+
+        const result = await this.fetchOsrm<OsrmTableResponse>(url);
+        if (result.code !== 'Ok' || !result.distances || !result.durations
+            || result.distances.length !== sources.length || result.durations.length !== sources.length) {
+            throw new Error(`ROUTING: OSRM could not calculate the requested road-distance matrix${result.message ? `: ${result.message}` : '.'}`);
+        }
+        return {
+            distancesMeters: result.distances,
+            durationsSeconds: result.durations
+        };
+    }
+
+    private async computeOsrmRoute(origin: GeoPoint, destination: GeoPoint): Promise<ComputedRoute> {
+        const coordinates = `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
+        const url = new URL(`${this.osrmBaseUrl}/route/v1/driving/${coordinates}`);
+        url.searchParams.set('overview', 'full');
+        url.searchParams.set('geometries', 'polyline');
+        url.searchParams.set('steps', 'false');
+        url.searchParams.set('alternatives', 'true');
+
+        const result = await this.fetchOsrm<OsrmRouteResponse>(url);
+        const route = result.routes?.[0];
+        if (result.code !== 'Ok' || !route || !Number.isFinite(route.distance) || !Number.isFinite(route.duration)) {
+            throw new Error(`ROUTING: OSRM could not find a road route${result.message ? `: ${result.message}` : '.'}`);
+        }
+
+        return {
+            provider: 'osrm',
+            distanceMeters: route.distance!,
+            distanceKm: route.distance! / 1000,
+            durationSeconds: route.duration!,
+            durationMinutes: route.duration! / 60,
+            encodedPolyline: route.geometry || '',
+            trafficAware: false,
+            confidence: 75,
+            alternatives: (result.routes || []).slice(1).map(alternative => ({
+                distanceMeters: alternative.distance || 0,
+                durationSeconds: alternative.duration || 0,
+                encodedPolyline: alternative.geometry || ''
+            })),
+            calculatedAt: new Date().toISOString()
+        };
+    }
+
+    private async fetchOsrm<T>(url: URL): Promise<T> {
+        let response: Response;
+        try {
+            response = await fetch(url, {
+                headers: { Accept: 'application/json' },
+                signal: AbortSignal.timeout(10_000),
+                cache: 'no-store'
+            });
+        } catch (error) {
+            throw new Error(`ROUTING: OSRM service is unreachable${error instanceof Error ? `: ${error.message}` : '.'}`);
+        }
+        if (!response.ok) {
+            throw new Error(`ROUTING: OSRM returned HTTP ${response.status}.`);
+        }
+        return response.json() as Promise<T>;
+    }
+
+    private validatePoint(point: GeoPoint) {
+        if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)
+            || point.latitude < -90 || point.latitude > 90
+            || point.longitude < -180 || point.longitude > 180) {
+            throw new Error('ROUTING: Coordinates are outside the valid latitude/longitude range.');
         }
     }
 

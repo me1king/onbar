@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createSessionCookie } from '@/lib/adminAuth';
+import { ADMIN_SESSION_TTL_SECONDS, createSessionCookie } from '@/lib/adminAuth';
 import { supabase } from '@/lib/supabaseClient';
 
 export const dynamic = 'force-dynamic';
@@ -141,7 +141,7 @@ function createLoginResponse(
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24
+      maxAge: ADMIN_SESSION_TTL_SECONDS
     });
     return response;
   });

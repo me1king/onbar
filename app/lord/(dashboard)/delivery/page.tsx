@@ -107,12 +107,23 @@ interface DeliveryPayload {
   updatedAt: string;
 }
 
+interface ActiveDeliveryRoute {
+  orderId: number;
+  riderName: string;
+  provider: 'osrm' | 'google' | 'mapbox';
+  distanceKm: number;
+  durationMinutes: number;
+  encodedPolyline: string;
+  calculatedAt: string;
+}
+
 interface DispatchCandidate {
   riderPhone: string;
   riderName: string;
   activeLoad: number;
   maxDeliveries: number;
   distanceKm: number | null;
+  etaMinutes?: number | null;
   locationAvailable: boolean;
   healthScore: number;
 }
@@ -137,13 +148,13 @@ interface DispatchPayload {
 type QueueFilter = 'active' | 'dispatch' | 'completed' | 'all';
 
 function statusTone(status: string) {
-  if (status === 'Delivered') return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300';
-  if (status === 'Out for Delivery') return 'border-sky-400/20 bg-sky-400/10 text-sky-300';
-  if (status === 'Picked Up') return 'border-violet-400/20 bg-violet-400/10 text-violet-300';
-  if (status === 'Dispatched') return 'border-amber-400/20 bg-amber-400/10 text-amber-300';
-  if (status === 'Paid') return 'border-orange-400/20 bg-orange-400/10 text-orange-300';
-  if (status === 'Cancelled') return 'border-rose-400/20 bg-rose-400/10 text-rose-300';
-  return 'border-white/10 bg-white/5 text-slate-300';
+  if (status === 'Delivered') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (status === 'Out for Delivery') return 'border-sky-200 bg-sky-50 text-sky-700';
+  if (status === 'Picked Up') return 'border-violet-200 bg-violet-50 text-violet-700';
+  if (status === 'Dispatched') return 'border-amber-200 bg-amber-50 text-amber-800';
+  if (status === 'Paid') return 'border-orange-200 bg-orange-50 text-orange-700';
+  if (status === 'Cancelled') return 'border-rose-200 bg-rose-50 text-rose-700';
+  return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
 function statusIcon(status: string) {
@@ -189,6 +200,9 @@ export default function DeliveryOpsPage() {
   const [search, setSearch] = React.useState('');
   const [filter, setFilter] = React.useState<QueueFilter>('active');
   const [selectedRider, setSelectedRider] = React.useState<DeliveryRider | null>(null);
+  const [activeRoute, setActiveRoute] = React.useState<ActiveDeliveryRoute | null>(null);
+  const [routeLoadingOrder, setRouteLoadingOrder] = React.useState<number | null>(null);
+  const [routeError, setRouteError] = React.useState<string | null>(null);
   const [actionOrder, setActionOrder] = React.useState<number | null>(null);
   const [override, setOverride] = React.useState<Record<number, { phone: string; reason: string }>>({});
 
@@ -222,6 +236,26 @@ export default function DeliveryOpsPage() {
     const interval = window.setInterval(() => void refresh(true), 30_000);
     return () => window.clearInterval(interval);
   }, [refresh]);
+
+  const showRoute = React.useCallback(async (orderId: number) => {
+    setRouteLoadingOrder(orderId);
+    setRouteError(null);
+    try {
+      const response = await fetch('/api/admin/delivery/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId })
+      });
+      const result = await response.json() as ActiveDeliveryRoute & { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not calculate this delivery route.');
+      setActiveRoute(result);
+    } catch (cause) {
+      setRouteError(cause instanceof Error ? cause.message : 'Could not calculate this delivery route.');
+      setActiveRoute(null);
+    } finally {
+      setRouteLoadingOrder(null);
+    }
+  }, []);
 
   const assignRider = React.useCallback(async (
     job: DispatchJob,
@@ -348,43 +382,47 @@ export default function DeliveryOpsPage() {
 
   const maxCompletions = Math.max(1, ...dailyCompletions.map(day => day.count));
   const onlineRiders = data?.riders.filter(rider => rider.online) || [];
+  const activeMapRoutes = React.useMemo(() => activeRoute ? [{
+    id: String(activeRoute.orderId),
+    polyline: activeRoute.encodedPolyline,
+    color: '#f59e0b'
+  }] : [], [activeRoute]);
 
   return (
-    <main className="min-h-screen bg-[#070d19] px-4 py-5 text-left text-white selection:bg-sky-400/30 sm:px-6 lg:px-8">
+    <main className="delivery-ops min-h-screen bg-[#f7f8fa] px-4 py-5 text-left text-[#10231f] selection:bg-amber-400/30 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px] space-y-6">
-        <header className="relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-[#132a52] via-[#0c1830] to-[#09111f] p-5 shadow-2xl shadow-black/20 sm:p-8">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
+        <header className="relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full bg-amber-100/70 blur-3xl" />
           <div className="relative flex flex-col justify-between gap-6 xl:flex-row xl:items-start">
             <div className="max-w-2xl">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-sky-200">
+                <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-amber-800">
                   <Truck size={13} /> Online Bar · Delivery control
                 </span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-emerald-200">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Operations live
+                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-emerald-800">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Operations live
                 </span>
               </div>
-              <h1 className="mt-5 text-3xl font-black tracking-tight sm:text-5xl">Delivery command<span className="text-sky-400">.</span></h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-                Coordinate paid orders, rider availability and in-progress deliveries from one control room.
-                Dispatch remains gated by verified payment and merchant fulfilment checks.
+              <h1 className="mt-5 text-3xl font-black uppercase leading-none tracking-tight sm:text-5xl">Runner dispatch<span className="text-amber-500">.</span></h1>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">
+                Real-time runner deployment and delivery coordination. Every assignment remains protected by verified payment and merchant fulfilment checks.
               </p>
-              <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-semibold text-slate-400">
-                <span className="inline-flex items-center gap-2"><RefreshCw size={12} className={refreshing ? 'animate-spin text-sky-300' : 'text-slate-500'} /> Auto-refresh every 30 seconds</span>
+              <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-semibold text-slate-500">
+                <span className="inline-flex items-center gap-2"><RefreshCw size={12} className={refreshing ? 'animate-spin text-amber-600' : 'text-slate-400'} /> Auto-refresh every 30 seconds</span>
                 <span>Last sync: {formatTime(lastUpdated)}</span>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href="/lord/dispatch" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-sky-400 px-4 text-xs font-black text-[#061121] transition hover:bg-sky-300">
+              <Link href="/lord/dispatch" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-500 px-4 text-xs font-black text-white shadow-sm transition hover:bg-amber-600">
                 <Route size={15} /> Dispatch queue
               </Link>
-              <Link href="/lord/orders" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">
+              <Link href="/lord/orders" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:bg-slate-50">
                 <Package size={15} /> Order desk
               </Link>
-              <Link href="/lord/riders" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">
+              <Link href="/lord/riders" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:bg-slate-50">
                 <Users size={15} /> Rider fleet
               </Link>
-              <Button onClick={() => void refresh(true)} disabled={refreshing} variant="outline" className="min-h-11 rounded-xl border-white/10 bg-white/[0.04] px-4 text-xs font-bold text-white hover:bg-white/[0.08]">
+              <Button onClick={() => void refresh(true)} disabled={refreshing} variant="outline" className="min-h-11 rounded-xl border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50">
                 <RefreshCw size={14} className={cn('mr-2', refreshing && 'animate-spin')} /> Sync
               </Button>
             </div>
@@ -416,49 +454,61 @@ export default function DeliveryOpsPage() {
             {data.activityWarning}
           </div>
         )}
+        {routeError && (
+          <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800">
+            {routeError}
+          </div>
+        )}
 
         <section aria-label="Delivery overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            { label: 'Orders in transit', value: data?.metrics.inTransit, detail: 'Dispatched through out for delivery', icon: Truck, color: 'text-sky-300', glow: 'bg-sky-400/10' },
-            { label: 'Awaiting dispatch', value: data?.metrics.waitingDispatch, detail: 'Paid, not yet assigned', icon: Clock3, color: 'text-amber-300', glow: 'bg-amber-400/10' },
-            { label: 'Riders online', value: data?.metrics.verifiedOnlineRiders, detail: `${data?.metrics.freshRiderLocations ?? 0} with fresh GPS`, icon: Users, color: 'text-emerald-300', glow: 'bg-emerald-400/10' },
-            { label: 'Completed deliveries', value: data?.metrics.completedDeliveries, detail: 'All recorded completed orders', icon: CheckCircle2, color: 'text-violet-300', glow: 'bg-violet-400/10' }
+            { label: 'Orders in transit', value: data?.metrics.inTransit, detail: 'Dispatched through out for delivery', icon: Truck, color: 'text-amber-600', glow: 'bg-amber-50' },
+            { label: 'Awaiting dispatch', value: data?.metrics.waitingDispatch, detail: 'Paid, not yet assigned', icon: Clock3, color: 'text-orange-600', glow: 'bg-orange-50' },
+            { label: 'Riders online', value: data?.metrics.verifiedOnlineRiders, detail: `${data?.metrics.freshRiderLocations ?? 0} with fresh GPS`, icon: Users, color: 'text-emerald-700', glow: 'bg-emerald-50' },
+            { label: 'Completed deliveries', value: data?.metrics.completedDeliveries, detail: 'All recorded completed orders', icon: CheckCircle2, color: 'text-violet-700', glow: 'bg-violet-50' }
           ].map(metric => (
-            <article key={metric.label} className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0d1728] p-5">
+            <article key={metric.label} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className={cn('absolute -right-5 -top-6 h-24 w-24 rounded-full blur-2xl', metric.glow)} />
               <div className="relative flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">{metric.label}</p>
-                  <p className="mt-2 text-3xl font-black tracking-tight text-white">{loading ? '—' : metric.value ?? 0}</p>
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{metric.label}</p>
+                  <p className="mt-2 text-3xl font-black tracking-tight text-[#10231f]">{loading ? '—' : metric.value ?? 0}</p>
                   <p className="mt-1 text-[10px] font-medium text-slate-500">{metric.detail}</p>
                 </div>
-                <div className={cn('rounded-xl bg-white/[0.04] p-3', metric.color)}><metric.icon size={18} /></div>
+                <div className={cn('rounded-xl bg-slate-50 p-3', metric.color)}><metric.icon size={18} /></div>
               </div>
             </article>
           ))}
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(330px,0.75fr)]">
-          <article className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0d1728]">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-5 py-4 sm:px-6">
+          <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-sky-300">Fleet visibility</p>
-                <h2 className="mt-1 text-lg font-black tracking-tight">Live rider map</h2>
+                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-700">Fleet visibility</p>
+                <h2 className="mt-1 text-lg font-black tracking-tight text-[#10231f]">Live runner map</h2>
               </div>
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3 py-1.5 text-[9px] font-bold text-slate-300">
-                <LocateFixed size={12} className="text-emerald-300" /> {mapRiders.length} fresh GPS positions
+              <span className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1.5 text-[9px] font-bold text-slate-600">
+                <LocateFixed size={12} className="text-emerald-600" /> {mapRiders.length} fresh GPS positions
               </span>
             </div>
             <div className="h-[390px] p-3 sm:h-[500px] sm:p-4">
               <LiveDispatchMap
                 riders={mapRiders}
                 showDemand={false}
+                activeRoutes={activeMapRoutes}
                 onSelectRider={rider => setSelectedRider(
                   data?.riders.find(item => item.id === Number(rider.id)) || null
                 )}
               />
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.07] px-5 py-3 text-[9px] font-semibold text-slate-400 sm:px-6">
+            {activeRoute && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-amber-50 px-5 py-3 text-[10px] font-semibold text-amber-900 sm:px-6">
+                <span>OSRM route · Order #{activeRoute.orderId} · {activeRoute.riderName}</span>
+                <span>{activeRoute.distanceKm} road km · {activeRoute.durationMinutes} min estimated</span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-3 text-[9px] font-semibold text-slate-500 sm:px-6">
               <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-400" /> Available</span>
               <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-amber-400" /> On delivery</span>
               <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-slate-500" /> Location older than 5 minutes hidden</span>
@@ -482,7 +532,7 @@ export default function DeliveryOpsPage() {
                   return (
                     <div key={day.date.toISOString()} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2">
                       <span className="text-[9px] font-bold text-slate-400">{day.count}</span>
-                      <div className="w-full rounded-t-md bg-gradient-to-t from-blue-700 to-sky-400" style={{ height: `${height}%` }} />
+                      <div className="w-full rounded-t-md bg-gradient-to-t from-amber-600 to-amber-400" style={{ height: `${height}%` }} />
                       <span className="text-[8px] font-semibold text-slate-500">{day.date.toLocaleDateString([], { weekday: 'short' })}</span>
                     </div>
                   );
@@ -602,6 +652,19 @@ export default function DeliveryOpsPage() {
                           <span className="inline-flex items-center gap-1.5"><Truck size={11} /> Fee {order.delivery_cost == null ? 'Not set' : formatPrice(Number(order.delivery_cost))}</span>
                           {order.delivery_eta_minutes != null && <span className="inline-flex items-center gap-1.5"><Clock3 size={11} /> ETA {order.delivery_eta_minutes} min</span>}
                         </div>
+                        {order.rider_phone && ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={routeLoadingOrder === order.id}
+                            onClick={() => void showRoute(order.id)}
+                            className="mt-3 h-8 rounded-lg border-amber-200 bg-amber-50 px-3 text-[9px] font-bold text-amber-800 hover:bg-amber-100"
+                          >
+                            {routeLoadingOrder === order.id
+                              ? <><RefreshCw size={11} className="mr-1.5 animate-spin" /> Calculating road route</>
+                              : <><Route size={11} className="mr-1.5" /> Show OSRM route</>}
+                          </Button>
+                        )}
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
                         {order.rider_name ? (
@@ -666,7 +729,8 @@ export default function DeliveryOpsPage() {
                           <p className="mt-1 text-xs font-bold">{recommendation.riderName}</p>
                         </div>
                         <div className="text-right text-[9px] text-slate-400">
-                          <p>{recommendation.distanceKm == null ? 'Distance unavailable' : `${recommendation.distanceKm} km pickup estimate`}</p>
+                          <p>{recommendation.distanceKm == null ? 'Road distance unavailable' : `${recommendation.distanceKm} road km to pickup`}</p>
+                          {recommendation.etaMinutes != null && <p className="mt-1">{recommendation.etaMinutes} min estimated pickup time</p>}
                           <p className="mt-1">{recommendation.activeLoad}/{recommendation.maxDeliveries} active</p>
                         </div>
                       </div>

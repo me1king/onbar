@@ -458,6 +458,84 @@ html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet']
   scrollbar-width: none;
 }
 
+.delivery-ops [class~="bg-[#0d1728]"],
+.delivery-ops [class~="bg-[#101d31]"] {
+  background-color: #fff !important;
+}
+
+.delivery-ops [class~="bg-[#0b1423]"],
+.delivery-ops [class~="bg-white/[0.02]"],
+.delivery-ops [class~="bg-white/[0.04]"],
+.delivery-ops [class~="bg-white/[0.05]"],
+.delivery-ops [class~="bg-white/[0.06]"],
+.delivery-ops [class~="bg-white/[0.08]"] {
+  background-color: #f8fafc !important;
+}
+
+.delivery-ops [class~="border-white/[0.06]"],
+.delivery-ops [class~="border-white/[0.07]"],
+.delivery-ops [class~="border-white/[0.08]"],
+.delivery-ops [class~="border-white/10"] {
+  border-color: #e2e8f0 !important;
+}
+
+.delivery-ops [class~="text-white"],
+.delivery-ops [class~="text-slate-200"],
+.delivery-ops [class~="text-slate-300"] {
+  color: #334155 !important;
+}
+
+.delivery-ops [class~="text-slate-400"] {
+  color: #64748b !important;
+}
+
+.delivery-ops [class~="text-sky-200"],
+.delivery-ops [class~="text-sky-300"] {
+  color: #b45309 !important;
+}
+
+.delivery-ops [class~="text-amber-100"],
+.delivery-ops [class~="text-amber-200"],
+.delivery-ops [class~="text-amber-300"] {
+  color: #92400e !important;
+}
+
+.delivery-ops [class~="text-emerald-200"],
+.delivery-ops [class~="text-emerald-300"] {
+  color: #047857 !important;
+}
+
+.delivery-ops [class~="text-violet-300"] {
+  color: #6d28d9 !important;
+}
+
+.delivery-ops [class~="bg-sky-400"] {
+  background-color: #f59e0b !important;
+}
+
+.delivery-ops [class~="bg-amber-500"][class~="text-white"] {
+  color: #fff !important;
+}
+
+.delivery-ops [class~="hover:bg-sky-300"]:hover {
+  background-color: #d97706 !important;
+}
+
+.delivery-ops [class~="border-sky-300/10"],
+.delivery-ops [class~="border-sky-300/20"],
+.delivery-ops [class~="border-amber-400/15"],
+.delivery-ops [class~="border-amber-400/20"] {
+  border-color: #fed7aa !important;
+}
+
+.delivery-ops [class~="bg-sky-300/[0.04]"],
+.delivery-ops [class~="bg-sky-300/[0.07]"],
+.delivery-ops [class~="bg-amber-400/[0.06]"],
+.delivery-ops [class~="bg-amber-400/10"],
+.delivery-ops [class~="bg-emerald-400/10"] {
+  background-color: #fff7ed !important;
+}
+
 @media (max-width: 1023px) {
   body:has([data-mobile-bottom-nav]) {
     padding-bottom: calc(5rem + env(safe-area-inset-bottom));

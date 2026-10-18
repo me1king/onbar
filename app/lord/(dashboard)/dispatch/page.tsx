@@ -82,6 +82,7 @@ interface DispatchRiderCandidate {
     activeLoad: number;
     maxDeliveries: number;
     distanceKm: number | null;
+    etaMinutes?: number | null;
     locationAvailable: boolean;
     healthScore: number;
 }
@@ -427,7 +428,7 @@ export default function AdminDispatchPage() {
                             </div>
                         </div>
                         <p className="px-2 text-xs text-muted-foreground">
-                            Pickup distance uses fresh rider GPS and straight-line distances between selected merchant locations; it is not a road-route or ETA calculation.
+                            Pickup ranking uses fresh rider GPS and OSRM road distance/time to the nearest selected merchant pickup. Road estimates do not include live traffic.
                         </p>
 
                         {unverifiedPaymentCount > 0 && (
@@ -454,7 +455,7 @@ export default function AdminDispatchPage() {
                                             </div>
                                             {recommendation ? (
                                                 <div className="rounded-xl bg-primary/5 border border-primary/10 p-3 text-sm">
-                                                    <p className="text-[9px] font-black uppercase text-primary">Approx. straight-line pickup path · {recommendation.distanceKm} km</p>
+                                                    <p className="text-[9px] font-black uppercase text-primary">OSRM road pickup · {recommendation.distanceKm} km{recommendation.etaMinutes == null ? '' : ` · ${recommendation.etaMinutes} min`}</p>
                                                     <p className="font-bold text-foreground">{recommendation.riderName} · {recommendation.activeLoad}/{recommendation.maxDeliveries} active</p>
                                                 </div>
                                             ) : (
@@ -520,7 +521,7 @@ export default function AdminDispatchPage() {
                                                     {order.riderCandidates.map(candidate => (
                                                         <option key={candidate.riderPhone} value={candidate.riderPhone}>
                                                             {candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
-                                                            {candidate.locationAvailable ? ` · ${candidate.distanceKm} km straight-line` : ' · location unknown'}
+                                                            {candidate.locationAvailable ? ` · ${candidate.distanceKm} road km${candidate.etaMinutes == null ? '' : ` · ${candidate.etaMinutes} min`}` : ' · no OSRM route'}
                                                         </option>
                                                     ))}
                                                 </select>
