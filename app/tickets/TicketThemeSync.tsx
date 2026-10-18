@@ -1,13 +1,17 @@
 'use client';
 
 import { useEffect } from 'react';
-import { defaultTicketTheme, isTicketThemeId } from '@/lib/ticketing/theme';
+import { isTicketThemeId } from '@/lib/ticketing/theme';
 
 export default function TicketThemeSync() {
   useEffect(() => {
     let active = true;
+    let inFlight = false;
+    let didLogFailure = false;
 
     async function loadPublishedTheme() {
+      if (!active || inFlight) return;
+      inFlight = true;
       try {
         const response = await fetch('/api/ticketing/theme', { cache: 'no-store' });
         const result = await response.json() as { theme?: unknown; error?: string };
@@ -16,13 +20,23 @@ export default function TicketThemeSync() {
           document.documentElement.dataset.ticketTheme = result.theme;
         }
       } catch (error) {
-        console.error('[TicketingTheme] Could not apply the published customer theme:', error);
-        if (active) document.documentElement.dataset.ticketTheme = defaultTicketTheme;
+        if (active && !didLogFailure) {
+          console.warn('[TicketingTheme] Could not refresh the published ticketing theme; keeping the last applied theme.', error);
+          didLogFailure = true;
+        }
+      } finally {
+        inFlight = false;
       }
     }
 
     void loadPublishedTheme();
-    return () => { active = false; };
+    const interval = window.setInterval(loadPublishedTheme, 60_000);
+    window.addEventListener('focus', loadPublishedTheme);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', loadPublishedTheme);
+    };
   }, []);
 
   return null;

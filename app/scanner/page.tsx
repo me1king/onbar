@@ -3,6 +3,7 @@
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import TicketThemeSync from '@/app/tickets/TicketThemeSync';
 
 type ScannerEvent = {
   id: string;
@@ -304,7 +305,9 @@ export default function TicketScannerPage() {
 
   if (!accessToken) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0b0a0f] px-4 py-10 text-white">
+      <>
+      <TicketThemeSync />
+      <main className="ticket-admin-theme flex min-h-screen items-center justify-center bg-[#0b0a0f] px-4 py-10 text-white">
         <form onSubmit={signIn} className="w-full max-w-md space-y-5 rounded-3xl border border-white/10 bg-[#111016] p-6 sm:p-8">
           <div className="text-center">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-amber-200/20 bg-amber-200/5 text-amber-200"><span className="text-xl font-black">OB</span></div>
@@ -319,11 +322,14 @@ export default function TicketScannerPage() {
           <p className="text-center text-[11px] leading-5 text-slate-500">If you do not have access, ask the event admin to assign your verified account.</p>
         </form>
       </main>
+      </>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#0b0a0f] px-4 py-6 text-white sm:px-6">
+    <>
+    <TicketThemeSync />
+    <main className="ticket-admin-theme min-h-screen bg-[#0b0a0f] px-4 py-6 text-white sm:px-6">
       <div className="mx-auto max-w-3xl space-y-5">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">OnBar · Isolated ticketing</p><h1 className="mt-1 text-2xl font-black">Gate scanner</h1><p className="mt-1 text-xs text-slate-400">{email}</p></div>
@@ -403,5 +409,6 @@ export default function TicketScannerPage() {
         <p className="text-center text-[11px] leading-5 text-slate-500">Online verification only. Never admit from a screenshot or if the scanner cannot reach the server. Ticket sales and ticket issuance are not enabled yet.</p>
       </div>
     </main>
+    </>
   );
 }

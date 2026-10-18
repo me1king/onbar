@@ -835,8 +835,11 @@ export default function AdminSettingsPage() {
                                             <div className="relative">
                                                 <Input
                                                     type="datetime-local"
-                                                    value={promotions.flash_sale_end ? new Date(promotions.flash_sale_end).toISOString().slice(0, 16) : ''}
-                                                    onChange={e => setPromotions({...promotions, flash_sale_end: new Date(e.target.value).toISOString()})}
+                                                    value={promotions.flash_sale_end
+                                                        && Number.isFinite(new Date(promotions.flash_sale_end).getTime())
+                                                        ? new Date(new Date(promotions.flash_sale_end).getTime() - new Date(promotions.flash_sale_end).getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+                                                        : ''}
+                                                    onChange={e => setPromotions({...promotions, flash_sale_end: e.target.value ? new Date(e.target.value).toISOString() : ''})}
                                                     className="h-14 rounded-2xl bg-secondary border-border pl-12 font-bold text-foreground"
                                                 />
                                                 <Clock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />

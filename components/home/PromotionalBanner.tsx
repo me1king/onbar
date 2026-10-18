@@ -11,8 +11,6 @@ export default function PromotionalBanner() {
 
   const promo = settings.promotions || { flash_sale_text: 'Flash Sale: 20% OFF All Vintages!', discount_percent: 20, is_active: true, flash_sale_end: '' };
 
-  const saleEndDate = promo.flash_sale_end || new Date(new Date().getTime() + 48 * 60 * 60 * 1000).toISOString();
-
   if (!promo.is_active) return null;
 
   return (
@@ -39,7 +37,7 @@ export default function PromotionalBanner() {
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50 mb-2 flex items-center gap-2">
                     <Clock className="h-3 w-3" /> Offer Expiring In:
                 </p>
-                <CountdownTimer targetDate={saleEndDate} />
+                <CountdownTimer targetDate={promo.flash_sale_end || ''} />
             </div>
         </div>
 

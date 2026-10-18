@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { isMerchantOpenAt } from '@/lib/merchantAvailability';
+import { isSameOriginRequest } from '@/lib/adminAccess.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -524,6 +525,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'Dispatch mutations must come from this site.' }, { status: 403 });
+  }
   const session = await getAdminSession();
   if (!session) {
     return NextResponse.json({ error: 'Dispatch access requires an authorized admin session.' }, { status: 403 });

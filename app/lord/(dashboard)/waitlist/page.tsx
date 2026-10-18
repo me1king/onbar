@@ -5,6 +5,7 @@ import type { FormEvent } from 'react';
 import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, RefreshCw, Save, Search, Upload, Users } from 'lucide-react';
 import { useAdmin } from '@/context/AdminContext';
 import WaitlistFitStudioPanel from '@/components/admin/WaitlistFitStudioPanel';
+import WaitlistLaunchCountdownPreview from '@/components/admin/WaitlistLaunchCountdownPreview';
 
 type WaitlistStatus = 'WAITLIST' | 'INVITED' | 'NOTIFIED' | 'CONVERTED' | 'UNSUBSCRIBED';
 type RewardPath = 'wine' | 'adventure' | 'music';
@@ -677,8 +678,9 @@ export default function WaitlistPage() {
               <label className="text-xs font-bold text-slate-700">Benefit three<input required maxLength={60} value={siteContent.benefit_three} onChange={event => setSiteContent({ ...siteContent, benefit_three: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-slate-700">Hero image description<input required maxLength={180} value={siteContent.hero_image_alt} onChange={event => setSiteContent({ ...siteContent, hero_image_alt: event.target.value })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
               <div className="grid gap-3 rounded-xl border border-rose-100 bg-rose-50/50 p-4 sm:grid-cols-2 lg:col-span-2">
-                <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Waitlist countdown &amp; invite rewards</h3><p className="mt-1 text-xs text-slate-500">The launch time drives the standalone site countdown and the installable phone dashboard. Each new signup awards exactly 3 points to every inviter in the chain.</p></div>
+                <div className="sm:col-span-2"><h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Waitlist countdown &amp; invite rewards</h3><p className="mt-1 text-xs text-slate-500">The saved launch time drives the standalone site and installable member-pass countdown. Once the target time passes, the member dashboard correctly switches to its live state. Each new signup awards exactly 3 points to every inviter in the chain.</p></div>
                 <label className="text-xs font-bold text-slate-700">Launch date and time<input type="datetime-local" value={siteContent.launch_at ? new Date(new Date(siteContent.launch_at).getTime() - new Date(siteContent.launch_at).getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : ''} onChange={event => setSiteContent({ ...siteContent, launch_at: event.target.value ? new Date(event.target.value).toISOString() : null })} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal" /></label>
+                <WaitlistLaunchCountdownPreview launchAt={siteContent.launch_at} />
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">Fixed referral reward: 3 points for every member in the referral chain.</div>
               </div>
               <div className="flex flex-wrap items-center gap-3 lg:col-span-2">

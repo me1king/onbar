@@ -50,6 +50,7 @@
   --ticket-accent-border: rgb(253 186 116 / 24%);
   --ticket-subtle: rgb(0 0 0 / 18%);
   --ticket-shadow: rgb(0 0 0 / 24%);
+  --ticket-action-text: #170d18;
 
   color-scheme: light;
 }
@@ -80,6 +81,7 @@ html[data-ticket-theme='midnight'] {
   --ticket-accent-border: rgb(253 186 116 / 24%);
   --ticket-subtle: rgb(0 0 0 / 18%);
   --ticket-shadow: rgb(0 0 0 / 24%);
+  --ticket-action-text: #170d18;
 }
 
 html[data-ticket-theme='official-white'] {
@@ -97,6 +99,7 @@ html[data-ticket-theme='official-white'] {
   --ticket-accent-border: #fed7aa;
   --ticket-subtle: #f8fafc;
   --ticket-shadow: rgb(15 23 42 / 6%);
+  --ticket-action-text: #ffffff;
 }
 
 html[data-ticket-theme='royal-violet'] {
@@ -114,6 +117,7 @@ html[data-ticket-theme='royal-violet'] {
   --ticket-accent-border: #c4b5fd;
   --ticket-subtle: #faf9ff;
   --ticket-shadow: rgb(46 16 101 / 8%);
+  --ticket-action-text: #ffffff;
 }
 
 html[data-ticket-theme='emerald'] {
@@ -131,6 +135,7 @@ html[data-ticket-theme='emerald'] {
   --ticket-accent-border: #6ee7b7;
   --ticket-subtle: #f0fdf4;
   --ticket-shadow: rgb(6 78 59 / 8%);
+  --ticket-action-text: #ffffff;
 }
 
 .ticket-theme-page {
@@ -265,6 +270,73 @@ html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet']
 
 .ticket-theme-shadow {
   --tw-shadow-color: var(--ticket-shadow);
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="bg-white"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="bg-[#0b0a0f]"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="bg-[#0d0a12]"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="bg-[#111016]"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="bg-[#17121e]"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="bg-[#100d17]"] {
+  background-color: var(--ticket-panel) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-slate-50"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-slate-100"] {
+  background-color: var(--ticket-panel-muted) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-orange-"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-amber-"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-violet-"] {
+  background-color: var(--ticket-accent-soft) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-orange-50"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-amber-50"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-violet-50"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-violet-100"] {
+  background-color: var(--ticket-accent-soft) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-orange-400"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-orange-500"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-amber-300"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="bg-amber-400"] {
+  background-color: var(--ticket-accent-strong) !important;
+  color: var(--ticket-action-text) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="border-white/"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="border-orange-"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="border-amber-"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="border-violet-"] {
+  border-color: var(--ticket-border) !important;
+}
+
+html:is([data-ticket-theme='midnight'], [data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="border-slate-"] {
+  border-color: var(--ticket-border) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="text-white"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="text-white/"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="text-slate-950"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="text-slate-900"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="text-slate-800"] {
+  color: var(--ticket-text) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="text-slate-700"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="text-slate-600"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="text-slate-500"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class~="text-slate-400"] {
+  color: var(--ticket-copy) !important;
+}
+
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="text-orange-"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="text-amber-"],
+html:is([data-ticket-theme='official-white'], [data-ticket-theme='royal-violet'], [data-ticket-theme='emerald']) :is(.ticket-theme-page, .ticket-admin-theme) [class*="text-violet-"] {
+  color: var(--ticket-accent) !important;
 }
 
 @theme {

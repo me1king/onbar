@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
 import {
   CheckCircle,
+  AlertCircle,
   Clock,
   Headphones,
   Mail,
@@ -20,9 +21,10 @@ import {
   ArrowLeft
 } from "lucide-react";
 import { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { useSettings } from "@/lib/useSettings";
 import { phoneCallHref } from "@/lib/contactLinks";
+
+const contactTopics = ["Order & payment", "Delivery", "Product question", "Wholesale", "Other"];
 
 export default function Contact() {
   const { settings, loading } = useSettings();
@@ -31,9 +33,12 @@ export default function Contact() {
     email: "",
     subject: "",
     message: "",
+    category: contactTopics[0],
+    website: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [submission, setSubmission] = useState<{ ticketId: string; emailSent: boolean; emailWarning?: string } | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -44,31 +49,51 @@ export default function Contact() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) return;
-
     setIsSubmitting(true);
+    setSubmitError(null);
 
     try {
-        const { error } = await supabase.from('support_tickets').insert([{
-            customer_name: formData.name.trim(),
-            customer_email: formData.email.trim(),
-            subject: formData.subject.trim(),
-            description: formData.message.trim(),
-            category: 'General',
-            priority: 'Medium',
-            status: 'Open'
-        }]);
+      const response = await fetch("/api/support/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          subject: formData.subject,
+          message: formData.message,
+          category: formData.category,
+          website: formData.website,
+        }),
+      });
+      const result = await response.json() as {
+        success?: boolean;
+        ticketId?: string;
+        emailSent?: boolean;
+        emailWarning?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.success || !result.ticketId) {
+        throw new Error(result.error || "Your message could not be sent. Please try again.");
+      }
 
-        if (error) throw error;
-
-        setIsSubmitted(true);
-        setFormData({ name: "", email: "", subject: "", message: "" });
-        setTimeout(() => setIsSubmitted(false), 5000);
+      setSubmission({
+        ticketId: result.ticketId,
+        emailSent: Boolean(result.emailSent),
+        emailWarning: result.emailWarning,
+      });
+      setFormData({
+        name: "",
+        email: "",
+        subject: "",
+        message: "",
+        category: contactTopics[0],
+        website: "",
+      });
     } catch (err) {
-        console.error("Contact form error:", err);
-        alert("Sorry, your message couldn't be sent. Please try WhatsApp.");
+      console.error("Contact form error:", err);
+      setSubmitError(err instanceof Error ? err.message : "Sorry, your message couldn't be sent. Please try WhatsApp.");
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -155,7 +180,62 @@ export default function Contact() {
                   </p>
                 </CardHeader>
                 <CardContent className="p-8">
+                  {submission ? (
+                    <div role="status" aria-live="polite" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 sm:p-8">
+                      <div className="flex items-start gap-4">
+                        <div className="rounded-xl bg-white p-3 text-emerald-600 shadow-sm"><CheckCircle className="h-6 w-6" /></div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-lg font-black text-emerald-950">Your message is with our team.</h3>
+                          <p className="mt-1 text-sm leading-6 text-emerald-900/80">
+                            We saved your enquiry in the support workspace. Keep this reference for follow-up:
+                            <span className="ml-1 font-black">#{submission.ticketId.slice(0, 8).toUpperCase()}</span>
+                          </p>
+                          {submission.emailSent ? (
+                            <p className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-emerald-800">
+                              <Mail className="h-4 w-4" /> An email alert was sent to the configured support team.
+                            </p>
+                          ) : (
+                            <p className="mt-3 flex items-start gap-2 text-xs font-bold text-amber-800">
+                              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                              {submission.emailWarning || "Your message is in the admin panel, but the email alert needs attention."}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setSubmission(null);
+                          setSubmitError(null);
+                        }}
+                        className="mt-6 rounded-xl border-emerald-200 bg-white text-emerald-900 hover:bg-emerald-100"
+                      >
+                        Send another message
+                      </Button>
+                    </div>
+                  ) : (
                   <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="space-y-2 text-left">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">What can we help with?</p>
+                      <div className="flex flex-wrap gap-2" role="group" aria-label="Choose a support topic">
+                        {contactTopics.map(topic => (
+                          <button
+                            key={topic}
+                            type="button"
+                            aria-pressed={formData.category === topic}
+                            onClick={() => setFormData(previous => ({ ...previous, category: topic }))}
+                            className={`rounded-full border px-3 py-2 text-xs font-bold transition-all ${
+                              formData.category === topic
+                                ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-primary/40 hover:text-primary"
+                            }`}
+                          >
+                            {topic}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="grid sm:grid-cols-2 gap-6">
                       <div className="space-y-2 text-left">
                         <label
@@ -172,6 +252,8 @@ export default function Contact() {
                           value={formData.name}
                           onChange={handleInputChange}
                           required
+                          maxLength={120}
+                          autoComplete="name"
                           className="bg-background border-slate-100 py-6 rounded-xl"
                         />
                       </div>
@@ -191,6 +273,8 @@ export default function Contact() {
                           value={formData.email}
                           onChange={handleInputChange}
                           required
+                          maxLength={254}
+                          autoComplete="email"
                           className="bg-background border-slate-100 py-6 rounded-xl"
                         />
                       </div>
@@ -211,6 +295,8 @@ export default function Contact() {
                         value={formData.subject}
                         onChange={handleInputChange}
                         required
+                        minLength={3}
+                        maxLength={160}
                         className="bg-background border-slate-100 py-6 rounded-xl"
                       />
                     </div>
@@ -227,27 +313,50 @@ export default function Contact() {
                         name="message"
                         placeholder="Tell us more about your question or concern..."
                         rows={6}
+                        minLength={10}
+                        maxLength={4000}
                         value={formData.message}
                         onChange={handleInputChange}
                         required
                         className="bg-background border-slate-100 rounded-xl resize-none"
                       />
+                      <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-slate-400">
+                        <span>Include your order number if your question is about an order.</span>
+                        <span>{formData.message.length}/4000</span>
+                      </div>
                     </div>
 
+                    <div aria-hidden="true" className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden">
+                      <label htmlFor="contact-website">Leave this field empty</label>
+                      <input
+                        id="contact-website"
+                        name="website"
+                        type="text"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={formData.website}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+
+                    {submitError && (
+                      <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {submitError}
+                      </div>
+                    )}
+
+                    <p className="text-xs leading-5 text-slate-500">
+                      Your message is saved to our admin support workspace. We also email the configured support contact when email alerts are available.
+                    </p>
                     <Button
                       type="submit"
-                      disabled={isSubmitting || isSubmitted}
+                      disabled={isSubmitting}
                       className="w-full sm:w-auto h-14 px-10 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-xs shadow-xl shadow-primary/20 transition-all active:scale-95"
                     >
                       {isSubmitting ? (
                         <div className="flex items-center gap-2">
                           <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                           Sending...
-                        </div>
-                      ) : isSubmitted ? (
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-4 w-4" />
-                          Message Sent!
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -257,6 +366,7 @@ export default function Contact() {
                       )}
                     </Button>
                   </form>
+                  )}
                 </CardContent>
               </Card>
             </div>
