@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import posthog from 'posthog-js';
 import { isAllowed } from '@/lib/consentService';
 
-const EXCLUDED_PATHS = ['/admin', '/checkout', '/payment', '/merchant', '/profile', '/track', '/dispatch', '/rider', '/supplier'];
+const EXCLUDED_PATHS = ['/lord', '/checkout', '/payment', '/merchant', '/profile', '/track', '/dispatch', '/rider', '/supplier'];
 
 function canRecordPath(pathname: string) {
   return !EXCLUDED_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`));

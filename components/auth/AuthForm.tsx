@@ -128,8 +128,22 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         const referralCode = typeof window !== 'undefined'
           ? sessionStorage.getItem('ob_referral_code')
           : null;
+        let nextPath = '/profile';
+        if (typeof window !== 'undefined') {
+          try {
+            const savedRedirect = sessionStorage.getItem('ob_auth_redirect') || '';
+            const target = new URL(savedRedirect, window.location.origin);
+            const inviteToken = target.searchParams.get('invite') || '';
+            if (target.origin === window.location.origin && target.pathname === '/affiliate/register'
+              && /^[A-Za-z0-9_-]{40,60}$/.test(inviteToken)) {
+              nextPath = `${target.pathname}${target.search}`;
+            }
+          } catch (redirectError) {
+            console.error('[AuthForm] Could not validate the saved sign-up destination:', redirectError);
+          }
+        }
         const emailRedirectTo = typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback?next=%2Fprofile`
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
           : undefined;
         const { data, error } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),

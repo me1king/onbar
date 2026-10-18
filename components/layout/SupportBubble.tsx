@@ -24,6 +24,13 @@ interface CustomerSupportMessage {
 
 const SUPPORT_TOKEN_KEY = 'onlinebar_support_access_token';
 
+function makeSupportToken() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return `support-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
 async function getSupportHeaders(token: string, json = false) {
     const headers: Record<string, string> = { 'x-support-access-token': token };
     if (json) headers['Content-Type'] = 'application/json';
@@ -31,7 +38,7 @@ async function getSupportHeaders(token: string, json = false) {
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
         if (data.session?.access_token) {
-            headers.Authorization = `Bearer ${data.session.access_token}`;
+            headers.Authorization = 'Bearer ' + data.session.access_token;
         }
     }
     return headers;
@@ -65,7 +72,7 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
         try {
             let token = localStorage.getItem(SUPPORT_TOKEN_KEY);
             if (!token) {
-                token = crypto.randomUUID();
+                token = makeSupportToken();
                 localStorage.setItem(SUPPORT_TOKEN_KEY, token);
             }
             setSupportToken(token);
@@ -270,10 +277,10 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
                 <div className="bg-white rounded-[2.5rem] w-[calc(100vw-32px)] sm:w-80 shadow-2xl border border-slate-100 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
                     <div className="bg-primary p-6 text-white flex justify-between items-center shadow-lg">
                         <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-xl bg-primary/20 flex items-center justify-center text-primary"><Zap className="h-4 w-4 fill-current" /></div>
+                            <div className="h-8 w-8 rounded-xl bg-white/10 flex items-center justify-center text-white"><Zap className="h-4 w-4 fill-current" /></div>
                             <span className="text-[10px] font-black uppercase tracking-widest">Bar Support</span>
                         </div>
-                        <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X className="h-5 w-5" /></button>
+                        <button onClick={() => setIsOpen(false)} className="text-white/70 hover:text-white transition-colors"><X className="h-5 w-5" /></button>
                     </div>
 
                     <div className="p-6 space-y-4">

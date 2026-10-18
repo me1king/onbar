@@ -243,7 +243,7 @@ export default function CustomerProfilePage() {
                     <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Identity Missing</h2>
                     <p className="text-slate-400 text-xs font-medium italic">&quot;Record associated with phone node {phone} not found on the grid.&quot;</p>
                 </div>
-                <Button onClick={() => router.push('/admin/customers')} className="h-12 px-10 rounded-xl bg-slate-900 text-white font-black uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
+                <Button onClick={() => router.push('/lord/customers')} className="h-12 px-10 rounded-xl bg-slate-900 text-white font-black uppercase text-[9px] tracking-widest shadow-xl active:scale-95 transition-all">
                     Return to Registry
                 </Button>
             </div>

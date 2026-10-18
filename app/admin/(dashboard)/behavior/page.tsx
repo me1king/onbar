@@ -168,10 +168,10 @@ export default function BehaviorOverview() {
                     {/* NAVIGATION MATRIX */}
                     <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4 2xl:gap-4">
                         {[
-                            { label: 'Live Radar', icon: Flame, href: '/admin/behavior/live', color: 'bg-primary' },
-                            { label: 'Session Forensics', icon: ShieldCheck, href: '/admin/behavior/sessions', color: 'bg-indigo-600' },
-                            { label: 'Conversion Funnels', icon: Zap, href: '/admin/behavior/funnels', color: 'bg-emerald-600' },
-                            { label: 'Click Heatmap', icon: MousePointer2, href: '/admin/analytics?tab=ux_heatmaps', color: 'bg-sky-600' },
+                            { label: 'Live Radar', icon: Flame, href: '/lord/behavior/live', color: 'bg-primary' },
+                            { label: 'Session Forensics', icon: ShieldCheck, href: '/lord/behavior/sessions', color: 'bg-indigo-600' },
+                            { label: 'Conversion Funnels', icon: Zap, href: '/lord/behavior/funnels', color: 'bg-emerald-600' },
+                            { label: 'Click Heatmap', icon: MousePointer2, href: '/lord/analytics?tab=ux_heatmaps', color: 'bg-sky-600' },
                         ].map(node => (
                             <Link key={node.label} href={node.href}>
                                 <Card className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all group hover:shadow-2xl sm:rounded-3xl sm:p-6">

@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hashPattern = /^[0-9a-f]{64}$/;
+const scanMethods = ['qr', 'manual'] as const;
 
 function createAuthClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -60,10 +61,39 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Assigned events could not be loaded.' }, { status: 503 });
   }
 
+  const { data: scans, error: scansError } = eventIds.length
+    ? await database.from('ticketing_checkins')
+      .select('id,event_id,gate_name,device_id,scanner_name,scan_method,result,scanned_at')
+      .eq('staff_user_id', user!.id)
+      .in('event_id', eventIds)
+      .order('scanned_at', { ascending: false })
+      .limit(30)
+    : { data: [], error: null };
+  if (scansError) {
+    if (/scanner_name|scan_method|schema cache|ticketing_checkins/i.test(scansError.message)) {
+      return NextResponse.json({
+        error: 'Apply supabase/TICKETING_SCANNER_HISTORY_MIGRATION.sql to enable scanner history and device identification.'
+      }, { status: 503 });
+    }
+    console.error('[TicketingScanner] Could not load scan history:', scansError);
+    return NextResponse.json({ error: 'Recent scan history could not be loaded.' }, { status: 503 });
+  }
+  const eventNames = new Map((events || []).map(event => [event.id, event.title]));
+
   return NextResponse.json({
     events: (events || []).map(event => ({
       ...event,
       gate_name: assignments?.find(assignment => assignment.event_id === event.id)?.gate_name || ''
+    })),
+    history: (scans || []).map(scan => ({
+      id: scan.id,
+      eventName: eventNames.get(scan.event_id) || 'Assigned event',
+      gateName: scan.gate_name,
+      deviceId: scan.device_id,
+      scannerName: scan.scanner_name,
+      method: scan.scan_method,
+      result: scan.result,
+      scannedAt: scan.scanned_at
     }))
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
@@ -83,7 +113,15 @@ export async function POST(request: Request) {
   }
   const eventId = typeof body.eventId === 'string' ? body.eventId : '';
   const credentialHash = typeof body.credentialHash === 'string' ? body.credentialHash.toLowerCase() : '';
-  const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim().slice(0, 120) : null;
+  const deviceId = typeof body.deviceId === 'string' && body.deviceId.trim()
+    ? body.deviceId.trim().slice(0, 120)
+    : 'unidentified-scanner';
+  const scannerName = typeof body.scannerName === 'string' && body.scannerName.trim()
+    ? body.scannerName.trim().slice(0, 120)
+    : 'Unidentified scanner';
+  const scanMethod = typeof body.scanMethod === 'string' && scanMethods.includes(body.scanMethod as typeof scanMethods[number])
+    ? body.scanMethod
+    : 'qr';
   if (!uuidPattern.test(eventId) || !hashPattern.test(credentialHash)) {
     return NextResponse.json({ error: 'The event or ticket credential is invalid.' }, { status: 400 });
   }
@@ -107,13 +145,15 @@ export async function POST(request: Request) {
     p_credential_hash: credentialHash,
     p_gate_name: assignment.gate_name || '',
     p_staff_user_id: user!.id,
-    p_device_id: deviceId
+    p_device_id: deviceId,
+    p_scanner_name: scannerName,
+    p_scan_method: scanMethod
   });
   if (error) {
     if (error.code === '42501') return NextResponse.json({ error: 'Your gate-staff assignment is no longer active for this event.' }, { status: 403 });
     if (error.code === '22023') return NextResponse.json({ error: 'The scanned ticket credential is invalid.' }, { status: 400 });
     if (/ticketing_check_in|schema cache/i.test(error.message)) {
-      return NextResponse.json({ error: 'Apply supabase/TICKETING_SCANNER_MIGRATION.sql before using the scanner.' }, { status: 503 });
+      return NextResponse.json({ error: 'Apply supabase/TICKETING_SCANNER_HISTORY_MIGRATION.sql before using the scanner.' }, { status: 503 });
     }
     console.error('[TicketingScanner] Check-in failed:', error);
     return NextResponse.json({ error: 'The ticket could not be checked in. Try again when the connection is stable.' }, { status: 503 });
@@ -123,7 +163,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The check-in response could not be verified.' }, { status: 503 });
   }
 
-  return NextResponse.json({ result: data.result, ticketReference: data.ticket_reference || null }, {
+  const resultMessages: Record<string, { status: string; message: string }> = {
+    accepted: { status: 'valid', message: 'Entry approved.' },
+    already_used: { status: 'used', message: 'Already checked in.' },
+    invalid: { status: 'invalid', message: 'Ticket was not found.' },
+    refunded: { status: 'invalid', message: 'Ticket has been refunded.' },
+    revoked: { status: 'invalid', message: 'Ticket is no longer valid.' },
+    wrong_event: { status: 'invalid', message: 'Ticket is for another event.' },
+    unpaid: { status: 'invalid', message: 'Payment is not confirmed.' },
+    event_closed: { status: 'invalid', message: 'This event is not open for admission.' },
+    rate_limited: { status: 'invalid', message: 'Too many scans. Pause briefly and try again.' }
+  };
+  const summary = resultMessages[data.result];
+  if (!summary) {
+    console.error('[TicketingScanner] Check-in returned an unsupported result:', data.result);
+    return NextResponse.json({ error: 'The check-in response could not be verified.' }, { status: 503 });
+  }
+
+  return NextResponse.json({
+    result: data.result,
+    ...summary,
+    ticketReference: data.ticket_reference || null,
+    ticket: data.ticket_reference ? {
+      reference: data.ticket_reference,
+      type: data.ticket_type || null,
+      gate: assignment.gate_name || ''
+    } : null
+  }, {
     headers: { 'Cache-Control': 'private, no-store, max-age=0' }
   });
 }

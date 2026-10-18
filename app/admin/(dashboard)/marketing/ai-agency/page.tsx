@@ -28,7 +28,7 @@ export default function AIAdAgency() {
                     Connect an advertising provider and its reporting API before enabling campaign performance metrics or spend controls.
                 </p>
                 <Button asChild variant="outline" className="w-full justify-between sm:w-auto">
-                    <Link href="/admin/marketing/create">
+                    <Link href="/lord/marketing/create">
                         Manage campaign drafts <ExternalLink className="h-4 w-4" />
                     </Link>
                 </Button>

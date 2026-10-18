@@ -60,14 +60,14 @@ export default function SentimentSentinel() {
                                 <AlertCircle size={14} className="text-rose-500" />
                                 <p className="text-[10px] font-black uppercase text-rose-700 truncate max-w-[200px]">{issue.type}: &quot;{issue.body}&quot;</p>
                             </div>
-                            <Link href="/admin/support/vip-relay">
+                            <Link href="/lord/support/vip-relay">
                                 <ChevronRight size={14} className="text-rose-300 group-hover/issue:translate-x-1 transition-transform" />
                             </Link>
                         </div>
                     ))}
                 </div>
 
-                <Link href="/admin/support/vip-relay">
+                <Link href="/lord/support/vip-relay">
                     <Button className="h-14 px-8 rounded-2xl bg-rose-600 text-white font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-rose-700 active:scale-95 transition-all">
                         VIP Relay <ArrowRight size={14} className="ml-2" />
                     </Button>

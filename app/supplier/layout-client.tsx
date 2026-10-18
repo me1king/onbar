@@ -44,7 +44,7 @@ export default function SupplierLayoutClient({
     try {
       const response = await fetch('/api/admin/logout', { method: 'POST' });
       if (!response.ok) throw new Error('Could not end the supplier session.');
-      router.push('/admin/login');
+      router.push('/lord/login');
     } catch (error) {
       console.error('Supplier logout failed:', error);
       setIsLoggingOut(false);

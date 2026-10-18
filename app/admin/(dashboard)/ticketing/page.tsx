@@ -737,11 +737,11 @@ export default function TicketingPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href="/admin/ticketing/sales" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Wallet size={15} /> Ticket sales</Link>
-              <Link href="/admin/ticketing/staff" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Users size={15} /> Gate staff</Link>
+              <Link href="/lord/ticketing/sales" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Wallet size={15} /> Ticket sales</Link>
+              <Link href="/lord/ticketing/staff" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Users size={15} /> Gate staff</Link>
               <Link href="/scanner" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Open scanner</Link>
-              <Link href="/admin/ticketing/security" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ShieldAlert size={15} /> Trust centre</Link>
-              <Link href="/admin/ticketing/live" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Live operations</Link>
+              <Link href="/lord/ticketing/security" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ShieldAlert size={15} /> Trust centre</Link>
+              <Link href="/lord/ticketing/live" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Live operations</Link>
               <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.03] px-4 text-sm font-bold text-white transition hover:border-white/25 hover:bg-white/10 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>
               <button type="button" onClick={() => setAddingEvent(value => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-300 px-4 text-sm font-black text-[#170d18] shadow-lg shadow-black/20 transition hover:bg-amber-200"><Plus size={16} /> New event</button>
             </div>
@@ -770,7 +770,7 @@ export default function TicketingPage() {
               <span className="mt-1 block text-sm font-black text-white">Set prices &amp; release waves</span>
               <span className="mt-1 block text-xs leading-5 text-slate-400">Choose admission, KES price, ticket allocation and sales opening time.</span>
             </button>
-            <Link href="/admin/ticketing/staff" className="rounded-xl border border-white/10 bg-white/[0.025] p-4 transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+            <Link href="/lord/ticketing/staff" className="rounded-xl border border-white/10 bg-white/[0.025] p-4 transition hover:border-amber-200/25 hover:bg-white/[0.05]">
               <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">3 · Gate team</span>
               <span className="mt-1 block text-sm font-black text-white">Assign scanner staff</span>
               <span className="mt-1 block text-xs leading-5 text-slate-400">Give each verified staff account access only to its assigned event.</span>
@@ -779,8 +779,8 @@ export default function TicketingPage() {
               <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">4 · Run the event</span>
               <span className="mt-1 block text-sm font-black text-white">Track sales &amp; gate scans</span>
               <span className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold">
-                <Link href="/admin/ticketing/sales" className="text-amber-200 underline underline-offset-2">Sales ledger</Link>
-                <Link href="/admin/ticketing/live" className="text-amber-200 underline underline-offset-2">Live operations</Link>
+                <Link href="/lord/ticketing/sales" className="text-amber-200 underline underline-offset-2">Sales ledger</Link>
+                <Link href="/lord/ticketing/live" className="text-amber-200 underline underline-offset-2">Live operations</Link>
                 <Link href="/scanner" className="text-amber-200 underline underline-offset-2">Open scanner</Link>
               </span>
             </div>
@@ -822,7 +822,7 @@ export default function TicketingPage() {
           <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
           <div className="relative flex items-start gap-3">
             <span className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-2 text-emerald-200"><ShieldCheck size={18} /></span>
-            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-emerald-100">Ticket checkout is implemented; event sales are owner-controlled</p><span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-100">Separate ticket ledger</span></div><p className="mt-1 text-xs leading-5 text-emerald-50/75">Paystack checkout, server-verified payment callbacks, ticket issuance and guest-wallet access are implemented. Ticket orders, payment attempts and fees stay in ticketing-specific records, separate from beverage orders and product inventory. To make an event visible to guests, configure its confirmed details and an available ticket wave, then use the owner-only publish control on its event card. Production checkout still requires valid server configuration.</p><Link href="/admin/ticketing/sales" className="mt-2 inline-flex text-xs font-black text-amber-200 underline underline-offset-2">Open the dedicated ticket sales ledger</Link></div>
+            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-emerald-100">Ticket checkout is implemented; event sales are owner-controlled</p><span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-100">Separate ticket ledger</span></div><p className="mt-1 text-xs leading-5 text-emerald-50/75">Paystack checkout, server-verified payment callbacks, ticket issuance and guest-wallet access are implemented. Ticket orders, payment attempts and fees stay in ticketing-specific records, separate from beverage orders and product inventory. To make an event visible to guests, configure its confirmed details and an available ticket wave, then use the owner-only publish control on its event card. Production checkout still requires valid server configuration.</p><Link href="/lord/ticketing/sales" className="mt-2 inline-flex text-xs font-black text-amber-200 underline underline-offset-2">Open the dedicated ticket sales ledger</Link></div>
           </div>
         </section>
 

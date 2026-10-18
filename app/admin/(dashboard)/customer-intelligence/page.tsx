@@ -234,11 +234,11 @@ export default function CustomerIntelligencePage() {
             </Card>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <Link href="/admin/customers" className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-primary/40 hover:shadow-sm">
+              <Link href="/lord/customers" className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-primary/40 hover:shadow-sm">
                 <span><span className="block text-sm font-black text-slate-900">Open customer directory</span><span className="mt-1 block text-xs text-slate-500">Review customer records and order history.</span></span>
                 <ArrowRight className="text-slate-400 transition group-hover:translate-x-1 group-hover:text-primary" size={18} />
               </Link>
-              <Link href="/admin/marketing/audiences" className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-primary/40 hover:shadow-sm">
+              <Link href="/lord/marketing/audiences" className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-primary/40 hover:shadow-sm">
                 <span><span className="block text-sm font-black text-slate-900">Explore customer audiences</span><span className="mt-1 block text-xs text-slate-500">Build segments from recorded customer activity.</span></span>
                 <ArrowRight className="text-slate-400 transition group-hover:translate-x-1 group-hover:text-primary" size={18} />
               </Link>

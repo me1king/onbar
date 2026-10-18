@@ -26,7 +26,7 @@ export default async function AdminLayout({
   }
 
   if (!sessionData) {
-    redirect('/admin/login');
+    redirect('/lord/login');
   }
 
   const userEmail = sessionData.email || (sessionData.role === 'owner' ? 'Owner (PIN)' : 'Admin');

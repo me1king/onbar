@@ -34,7 +34,7 @@ export default function MobileBottomNav() {
     const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
     // Only show on mobile, and hide on admin pages
-    if (pathname?.startsWith('/admin')
+    if (pathname?.startsWith('/lord')
         || pathname?.startsWith('/market')
         || pathname === '/merchant/register'
         || pathname?.startsWith('/merchant/dashboard')

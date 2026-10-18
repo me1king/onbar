@@ -108,7 +108,7 @@ export default function ProductForgeDashboard() {
                     <Button onClick={fetchData} variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 transition-all">
                         <RefreshCcw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} /> Re-Scan Catalog
                     </Button>
-                    <Link href="/admin/upload">
+                    <Link href="/lord/upload">
                         <Button className="rounded-xl h-12 px-6 bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest hover:scale-[1.02] active:scale-95 transition-all">
                             <Database size={14} className="mr-2" /> Initialize New Node
                         </Button>
@@ -230,7 +230,7 @@ export default function ProductForgeDashboard() {
                             </div>
 
                             {/* CTA */}
-                            <Link href={`/admin/forge/${item.id}`}>
+                            <Link href={`/lord/forge/${item.id}`}>
                                 <button className="w-full h-20 bg-slate-900 group-hover:bg-primary transition-colors flex items-center justify-center gap-3 text-white">
                                     <span className="text-[10px] font-black uppercase tracking-[0.3em]">Enter Forge Node</span>
                                     <ChevronRight size={16} />
@@ -244,7 +244,7 @@ export default function ProductForgeDashboard() {
             {/* MASTER HUD OVERLAY */}
             <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50">
                  <div className="bg-white/90 backdrop-blur-2xl px-10 py-5 rounded-[2.5rem] shadow-2xl flex items-center gap-10 border border-slate-100">
-                    <Link href="/admin/audit" className="flex items-center gap-4 hover:bg-slate-50 p-2 rounded-xl transition-all">
+                    <Link href="/lord/audit" className="flex items-center gap-4 hover:bg-slate-50 p-2 rounded-xl transition-all">
                         <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                         <div>
                             <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest leading-none">Catalog Status</p>
@@ -252,7 +252,7 @@ export default function ProductForgeDashboard() {
                         </div>
                     </Link>
                     <div className="h-8 w-[1px] bg-slate-100" />
-                    <Link href="/admin/upload" className="hover:bg-slate-50 p-2 rounded-xl transition-all">
+                    <Link href="/lord/upload" className="hover:bg-slate-50 p-2 rounded-xl transition-all">
                         <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest leading-none text-left">Total Nodes</p>
                         <p className="text-[10px] font-black text-foreground uppercase mt-1 text-left">{products.length}</p>
                     </Link>

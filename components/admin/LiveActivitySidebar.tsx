@@ -41,7 +41,7 @@ export default function LiveActivitySidebar({ isOpen, setIsOpen }: { isOpen: boo
                     label: `New Order from ${payload.new.customer_name}`,
                     time: 'Just now',
                     type: 'order',
-                    url: '/admin/orders',
+                    url: '/lord/orders',
                     amount: payload.new.total_price,
                     color: 'primary'
                 };
@@ -53,7 +53,7 @@ export default function LiveActivitySidebar({ isOpen, setIsOpen }: { isOpen: boo
                     label: `Payment Verified for #${payload.new.id}`,
                     time: 'Just now',
                     type: 'pay',
-                    url: '/admin/orders',
+                    url: '/lord/orders',
                     color: 'emerald'
                 };
                 setPulseEvents(prev => [newEvent, ...prev].slice(0, 10));
@@ -64,7 +64,7 @@ export default function LiveActivitySidebar({ isOpen, setIsOpen }: { isOpen: boo
                     label: `New Customer Registered`,
                     time: 'Just now',
                     type: 'user',
-                    url: '/admin/customers',
+                    url: '/lord/customers',
                     color: 'indigo'
                 };
                 setPulseEvents(prev => [newEvent, ...prev].slice(0, 10));
@@ -80,7 +80,7 @@ export default function LiveActivitySidebar({ isOpen, setIsOpen }: { isOpen: boo
                         label: `Runner ${riderName} came Online`,
                         time: 'Just now',
                         type: 'rider',
-                        url: '/admin/dispatch',
+                        url: '/lord/dispatch',
                         color: 'primary'
                     };
                     setPulseEvents(prev => [newEvent, ...prev].slice(0, 10));

@@ -241,9 +241,17 @@ export default function ProfilePage() {
                 headers: { 'Authorization': `Bearer ${session.access_token}` },
                 cache: 'no-store'
             });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Could not load affiliate status.');
-            setAffiliateStatus(result.application?.verification_status || 'None');
+            const result = await response.json() as { application?: { verification_status?: string }; code?: string; error?: string };
+            if (result.code === 'INVITE_REQUIRED') {
+                setAffiliateStatus('None');
+            } else if (result.code === 'APPLICATION_PENDING') {
+                setAffiliateStatus('Pending');
+            } else if (result.code === 'ACCOUNT_SUSPENDED') {
+                setAffiliateStatus('Suspended');
+            } else {
+                if (!response.ok) throw new Error(result.error || 'Could not load affiliate status.');
+                setAffiliateStatus(result.application?.verification_status || 'None');
+            }
         } catch (error) {
             console.error('[Profile] Could not load affiliate status:', error);
             setAffiliateStatus('Unavailable');
@@ -1592,10 +1600,12 @@ export default function ProfilePage() {
                                     : affiliateStatus === 'Pending'
                                         ? 'Your application is awaiting review. We will enable your dashboard once it is approved.'
                                         : affiliateStatus === 'Rejected'
-                                            ? 'Your previous application was not approved. You can update your details and apply again.'
-                                            : affiliateStatus === 'Unavailable'
+                                            ? 'The affiliate program is invitation-only. Contact Online Bar if you have been invited to join.'
+                                            : affiliateStatus === 'Suspended'
+                                                ? 'Affiliate access is suspended. Contact Online Bar support if you believe this is an error.'
+                                                : affiliateStatus === 'Unavailable'
                                                 ? 'Affiliate status is currently unavailable. Please refresh or try again later.'
-                                                : 'Apply to earn commission on completed orders placed through your referral link.'}
+                                                    : 'Affiliate access is invitation-only. Product promotions unlock after you accept an invitation sent to your email.'}
                             </p>
                         </div>
                         {affiliateStatus === 'Verified' ? (
@@ -1604,16 +1614,14 @@ export default function ProfilePage() {
                                     Affiliate dashboard <ChevronRight className="ml-2 h-4 w-4" />
                                 </Button>
                             </Link>
-                        ) : affiliateStatus === 'Pending' || affiliateStatus === 'Unavailable' ? (
+                        ) : affiliateStatus === 'Pending' || affiliateStatus === 'Unavailable' || affiliateStatus === 'Suspended' ? (
                             <span className="rounded-xl bg-amber-50 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-amber-700">
-                                {affiliateStatus === 'Pending' ? 'Application pending' : 'Status unavailable'}
+                                {affiliateStatus === 'Pending' ? 'Application pending' : affiliateStatus === 'Suspended' ? 'Access suspended' : 'Status unavailable'}
                             </span>
                         ) : (
-                            <Link href="/affiliate/register">
-                                <Button variant="outline" className="rounded-xl border-primary/20 font-black uppercase tracking-widest text-[10px]">
-                                    {affiliateStatus === 'Rejected' ? 'Reapply' : 'Apply now'} <ChevronRight className="ml-2 h-4 w-4" />
-                                </Button>
-                            </Link>
+                            <span className="rounded-xl bg-slate-100 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600">
+                                {affiliateStatus === 'Rejected' ? 'Invitation required' : 'Invite only'}
+                            </span>
                         )}
                     </div>
                 </Card>

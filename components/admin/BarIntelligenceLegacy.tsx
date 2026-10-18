@@ -126,7 +126,7 @@ export default function BarIntelligenceLegacy() {
                 </div>
 
                 <div className="lg:w-64 flex flex-col justify-end">
-                    <Link href="/admin/analytics">
+                    <Link href="/lord/analytics">
                         <Button className="w-full h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
                             View Deep Analysis <ArrowRight className="h-4 w-4 ml-2" />
                         </Button>

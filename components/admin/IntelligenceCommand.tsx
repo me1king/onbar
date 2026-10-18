@@ -54,7 +54,7 @@ export default function IntelligenceCommand() {
                     title: `${intRes.data.length} High-Intent Leads`,
                     description: "These patrons have compared products and started checkout multiple times today.",
                     action_label: "Launch Nudge",
-                    href: "/admin/customers"
+                    href: "/lord/customers"
                 });
             }
 
@@ -69,7 +69,7 @@ export default function IntelligenceCommand() {
                     description: "High-value bags were abandoned at the payment stage. Technical friction suspected.",
                     value: totalLost,
                     action_label: "Start Recovery",
-                    href: "/admin/abandoned"
+                    href: "/lord/abandoned"
                 });
             }
 
@@ -83,7 +83,7 @@ export default function IntelligenceCommand() {
                     title: "Peak Daily Velocity",
                     description: "Current revenue flow is 24% above the 30-day average. Cellar throughput is healthy.",
                     action_label: "View Analytics",
-                    href: "/admin/analytics"
+                    href: "/lord/analytics"
                 });
             }
 
@@ -95,7 +95,7 @@ export default function IntelligenceCommand() {
                 title: "8 VIP Churn Risk",
                 description: "Top-tier patrons who haven't ordered in their usual 14-day cycle. Reactivation required.",
                 action_label: "Assign Tasks",
-                href: "/admin/operations/tasks"
+                href: "/lord/operations/tasks"
             });
 
             setInsights(newInsights);

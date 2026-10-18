@@ -235,7 +235,7 @@ export default function AdminDispatchPage() {
 
             const targetOrder = orders.find(o => o.id === orderId);
             let notificationFailed = false;
-            if (targetOrder?.customer_email) {
+            if (targetOrder) {
                 try {
                     const notificationResponse = await fetch('/api/admin/notify-customer', {
                         method: 'POST',

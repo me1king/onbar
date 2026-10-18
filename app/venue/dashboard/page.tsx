@@ -263,7 +263,7 @@ export default function VenuePortalDashboard() {
                                                 <p className="text-xl font-black text-foreground tracking-tighter tabular-nums">{post.impressions?.toLocaleString() ?? 'Unavailable'}</p>
                                                 <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Recorded impressions</p>
                                             </div>
-                                            <Link href={`/admin/buzz/${post.id}`}>
+                                            <Link href={`/lord/buzz/${post.id}`}>
                                                 <Button size="icon" variant="ghost" className="h-12 w-12 rounded-xl text-slate-200 hover:text-primary transition-all"><BarChart3 size={24} /></Button>
                                             </Link>
                                         </div>

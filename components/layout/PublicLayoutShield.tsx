@@ -123,7 +123,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
 
     // 2. Live Visitor Heartbeat & Demand Prediction
     useEffect(() => {
-        if (!mounted || !supabase || pathname?.startsWith('/admin')) return;
+        if (!mounted || !supabase || pathname?.startsWith('/lord')) return;
 
         let sessionId = localStorage.getItem('ob_session_id');
         if (!sessionId) {
@@ -162,7 +162,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
         // return () => clearInterval(interval);
     }, [pathname, mounted]);
 
-    const isAdmin = pathname?.startsWith('/admin');
+    const isAdmin = pathname?.startsWith('/lord');
     const isMarket = pathname?.startsWith('/market')
         || pathname === '/merchant/register'
         || pathname?.startsWith('/merchant/dashboard')

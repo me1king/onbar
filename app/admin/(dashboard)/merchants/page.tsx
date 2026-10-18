@@ -431,7 +431,7 @@ export default function MerchantApplicationsPage() {
                   <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Submitted {new Date(application.submitted_at).toLocaleDateString()}</p>
                 </button>
                 <Link
-                  href={`/admin/merchants/${encodeURIComponent(application.id)}`}
+                  href={`/lord/merchants/${encodeURIComponent(application.id)}`}
                   aria-label={`Open read-only store for ${application.business_name}`}
                   className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-black uppercase text-slate-700 hover:border-primary hover:text-primary"
                 >

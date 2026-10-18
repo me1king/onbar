@@ -296,7 +296,7 @@ export default function AudiencesPage() {
                                         <p className="text-[8px] font-black uppercase text-muted-foreground mb-1">Reach</p>
                                         <p className="text-2xl font-black text-primary">{seg.estimated_reach?.toLocaleString() ?? 'Unavailable'}</p>
                                     </div>
-                                    <Link href="/admin/marketing/create" className="flex">
+                                    <Link href="/lord/marketing/create" className="flex">
                                         <Button size="sm" variant="ghost" className="text-[9px] font-black uppercase tracking-widest text-primary hover:bg-primary/5">
                                             Target <ArrowRight size={12} className="ml-2" />
                                         </Button>

@@ -1,0 +1,914 @@
+'use client';
+
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import TicketThemePicker from '@/app/tickets/TicketThemePicker';
+import {
+  ArrowUpRight,
+  BadgeCheck,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Fingerprint,
+  Ghost,
+  KeyRound,
+  MapPin,
+  Plus,
+  RefreshCw,
+  ScanLine,
+  ShieldAlert,
+  ShieldCheck,
+  Ticket,
+  Users,
+  Wallet
+} from 'lucide-react';
+
+type TicketType = {
+  id: string;
+  event_id: string;
+  name: string;
+  description: string;
+  price_minor: number;
+  currency: string;
+  capacity: number;
+  min_per_order: number;
+  max_per_order: number;
+  sales_start_at: string | null;
+  sales_end_at: string | null;
+  status: string;
+  benefits: string[];
+  wave_number: number | null;
+  admission_type: string;
+  wave_label: string;
+  activation_mode: 'scheduled' | 'previous_sold_out' | 'manual';
+  wave_theme: 'obsidian-gold' | 'crimson-black' | 'electric-violet';
+  wave_manual_open: boolean;
+};
+
+type TicketEvent = {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  venue_name: string;
+  venue_address: string;
+  city: string;
+  venue_latitude: number | null;
+  venue_longitude: number | null;
+  entrance_guide: string;
+  parking_guide: string;
+  transport_guide: string;
+  timezone: string;
+  starts_at: string;
+  ends_at: string;
+  age_limit: number | null;
+  capacity: number | null;
+  service_fee_minor: number;
+  status: string;
+  created_at: string;
+  ticket_types: TicketType[];
+};
+
+type DashboardData = {
+  events: TicketEvent[];
+  totals: { events: number; tickets: number; orders: number };
+  canPublish: boolean;
+};
+
+const inputClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-[#17121e] px-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400/15';
+const labelClass = 'block text-xs font-bold text-slate-300';
+
+function money(minor: number, currency = 'KES') {
+  return new Intl.NumberFormat('en-KE', { style: 'currency', currency, maximumFractionDigits: 2 }).format(minor / 100);
+}
+
+function eventDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Date to be confirmed' : date.toLocaleString('en-KE', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function dateTimeInput(value: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : new Date(date.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 16);
+}
+
+function statusLabel(status: string) {
+  return status.replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
+}
+
+async function readResponse(response: Response) {
+  const result = await response.json().catch(() => ({})) as { error?: string };
+  if (!response.ok) throw new Error(result.error || `Ticketing request failed (${response.status}).`);
+  return result;
+}
+
+function EventForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(formData: FormData) {
+    setSaving(true);
+    setError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_event',
+          title: formData.get('title'),
+          description: formData.get('description'),
+          venueName: formData.get('venueName'),
+          venueAddress: formData.get('venueAddress'),
+          city: formData.get('city'),
+          startsAt: formData.get('startsAt'),
+          endsAt: formData.get('endsAt'),
+          doorsOpenAt: formData.get('doorsOpenAt'),
+          capacity: formData.get('capacity'),
+          ageLimit: formData.get('ageLimit'),
+          cancellationPolicy: formData.get('cancellationPolicy')
+        })
+      }));
+      onCreated();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The event could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form action={submit} className="rounded-2xl border border-orange-400/20 bg-[#17121e] p-5 shadow-xl shadow-black/20 sm:p-6">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-black text-white">Create an event draft</h2>
+          <p className="mt-1 text-sm text-slate-400">Drafts are private and cannot accept ticket sales.</p>
+        </div>
+        <button type="button" onClick={onCancel} className="rounded-lg px-3 py-2 text-xs font-bold text-slate-400 hover:bg-white/5">Close</button>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className={`${labelClass} sm:col-span-2`}>Event name<input className={inputClass} name="title" required minLength={3} maxLength={160} placeholder="Midnight Society KE" /></label>
+        <label className={labelClass}>Venue<input className={inputClass} name="venueName" required minLength={2} maxLength={180} placeholder="Venue name" /></label>
+        <label className={labelClass}>City<input className={inputClass} name="city" required minLength={2} maxLength={100} defaultValue="Nairobi" /></label>
+        <label className={`${labelClass} sm:col-span-2`}>Full venue address<input className={inputClass} name="venueAddress" required minLength={5} maxLength={500} placeholder="Street, area, and directions" /></label>
+        <label className={labelClass}>Event starts (EAT)<input className={inputClass} name="startsAt" type="datetime-local" required /></label>
+        <label className={labelClass}>Event ends (EAT)<input className={inputClass} name="endsAt" type="datetime-local" required /></label>
+        <label className={labelClass}>Doors open (EAT, optional)<input className={inputClass} name="doorsOpenAt" type="datetime-local" /></label>
+        <label className={labelClass}>Capacity (optional)<input className={inputClass} name="capacity" type="number" min="1" max="1000000" placeholder="Set venue limit" /></label>
+        <label className={labelClass}>Minimum age (optional)<input className={inputClass} name="ageLimit" type="number" min="0" max="120" placeholder="No restriction" /></label>
+        <label className={`${labelClass} sm:col-span-2`}>Event description<textarea className={`${inputClass} min-h-24 py-3`} name="description" maxLength={10000} placeholder="Tell guests what the event is about." /></label>
+        <label className={`${labelClass} sm:col-span-2`}>Cancellation policy<textarea className={`${inputClass} min-h-20 py-3`} name="cancellationPolicy" maxLength={5000} placeholder="Add the event refund and cancellation terms before publishing." /></label>
+      </div>
+      {error && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button disabled={saving} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
+          <CheckCircle2 size={16} /> {saving ? 'Saving draft…' : 'Save event draft'}
+        </button>
+        <p className="self-center text-xs text-slate-400">Checkout and server-side payment verification are implemented. Configure the event and ticket wave here, then publish it when you are ready to open sales.</p>
+      </div>
+    </form>
+  );
+}
+
+function VenueLocationForm({ event, onSaved, onCancel }: { event: TicketEvent; onSaved: () => void; onCancel: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [locationMessage, setLocationMessage] = useState('');
+  const [latitude, setLatitude] = useState(event.venue_latitude === null ? '' : String(event.venue_latitude));
+  const [longitude, setLongitude] = useState(event.venue_longitude === null ? '' : String(event.venue_longitude));
+
+  async function submit(formData: FormData) {
+    setSaving(true);
+    setError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_event_venue',
+          eventId: event.id,
+          venueName: formData.get('venueName'),
+          venueAddress: formData.get('venueAddress'),
+          city: formData.get('city'),
+          latitude,
+          longitude,
+          entranceGuide: formData.get('entranceGuide'),
+          parkingGuide: formData.get('parkingGuide'),
+          transportGuide: formData.get('transportGuide')
+        })
+      }));
+      onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Venue details could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function useCurrentLocation() {
+    setLocationMessage('');
+    if (!navigator.geolocation) {
+      setLocationMessage('This browser does not provide location access. Enter the coordinates from Google Maps instead.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        setLatitude(position.coords.latitude.toFixed(6));
+        setLongitude(position.coords.longitude.toFixed(6));
+        setLocationMessage('Device coordinates loaded. Confirm the pin is at the venue entrance before saving.');
+      },
+      cause => setLocationMessage(cause.code === cause.PERMISSION_DENIED
+        ? 'Location permission was denied. Enter the venue coordinates from Google Maps instead.'
+        : 'The device location could not be read. Enter the venue coordinates from Google Maps instead.'),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  return (
+    <form action={submit} className="mt-4 rounded-xl border border-orange-200/15 bg-[#100d17] p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-black text-white">Venue pin & guest arrival guide</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-400">Coordinates power the public map, directions and transit links. In Google Maps, right-click the venue pin and copy the latitude/longitude pair.</p>
+        </div>
+        <button type="button" onClick={onCancel} className="text-xs font-bold text-slate-400">Close</button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className={labelClass}>Venue name
+          <input className={inputClass} name="venueName" required minLength={2} maxLength={180} defaultValue={event.venue_name} />
+        </label>
+        <label className={labelClass}>City
+          <input className={inputClass} name="city" required minLength={2} maxLength={100} defaultValue={event.city} />
+        </label>
+        <label className={`${labelClass} sm:col-span-2`}>Full venue address
+          <input className={inputClass} name="venueAddress" required minLength={5} maxLength={500} defaultValue={event.venue_address} />
+        </label>
+        <label className={labelClass}>Latitude
+          <input className={inputClass} name="latitude" type="number" min="-90" max="90" step="any" value={latitude} onChange={event => setLatitude(event.target.value)} placeholder="-1.286389" />
+        </label>
+        <label className={labelClass}>Longitude
+          <input className={inputClass} name="longitude" type="number" min="-180" max="180" step="any" value={longitude} onChange={event => setLongitude(event.target.value)} placeholder="36.817223" />
+        </label>
+        <div className="sm:col-span-2">
+          <button type="button" onClick={useCurrentLocation} className="min-h-10 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
+            Use this device&apos;s location
+          </button>
+          {locationMessage && <p role="status" className="mt-2 text-xs text-slate-300">{locationMessage}</p>}
+        </div>
+        <label className={labelClass}>Entrance &amp; gate instructions
+          <textarea className={`${inputClass} min-h-20 py-3`} name="entranceGuide" maxLength={2000} defaultValue={event.entrance_guide} placeholder="Which entrance should ticket holders use?" />
+        </label>
+        <label className={labelClass}>Parking information
+          <textarea className={`${inputClass} min-h-20 py-3`} name="parkingGuide" maxLength={2000} defaultValue={event.parking_guide} placeholder="Parking availability, location and fees." />
+        </label>
+        <label className={`${labelClass} sm:col-span-2`}>Public transport &amp; arrival notes
+          <textarea className={`${inputClass} min-h-20 py-3`} name="transportGuide" maxLength={2000} defaultValue={event.transport_guide} placeholder="Nearby stops, landmarks and other helpful arrival guidance." />
+        </label>
+      </div>
+      {error && <p role="alert" className="mt-3 rounded-lg border border-red-200/20 bg-red-950/20 p-3 text-xs text-red-200">{error}</p>}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-orange-400 px-4 text-xs font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
+          <MapPin size={14} /> {saving ? 'Saving venue…' : 'Save venue & map pin'}
+        </button>
+        {event.venue_latitude !== null && event.venue_longitude !== null && (
+          <a href={`https://www.google.com/maps/search/?api=1&query=${event.venue_latitude},${event.venue_longitude}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-bold text-slate-200 hover:bg-white/5">
+            <ArrowUpRight size={14} /> Check saved pin
+          </a>
+        )}
+      </div>
+      <p className="mt-3 text-[10px] leading-4 text-slate-500">If you use device location, allow browser location access and confirm the result points to the venue—not your current position elsewhere.</p>
+    </form>
+  );
+}
+
+function TierForm({ event, onCreated, onCancel }: { event: TicketEvent; onCreated: () => void; onCancel: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(formData: FormData) {
+    setSaving(true);
+    setError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_ticket_type',
+          eventId: event.id,
+          name: formData.get('name'),
+          description: formData.get('description'),
+          price: formData.get('price'),
+          capacity: formData.get('capacity'),
+          minPerOrder: formData.get('minPerOrder'),
+          maxPerOrder: formData.get('maxPerOrder'),
+          salesStartAt: formData.get('salesStartAt'),
+          salesEndAt: formData.get('salesEndAt')
+        })
+      }));
+      onCreated();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The ticket tier could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form action={submit} className="mt-4 rounded-xl border border-white/10 bg-[#100d17] p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h4 className="text-sm font-black text-white">Add ticket tier</h4>
+        <button type="button" onClick={onCancel} className="text-xs font-bold text-slate-400">Cancel</button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <label className={labelClass}>Tier name<input className={inputClass} name="name" required maxLength={100} placeholder="Early Bird" /></label>
+        <label className={labelClass}>Price (KES)<input className={inputClass} name="price" required type="number" min="0" max="999999999" step="0.01" placeholder="2500.00" /></label>
+        <label className={labelClass}>Allocation<input className={inputClass} name="capacity" required type="number" min="1" max="1000000" placeholder="100" /></label>
+        <label className={`${labelClass} sm:col-span-2 lg:col-span-3`}>Description<input className={inputClass} name="description" maxLength={2000} placeholder="What's included with this tier?" /></label>
+        <label className={labelClass}>Minimum per order<input className={inputClass} name="minPerOrder" required type="number" min="1" max="100" defaultValue="1" /></label>
+        <label className={labelClass}>Maximum per order<input className={inputClass} name="maxPerOrder" required type="number" min="1" max="100" defaultValue="10" /></label>
+        <label className={labelClass}>Sales open<input className={inputClass} name="salesStartAt" type="datetime-local" /></label>
+        <label className={labelClass}>Sales close<input className={inputClass} name="salesEndAt" type="datetime-local" /></label>
+      </div>
+      {error && <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      <button disabled={saving} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-orange-400 px-4 text-sm font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
+        <Plus size={15} /> {saving ? 'Saving tier…' : 'Save ticket tier'}
+      </button>
+    </form>
+  );
+}
+
+const waveNames = ['Wave I — The Awakening', 'Wave II — The Summoning', 'Wave III — The Final Call'];
+
+function TicketWaveForm({ event, ticketType, onSaved, onCancel }: {
+  event: TicketEvent;
+  ticketType?: TicketType;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [admissionType, setAdmissionType] = useState(ticketType?.admission_type || 'General Admission');
+  const [waveNumber, setWaveNumber] = useState(ticketType?.wave_number || 1);
+  const [waveLabel, setWaveLabel] = useState(ticketType?.wave_label || waveNames[0]);
+  const [activationMode, setActivationMode] = useState<TicketType['activation_mode']>(ticketType?.activation_mode || 'scheduled');
+  const [waveTheme, setWaveTheme] = useState<TicketType['wave_theme']>(ticketType?.wave_theme || 'obsidian-gold');
+  const [salesStartAt, setSalesStartAt] = useState(dateTimeInput(ticketType?.sales_start_at || null));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const existingWaveNumbers = useMemo(() => new Set(event.ticket_types
+    .filter(tier => tier.id !== ticketType?.id && tier.wave_number !== null && tier.admission_type === admissionType)
+    .map(tier => tier.wave_number)), [admissionType, event.ticket_types, ticketType?.id]);
+  const availableWaveNumbers = useMemo(() => [1, 2, 3].filter(number => !existingWaveNumbers.has(number)), [existingWaveNumbers]);
+  const hasPreviousWave = waveNumber === 1 || existingWaveNumbers.has(waveNumber - 1);
+
+  useEffect(() => {
+    if (ticketType || availableWaveNumbers.length === 0 || availableWaveNumbers.includes(waveNumber)) return;
+    const nextWave = availableWaveNumbers[0];
+    setWaveNumber(nextWave);
+    setWaveLabel(waveNames[nextWave - 1]);
+    setActivationMode(nextWave === 1 ? 'scheduled' : 'previous_sold_out');
+  }, [availableWaveNumbers, ticketType, waveNumber]);
+
+  async function submit(formData: FormData) {
+    setSaving(true);
+    setError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: ticketType ? 'update_ticket_wave' : 'create_ticket_wave',
+          eventId: event.id,
+          ticketTypeId: ticketType?.id,
+          admissionType,
+          waveNumber,
+          waveLabel: formData.get('waveLabel'),
+          price: formData.get('price'),
+          capacity: formData.get('capacity'),
+          minPerOrder: formData.get('minPerOrder'),
+          maxPerOrder: formData.get('maxPerOrder'),
+          activationMode,
+          waveTheme,
+          salesStartAt: formData.get('salesStartAt'),
+          salesEndAt: formData.get('salesEndAt'),
+          description: formData.get('description'),
+          benefits: String(formData.get('benefits') || '').split(/\r?\n/).map(value => value.trim()).filter(Boolean)
+        })
+      }));
+      onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The ticket wave could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form action={submit} className="mt-4 rounded-xl border border-orange-300/20 bg-[#100d17] p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-black text-white">{ticketType ? 'Edit ticket wave' : 'Configure a ticket wave'}</h4>
+          <p className="mt-1 text-[10px] text-slate-400">Set confirmed pricing, allocation, activation and deliverable benefits.</p>
+        </div>
+        <button type="button" onClick={onCancel} className="text-xs font-bold text-slate-400">Close</button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <label className={labelClass}>Admission type
+          <select className={inputClass} value={admissionType} disabled={Boolean(ticketType)} onChange={change => setAdmissionType(change.target.value)}>
+            <option>General Admission</option><option>VIP</option><option>Group Package</option><option>Backstage / Exclusive</option>
+          </select>
+        </label>
+        <label className={labelClass}>Wave
+          <select className={inputClass} value={ticketType ? waveNumber : availableWaveNumbers.includes(waveNumber) ? waveNumber : ''} disabled={Boolean(ticketType)} onChange={change => {
+            const next = Number(change.target.value);
+            setWaveNumber(next);
+            setWaveLabel(waveNames[next - 1]);
+            setActivationMode(next === 1 ? 'scheduled' : 'previous_sold_out');
+          }}>
+            {availableWaveNumbers.length === 0 && <option value="" disabled>All waves configured</option>}
+            {availableWaveNumbers.map(number => <option key={number} value={number}>Wave {['I', 'II', 'III'][number - 1]}</option>)}
+            {ticketType && <option value={waveNumber}>Wave {['I', 'II', 'III'][waveNumber - 1]}</option>}
+          </select>
+        </label>
+        <label className={labelClass}>Ticket appearance
+          <select className={inputClass} value={waveTheme} onChange={change => setWaveTheme(change.target.value as TicketType['wave_theme'])}>
+            <option value="obsidian-gold">Obsidian Black & Antique Gold</option><option value="crimson-black">Midnight Crimson & Black</option><option value="electric-violet">Electric Blue & Violet</option>
+          </select>
+        </label>
+        <label className={`${labelClass} sm:col-span-2`}>Wave edition label
+          <input className={inputClass} name="waveLabel" required minLength={2} maxLength={100} value={waveLabel} onChange={change => setWaveLabel(change.target.value)} />
+        </label>
+        <label className={labelClass}>Price (KES)
+          <input className={inputClass} name="price" required type="number" min="0.01" max="999999999.99" step="0.01" defaultValue={ticketType ? (ticketType.price_minor / 100).toFixed(2) : ''} placeholder="Set confirmed price" />
+        </label>
+        <label className={labelClass}>Wave allocation
+          <input className={inputClass} name="capacity" required type="number" min="1" max="1000000" defaultValue={ticketType?.capacity ?? ''} placeholder="Set confirmed allocation" />
+        </label>
+        <label className={labelClass}>Opens when
+          <select className={inputClass} value={activationMode} onChange={change => setActivationMode(change.target.value as TicketType['activation_mode'])}>
+            <option value="scheduled">At a scheduled time</option>
+            <option value="previous_sold_out" disabled={waveNumber === 1 || !hasPreviousWave}>When the previous wave sells out or closes</option>
+            <option value="manual">Only when I activate it</option>
+          </select>
+        </label>
+        <label className={labelClass}>Sales open (EAT)
+          <input className={inputClass} name="salesStartAt" type="datetime-local" required={activationMode === 'scheduled'} disabled={activationMode !== 'scheduled'} value={salesStartAt} onChange={change => setSalesStartAt(change.target.value)} />
+        </label>
+        <label className={labelClass}>Sales close (EAT, optional)
+          <input className={inputClass} name="salesEndAt" type="datetime-local" defaultValue={dateTimeInput(ticketType?.sales_end_at || null)} />
+        </label>
+        {!hasPreviousWave && waveNumber > 1 && <p className="text-xs text-amber-200 sm:col-span-2 lg:col-span-3">Create the preceding wave for {admissionType} before using automatic sell-out activation.</p>}
+        <label className={`${labelClass} sm:col-span-2 lg:col-span-3`}>Description
+          <input className={inputClass} name="description" maxLength={2000} defaultValue={ticketType?.description || ''} placeholder="Explain what this release includes." />
+        </label>
+        <label className={`${labelClass} sm:col-span-2 lg:col-span-3`}>Included benefits (one per line)
+          <textarea className={`${inputClass} min-h-20 py-3`} name="benefits" maxLength={4000} defaultValue={ticketType?.benefits?.join('\n') || ''} placeholder="List only benefits you can deliver." />
+        </label>
+        <label className={labelClass}>Minimum per order
+          <input className={inputClass} name="minPerOrder" type="number" min="1" max="100" defaultValue={ticketType?.min_per_order ?? 1} />
+        </label>
+        <label className={labelClass}>Maximum per order
+          <input className={inputClass} name="maxPerOrder" type="number" min="1" max="100" defaultValue={ticketType?.max_per_order ?? 10} />
+        </label>
+      </div>
+      {error && <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      <button disabled={saving || (!ticketType && availableWaveNumbers.length === 0) || (activationMode === 'previous_sold_out' && !hasPreviousWave)} className="mt-4 min-h-10 rounded-lg bg-orange-400 px-4 text-xs font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
+        {saving ? 'Saving wave…' : ticketType ? 'Save wave changes' : 'Save ticket wave'}
+      </button>
+      {ticketType && <p className="mt-2 text-[10px] text-slate-500">Existing order history locks wave pricing and terms in the database.</p>}
+    </form>
+  );
+}
+
+function ServiceFeeForm({ event, onSaved, onCancel }: { event: TicketEvent; onSaved: () => void; onCancel: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(formData: FormData) {
+    setSaving(true);
+    setError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_event_service_fee',
+          eventId: event.id,
+          serviceFee: formData.get('serviceFee')
+        })
+      }));
+      onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The service fee could not be updated.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form action={submit} className="mb-5 rounded-xl border border-orange-300/15 bg-[#100d17] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-black text-white">Control service fee</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-400">Set one fixed fee per ticket in KES. Existing orders keep their saved totals.</p>
+        </div>
+        <button type="button" onClick={onCancel} className="rounded-lg px-2 py-1 text-xs font-bold text-slate-400 hover:bg-white/5">Close</button>
+      </div>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className={`${labelClass} min-w-44 flex-1`}>Fee per ticket (KES)
+          <input className={inputClass} name="serviceFee" type="number" min="0" max="1000000" step="0.01" required defaultValue={(event.service_fee_minor / 100).toFixed(2)} />
+        </label>
+        <button disabled={saving} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-4 text-sm font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
+          <Wallet size={15} /> {saving ? 'Saving…' : 'Save service fee'}
+        </button>
+      </div>
+      <p className="mt-2 text-[10px] leading-4 text-slate-500">The fee is calculated server-side and included in each new ticket checkout total. Existing orders keep their original fee snapshot.</p>
+      {error && <p role="alert" className="mt-3 rounded-lg border border-red-200/20 bg-red-950/20 p-3 text-xs text-red-200">{error}</p>}
+    </form>
+  );
+}
+
+function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPublish: boolean; onRefresh: () => void }) {
+  const [addingTier, setAddingTier] = useState(false);
+  const [addingWave, setAddingWave] = useState(false);
+  const [editingWaveId, setEditingWaveId] = useState<string | null>(null);
+  const [waveSavingId, setWaveSavingId] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState('');
+  const [eventStatusSaving, setEventStatusSaving] = useState(false);
+  const [editingServiceFee, setEditingServiceFee] = useState(false);
+  const [editingVenue, setEditingVenue] = useState(false);
+  const allocated = event.ticket_types.reduce((total, tier) => total + tier.capacity, 0);
+
+  async function setWaveStatus(tier: TicketType, status: 'active' | 'paused') {
+    setWaveSavingId(tier.id);
+    setStatusError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: tier.activation_mode === 'manual' && status === 'active' ? 'set_manual_ticket_wave_open' : 'set_ticket_wave_status',
+          eventId: event.id,
+          ticketTypeId: tier.id,
+          status,
+          open: status === 'active'
+        })
+      }));
+      onRefresh();
+    } catch (cause) {
+      setStatusError(cause instanceof Error ? cause.message : 'The ticket wave status could not be changed.');
+    } finally {
+      setWaveSavingId(null);
+    }
+  }
+
+  async function setEventSalesStatus(status: 'on_sale' | 'scheduled') {
+    if (status === 'on_sale' && !window.confirm(`Open public ticket sales for "${event.title}"? Verify the event details, ticket price, allocation and opening wave before continuing.`)) {
+      return;
+    }
+    if (status === 'scheduled' && !window.confirm(`Pause ticket sales for "${event.title}"? Existing paid tickets will remain valid.`)) {
+      return;
+    }
+    setEventStatusSaving(true);
+    setStatusError('');
+    try {
+      await readResponse(await fetch('/api/admin/ticketing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_event_sales_status', eventId: event.id, status })
+      }));
+      onRefresh();
+    } catch (cause) {
+      setStatusError(cause instanceof Error ? cause.message : 'Event sales status could not be changed.');
+    } finally {
+      setEventStatusSaving(false);
+    }
+  }
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-white/10 bg-[#17121e] shadow-xl shadow-black/20">
+      <div className="border-b border-white/10 bg-gradient-to-r from-[#211326] via-[#251526] to-[#17121e] p-5 text-white sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-orange-300/30 bg-orange-300/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-orange-200">{statusLabel(event.status)}</span>
+              {event.age_limit !== null && <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-white/80">{event.age_limit}+</span>}
+            </div>
+            <h3 className="text-xl font-black tracking-tight sm:text-2xl">{event.title}</h3>
+            <p className="mt-2 flex items-center gap-2 text-sm text-white/70"><MapPin size={14} />{event.venue_name} · {event.city}</p>
+            <p className="mt-1 flex items-center gap-2 text-xs text-white/60"><CalendarDays size={13} />{eventDate(event.starts_at)}</p>
+          </div>
+          <div className="rounded-xl border border-orange-300/15 bg-orange-300/5 px-4 py-3 text-right">
+            <p className="text-2xl font-black">{event.ticket_types.length}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-orange-100/60">Ticket types</p>
+          </div>
+        </div>
+        {canPublish && ['draft', 'scheduled', 'on_sale'].includes(event.status) && (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-200/15 bg-black/20 p-3">
+            <div>
+              <p className="text-xs font-black text-white">{event.status === 'on_sale' ? 'Public event listing is live' : 'Event is not public yet'}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{event.status === 'on_sale' ? 'Pause sales to remove the event from public ticket listings.' : 'Complete the event and ticket wave, then open sales to publish this event.'}</p>
+            </div>
+            <button type="button" onClick={() => void setEventSalesStatus(event.status === 'on_sale' ? 'scheduled' : 'on_sale')} disabled={eventStatusSaving} className={`min-h-10 rounded-lg px-4 text-xs font-black disabled:opacity-50 ${event.status === 'on_sale' ? 'border border-red-300/20 bg-red-300/5 text-red-100 hover:bg-red-300/10' : 'bg-orange-300 text-[#170d18] hover:bg-orange-200'}`}>
+              {eventStatusSaving ? 'Updating…' : event.status === 'on_sale' ? 'Pause public sales' : 'Open event for public sales'}
+            </button>
+          </div>
+        )}
+        {event.description && <p className="mt-4 max-w-3xl text-sm leading-6 text-white/75">{event.description}</p>}
+      </div>
+      <div className="p-5 sm:p-6">
+        <div className="mb-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Event capacity</p><p className="mt-1 text-sm font-black text-white">{event.capacity ? event.capacity.toLocaleString('en-KE') : 'Not set'}</p></div>
+          <div className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Tier allocation</p><p className="mt-1 text-sm font-black text-white">{allocated.toLocaleString('en-KE')}{event.capacity ? ` / ${event.capacity.toLocaleString('en-KE')}` : ''}</p></div>
+          <div className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Event ends</p><p className="mt-1 text-sm font-black text-white">{eventDate(event.ends_at)}</p></div>
+        </div>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.025] p-3">
+          <div className="flex flex-wrap items-center gap-4">
+            <p className="text-xs text-slate-300">Service fee: <strong className="text-white">{money(event.service_fee_minor)} per ticket</strong></p>
+            <p className="text-xs text-slate-300">Map pin: <strong className="text-white">{event.venue_latitude !== null && event.venue_longitude !== null ? `${event.venue_latitude}, ${event.venue_longitude}` : 'Not set'}</strong></p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setEditingVenue(value => !value)} className="min-h-9 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
+              {editingVenue ? 'Close venue controls' : 'Edit venue & map pin'}
+            </button>
+            {(['draft', 'scheduled'].includes(event.status) || (event.status === 'on_sale' && canPublish)) && (
+              <button type="button" onClick={() => setEditingServiceFee(value => !value)} className="min-h-9 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
+                {editingServiceFee ? 'Close fee control' : 'Control service fee'}
+              </button>
+            )}
+          </div>
+        </div>
+        {editingVenue && <VenueLocationForm event={event} onCancel={() => setEditingVenue(false)} onSaved={() => { setEditingVenue(false); onRefresh(); }} />}
+        {editingServiceFee && <ServiceFeeForm event={event} onCancel={() => setEditingServiceFee(false)} onSaved={() => { setEditingServiceFee(false); onRefresh(); }} />}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-black text-white">Ticket types & release waves</h4>
+            <p className="mt-1 text-xs text-slate-400">Manage admission tiers and Wave I/II/III release pricing without touching Online Bar product inventory.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(['draft', 'scheduled'].includes(event.status)) ? <>
+              <button type="button" onClick={() => setAddingTier(value => !value)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-black text-orange-100 hover:bg-white/5">
+                <Plus size={14} /> Add tier
+              </button>
+              <button type="button" onClick={() => setAddingWave(value => !value)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-orange-300/20 bg-orange-300/5 px-3 text-xs font-black text-orange-100 hover:bg-orange-300/10">
+                <Wallet size={14} /> Set prices & waves
+              </button>
+            </> : <span className="self-center text-xs font-semibold text-slate-500">Ticket terms locked for this event state</span>}
+          </div>
+        </div>
+        {statusError && <p role="alert" className="mt-3 rounded-lg border border-red-200/20 bg-red-950/20 p-3 text-xs text-red-200">{statusError}</p>}
+        {event.ticket_types.length > 0 ? (
+          <div className="mt-4 divide-y divide-white/10 rounded-xl border border-white/10">
+            {event.ticket_types.map(tier => (
+              <div key={tier.id}>
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="mt-0.5 rounded-lg bg-orange-400/10 p-2 text-orange-300"><Ticket size={15} /></span>
+                    <div className="min-w-0">
+                      {tier.wave_number !== null && <p className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-orange-200">{tier.wave_label} · {tier.admission_type}</p>}
+                      <p className="truncate text-sm font-black text-white">{tier.name}</p>
+                      <p className="mt-1 text-xs text-slate-400">{tier.description || 'No tier description'} · {tier.min_per_order}–{tier.max_per_order} per order</p>
+                      {tier.wave_number !== null && <p className="mt-1 text-[10px] text-slate-500">Opens {tier.activation_mode === 'scheduled' ? 'on schedule' : tier.activation_mode === 'previous_sold_out' ? 'after the previous wave sells out or closes' : tier.wave_manual_open && tier.status === 'active' ? 'manually activated' : 'when the owner activates it'} · {tier.wave_theme.replaceAll('-', ' & ')}</p>}
+                      {tier.wave_number !== null && tier.benefits.length > 0 && <p className="mt-1 text-[10px] text-violet-200">{tier.benefits.join(' · ')}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right"><p className="text-sm font-black text-orange-100">{money(tier.price_minor, tier.currency)}</p><p className="mt-1 text-xs text-slate-400">{tier.capacity.toLocaleString('en-KE')} allocated · {statusLabel(tier.status)}</p></div>
+                    {tier.wave_number !== null && canPublish && tier.status !== 'archived' && <button type="button" onClick={() => {
+                      const isClosed = tier.status === 'paused' || (tier.activation_mode === 'manual' && !tier.wave_manual_open);
+                      void setWaveStatus(tier, isClosed ? 'active' : 'paused');
+                    }} disabled={waveSavingId === tier.id} className="min-h-9 rounded-lg border border-white/10 px-3 text-xs font-bold text-amber-100 hover:bg-white/5 disabled:opacity-50">{waveSavingId === tier.id ? 'Saving…' : tier.status === 'paused' || (tier.activation_mode === 'manual' && !tier.wave_manual_open) ? 'Activate wave' : 'Pause wave'}</button>}
+                    {tier.wave_number !== null && ['draft', 'scheduled'].includes(event.status) && <button type="button" onClick={() => setEditingWaveId(value => value === tier.id ? null : tier.id)} className="min-h-9 rounded-lg border border-white/10 px-3 text-xs font-bold text-orange-100 hover:bg-white/5">{editingWaveId === tier.id ? 'Close' : 'Edit wave'}</button>}
+                  </div>
+                </div>
+                {editingWaveId === tier.id && <div className="px-4 pb-4"><TicketWaveForm event={event} ticketType={tier} onCancel={() => setEditingWaveId(null)} onSaved={() => { setEditingWaveId(null); onRefresh(); }} /></div>}
+              </div>
+            ))}
+          </div>
+        ) : <p className="mt-4 rounded-xl border border-dashed border-white/15 p-4 text-sm text-slate-400">No ticket tiers yet. Add tiers before moving this event toward review.</p>}
+        {addingTier && <TierForm event={event} onCancel={() => setAddingTier(false)} onCreated={() => { setAddingTier(false); onRefresh(); }} />}
+        {addingWave && <TicketWaveForm event={event} onCancel={() => setAddingWave(false)} onSaved={() => { setAddingWave(false); onRefresh(); }} />}
+      </div>
+    </article>
+  );
+}
+
+export default function TicketingPage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [addingEvent, setAddingEvent] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setData(await readResponse(await fetch('/api/admin/ticketing', { cache: 'no-store' })) as DashboardData);
+    } catch (cause) {
+      setData(null);
+      setError(cause instanceof Error ? cause.message : 'Ticketing could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const visibleEvents = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return data?.events || [];
+    return (data?.events || []).filter(event => `${event.title} ${event.venue_name} ${event.city}`.toLowerCase().includes(normalized));
+  }, [data, query]);
+  const canSetPrices = (data?.events || []).some(event => ['draft', 'scheduled'].includes(event.status));
+  const hasEvents = Boolean(data?.events.length);
+
+  return (
+    <main className="ticket-admin-theme relative min-h-screen overflow-hidden bg-[#0d0a12] px-4 py-6 text-white sm:px-6 lg:px-8">
+      <div className="relative mx-auto max-w-7xl space-y-6">
+        <header className="overflow-hidden rounded-3xl border border-amber-200/15 bg-gradient-to-br from-[#201913] via-[#151319] to-[#0e0d12] p-5 shadow-2xl shadow-black/20 sm:p-8">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/20 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-200"><Ghost size={14} /> Midnight Society KE <span className="text-amber-100/40">/</span> Ticketing</div>
+              <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Event command<span className="text-amber-300">.</span></h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Manage event drafts, ticket pricing and release waves from one place. Ticketing records stay separate from drink orders, product stock and existing payouts.</p>
+              <div className="mt-5 inline-flex rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <TicketThemePicker />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/lord/ticketing/sales" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Wallet size={15} /> Ticket sales</Link>
+              <Link href="/lord/ticketing/staff" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Users size={15} /> Gate staff</Link>
+              <Link href="/scanner" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Open scanner</Link>
+              <Link href="/lord/ticketing/security" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ShieldAlert size={15} /> Trust centre</Link>
+              <Link href="/lord/ticketing/live" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Live operations</Link>
+              <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.03] px-4 text-sm font-bold text-white transition hover:border-white/25 hover:bg-white/10 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+              <button type="button" onClick={() => setAddingEvent(value => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-300 px-4 text-sm font-black text-[#170d18] shadow-lg shadow-black/20 transition hover:bg-amber-200"><Plus size={16} /> New event</button>
+            </div>
+          </div>
+          <div className="mt-7 grid gap-3 sm:grid-cols-3">
+            <Metric icon={CalendarDays} label="Events in system" value={data?.totals.events} />
+            <Metric icon={Ticket} label="Tickets issued" value={data?.totals.tickets} />
+            <Metric icon={Wallet} label="Orders recorded" value={data?.totals.orders} />
+          </div>
+        </header>
+
+        <section aria-labelledby="ticketing-steps-heading" className="rounded-2xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
+          <div className="mb-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Quick start</p>
+            <h2 id="ticketing-steps-heading" className="mt-1 text-lg font-black text-white">Manage ticketing in four steps</h2>
+            <p className="mt-1 text-xs text-slate-400">Everything stays in this ticketing area; ticket money and records stay separate from shop sales.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <button type="button" onClick={() => setAddingEvent(true)} className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-left transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">1 · Event</span>
+              <span className="mt-1 block text-sm font-black text-white">{hasEvents ? `Review ${data?.totals.events ?? 0} event${data?.totals.events === 1 ? '' : 's'}` : 'Create your first event'}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">{hasEvents ? 'Create another event draft here, or review existing events in the vault below.' : 'Add the event name, venue, date and guest details.'}</span>
+            </button>
+            <button type="button" onClick={() => document.getElementById('ticket-event-vault')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-left transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">2 · Tickets</span>
+              <span className="mt-1 block text-sm font-black text-white">Set prices &amp; release waves</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">Choose admission, KES price, ticket allocation and sales opening time.</span>
+            </button>
+            <Link href="/lord/ticketing/staff" className="rounded-xl border border-white/10 bg-white/[0.025] p-4 transition hover:border-amber-200/25 hover:bg-white/[0.05]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">3 · Gate team</span>
+              <span className="mt-1 block text-sm font-black text-white">Assign scanner staff</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">Give each verified staff account access only to its assigned event.</span>
+            </Link>
+            <div className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">4 · Run the event</span>
+              <span className="mt-1 block text-sm font-black text-white">Track sales &amp; gate scans</span>
+              <span className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs font-bold">
+                <Link href="/lord/ticketing/sales" className="text-amber-200 underline underline-offset-2">Sales ledger</Link>
+                <Link href="/lord/ticketing/live" className="text-amber-200 underline underline-offset-2">Live operations</Link>
+                <Link href="/scanner" className="text-amber-200 underline underline-offset-2">Open scanner</Link>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="ticket-pricing-heading" className="rounded-2xl border border-amber-200/20 bg-gradient-to-r from-[#201913] via-[#19161a] to-[#131217] p-5 shadow-lg shadow-black/20 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Admin · ticket pricing</p>
+              <h2 id="ticket-pricing-heading" className="mt-1 text-xl font-black text-white">Set ticket prices here</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                Choose an event below, then set the KES price, allocation, benefits and opening rule for each admission type and Wave I, II or III.
+              </p>
+            </div>
+            <button type="button" onClick={() => {
+              if (!hasEvents) {
+                setAddingEvent(true);
+                return;
+              }
+              document.getElementById('ticket-event-vault')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-[#170d18] shadow-lg shadow-black/20 transition hover:bg-amber-200">
+              <Wallet size={17} /> {hasEvents ? 'Go to ticket prices' : 'Create event to set prices'}
+            </button>
+          </div>
+          {!loading && data && !canSetPrices && hasEvents && (
+            <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-300/5 p-3 text-xs leading-5 text-amber-100/80">
+              Existing event ticket terms are locked in this event state. Create a draft or scheduled event to configure new prices; paid order terms must not be silently changed.
+            </p>
+          )}
+          {error && /TICKETING_WAVES_MIGRATION\.sql/i.test(error) && (
+            <p role="alert" className="mt-3 rounded-xl border border-red-300/20 bg-red-950/30 p-3 text-xs leading-5 text-red-100">
+              Pricing controls need the ticket-wave database migration first. Apply <code>supabase/TICKETING_WAVES_MIGRATION.sql</code> to the Online Bar Supabase project after the core, service-fee, security and live-operations migrations, then refresh this page.
+            </p>
+          )}
+        </section>
+
+        <section role="status" className="relative overflow-hidden rounded-2xl border border-emerald-400/20 bg-gradient-to-r from-emerald-950/35 via-[#171c19] to-[#171220] p-4 sm:p-5">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-16 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
+          <div className="relative flex items-start gap-3">
+            <span className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-2 text-emerald-200"><ShieldCheck size={18} /></span>
+            <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-emerald-100">Ticket checkout is implemented; event sales are owner-controlled</p><span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-100">Separate ticket ledger</span></div><p className="mt-1 text-xs leading-5 text-emerald-50/75">Paystack checkout, server-verified payment callbacks, ticket issuance and guest-wallet access are implemented. Ticket orders, payment attempts and fees stay in ticketing-specific records, separate from beverage orders and product inventory. To make an event visible to guests, configure its confirmed details and an available ticket wave, then use the owner-only publish control on its event card. Production checkout still requires valid server configuration.</p><Link href="/lord/ticketing/sales" className="mt-2 inline-flex text-xs font-black text-amber-200 underline underline-offset-2">Open the dedicated ticket sales ledger</Link></div>
+          </div>
+        </section>
+
+        {addingEvent && <EventForm onCancel={() => setAddingEvent(false)} onCreated={() => { setAddingEvent(false); void load(); }} />}
+
+        <section id="ticket-event-vault" className="scroll-mt-6 space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div><div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Event vault</div><h2 className="mt-1 text-xl font-black tracking-tight text-white">Your events</h2>            <p className="mt-1 text-sm text-slate-400">Create a draft, configure an available ticket wave, then open or pause public sales here as the owner.</p></div>
+            <label className="relative block w-full sm:w-72"><span className="sr-only">Search events</span><input value={query} onChange={event => setQuery(event.target.value)} className={inputClass} placeholder="Search events, venues or cities" /></label>
+          </div>
+          {error && <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-950/30 p-4 text-sm text-red-200">{error}<button type="button" onClick={() => void load()} className="ml-2 font-black underline">Try again</button></div>}
+          {loading && !data && <div className="rounded-2xl border border-white/10 bg-[#17121e] p-10 text-center text-sm text-slate-400">Opening the event vault…</div>}
+          {!loading && !error && visibleEvents.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-white/15 bg-[#17121e]/80 p-10 text-center">
+              <CalendarDays className="mx-auto text-amber-200" size={30} />
+              <h3 className="mt-3 text-lg font-black text-white">{query ? 'No matching events' : 'The vault is waiting for its first event'}</h3>
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">{query ? 'Try another event name, venue or city.' : 'Create a private event draft, add ticket tiers, then complete payment and security setup before opening sales.'}</p>
+              {!query && <button type="button" onClick={() => setAddingEvent(true)} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-300 px-5 text-sm font-black text-[#170d18] hover:bg-amber-200"><Plus size={16} /> Create event draft</button>}
+            </div>
+          )}
+          {visibleEvents.map(event => <EventCard key={event.id} event={event} canPublish={data?.canPublish ?? false} onRefresh={() => void load()} />)}
+        </section>
+
+        <details className="group overflow-hidden rounded-2xl border border-white/10 bg-[#111016]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 transition hover:bg-white/[0.025] sm:px-6 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-sm font-black text-white">Readiness &amp; security controls</span>
+              <span className="mt-1 block text-xs text-slate-400">Current payment, ticket authenticity and gate-operation status</span>
+            </span>
+            <span className="shrink-0 rounded-full border border-amber-200/15 bg-amber-100/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">Owner-controlled release</span>
+          </summary>
+          <div className="border-t border-white/10 p-5 sm:p-6">
+        <section aria-labelledby="trust-heading" className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-[#19171d] to-[#111016] p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100"><ShieldAlert size={14} /> Trust &amp; security centre</div>
+              <h2 id="trust-heading" className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">Keep the tricks out. Keep the tickets real.</h2>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">Checkout, verified payment handling, ticket issuance, guest wallets and online scanning are implemented. Event publication and production checkout remain gated by the owner and server-side readiness checks; this panel is not a live fraud-monitoring feed.</p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SecurityControl icon={BadgeCheck} title="Verified purchase" state="Server verified" body="Paystack callbacks are signature-checked and independently verified against the ticket order before fulfillment. Only matching verified transactions issue tickets." />
+            <SecurityControl icon={KeyRound} title="Authentic ticket" state="Encrypted & verified" body="Ticket credentials are issued after verified payment, stored hashed and encrypted, and delivered to the guest wallet through the ticket access flow." />
+            <SecurityControl icon={ScanLine} title="Gate admission" state="Online scanner" body="The separate /scanner workspace supports server-validated check-ins and assigned staff. Apply the scanner migration, assign event staff, and use an issued ticket for admission." />
+            <SecurityControl icon={Fingerprint} title="Staff & oversight" state="Foundation" body="Ticketing changes are audited and scanner access is event-scoped. MFA enforcement, dual approval and automated fraud monitoring are not live." />
+          </div>
+          <div className="mt-4 flex items-start gap-2 rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-5 text-slate-400">
+            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-amber-200" />
+            <p>QR screenshots and payment messages are not proof of a valid ticket. Each event must pass the server-side publication checks and have an available ticket wave before guests can check out. Use the scanner only after its migration and event staff assignments are complete.</p>
+          </div>
+        </section>
+
+        <section className="grid gap-3 md:grid-cols-3">
+          <Feature icon={ShieldCheck} title="Isolated ticket records" body="Ticketing uses its own event, tier, reservation, payment, ticket, refund and check-in data." />
+          <Feature icon={Clock3} title="Reserved checkout" body="Public checkout uses server-priced tickets and atomic inventory reservations. The server verifies payment before issuing tickets; event availability is controlled from the event card above." />
+          <Feature icon={Users} title="Isolated staff scanner" body="Gate staff sign into /scanner with their own verified account and can validate only events assigned by an admin." />
+        </section>
+          </div>
+        </details>
+
+        <footer className="rounded-2xl border border-amber-200/10 bg-[#111016] p-5">
+          <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-amber-200" size={19} /><div><p className="text-sm font-black text-white">You control when each event goes on sale</p><p className="mt-1 text-xs leading-5 text-slate-400">Create the event and ticket wave here, then use the owner-only publish control to list it publicly or pause sales. Checkout verifies payment server-side before issuing tickets. The public listing stays empty until an event has actually been opened for sales; no event or ticket offer is created automatically.</p></div><ArrowUpRight className="ml-auto hidden text-slate-500 sm:block" size={16} /></div>
+        </footer>
+      </div>
+    </main>
+  );
+}
+
+function Metric({ icon: Icon, label, value }: { icon: typeof Ticket; label: string; value?: number }) {
+  return <div className="rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-sm"><div className="flex items-center justify-between text-slate-300"><p className="text-[10px] font-black uppercase tracking-[0.15em]">{label}</p><Icon size={16} className="text-orange-300" /></div><p className="mt-2 text-2xl font-black">{value === undefined ? '—' : value.toLocaleString('en-KE')}</p></div>;
+}
+
+function Feature({ icon: Icon, title, body }: { icon: typeof Ticket; title: string; body: string }) {
+  return <article className="rounded-2xl border border-white/10 bg-[#17121e] p-4 shadow-lg shadow-black/10"><div className="flex items-center gap-2 text-orange-300"><Icon size={16} /><h3 className="text-xs font-black uppercase tracking-wide text-slate-200">{title}</h3></div><p className="mt-2 text-xs leading-5 text-slate-400">{body}</p></article>;
+}
+
+function SecurityControl({ icon: Icon, title, state, body }: { icon: typeof Ticket; title: string; state: string; body: string }) {
+  const isFoundation = state === 'Foundation';
+  return (
+    <article className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <span className={`rounded-xl p-2 ${isFoundation ? 'bg-violet-300/10 text-violet-200' : 'bg-orange-300/10 text-orange-200'}`}><Icon size={17} /></span>
+        <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wider ${isFoundation ? 'border-violet-300/20 bg-violet-300/10 text-violet-200' : 'border-orange-300/20 bg-orange-300/10 text-orange-200'}`}>{state}</span>
+      </div>
+      <h3 className="mt-3 text-sm font-black text-white">{title}</h3>
+      <p className="mt-1.5 text-[11px] leading-5 text-slate-400">{body}</p>
+    </article>
+  );
+}

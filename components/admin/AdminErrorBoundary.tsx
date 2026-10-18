@@ -31,7 +31,7 @@ export default class AdminErrorBoundary extends Component<Props, State> {
     try {
       const response = await fetch('/api/admin/logout', { method: 'POST' });
       if (!response.ok) throw new Error('Could not clear the admin session cookie.');
-      window.location.href = '/admin/login';
+      window.location.href = '/lord/login';
     } catch (error) {
       console.error('Could not clear the admin session cookie:', error);
     }

@@ -117,7 +117,7 @@ export default function DossierEditor() {
 
             if (error) throw error;
             alert("Dossier Node Synchronized.");
-            router.push('/admin/inventory/dossiers');
+            router.push('/lord/inventory/dossiers');
         } catch (err: unknown) {
             alert(`Uplink Failure: ${(err as Error).message}`);
         } finally {

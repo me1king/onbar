@@ -143,7 +143,7 @@ export default function AdminLayoutClient({
       await logAuditAction(email, 'OS_SESSION_END', { duration: 'calculated-on-server' });
       const response = await fetch('/api/admin/logout', { method: 'POST' });
       if (!response.ok) throw new Error('Could not end the admin session.');
-      router.push('/admin/login');
+      router.push('/lord/login');
     } catch (error) {
       console.error('Logout failed:', error);
       setIsLoggingOut(false);
@@ -155,74 +155,75 @@ export default function AdminLayoutClient({
 
   const allNavItems = [
     { group: 'SHIFT CONTROL', items: [
-      { name: 'Shift Console', href: '/admin', icon: LayoutDashboard, minRole: 'viewer' },
+      { name: 'Shift Console', href: '/lord', icon: LayoutDashboard, minRole: 'viewer' },
     ]},
     { group: 'INVENTORY', items: [
-      { name: 'Cellar Hub', href: '/admin/upload', icon: Wine, permission: 'can_manage_inventory' },
-      { name: 'Extras Studio', href: '/admin/upload?category=extras', icon: PackageSearch, permission: 'can_manage_inventory' },
-      { name: 'Beverage Vault', href: '/admin/inventory/beverages', icon: Coffee, permission: 'can_manage_inventory' },
-      { name: 'Product Forge', href: '/admin/forge', icon: Zap, permission: 'can_manage_inventory' },
-      { name: 'Bite Command', href: '/admin/bites', icon: Utensils, permission: 'can_manage_inventory' },
-      { name: 'Kitchen Control', href: '/admin/kitchen', icon: Flame, permission: 'can_manage_kitchen' },
-      { name: 'Munchie Hub', href: '/admin/munchies', icon: Cookie, permission: 'can_manage_inventory' },
-      { name: 'Souvenir Forge', href: '/admin/souvenirs', icon: Gift, permission: 'can_manage_inventory' },
-      { name: 'Dispatch Queue', href: '/admin/orders', icon: ShoppingCart, permission: 'can_manage_orders' },
+      { name: 'Cellar Hub', href: '/lord/upload', icon: Wine, permission: 'can_manage_inventory' },
+      { name: 'Extras Studio', href: '/lord/upload?category=extras', icon: PackageSearch, permission: 'can_manage_inventory' },
+      { name: 'Beverage Vault', href: '/lord/inventory/beverages', icon: Coffee, permission: 'can_manage_inventory' },
+      { name: 'Product Forge', href: '/lord/forge', icon: Zap, permission: 'can_manage_inventory' },
+      { name: 'Bite Command', href: '/lord/bites', icon: Utensils, permission: 'can_manage_inventory' },
+      { name: 'Kitchen Control', href: '/lord/kitchen', icon: Flame, permission: 'can_manage_kitchen' },
+      { name: 'Munchie Hub', href: '/lord/munchies', icon: Cookie, permission: 'can_manage_inventory' },
+      { name: 'Souvenir Forge', href: '/lord/souvenirs', icon: Gift, permission: 'can_manage_inventory' },
+      { name: 'Dispatch Queue', href: '/lord/orders', icon: ShoppingCart, permission: 'can_manage_orders' },
     ]},
     { group: 'EXPERIENCE', items: [
-      { name: 'Web Widgets', href: '/admin/experience/widgets', icon: LayoutIcon, permission: 'can_manage_settings' },
-      { name: 'App Widgets', href: '/admin/experience/mobile-widgets', icon: Smartphone, permission: 'can_manage_settings' },
+      { name: 'Web Widgets', href: '/lord/experience/widgets', icon: LayoutIcon, permission: 'can_manage_settings' },
+      { name: 'App Widgets', href: '/lord/experience/mobile-widgets', icon: Smartphone, permission: 'can_manage_settings' },
     ]},
     { group: 'OPERATIONS', items: [
-      { name: 'Ticketing', href: '/admin/ticketing', icon: Ticket, minRole: 'admin' },
-      { name: 'Live Runners', href: '/admin/dispatch', icon: Truck, permission: 'can_manage_orders' },
-      { name: 'The Buzz Hub', href: '/admin/buzz', icon: Flame, permission: 'can_manage_marketing' },
-      { name: 'Tasks Board', href: '/admin/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },
-      { name: 'Merchant Onboarding', href: '/admin/merchants', icon: Store, minRole: 'admin' },
-      { name: 'Market Operations', href: '/admin/market', icon: Store, permission: 'can_manage_inventory' },
-      { name: 'Traceability & Incidents', href: '/admin/traceability', icon: PackageSearch, permission: 'can_manage_orders' },
-      { name: 'Partner Bars', href: '/admin/operations/vendors', icon: Store, permission: 'can_manage_settings' },
-      { name: 'Global Supply', href: '/admin/operations/sourcing', icon: Globe, permission: 'can_manage_inventory' },
-      { name: 'Distributors', href: '/admin/operations/suppliers', icon: Beer, permission: 'can_manage_inventory' },
+      { name: 'Ticketing', href: '/lord/ticketing', icon: Ticket, minRole: 'admin' },
+      { name: 'Live Runners', href: '/lord/dispatch', icon: Truck, permission: 'can_manage_orders' },
+      { name: 'The Buzz Hub', href: '/lord/buzz', icon: Flame, permission: 'can_manage_marketing' },
+      { name: 'Tasks Board', href: '/lord/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },
+      { name: 'Merchant Onboarding', href: '/lord/merchants', icon: Store, minRole: 'admin' },
+      { name: 'Market Operations', href: '/lord/market', icon: Store, permission: 'can_manage_inventory' },
+      { name: 'Traceability & Incidents', href: '/lord/traceability', icon: PackageSearch, permission: 'can_manage_orders' },
+      { name: 'Partner Bars', href: '/lord/operations/vendors', icon: Store, permission: 'can_manage_settings' },
+      { name: 'Global Supply', href: '/lord/operations/sourcing', icon: Globe, permission: 'can_manage_inventory' },
+      { name: 'Distributors', href: '/lord/operations/suppliers', icon: Beer, permission: 'can_manage_inventory' },
     ]},
     { group: 'PATRONS', items: [
-      { name: 'Directory', href: '/admin/customers', icon: Users, permission: 'can_manage_communications' },
-      { name: 'Early Access Waitlist', href: '/admin/waitlist', icon: UserRoundPlus, permission: 'can_manage_communications' },
-      { name: 'WhatsApp Command', href: '/admin/communications/whatsapp', icon: MessageCircle, permission: 'can_manage_communications' },
-      { name: 'Message Command', href: '/admin/communications/command', icon: MessageSquare, permission: 'can_manage_communications' },
-      { name: 'Popup Manager', href: '/admin/communications/popups', icon: Bell, permission: 'can_manage_communications' },
-      { name: 'Support Inbox', href: '/admin/messages', icon: MessageSquare, permission: 'can_manage_communications' },
-      { name: 'Taste Reviews', href: '/admin/reviews', icon: Star, permission: 'can_manage_communications' },
-      { name: 'VIP Rewards', href: '/admin/gamification', icon: Trophy, permission: 'can_manage_settings' },
+      { name: 'Directory', href: '/lord/customers', icon: Users, permission: 'can_manage_communications' },
+      { name: 'Early Access Waitlist', href: '/lord/waitlist', icon: UserRoundPlus, permission: 'can_manage_communications' },
+      { name: 'WhatsApp Command', href: '/lord/communications/whatsapp', icon: MessageCircle, permission: 'can_manage_communications' },
+      { name: 'Message Command', href: '/lord/communications/command', icon: MessageSquare, permission: 'can_manage_communications' },
+      { name: 'Message Automation', href: '/lord/communications/automation', icon: MessageCircle, permission: 'can_manage_communications' },
+      { name: 'Popup Manager', href: '/lord/communications/popups', icon: Bell, permission: 'can_manage_communications' },
+      { name: 'Support Inbox', href: '/lord/messages', icon: MessageSquare, permission: 'can_manage_communications' },
+      { name: 'Taste Reviews', href: '/lord/reviews', icon: Star, permission: 'can_manage_communications' },
+      { name: 'VIP Rewards', href: '/lord/gamification', icon: Trophy, permission: 'can_manage_settings' },
     ]},
     { group: 'GROWTH', items: [
-      { name: 'Tactical Camera', href: '/admin/growth/camera', icon: CameraIcon, permission: 'can_manage_marketing' },
-      { name: 'Content Studio', href: '/admin/growth/content', icon: LayoutIcon, permission: 'can_manage_marketing' },
-      { name: 'Tactical Calendar', href: '/admin/growth/calendar', icon: Calendar, permission: 'can_manage_marketing' },
-      { name: 'Smart Autopilot', href: '/admin/growth/autopilot', icon: Bot, permission: 'can_manage_marketing' },
-      { name: 'Social Nodes', href: '/admin/growth/accounts', icon: Globe, permission: 'can_manage_marketing' },
-      { name: 'Marketing Hub', href: '/admin/marketing', icon: TrendingUp, permission: 'can_manage_marketing' },
-      { name: 'AI Ad Agency', href: '/admin/marketing/ai-agency', icon: Target, permission: 'can_manage_marketing' },
-      { name: 'Affiliates', href: '/admin/affiliates', icon: Users, permission: 'can_manage_affiliates' },
-      { name: 'Drink Deals', href: '/admin/coupons', icon: Tag, permission: 'can_manage_marketing' },
+      { name: 'Tactical Camera', href: '/lord/growth/camera', icon: CameraIcon, permission: 'can_manage_marketing' },
+      { name: 'Content Studio', href: '/lord/growth/content', icon: LayoutIcon, permission: 'can_manage_marketing' },
+      { name: 'Tactical Calendar', href: '/lord/growth/calendar', icon: Calendar, permission: 'can_manage_marketing' },
+      { name: 'Smart Autopilot', href: '/lord/growth/autopilot', icon: Bot, permission: 'can_manage_marketing' },
+      { name: 'Social Nodes', href: '/lord/growth/accounts', icon: Globe, permission: 'can_manage_marketing' },
+      { name: 'Marketing Hub', href: '/lord/marketing', icon: TrendingUp, permission: 'can_manage_marketing' },
+      { name: 'AI Ad Agency', href: '/lord/marketing/ai-agency', icon: Target, permission: 'can_manage_marketing' },
+      { name: 'Affiliates', href: '/lord/affiliates', icon: Users, permission: 'can_manage_affiliates' },
+      { name: 'Drink Deals', href: '/lord/coupons', icon: Tag, permission: 'can_manage_marketing' },
     ]},
     { group: 'FINANCE', items: [
-      { name: 'Finance Vault', href: '/admin/finance', icon: DollarSign, permission: 'can_view_revenue' },
-      { name: 'Payout Requests', href: '/admin/payouts', icon: CreditCard, permission: 'can_view_revenue' },
-      { name: 'Ledger Audit', href: '/admin/vault', icon: Lock, permission: 'can_view_revenue' },
+      { name: 'Finance Vault', href: '/lord/finance', icon: DollarSign, permission: 'can_view_revenue' },
+      { name: 'Payout Requests', href: '/lord/payouts', icon: CreditCard, permission: 'can_view_revenue' },
+      { name: 'Ledger Audit', href: '/lord/vault', icon: Lock, permission: 'can_view_revenue' },
     ]},
     { group: 'INTELLIGENCE', items: [
-      { name: 'Bar Analytics', href: '/admin/analytics', icon: Activity, permission: 'can_view_revenue' },
-      { name: 'Customer Economics', href: '/admin/customer-intelligence', icon: Users, permission: 'can_view_revenue' },
-      { name: 'Demand Intelligence', href: '/admin/demand', icon: MapPin, permission: 'can_view_revenue' },
-      { name: 'Behavioral OS', href: '/admin/behavior', icon: Target, permission: 'can_view_revenue' },
-      { name: 'AI Shift Log', href: '/admin/messages?filter=ai', icon: Bot, permission: 'can_manage_customer_care' },
+      { name: 'Bar Analytics', href: '/lord/analytics', icon: Activity, permission: 'can_view_revenue' },
+      { name: 'Customer Economics', href: '/lord/customer-intelligence', icon: Users, permission: 'can_view_revenue' },
+      { name: 'Demand Intelligence', href: '/lord/demand', icon: MapPin, permission: 'can_view_revenue' },
+      { name: 'Behavioral OS', href: '/lord/behavior', icon: Target, permission: 'can_view_revenue' },
+      { name: 'AI Shift Log', href: '/lord/messages?filter=ai', icon: Bot, permission: 'can_manage_customer_care' },
     ]},
     { group: 'ENTERPRISE', items: [
-      { name: 'Launch Readiness', href: '/admin/launch', icon: ShieldCheck, minRole: 'admin' },
-      { name: 'Staff Control', href: '/admin/staff', icon: ShieldCheck, minRole: 'admin' },
-      { name: 'Audit Logs', href: '/admin/audit', icon: HistoryIcon, permission: 'can_view_audit_logs' },
-      { name: 'Security Hub', href: '/admin/security', icon: SecurityIcon, permission: 'can_manage_settings' },
-      { name: 'Bar Settings', href: '/admin/settings', icon: Settings, permission: 'can_manage_settings' },
+      { name: 'Launch Readiness', href: '/lord/launch', icon: ShieldCheck, minRole: 'admin' },
+      { name: 'Staff Control', href: '/lord/staff', icon: ShieldCheck, minRole: 'admin' },
+      { name: 'Audit Logs', href: '/lord/audit', icon: HistoryIcon, permission: 'can_view_audit_logs' },
+      { name: 'Security Hub', href: '/lord/security', icon: SecurityIcon, permission: 'can_manage_settings' },
+      { name: 'Bar Settings', href: '/lord/settings', icon: Settings, permission: 'can_manage_settings' },
     ]},
   ];
 
@@ -232,7 +233,7 @@ export default function AdminLayoutClient({
           if (!role) return false;
           if (isOwner) return true;
           if ('minRole' in item && item.minRole === 'viewer') return true;
-          if (item.href === '/admin/waitlist'
+          if (item.href === '/lord/waitlist'
             && (permissions.can_manage_communications || permissions.can_manage_customer_care)) return true;
           if (item.permission && permissions && permissions[item.permission as keyof Permissions]) return true;
           if ('minRole' in item && item.minRole === 'admin') return isAdmin;
@@ -242,12 +243,12 @@ export default function AdminLayoutClient({
   })).filter(group => group.items.length > 0);
 
   const isActive = (href: string) => {
-    if (href === '/admin') return pathname === '/admin';
-    if (href === '/admin/upload?category=extras') {
-      return pathname === '/admin/upload' && searchParams.get('category') === 'extras';
+    if (href === '/lord') return pathname === '/lord';
+    if (href === '/lord/upload?category=extras') {
+      return pathname === '/lord/upload' && searchParams.get('category') === 'extras';
     }
-    if (href === '/admin/upload') {
-      return pathname === '/admin/upload' && searchParams.get('category') !== 'extras';
+    if (href === '/lord/upload') {
+      return pathname === '/lord/upload' && searchParams.get('category') !== 'extras';
     }
     return pathname?.startsWith(href) || false;
   };
@@ -412,7 +413,7 @@ export default function AdminLayoutClient({
 
                       <div className="h-5 w-px bg-border mx-1 opacity-50"></div>
 
-                      <Link href="/admin/upload">
+                      <Link href="/lord/upload">
                           <Button className="h-10 px-6 rounded-xl bg-primary text-white font-black uppercase text-[9px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2">
                               <Wine className="h-3.5 w-3.5" /> Stock Cellar
                           </Button>

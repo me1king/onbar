@@ -221,7 +221,7 @@ export default function ProductDossierGrid() {
                                             <Eye size={20} />
                                         </button>
                                     </Link>
-                                    <Link href={`/admin/inventory/dossiers/edit/${item.product_id}`}>
+                                    <Link href={`/lord/inventory/dossiers/edit/${item.product_id}`}>
                                         <button className="h-12 w-12 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300 hover:bg-primary hover:text-white transition-all shadow-sm border border-slate-100">
                                             <Edit3 size={20} />
                                         </button>

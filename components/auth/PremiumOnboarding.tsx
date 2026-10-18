@@ -28,6 +28,23 @@ import AuthForm from './AuthForm';
 
 type OnboardingStep = 'INTRO' | 'AUTH' | 'PERSONALIZE' | 'COMPLETE';
 
+function continueAffiliateInvitation(router: ReturnType<typeof useRouter>): boolean {
+    try {
+        const storedRedirect = sessionStorage.getItem('ob_auth_redirect');
+        if (!storedRedirect) return false;
+        sessionStorage.removeItem('ob_auth_redirect');
+        const target = new URL(storedRedirect, window.location.origin);
+        const inviteToken = target.searchParams.get('invite') || '';
+        if (target.origin !== window.location.origin || target.pathname !== '/affiliate/register'
+            || !/^[A-Za-z0-9_-]{40,60}$/.test(inviteToken)) return false;
+        router.replace(`${target.pathname}${target.search}`);
+        return true;
+    } catch (error) {
+        console.error('Could not continue affiliate invitation after sign-in:', error);
+        return false;
+    }
+}
+
 export default function PremiumOnboarding() {
     const router = useRouter();
     const [step, setStep] = React.useState<OnboardingStep>('INTRO');
@@ -48,6 +65,7 @@ export default function PremiumOnboarding() {
 
         const continueForUser = async (authenticatedUserId: string) => {
             setUserId(authenticatedUserId);
+            if (continueAffiliateInvitation(router)) return;
             const { data: profile, error } = await client
                 .from('profiles')
                 .select('interests')
@@ -91,6 +109,7 @@ export default function PremiumOnboarding() {
     const handleAuthSuccess = (uId: string) => {
         setUserId(uId);
         setSaveError(null);
+        if (continueAffiliateInvitation(router)) return;
         void (async () => {
             if (!supabase) {
                 setStep('PERSONALIZE');

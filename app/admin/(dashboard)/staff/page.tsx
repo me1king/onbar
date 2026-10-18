@@ -400,7 +400,7 @@ export default function AdminStaffPage() {
                                       </td>
                                       <td className="px-10 py-8 text-right">
                                           <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                              <Link href={`/admin/staff/${member.id}`}>
+                                              <Link href={`/lord/staff/${member.id}`}>
                                                   <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl border-slate-100 text-slate-400 hover:text-primary"><Eye size={16} /></Button>
                                               </Link>
                                               <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl border-slate-100 text-slate-400 hover:text-primary"><Clock size={16} /></Button>

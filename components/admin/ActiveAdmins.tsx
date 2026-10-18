@@ -26,7 +26,7 @@ export default function ActiveAdmins() {
                 .from('active_visitors')
                 .select('*')
                 .gte('last_active_at', fiveMinsAgo)
-                .like('current_page', '/admin%')
+                .like('current_page', '/lord%')
                 .order('last_active_at', { ascending: false });
 
             // Enhance with latest audit log
@@ -92,7 +92,7 @@ export default function ActiveAdmins() {
                             </div>
                             <div className="flex items-center gap-4">
                                 <p className="text-[8px] font-black text-slate-300 uppercase">{new Date(admin.last_active_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                <Link href="/admin/audit" className="opacity-0 group-hover/session:opacity-100 transition-opacity">
+                                <Link href="/lord/audit" className="opacity-0 group-hover/session:opacity-100 transition-opacity">
                                     <ExternalLink size={14} className="text-primary" />
                                 </Link>
                             </div>

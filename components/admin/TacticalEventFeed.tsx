@@ -74,7 +74,7 @@ export default function TacticalEventFeed({
                         detail: `Patron: ${ord.customer_name || 'Anonymous'} • ${ord.delivery_address || 'Express Delivery'}`,
                         badge: 'LIVE ORDER',
                         amount: ord.total_price,
-                        url: '/admin/orders'
+                        url: '/lord/orders'
                     });
                 });
             }
@@ -83,23 +83,23 @@ export default function TacticalEventFeed({
                 auditRes.logs.forEach(log => {
                     const action = log.action || 'SYSTEM_EVENT';
                     let channel: 'CELLAR' | 'GROWTH' | 'DISPATCH' | 'KITCHEN' | 'AI' | 'SYSTEM' = 'SYSTEM';
-                    let url = '/admin';
+                    let url = '/lord';
 
                     if (action.includes('PRODUCT') || action.includes('BEVERAGE')) {
                         channel = 'CELLAR';
-                        url = '/admin/upload';
+                        url = '/lord/upload';
                     } else if (action.includes('SNACK') || action.includes('BITE') || action.includes('KITCHEN')) {
                         channel = 'KITCHEN';
-                        url = '/admin/bites';
+                        url = '/lord/bites';
                     } else if (action.includes('SOCIAL') || action.includes('CAMPAIGN') || action.includes('MARKETING')) {
                         channel = 'GROWTH';
-                        url = '/admin/growth/accounts';
+                        url = '/lord/growth/accounts';
                     } else if (action.includes('ORDER') || action.includes('RIDER')) {
                         channel = 'DISPATCH';
-                        url = '/admin/orders';
+                        url = '/lord/orders';
                     } else if (action.includes('AI') || action.includes('CHAT') || action.includes('MESSAGE')) {
                         channel = 'AI';
-                        url = '/admin/messages';
+                        url = '/lord/messages';
                     }
 
                     const detailStr = typeof log.details === 'object' && log.details !== null

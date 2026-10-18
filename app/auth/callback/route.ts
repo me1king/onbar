@@ -4,7 +4,16 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/profile'
+  const requestedNext = searchParams.get('next') ?? '/profile'
+  let next = '/profile'
+  try {
+    const target = new URL(requestedNext, origin)
+    if (target.origin === origin && target.pathname.startsWith('/') && !target.pathname.startsWith('//')) {
+      next = `${target.pathname}${target.search}`
+    }
+  } catch (error) {
+    console.error('[AuthCallback] Ignoring an invalid post-auth destination:', error)
+  }
 
   if (code) {
     try {

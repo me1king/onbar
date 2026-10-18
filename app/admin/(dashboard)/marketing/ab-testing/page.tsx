@@ -28,7 +28,7 @@ export default function AbTestingPage() {
                     To report A/B results reliably, the storefront needs variant assignment, event capture for each variant, and a defined conversion event before experiment metrics can be calculated.
                 </p>
                 <Button asChild variant="outline" className="w-full justify-between sm:w-auto">
-                    <Link href="/admin/marketing/create">
+                    <Link href="/lord/marketing/create">
                         Manage campaign drafts <ExternalLink className="h-4 w-4" />
                     </Link>
                 </Button>

@@ -1,0 +1,151 @@
+import { NextResponse } from 'next/server';
+import {
+  CUSTOMER_NOTIFICATION_CHANNELS,
+  CUSTOMER_NOTIFICATION_STATUSES,
+  normalizeCustomerNotificationConfig,
+  normalizeCustomerContactKey
+} from '@/lib/customerMessaging';
+import { createServerSupabaseClient } from '@/lib/serverSupabase';
+import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+
+export const dynamic = 'force-dynamic';
+
+async function getAdminDatabase(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return { response: NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 }) };
+  }
+  const session = await getAdminSession();
+  if (!session) return { response: NextResponse.json({ error: 'Admin access is required.' }, { status: 401 }) };
+  if (!hasAdminPermission(session, 'can_manage_communications')) {
+    return { response: NextResponse.json({ error: 'Communications permission required.' }, { status: 403 }) };
+  }
+  const database = createServerSupabaseClient();
+  if (!database) return { response: NextResponse.json({ error: 'Admin database access is not configured.' }, { status: 503 }) };
+  return { database };
+}
+
+export async function GET(request: Request) {
+  const access = await getAdminDatabase(request);
+  if ('response' in access) return access.response;
+
+  const [settingResult, ordersResult, preferencesResult] = await Promise.all([
+    access.database.from('settings').select('value').eq('key', 'customer_messaging').maybeSingle(),
+    access.database.from('orders')
+      .select('id, customer_name, customer_email, customer_phone')
+      .order('id', { ascending: false })
+      .limit(1000),
+    access.database.from('customer_notification_preferences')
+      .select('channel_key, channels')
+  ]);
+
+  if (settingResult.error || ordersResult.error || preferencesResult.error) {
+    const error = settingResult.error || ordersResult.error || preferencesResult.error;
+    console.error('[CustomerMessaging] Could not load automation settings:', error);
+    return NextResponse.json({ error: 'Could not load customer messaging settings. Apply the customer messaging migration and try again.' }, { status: 500 });
+  }
+
+  const preferences = new Map((preferencesResult.data || []).map(item => [item.channel_key, item.channels]));
+  const seen = new Set<string>();
+  const customers = (ordersResult.data || []).flatMap(order => {
+    const email = (order.customer_email || '').trim();
+    const phone = (order.customer_phone || '').trim();
+    const key = normalizeCustomerContactKey(email, phone);
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    return [{
+      key,
+      name: order.customer_name || 'Customer',
+      email,
+      phone,
+      latestOrderId: order.id,
+      channels: preferences.get(key) || null
+    }];
+  });
+
+  return NextResponse.json({
+    config: normalizeCustomerNotificationConfig(settingResult.data?.value),
+    customers
+  }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+}
+
+export async function PUT(request: Request) {
+  const access = await getAdminDatabase(request);
+  if ('response' in access) return access.response;
+
+  let body: { config?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Valid notification settings are required.' }, { status: 400 });
+  }
+
+  const config = normalizeCustomerNotificationConfig(body.config);
+  if (typeof body.config !== 'object' || body.config === null || Array.isArray(body.config)
+    || CUSTOMER_NOTIFICATION_STATUSES.some(status => {
+      const rule = (body.config as Record<string, unknown>)[status];
+      if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) return true;
+      const value = rule as Record<string, unknown>;
+      return typeof value.enabled !== 'boolean'
+        || !Array.isArray(value.channels)
+        || value.channels.some(channel => !CUSTOMER_NOTIFICATION_CHANNELS.includes(channel as typeof CUSTOMER_NOTIFICATION_CHANNELS[number]))
+        || new Set(value.channels).size !== value.channels.length
+        || typeof value.subject !== 'string'
+        || !value.subject.trim()
+        || value.subject.length > 180
+        || typeof value.message !== 'string'
+        || !value.message.trim()
+        || value.message.length > 2000;
+    })) {
+    return NextResponse.json({ error: 'Notification settings are invalid.' }, { status: 400 });
+  }
+
+  const { error } = await access.database.from('settings').upsert({
+    key: 'customer_messaging',
+    value: config,
+    is_published: false,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'key' });
+  if (error) {
+    console.error('[CustomerMessaging] Could not save automation settings:', error);
+    return NextResponse.json({ error: 'Could not save customer messaging settings.' }, { status: 500 });
+  }
+  return NextResponse.json({ saved: true });
+}
+
+export async function PATCH(request: Request) {
+  const access = await getAdminDatabase(request);
+  if ('response' in access) return access.response;
+
+  let body: { email?: unknown; phone?: unknown; channels?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Valid customer channel settings are required.' }, { status: 400 });
+  }
+
+  const email = typeof body.email === 'string' ? body.email.trim().slice(0, 320) : '';
+  const phone = typeof body.phone === 'string' ? body.phone.trim().slice(0, 40) : '';
+  if (!Array.isArray(body.channels)
+    || body.channels.some(channel => !CUSTOMER_NOTIFICATION_CHANNELS.includes(channel as typeof CUSTOMER_NOTIFICATION_CHANNELS[number]))
+    || new Set(body.channels).size !== body.channels.length) {
+    return NextResponse.json({ error: 'Select valid notification channels.' }, { status: 400 });
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: 'Enter a valid customer email.' }, { status: 400 });
+  }
+  const key = normalizeCustomerContactKey(email, phone);
+  if (!key) return NextResponse.json({ error: 'A customer email or phone number is required.' }, { status: 400 });
+
+  const { error } = await access.database.from('customer_notification_preferences').upsert({
+    channel_key: key,
+    customer_email: email || null,
+    customer_phone: phone || null,
+    channels: body.channels,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'channel_key' });
+  if (error) {
+    console.error('[CustomerMessaging] Could not save customer preferences:', error);
+    return NextResponse.json({ error: 'Could not save this customer’s channel preferences. Apply the customer messaging migration and try again.' }, { status: 500 });
+  }
+  return NextResponse.json({ saved: true });
+}

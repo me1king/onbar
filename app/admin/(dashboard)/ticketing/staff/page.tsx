@@ -112,7 +112,7 @@ export default function TicketingGateStaffPage() {
       <div className="mx-auto max-w-5xl space-y-7">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <Link href="/admin/ticketing" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white">
+            <Link href="/lord/ticketing" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white">
               <ArrowLeft size={15} /> Ticketing control centre
             </Link>
             <div className="mt-5 flex items-center gap-3">

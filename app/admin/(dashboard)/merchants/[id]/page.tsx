@@ -175,7 +175,7 @@ export default function MerchantStorePage() {
     return <div className="flex min-h-[60vh] items-center justify-center text-sm font-semibold text-slate-500"><Loader2 className="mr-2 animate-spin" />Loading merchant store...</div>;
   }
   if (!data) {
-    return <div className="p-4 sm:p-8"><Link href="/admin/merchants" className="inline-flex items-center gap-2 text-sm font-bold text-primary"><ArrowLeft size={16} /> Merchant network</Link><div role="alert" className="mt-5 rounded-xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error || 'Merchant store could not be loaded.'}</div><Button onClick={() => void loadStore()} className="mt-4 rounded-xl">Try again</Button></div>;
+    return <div className="p-4 sm:p-8"><Link href="/lord/merchants" className="inline-flex items-center gap-2 text-sm font-bold text-primary"><ArrowLeft size={16} /> Merchant network</Link><div role="alert" className="mt-5 rounded-xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error || 'Merchant store could not be loaded.'}</div><Button onClick={() => void loadStore()} className="mt-4 rounded-xl">Try again</Button></div>;
   }
 
   const application = data.application;
@@ -188,14 +188,14 @@ export default function MerchantStorePage() {
     <main className="min-h-screen bg-slate-50 p-4 pb-24 sm:p-8">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link href="/admin/merchants" className="mb-4 inline-flex items-center gap-2 text-xs font-black uppercase tracking-wide text-primary"><ArrowLeft size={15} /> Merchant network</Link>
+          <Link href="/lord/merchants" className="mb-4 inline-flex items-center gap-2 text-xs font-black uppercase tracking-wide text-primary"><ArrowLeft size={15} /> Merchant network</Link>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-primary"><Store size={15} /> Read-only merchant store</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">{application.trading_name || application.business_name}</h1>
           <p className="mt-1 text-sm text-slate-500">{application.merchant_code || 'Pending merchant code'} · {application.status.replaceAll('_', ' ')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-xs font-black uppercase text-emerald-800"><ShieldCheck size={15} /> View only</span>
-          <Link href="/admin/traceability" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black uppercase text-slate-700 hover:border-primary hover:text-primary"><PackageSearch size={15} className="mr-2" /> Traceability</Link>
+          <Link href="/lord/traceability" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black uppercase text-slate-700 hover:border-primary hover:text-primary"><PackageSearch size={15} className="mr-2" /> Traceability</Link>
         </div>
       </header>
 

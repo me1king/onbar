@@ -55,12 +55,12 @@ export default function OperatingBrainHUD() {
     }, []);
 
     const nodes = [
-        { label: 'Revenue', val: stats?.revenue === null || !stats ? '—' : stats.revenue > 999 ? `KSh ${(stats.revenue / 1000).toFixed(1)}K` : `KSh ${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'primary', href: '/admin/finance' },
-        { label: 'Top Buzz Area', val: stats?.demand_hotspot || 'No recorded posts', icon: Zap, color: 'rose', href: '/admin/buzz' },
-        { label: 'Patrons', val: stats?.users ?? '—', icon: Users, color: 'emerald', href: '/admin/customers' },
-        { label: 'Runners', val: stats?.riders ?? '—', icon: Truck, color: 'amber', href: '/admin/dispatch' },
-        { label: 'Active Suppliers', val: stats?.shops ?? '—', icon: Wine, color: 'rose', href: '/admin/operations/vendors' },
-        { label: 'Automation', val: stats?.automation === null || !stats ? '—' : `${stats.automation}%`, icon: Bot, color: 'indigo', href: '/admin/marketing/automation' }
+        { label: 'Revenue', val: stats?.revenue === null || !stats ? '—' : stats.revenue > 999 ? `KSh ${(stats.revenue / 1000).toFixed(1)}K` : `KSh ${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'primary', href: '/lord/finance' },
+        { label: 'Top Buzz Area', val: stats?.demand_hotspot || 'No recorded posts', icon: Zap, color: 'rose', href: '/lord/buzz' },
+        { label: 'Patrons', val: stats?.users ?? '—', icon: Users, color: 'emerald', href: '/lord/customers' },
+        { label: 'Runners', val: stats?.riders ?? '—', icon: Truck, color: 'amber', href: '/lord/dispatch' },
+        { label: 'Active Suppliers', val: stats?.shops ?? '—', icon: Wine, color: 'rose', href: '/lord/operations/vendors' },
+        { label: 'Automation', val: stats?.automation === null || !stats ? '—' : `${stats.automation}%`, icon: Bot, color: 'indigo', href: '/lord/marketing/automation' }
     ];
 
     return (

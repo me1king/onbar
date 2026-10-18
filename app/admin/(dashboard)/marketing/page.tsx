@@ -82,12 +82,12 @@ export default function MarketingOverview() {
                     <p className="text-muted-foreground text-sm font-medium mt-1">Storefront event and account counts; social reach and ROI require connected platform data.</p>
                 </div>
                 <div className="flex gap-3">
-                    <Link href="/admin/marketing/stories">
+                    <Link href="/lord/marketing/stories">
                         <Button variant="outline" className="rounded-2xl h-12 px-6 border-primary/20 bg-primary/5 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all">
                             <Instagram className="h-4 w-4 mr-2" /> Story Scheduler
                         </Button>
                     </Link>
-                    <Link href="/admin/marketing/ab-testing">
+                    <Link href="/lord/marketing/ab-testing">
                         <Button variant="outline" className="rounded-2xl h-12 px-6 border-indigo-200 bg-indigo-50 text-indigo-700 font-black uppercase text-[10px] tracking-widest hover:bg-indigo-600 hover:text-white transition-all">
                             <Zap className="h-4 w-4 mr-2" /> Experiment Tracking
                         </Button>

@@ -142,15 +142,6 @@ function UserMenu({ isMobileMenu = false }: { isMobileMenu?: boolean }) {
   return (
     <div className={cn("flex items-center", isMobileMenu ? "flex-col w-full gap-2" : "gap-3 max-[430px]:gap-2 sm:gap-4")}>
       <Link
-        href="/admin/login"
-        className={cn(
-            "text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors mr-2 max-[430px]:mr-0",
-            !isMobileMenu && "hidden lg:inline-block"
-        )}
-      >
-        Staff
-      </Link>
-      <Link
         href="/auth?mode=signin"
         className={cn(
             "whitespace-nowrap rounded-xl text-[9px] font-black uppercase tracking-wide text-foreground transition-colors hover:bg-slate-50 hover:text-primary sm:rounded-none sm:text-[10px] sm:tracking-widest",

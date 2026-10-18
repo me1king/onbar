@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import {
+  CUSTOMER_NOTIFICATION_CHANNELS,
+  normalizeCustomerNotificationConfig,
+  normalizeCustomerContactKey,
+  type CustomerNotificationChannel,
+  type CustomerNotificationStatus
+} from '@/lib/customerMessaging';
 import { getAdminSession, hasAdminPermission, isInternalRequest, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+type NotificationBody = { orderId?: unknown; status?: unknown };
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({
@@ -14,6 +21,131 @@ function escapeHtml(value: string) {
     '"': '&quot;',
     "'": '&#39;'
   })[character] || character);
+}
+
+function renderTemplate(
+  template: string,
+  name: string,
+  orderId: number,
+  trackingUrl: string,
+  status: CustomerNotificationStatus
+) {
+  return template.replace(/\{(name|orderId|status|trackingUrl)\}/g, (match, token: string) => ({
+    name,
+    orderId: String(orderId),
+    status,
+    trackingUrl
+  }[token] ?? match));
+}
+
+function toInternationalPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('0')) return `254${digits.slice(1)}`;
+  if (digits.startsWith('254')) return digits;
+  return digits;
+}
+
+async function sendEmail(to: string, subject: string, message: string, trackingUrl: string) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) throw new Error('Email is not configured (RESEND_API_KEY is missing).');
+  const resend = new Resend(apiKey);
+  const result = await resend.emails.send({
+    from: process.env.RESEND_FROM_EMAIL?.trim() || 'Online Bar Nairobi <onboarding@resend.dev>',
+    to,
+    subject,
+    html: `<div style="font-family:sans-serif;padding:20px;color:#333"><p>${escapeHtml(message).replace(/\n/g, '<br/>')}</p><p><a href="${escapeHtml(trackingUrl)}">Track your order</a></p><hr/><p style="font-size:12px;color:#999">Online Bar Nairobi</p></div>`
+  });
+  if (result.error) throw result.error;
+}
+
+async function sendWhatsApp(phone: string, message: string) {
+  const token = process.env.WHATSAPP_TOKEN?.trim();
+  const phoneId = process.env.WHATSAPP_PHONE_ID?.trim();
+  if (!token || !phoneId) throw new Error('WhatsApp is not configured (WHATSAPP_TOKEN and WHATSAPP_PHONE_ID are required).');
+  const recipient = toInternationalPhone(phone);
+  if (!/^\d{8,15}$/.test(recipient)) throw new Error('Customer phone number is not valid for WhatsApp.');
+
+  const response = await fetch(`https://graph.facebook.com/v23.0/${encodeURIComponent(phoneId)}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: recipient,
+      type: 'text',
+      text: { body: message }
+    })
+  });
+  if (!response.ok) {
+    console.error('[CustomerNotification] WhatsApp provider rejected a notification:', await response.text());
+    throw new Error('WhatsApp provider rejected the notification.');
+  }
+}
+
+async function sendSms(phone: string, message: string) {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const from = process.env.TWILIO_PHONE_NUMBER?.trim();
+  if (!accountSid || !authToken || !from) {
+    throw new Error('SMS is not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER are required).');
+  }
+  const recipient = toInternationalPhone(phone);
+  if (!/^\d{8,15}$/.test(recipient)) throw new Error('Customer phone number is not valid for SMS.');
+
+  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({ To: `+${recipient}`, From: from, Body: message })
+  });
+  if (!response.ok) {
+    console.error('[CustomerNotification] SMS provider rejected a notification:', await response.text());
+    throw new Error('SMS provider rejected the notification.');
+  }
+}
+
+async function claimDelivery(
+  database: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+  orderId: number,
+  status: CustomerNotificationStatus,
+  channel: CustomerNotificationChannel
+) {
+  const identity = { order_id: orderId, notification_status: status, channel };
+  const { data: inserted, error: insertError } = await database
+    .from('customer_notification_deliveries')
+    .upsert({ ...identity, delivery_status: 'sending', error_message: null, updated_at: new Date().toISOString() }, {
+      onConflict: 'order_id,notification_status,channel',
+      ignoreDuplicates: true
+    })
+    .select('id')
+    .maybeSingle();
+  if (insertError) throw insertError;
+  if (inserted) return { claimed: true, id: inserted.id };
+
+  const { data: existing, error: lookupError } = await database
+    .from('customer_notification_deliveries')
+    .select('id, delivery_status, updated_at')
+    .match(identity)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (!existing) throw new Error('Could not claim the customer notification delivery.');
+  if (existing.delivery_status === 'sent') return { claimed: false, id: existing.id };
+
+  const staleSending = existing.delivery_status === 'sending'
+    && Date.now() - new Date(existing.updated_at).getTime() > 10 * 60 * 1000;
+  if (existing.delivery_status !== 'failed' && !staleSending) return { claimed: false, id: existing.id };
+
+  const { data: reclaimed, error: reclaimError } = await database
+    .from('customer_notification_deliveries')
+    .update({ delivery_status: 'sending', error_message: null, updated_at: new Date().toISOString() })
+    .eq('id', existing.id)
+    .eq('delivery_status', existing.delivery_status)
+    .eq('updated_at', existing.updated_at)
+    .select('id')
+    .maybeSingle();
+  if (reclaimError) throw reclaimError;
+  return { claimed: Boolean(reclaimed), id: existing.id };
 }
 
 export async function POST(request: Request) {
@@ -30,9 +162,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Request origin could not be verified.' }, { status: 403 });
   }
 
-  let body: { orderId?: unknown; status?: unknown };
+  let body: NotificationBody;
   try {
-    body = await request.json() as typeof body;
+    body = await request.json() as NotificationBody;
   } catch {
     return NextResponse.json({ error: 'A valid order notification is required.' }, { status: 400 });
   }
@@ -45,58 +177,86 @@ export async function POST(request: Request) {
   if (internal && status !== 'Paid') {
     return NextResponse.json({ error: 'Internal notifications may only report verified payments.' }, { status: 403 });
   }
-  if (!resend) {
-    return NextResponse.json({ error: 'Customer email is not configured.' }, { status: 503 });
-  }
 
   const database = createServerSupabaseClient();
   if (!database) return NextResponse.json({ error: 'Order verification is not configured.' }, { status: 503 });
 
-  const { data: order, error } = await database
+  const { data: order, error: orderError } = await database
     .from('orders')
-    .select('id, customer_email, customer_name, status')
+    .select('id, customer_email, customer_name, customer_phone, status')
     .eq('id', orderId)
     .maybeSingle();
-  if (error) {
-    console.error('[CustomerNotification] Could not verify order:', error);
+  if (orderError) {
+    console.error('[CustomerNotification] Could not verify order:', orderError);
     return NextResponse.json({ error: 'Could not verify the order.' }, { status: 500 });
   }
   if (!order || order.status !== status) {
     return NextResponse.json({ error: 'The order does not currently have that status.' }, { status: 409 });
   }
-  if (!order.customer_email) {
-    return NextResponse.json({ error: 'No customer email is available for this order.' }, { status: 409 });
+
+  const email = (order.customer_email || '').trim();
+  const phone = (order.customer_phone || '').trim();
+  if (!email && !phone) return NextResponse.json({ error: 'The order has no customer email or phone number.' }, { status: 409 });
+
+  const channelKey = normalizeCustomerContactKey(email, phone);
+  if (!channelKey) return NextResponse.json({ error: 'A valid customer email or phone is required.' }, { status: 409 });
+  const [settingResult, preferenceResult] = await Promise.all([
+    database.from('settings').select('value').eq('key', 'customer_messaging').maybeSingle(),
+    database.from('customer_notification_preferences').select('channels').eq('channel_key', channelKey).maybeSingle()
+  ]);
+  if (settingResult.error || preferenceResult.error) {
+    const error = settingResult.error || preferenceResult.error;
+    console.error('[CustomerNotification] Could not load delivery preferences:', error);
+    return NextResponse.json({ error: 'Could not load customer messaging settings.' }, { status: 500 });
   }
 
-  const content = {
-    Paid: {
-      subject: `Payment Confirmed for Order #${order.id}`,
-      headline: "We've received your payment!",
-      message: `Hello ${order.customer_name}, your payment for order #${order.id} has been successfully confirmed. We are now preparing your items for dispatch.`
-    },
-    Dispatched: {
-      subject: `Your Order #${order.id} is on the way!`,
-      headline: 'Good news, your order is moving!',
-      message: `Hello ${order.customer_name}, your order #${order.id} has been dispatched and is currently with our rider. You should receive it shortly.`
-    },
-    Delivered: {
-      subject: `Order #${order.id} Delivered`,
-      headline: 'Delivery Complete!',
-      message: `Hello ${order.customer_name}, your order #${order.id} has been successfully delivered. We hope you enjoy your selection!`
+  const config = normalizeCustomerNotificationConfig(settingResult.data?.value);
+  const rule = config[status as CustomerNotificationStatus];
+  if (!rule.enabled) return NextResponse.json({ ok: true, sent: [], skipped: ['Notifications are disabled for this order status.'] });
+
+  const channels = preferenceResult.data?.channels
+    ? CUSTOMER_NOTIFICATION_CHANNELS.filter(channel => preferenceResult.data?.channels?.includes(channel))
+    : rule.channels;
+  const trackingUrl = `${getPublicBaseUrl()}/track`;
+  const name = order.customer_name || 'there';
+  const subject = renderTemplate(rule.subject, name, orderId, trackingUrl, status as CustomerNotificationStatus);
+  const message = renderTemplate(rule.message, name, orderId, trackingUrl, status as CustomerNotificationStatus);
+  const results: { channel: CustomerNotificationChannel; status: string; error?: string }[] = [];
+
+  for (const channel of channels) {
+    if ((channel === 'email' && !email) || (channel !== 'email' && !phone)) {
+      results.push({ channel, status: 'skipped', error: channel === 'email' ? 'No customer email is available.' : 'No customer phone is available.' });
+      continue;
     }
-  }[status as 'Paid' | 'Dispatched' | 'Delivered'];
-
-  try {
-    const result = await resend.emails.send({
-      from: 'Online Bar Nairobi <onboarding@resend.dev>',
-      to: order.customer_email,
-      subject: content.subject,
-      html: `<div style="font-family:sans-serif;padding:20px;color:#333"><h1 style="color:#ff6b00">${escapeHtml(content.headline)}</h1><p>${escapeHtml(content.message)}</p><p>Track your order: <a href="${escapeHtml(getPublicBaseUrl())}/track">Track Order</a></p><hr/><p style="font-size:12px;color:#999">Online Bar Nairobi</p></div>`
-    });
-    if (result.error) throw result.error;
-    return NextResponse.json({ ok: true });
-  } catch (sendError) {
-    console.error('[CustomerNotification] Could not send notification:', sendError);
-    return NextResponse.json({ error: 'Failed to send notification.' }, { status: 500 });
+    try {
+      const claim = await claimDelivery(database, orderId, status as CustomerNotificationStatus, channel);
+      if (!claim.claimed) {
+        results.push({ channel, status: 'already_sent_or_in_progress' });
+        continue;
+      }
+      try {
+        if (channel === 'email') await sendEmail(email, subject, message, trackingUrl);
+        if (channel === 'whatsapp') await sendWhatsApp(phone, message);
+        if (channel === 'sms') await sendSms(phone, message);
+        const { error } = await database.from('customer_notification_deliveries')
+          .update({ delivery_status: 'sent', error_message: null, updated_at: new Date().toISOString() })
+          .eq('id', claim.id);
+        if (error) throw error;
+        results.push({ channel, status: 'sent' });
+      } catch (sendError) {
+        const detail = sendError instanceof Error ? sendError.message : 'Provider delivery failed.';
+        const { error: logError } = await database.from('customer_notification_deliveries')
+          .update({ delivery_status: 'failed', error_message: detail.slice(0, 500), updated_at: new Date().toISOString() })
+          .eq('id', claim.id);
+        if (logError) console.error('[CustomerNotification] Could not record delivery failure:', logError);
+        results.push({ channel, status: 'failed', error: detail });
+      }
+    } catch (deliveryError) {
+      console.error(`[CustomerNotification] Could not process ${channel} delivery:`, deliveryError);
+      results.push({ channel, status: 'failed', error: 'Could not process this delivery.' });
+    }
   }
+
+  const failed = results.some(result => result.status === 'failed');
+  return NextResponse.json({ ok: !failed, results }, { status: failed ? 502 : 200 });
 }

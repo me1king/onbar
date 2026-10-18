@@ -23,12 +23,12 @@ interface SearchResult {
 }
 
 const STATIC_ACTIONS: SearchResult[] = [
-    { id: 'act-1', title: 'Add Inventory', subtitle: 'Global Cellar Hub', type: 'action', url: '/admin/upload' },
-    { id: 'act-2', title: 'Dispatch Runner', subtitle: 'Logistics Deployment', type: 'action', url: '/admin/dispatch' },
-    { id: 'act-3', title: 'Create Coupon', subtitle: 'Marketing Promotions', type: 'action', url: '/admin/coupons' },
-    { id: 'act-4', title: 'Financial Audit', subtitle: 'Finance Vault', type: 'action', url: '/admin/finance' },
-    { id: 'act-5', title: 'Staff Control', subtitle: 'Identity Grid', type: 'action', url: '/admin/staff' },
-    { id: 'act-6', title: 'Security Scan', subtitle: 'Threat Analysis', type: 'action', url: '/admin/security' },
+    { id: 'act-1', title: 'Add Inventory', subtitle: 'Global Cellar Hub', type: 'action', url: '/lord/upload' },
+    { id: 'act-2', title: 'Dispatch Runner', subtitle: 'Logistics Deployment', type: 'action', url: '/lord/dispatch' },
+    { id: 'act-3', title: 'Create Coupon', subtitle: 'Marketing Promotions', type: 'action', url: '/lord/coupons' },
+    { id: 'act-4', title: 'Financial Audit', subtitle: 'Finance Vault', type: 'action', url: '/lord/finance' },
+    { id: 'act-5', title: 'Staff Control', subtitle: 'Identity Grid', type: 'action', url: '/lord/staff' },
+    { id: 'act-6', title: 'Security Scan', subtitle: 'Threat Analysis', type: 'action', url: '/lord/security' },
 ];
 
 export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPaletteProps) {
@@ -72,7 +72,7 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPalet
                     title: p.name,
                     subtitle: 'Product Inventory',
                     type: 'product',
-                    url: `/admin/upload?edit=${p.id}`,
+                    url: `/lord/upload?edit=${p.id}`,
                     image: p.image_url,
                     meta: formatPrice(p.price)
                 }));
@@ -82,7 +82,7 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPalet
                     title: `Order #${o.id}`,
                     subtitle: o.customer_name,
                     type: 'order',
-                    url: '/admin/orders',
+                    url: '/lord/orders',
                     meta: formatPrice(o.total_price)
                 }));
 
@@ -91,7 +91,7 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPalet
                     title: r.rider_name,
                     subtitle: 'Delivery Fleet',
                     type: 'rider',
-                    url: '/admin/dispatch',
+                    url: '/lord/dispatch',
                     meta: r.rider_phone
                 }));
 

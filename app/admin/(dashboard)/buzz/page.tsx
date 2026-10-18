@@ -115,7 +115,7 @@ export default function BuzzCommandTower() {
                         <button onClick={() => setActiveTab('happenings')} className={cn("px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all", activeTab === 'happenings' ? "bg-primary text-white shadow-lg" : "text-slate-400")}>Live Nowcasts</button>
                         <button onClick={() => setActiveTab('venues')} className={cn("px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all", activeTab === 'venues' ? "bg-primary text-white shadow-lg" : "text-slate-400")}>Venue Registry</button>
                     </div>
-                    <Link href="/admin/growth/calendar">
+                    <Link href="/lord/growth/calendar">
                         <Button variant="outline" className="h-12 px-6 rounded-xl border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest shadow-sm">
                             <Calendar size={14} className="mr-2" /> Global Schedule
                         </Button>

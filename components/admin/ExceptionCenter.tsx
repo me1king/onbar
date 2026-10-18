@@ -199,7 +199,7 @@ export default function ExceptionCenter() {
                     {exceptions.map(ex => {
                         const Icon = iconMap[ex.type] || Zap;
                         return (
-                            <Link key={ex.id} href={ex.order_id ? `/admin/orders` : '#'}>
+                            <Link key={ex.id} href={ex.order_id ? `/lord/orders` : '#'}>
                                 <div className={cn(
                                     "p-8 rounded-[2.5rem] border transition-all hover:shadow-2xl relative group",
                                     ex.severity === 'Critical' ? "bg-rose-50/50 border-rose-100 hover:bg-white hover:border-rose-300" : "bg-slate-50 border-border hover:bg-white hover:border-primary/20"

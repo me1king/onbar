@@ -139,7 +139,7 @@ export default function ConversionFunnelsPage() {
                              <p className="text-[10px] font-medium opacity-80 leading-relaxed italic">
                                 &quot;Inspect the sessions of users who abandoned during the &apos;Checkout&apos; step to identify UI friction nodes.&quot;
                              </p>
-                             <Link href="/admin/behavior/sessions">
+                             <Link href="/lord/behavior/sessions">
                                 <Button variant="ghost" className="w-full h-12 bg-white/5 border border-white/10 text-white font-black uppercase text-[10px] tracking-widest hover:bg-white/10">
                                     View Abandoned Sessions
                                 </Button>

@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { NextResponse } from "next/server";
+import { getAdminSession, hasAdminPermission } from '@/lib/adminAccess.server';
 
 interface AnalyticsEvent {
     anonymous_id: string | null;
@@ -12,6 +13,11 @@ interface AnalyticsEvent {
 }
 
 export async function GET() {
+    const session = await getAdminSession();
+    if (!session) return NextResponse.json({ error: "Admin access required." }, { status: 401 });
+    if (!hasAdminPermission(session, 'can_view_revenue')) {
+        return NextResponse.json({ error: "Analytics permission required." }, { status: 403 });
+    }
     if (!supabase) return NextResponse.json({ error: "DB offline" }, { status: 500 });
 
     try {

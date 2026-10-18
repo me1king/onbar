@@ -93,7 +93,6 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
       title: "Logistics",
       links: [
         { href: "/rider/dashboard", label: "Runner Command" },
-        { href: "/admin/login", label: "Control Center" },
         { href: "/track", label: "Live Tracking" },
       ],
     },

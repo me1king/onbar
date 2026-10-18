@@ -244,7 +244,7 @@ export default function AdminDashboard() {
               </div>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-              <Link href="/admin/forge" className="w-full sm:w-auto">
+              <Link href="/lord/forge" className="w-full sm:w-auto">
                   <Button className="w-full h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl bg-primary text-white font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-xl hover:bg-primary/90 transition-all">
                       <Package className="h-4 w-4 mr-2" /> Manage Products
                   </Button>
@@ -279,7 +279,7 @@ export default function AdminDashboard() {
                           <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-amber-100 text-amber-800">LOW STOCK</span>
                           <p className="text-xs font-black uppercase text-amber-950">{product.name}</p>
                           <p className="text-[9px] text-amber-800 font-bold uppercase">{product.stock} units remaining</p>
-                          <Link href="/admin/forge">
+                          <Link href="/lord/forge">
                               <Button className="w-full h-8 rounded-xl bg-amber-500 text-white font-black uppercase text-[8px] mt-2">Manage Stock</Button>
                           </Link>
                       </div>
@@ -332,7 +332,7 @@ export default function AdminDashboard() {
                   <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
                   <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Live Dispatch Map</h2>
               </div>
-              <Link href="/admin/dispatch">
+              <Link href="/lord/dispatch">
                   <Button variant="outline" className="h-10 rounded-xl text-[8px] font-black uppercase tracking-widest border-slate-200">Full Console &rarr;</Button>
               </Link>
           </div>
@@ -382,7 +382,7 @@ export default function AdminDashboard() {
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Revenue vs Profit Stream</p>
                       </div>
                       <div className="flex gap-2">
-                        <Link href="/admin/analytics">
+                        <Link href="/lord/analytics">
                             <Button variant="ghost" className="text-[9px] font-black uppercase tracking-widest text-primary hover:bg-primary/5">Deep Analytics &rarr;</Button>
                         </Link>
                       </div>
@@ -461,7 +461,7 @@ export default function AdminDashboard() {
                                       <p className="text-[10px] font-bold text-rose-500 uppercase mt-1 tracking-widest">Only {p.stock} remain</p>
                                   </div>
                               </div>
-                              <Link href="/admin/upload">
+                              <Link href="/lord/upload">
                                   <Button size="icon" variant="ghost" className="h-12 w-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-primary active:scale-90 transition-all border border-slate-100 shadow-sm">
                                       <Plus className="h-5 w-5" />
                                   </Button>
@@ -483,10 +483,10 @@ export default function AdminDashboard() {
                     <h3 className="text-sm font-black uppercase text-slate-400 tracking-[0.4em]">Tactical Access</h3>
                     <div className="grid grid-cols-2 gap-6">
                         {[
-                            { label: 'Add Stock', icon: Package, href: '/admin/upload', id: 'dash.add_stock' },
-                            { label: 'Bar Runners', icon: Truck, href: '/admin/dispatch', id: 'dash.runners' },
-                            { label: 'Broadcast', icon: Send, href: '/admin/broadcast', id: 'dash.broadcast' },
-                            { label: 'Happy Hour', icon: GlassWater, href: '/admin/gamification', id: 'dash.gamification' },
+                            { label: 'Add Stock', icon: Package, href: '/lord/upload', id: 'dash.add_stock' },
+                            { label: 'Bar Runners', icon: Truck, href: '/lord/dispatch', id: 'dash.runners' },
+                            { label: 'Broadcast', icon: Send, href: '/lord/broadcast', id: 'dash.broadcast' },
+                            { label: 'Happy Hour', icon: GlassWater, href: '/lord/gamification', id: 'dash.gamification' },
                         ].map(action => (
                             <Link key={action.label} href={action.href} data-behavior-id={action.id} className="flex flex-col items-center gap-4 p-8 rounded-[2rem] bg-slate-50 border border-slate-100 hover:bg-primary hover:text-white transition-all group shadow-sm">
                                 <action.icon className="h-6 w-6 text-primary group-hover:text-white transition-colors" />
@@ -500,7 +500,7 @@ export default function AdminDashboard() {
               <section className="bg-white rounded-[3.5rem] p-10 border border-slate-100 shadow-sm">
                   <div className="flex items-center justify-between mb-8 text-left border-b border-slate-50 pb-6">
                       <h3 className="text-sm font-black uppercase text-foreground tracking-tighter leading-none">Security Audit</h3>
-                      <Link href="/admin/audit" className="text-[10px] font-black text-primary uppercase underline tracking-widest">Full Log</Link>
+                      <Link href="/lord/audit" className="text-[10px] font-black text-primary uppercase underline tracking-widest">Full Log</Link>
                   </div>
                   <div className="space-y-6">
                       {auditLogs.length === 0 ? (

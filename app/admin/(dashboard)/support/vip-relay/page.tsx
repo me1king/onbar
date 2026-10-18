@@ -19,7 +19,7 @@ export default function VIPVideoRelay() {
         <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
                 <div>
-                    <Link href="/admin/support" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors mb-4">
+                    <Link href="/lord/support" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors mb-4">
                         <ArrowLeft size={14} /> Back to Command
                     </Link>
                     <div className="flex items-center gap-3 mb-2">

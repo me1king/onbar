@@ -155,7 +155,7 @@ export default function ImageIntelligencePage() {
                             </div>
 
                             <div className="pt-6">
-                                <Link href={`/admin/upload?id=${p.id}`}>
+                                <Link href={`/lord/upload?id=${p.id}`}>
                                     <Button variant="outline" className="w-full h-12 rounded-xl border-slate-100 font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all">
                                         Fix Assets <ChevronRight className="ml-2 h-4 w-4" />
                                     </Button>

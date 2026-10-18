@@ -341,7 +341,7 @@ export default function MarketOperationsPage() {
         <Button onClick={() => void loadApplications()} disabled={loading} variant="outline" className="gap-2">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh
         </Button>
-        <Link href="/admin/waitlist" className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <Link href="/lord/waitlist" className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
           Open waitlist controls
         </Link>
       </div>

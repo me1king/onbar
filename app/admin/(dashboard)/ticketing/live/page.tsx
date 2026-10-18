@@ -185,7 +185,7 @@ export default function TicketingLivePage() {
       <div aria-hidden="true" className="pointer-events-none absolute -right-32 top-[34rem] h-96 w-96 rounded-full bg-violet-600/10 blur-[110px]" />
       <div className="relative mx-auto max-w-7xl space-y-6">
         <header className="overflow-hidden rounded-3xl border border-orange-300/15 bg-gradient-to-br from-[#281626] via-[#1b1221] to-[#120e18] p-6 shadow-2xl shadow-black/30 sm:p-9">
-          <Link href="/admin/ticketing" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 transition hover:text-white"><ArrowLeft size={14} /> Ticketing management</Link>
+          <Link href="/lord/ticketing" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 transition hover:text-white"><ArrowLeft size={14} /> Ticketing management</Link>
           <div className="mt-5 flex flex-wrap items-start justify-between gap-5">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/25 bg-orange-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-orange-200"><Ghost size={14} /> Halloween operations / Live</div>

@@ -36,7 +36,7 @@ export default function NotificationCenter({ isOpen, setIsOpen }: { isOpen: bool
                     label: log.action.replace(/_/g, ' '),
                     meta: log.staff_email || 'System Action',
                     time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    url: '/admin/audit',
+                    url: '/lord/audit',
                     isRead: true
                 })));
             }

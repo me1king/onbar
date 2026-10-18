@@ -1,244 +1,297 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import {
-    Target,
-    Users,
-    ShieldCheck,
-    Loader2,
-    Rocket,
-    Camera,
-    MessageSquare,
-    Globe,
-    CheckCircle2
-} from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, LockKeyhole, ShieldCheck, UserPlus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabaseClient';
 import { AFFILIATE_AGREEMENT_VERSION } from '@/lib/affiliateAgreement';
 
+type InviteState = 'checking' | 'missing' | 'sign_in' | 'ready' | 'error' | 'accepted';
+type PromotionChannel = 'Instagram' | 'TikTok' | 'WhatsApp' | 'Website';
+
 export default function AffiliateRegistration() {
-    const [loading, setLoading] = React.useState(false);
-    const [success, setSuccess] = React.useState(false);
-    const [formData, setFormData] = React.useState({
-        business_name: '',
-        bio: '',
-        audience_size: '',
-        primary_channels: [] as string[],
-        preferred_payout_method: 'M-Pesa',
-        payout_details: '',
-        marketing_agreement_accepted: false,
-        agreement_draft_acknowledged: false
+  const router = useRouter();
+  const [inviteState, setInviteState] = React.useState<InviteState>('checking');
+  const [token, setToken] = React.useState('');
+  const [inviteEmail, setInviteEmail] = React.useState('');
+  const [businessName, setBusinessName] = React.useState('');
+  const [bio, setBio] = React.useState('');
+  const [audienceSize, setAudienceSize] = React.useState('0');
+  const [channels, setChannels] = React.useState<PromotionChannel[]>([]);
+  const [payoutMethod, setPayoutMethod] = React.useState<'M-Pesa' | 'Bank'>('M-Pesa');
+  const [payoutDetails, setPayoutDetails] = React.useState('');
+  const [acceptedTerms, setAcceptedTerms] = React.useState(false);
+  const [acknowledgedAgreement, setAcknowledgedAgreement] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState('');
+
+  const checkInvitation = React.useCallback(async (inviteToken: string) => {
+    if (!supabase) throw new Error('Account service is unavailable. Please try again later.');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setInviteState('sign_in');
+      return;
+    }
+    const response = await fetch(`/api/affiliate/invitations?token=${encodeURIComponent(inviteToken)}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      cache: 'no-store'
     });
-
-    const channels = [
-        { id: 'Instagram', icon: Camera },
-        { id: 'TikTok', icon: Target },
-        { id: 'WhatsApp', icon: MessageSquare },
-        { id: 'Website', icon: Globe }
-    ];
-
-    const toggleChannel = (id: string) => {
-        setFormData(prev => ({
-            ...prev,
-            primary_channels: prev.primary_channels.includes(id)
-                ? prev.primary_channels.filter(c => c !== id)
-                : [...prev.primary_channels, id]
-        }));
+    const result = await response.json() as {
+      error?: string;
+      valid?: boolean;
+      alreadyAccepted?: boolean;
+      email?: string;
+      businessName?: string;
     };
+    if (response.status === 401) {
+      setInviteState('sign_in');
+      return;
+    }
+    if (response.status === 403) {
+      setErrorMessage(result.error || 'Sign in using the email address that received this invitation.');
+      setInviteState('sign_in');
+      return;
+    }
+    if (!response.ok) throw new Error(result.error || 'This invitation could not be verified.');
+    if (result.alreadyAccepted) {
+      setInviteState('accepted');
+      return;
+    }
+    setInviteEmail(result.email || '');
+    setBusinessName(result.businessName || '');
+    setInviteState('ready');
+  }, []);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!supabase) return;
-        setLoading(true);
+  React.useEffect(() => {
+    const inviteToken = new URLSearchParams(window.location.search).get('invite') || '';
+    setToken(inviteToken);
+    if (!inviteToken) {
+      setInviteState('missing');
+      return;
+    }
+    checkInvitation(inviteToken).catch(err => {
+      console.error('[AffiliateInvitation] Could not validate invitation:', err);
+      setErrorMessage(err instanceof Error ? err.message : 'This invitation could not be verified.');
+      setInviteState('error');
+    });
+  }, [checkInvitation]);
 
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                window.location.assign('/auth?mode=signin&redirect=/affiliate/register');
-                return;
-            }
-            if (formData.primary_channels.length === 0) throw new Error('Select at least one promotional channel.');
-            if (!formData.marketing_agreement_accepted) throw new Error('Accept the affiliate marketing terms to continue.');
-            if (!formData.agreement_draft_acknowledged) throw new Error('Review and acknowledge the affiliate agreement draft to continue.');
+  const goToSignIn = async () => {
+    if (!token) return;
+    try {
+      sessionStorage.setItem('ob_auth_redirect', `/affiliate/register?invite=${encodeURIComponent(token)}`);
+    } catch (error) {
+      console.error('[AffiliateInvitation] Could not save sign-in continuation:', error);
+      setErrorMessage('Could not save the invitation continuation in this browser. Please enable session storage and try again.');
+      return;
+    }
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('[AffiliateInvitation] Could not switch accounts:', error);
+        setErrorMessage('Could not switch accounts. Sign out, then reopen your invitation link.');
+        return;
+      }
+    }
+    router.push('/auth');
+  };
 
-            const response = await fetch('/api/affiliate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`
-                },
-                body: JSON.stringify({
-                    ...formData,
-                    agreement_version: AFFILIATE_AGREEMENT_VERSION,
-                    audience_size: Number(formData.audience_size)
-                })
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Could not submit your application.');
-            setSuccess(true);
-        } catch (err: unknown) {
-            alert(err instanceof Error ? err.message : 'Could not submit your application.');
-        } finally {
-            setLoading(false);
-        }
-    };
+  const toggleChannel = (channel: PromotionChannel) => {
+    setChannels(current => current.includes(channel)
+      ? current.filter(item => item !== channel)
+      : [...current, channel]);
+  };
 
-    if (success) return (
-        <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-center space-y-8 animate-in zoom-in-95 duration-700">
-            <div className="h-24 w-24 rounded-[2.5rem] bg-emerald-50 flex items-center justify-center text-emerald-500 shadow-inner">
-                <CheckCircle2 size={48} />
+  const acceptInvitation = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) return;
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setInviteState('sign_in');
+        return;
+      }
+      const response = await fetch('/api/affiliate/invitations/accept', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          token,
+          businessName,
+          bio,
+          audienceSize: Number(audienceSize),
+          channels,
+          payoutMethod,
+          payoutDetails,
+          acceptedTerms,
+          acknowledgedAgreement,
+          agreementVersion: AFFILIATE_AGREEMENT_VERSION
+        })
+      });
+      const result = await response.json() as { error?: string; accepted?: boolean };
+      if (!response.ok) throw new Error(result.error || 'Could not accept this invitation.');
+      setInviteState('accepted');
+      window.setTimeout(() => router.replace('/affiliate/dashboard'), 1200);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not accept this invitation.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-8">
+      <div className="mx-auto max-w-3xl space-y-6">
+        <Link href="/profile" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-primary">
+          <ArrowLeft className="h-4 w-4" /> Back to profile
+        </Link>
+
+        <header className="rounded-3xl bg-slate-950 p-7 text-white sm:p-10">
+          <div className="flex items-center gap-3 text-amber-300">
+            <LockKeyhole className="h-5 w-5" />
+            <span className="text-xs font-black uppercase tracking-[0.24em]">Private partner program</span>
+          </div>
+          <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">Affiliate invitation</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-300">
+            Online Bar affiliates join by invitation only. The catalog and partner tools unlock after you accept an invitation sent to your account email.
+          </p>
+        </header>
+
+        {errorMessage && (
+          <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {errorMessage}
+          </div>
+        )}
+
+        {inviteState === 'checking' && (
+          <Card className="flex items-center justify-center gap-3 rounded-2xl bg-white p-12 text-sm font-semibold text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" /> Checking invitation...
+          </Card>
+        )}
+
+        {inviteState === 'missing' && (
+          <Card className="space-y-4 rounded-2xl border-slate-200 bg-white p-7">
+            <h2 className="text-xl font-black">Invitation required</h2>
+            <p className="text-sm leading-6 text-slate-600">
+              The affiliate program is not open for public applications. Contact Online Bar if you believe you should have received an invitation.
+            </p>
+            <Link href="/contact"><Button>Contact Online Bar</Button></Link>
+          </Card>
+        )}
+
+        {inviteState === 'sign_in' && (
+          <Card className="space-y-5 rounded-2xl border-slate-200 bg-white p-7">
+            <div className="flex items-center gap-3">
+              <UserPlus className="h-6 w-6 text-primary" />
+              <h2 className="text-xl font-black">Sign in with your invited email</h2>
             </div>
-            <div className="space-y-2">
-                <h1 className="text-4xl font-black uppercase tracking-tighter text-foreground leading-none">Proposal Transmitted</h1>
-                <p className="text-slate-500 font-medium italic max-w-sm mx-auto leading-relaxed">
-                    Your partner application is being verified by the Online Bar Command. Access to tactical links will be granted upon authorization.
-                </p>
+            <p className="text-sm leading-6 text-slate-600">
+              Accept this invitation by signing in or creating an account using the same email address that received the invite. Your email must be verified.
+            </p>
+            <Button onClick={goToSignIn} className="w-full sm:w-auto">Continue to sign in or create account</Button>
+          </Card>
+        )}
+
+        {inviteState === 'error' && (
+          <Card className="space-y-4 rounded-2xl border-slate-200 bg-white p-7">
+            <h2 className="text-xl font-black">Invitation unavailable</h2>
+            <p className="text-sm text-slate-600">{errorMessage || 'This invitation is expired, cancelled, or invalid.'}</p>
+            <Link href="/contact"><Button variant="outline">Contact Online Bar</Button></Link>
+          </Card>
+        )}
+
+        {inviteState === 'accepted' && (
+          <Card className="flex flex-col items-center gap-4 rounded-2xl border-emerald-200 bg-emerald-50 p-10 text-center">
+            <CheckCircle2 className="h-12 w-12 text-emerald-600" />
+            <h2 className="text-2xl font-black text-emerald-900">Invitation accepted</h2>
+            <p className="text-sm text-emerald-800">Your affiliate access is active. Opening your private studio...</p>
+            <Button onClick={() => router.replace('/affiliate/dashboard')}>Open Affiliate Studio</Button>
+          </Card>
+        )}
+
+        {inviteState === 'ready' && (
+          <Card className="rounded-2xl border-slate-200 bg-white p-6 sm:p-8">
+            <div className="mb-6 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">
+              Invitation verified for <strong>{inviteEmail}</strong>. Complete your partner details to unlock the product catalog.
             </div>
-            <Link href="/profile">
-                <Button className="h-16 px-10 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest active:scale-95 transition-all shadow-xl shadow-primary/20">
-                    Return to Profile
-                </Button>
-            </Link>
-        </div>
-    );
+            <form onSubmit={acceptInvitation} className="space-y-6">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <label className="space-y-2 text-sm font-semibold">
+                  Business / display name
+                  <Input required minLength={2} maxLength={120} value={businessName} onChange={event => setBusinessName(event.target.value)} />
+                </label>
+                <label className="space-y-2 text-sm font-semibold">
+                  Audience size
+                  <Input required type="number" min={0} max={100000000} value={audienceSize} onChange={event => setAudienceSize(event.target.value)} />
+                </label>
+              </div>
+              <label className="block space-y-2 text-sm font-semibold">
+                How will you promote Online Bar?
+                <Textarea required minLength={10} maxLength={2000} rows={4} value={bio} onChange={event => setBio(event.target.value)} placeholder="Describe your audience and promotion approach." />
+              </label>
 
-    return (
-        <div className="min-h-screen bg-slate-50 py-16 px-4 sm:px-6 lg:px-8 text-left selection:bg-primary/20">
-            <div className="max-w-4xl mx-auto space-y-12">
+              <fieldset className="space-y-3">
+                <legend className="text-sm font-semibold">Promotion channels (select at least one)</legend>
+                <div className="flex flex-wrap gap-2">
+                  {(['Instagram', 'TikTok', 'WhatsApp', 'Website'] as PromotionChannel[]).map(channel => (
+                    <button
+                      key={channel}
+                      type="button"
+                      aria-pressed={channels.includes(channel)}
+                      onClick={() => toggleChannel(channel)}
+                      className={cn(
+                        'rounded-xl border px-4 py-2 text-sm font-semibold',
+                        channels.includes(channel) ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 text-slate-600'
+                      )}
+                    >{channel}</button>
+                  ))}
+                </div>
+              </fieldset>
 
-                <header className="border-b border-slate-200 pb-10">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100"><Rocket size={20} /></div>
-                        <span className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-500">Partner with the Grid</span>
-                    </div>
-                    <h1 className="text-4xl lg:text-6xl font-black text-foreground uppercase tracking-tighter leading-none">Become an <br /> <span className="text-primary italic">Affiliate Partner.</span></h1>
-                    <p className="text-slate-500 text-lg font-medium mt-4 italic max-w-2xl leading-relaxed">
-                        Authorize your marketing nodes and start earning commission on every premium bottle dispatched through your network.
-                    </p>
-                </header>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <label className="space-y-2 text-sm font-semibold">
+                  Payout method
+                  <select value={payoutMethod} onChange={event => setPayoutMethod(event.target.value as 'M-Pesa' | 'Bank')} className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="M-Pesa">M-Pesa</option>
+                    <option value="Bank">Bank transfer</option>
+                  </select>
+                </label>
+                <label className="space-y-2 text-sm font-semibold">
+                  {payoutMethod === 'M-Pesa' ? 'M-Pesa phone number' : 'Bank account details'}
+                  <Input required minLength={3} maxLength={200} value={payoutDetails} onChange={event => setPayoutDetails(event.target.value)} />
+                </label>
+              </div>
 
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-                    <div className="lg:col-span-7 space-y-8">
-                        <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-8">
-                            <h2 className="text-xl font-black text-foreground uppercase tracking-tight flex items-center gap-3">
-                                <Users className="h-5 w-5 text-primary" /> Marketer Profile
-                            </h2>
+              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="flex items-center gap-2 font-bold"><ShieldCheck className="h-5 w-5 text-primary" /> Partner terms</div>
+                <label className="flex items-start gap-3 text-sm leading-5 text-slate-600">
+                  <input type="checkbox" required checked={acceptedTerms} onChange={event => setAcceptedTerms(event.target.checked)} className="mt-1" />
+                  <span>I agree to promote Online Bar responsibly and understand payout requests are reviewed manually.</span>
+                </label>
+                <label className="flex items-start gap-3 text-sm leading-5 text-slate-600">
+                  <input type="checkbox" required checked={acknowledgedAgreement} onChange={event => setAcknowledgedAgreement(event.target.checked)} className="mt-1" />
+                  <span>I have read and accept the <Link href="/affiliate/agreement" target="_blank" rel="noreferrer" className="font-bold text-primary underline">Affiliate &amp; Partner Agreement</Link>.</span>
+                </label>
+              </div>
 
-                            <div className="space-y-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Business / Display Name</label>
-                                    <Input required value={formData.business_name} onChange={e => setFormData({...formData, business_name: e.target.value})} placeholder="e.g. David Tech Reviews" className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Short Bio / Strategy</label>
-                                    <textarea required value={formData.bio} onChange={e => setFormData({...formData, bio: e.target.value})} placeholder="How do you plan to promote the bar?" className="w-full h-32 rounded-[2rem] bg-slate-50 border border-slate-100 p-6 text-sm font-medium outline-none focus:ring-4 focus:ring-primary/5 transition-all resize-none" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Est. Audience Size</label>
-                                    <Input type="number" required value={formData.audience_size} onChange={e => setFormData({...formData, audience_size: e.target.value})} placeholder="e.g. 5000" className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" />
-                                </div>
-                            </div>
-                        </Card>
-
-                        <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-8">
-                            <h2 className="text-xl font-black text-foreground uppercase tracking-tight flex items-center gap-3">
-                                <ShieldCheck className="h-5 w-5 text-primary" /> Payout Nodes
-                            </h2>
-                            <div className="space-y-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Payout Method</label>
-                                    <select value={formData.preferred_payout_method} onChange={e => setFormData({...formData, preferred_payout_method: e.target.value})} className="w-full h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-bold uppercase outline-none">
-                                        <option value="M-Pesa">M-Pesa (Kenya)</option>
-                                        <option value="Bank">Bank Transfer</option>
-                                    </select>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Payment Identifier (Phone/Account)</label>
-                                    <Input required value={formData.payout_details} onChange={e => setFormData({...formData, payout_details: e.target.value})} placeholder="e.g. 07XXXXXXXX" className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-bold" />
-                                </div>
-                            </div>
-                        </Card>
-                    </div>
-
-                    <div className="lg:col-span-5 space-y-8">
-                        <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-8 text-left">
-                            <h2 className="text-xl font-black text-foreground uppercase tracking-tight">Active Channels</h2>
-                            <div className="grid grid-cols-2 gap-3">
-                                {channels.map(ch => (
-                                    <button
-                                        key={ch.id}
-                                        type="button"
-                                        onClick={() => toggleChannel(ch.id)}
-                                        className={cn(
-                                            "p-6 rounded-[2rem] border-2 transition-all flex flex-col items-center gap-4 group",
-                                            formData.primary_channels.includes(ch.id)
-                                                ? "border-primary bg-primary/5 text-primary shadow-lg"
-                                                : "border-slate-50 bg-slate-50/50 text-slate-300 hover:border-primary/20"
-                                        )}
-                                    >
-                                        <ch.icon size={24} />
-                                        <span className="text-[9px] font-black uppercase tracking-widest">{ch.id}</span>
-                                    </button>
-                                ))}
-                            </div>
-                            <p className="text-[10px] text-slate-400 font-medium italic leading-relaxed text-center px-4">
-                                &quot;Multi-channel attribution is enabled by default for all authorized partners.&quot;
-                            </p>
-                        </Card>
-
-                        <div className="pt-6">
-                            <Button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full h-24 rounded-[2.5rem] bg-primary text-white font-black uppercase text-sm tracking-[0.4em] shadow-2xl shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95"
-                            >
-                                {loading ? <Loader2 className="animate-spin h-6 w-6" /> : "Deploy Application"}
-                            </Button>
-                        </div>
-
-                        <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem] text-foreground space-y-6 relative overflow-hidden shadow-sm">
-                            <div className="relative z-10 flex items-center gap-4">
-                                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm border border-primary/20"><ShieldCheck size={20} /></div>
-                                <h3 className="text-lg font-black uppercase tracking-tight">Partner Integrity</h3>
-                            </div>
-                            <p className="relative z-10 text-[10px] text-slate-500 font-medium leading-relaxed italic">
-                                &quot;All applications undergo manual compliance review to ensure alignment with premium beverage marketing standards.&quot;
-                            </p>
-                            <label className="relative z-10 flex items-start gap-3 text-xs font-medium text-slate-600">
-                                <input
-                                    type="checkbox"
-                                    required
-                                    checked={formData.marketing_agreement_accepted}
-                                    onChange={event => setFormData({ ...formData, marketing_agreement_accepted: event.target.checked })}
-                                    className="mt-0.5 h-4 w-4 accent-primary"
-                                />
-                                <span>I agree to promote Online Bar responsibly and understand applications and payout requests are reviewed manually.</span>
-                            </label>
-                            <label className="relative z-10 flex items-start gap-3 text-xs font-medium text-slate-600">
-                                <input
-                                    type="checkbox"
-                                    required
-                                    checked={formData.agreement_draft_acknowledged}
-                                    onChange={event => setFormData({ ...formData, agreement_draft_acknowledged: event.target.checked })}
-                                    className="mt-0.5 h-4 w-4 accent-primary"
-                                />
-                                <span>
-                                    I have reviewed the{' '}
-                                    <Link href="/affiliate/agreement" target="_blank" rel="noreferrer" className="font-bold text-primary underline underline-offset-2">
-                                        Affiliate &amp; Partner Agreement draft
-                                    </Link>
-                                    , understand that it is not final or legally binding, and acknowledge the terms marked “TO BE CONFIRMED” must be finalized before partner activation.
-                                </span>
-                            </label>
-                            <Rocket className="absolute -bottom-6 -right-6 h-32 w-32 text-primary/5 -rotate-12" />
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
+              <Button type="submit" disabled={loading || channels.length === 0} className="h-12 w-full rounded-xl font-black uppercase tracking-widest">
+                {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
+                Accept invitation and unlock Affiliate Studio
+              </Button>
+            </form>
+          </Card>
+        )}
+      </div>
+    </main>
+  );
 }

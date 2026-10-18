@@ -62,7 +62,7 @@ export default function MessageCommandCenter() {
 
                 <div className="flex w-full sm:w-auto">
                     <Button asChild className="w-full sm:w-auto rounded-xl h-12 px-6 sm:px-8 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20">
-                        <Link href="/admin/marketing/create">
+                        <Link href="/lord/marketing/create">
                             <Plus className="h-4 w-4 mr-2" /> New Campaign Draft
                         </Link>
                     </Button>

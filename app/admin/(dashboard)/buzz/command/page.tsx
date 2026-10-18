@@ -126,7 +126,7 @@ export default function BuzzCommandCenter() {
                     <Button onClick={fetchAnalytics} variant="outline" className="rounded-2xl h-14 px-8 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 transition-all">
                         <BarChart3 size={16} className="mr-3" /> Tactical Refresh
                     </Button>
-                    <Link href="/admin/buzz/create">
+                    <Link href="/lord/buzz/create">
                         <Button className="rounded-2xl h-14 px-10 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
                             <Zap size={16} className="mr-3 fill-current" /> Deploy Global Buzz
                         </Button>
@@ -164,7 +164,7 @@ export default function BuzzCommandCenter() {
                 <section className="lg:col-span-8 space-y-8">
                     <div className="flex justify-between items-center px-6">
                         <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground italic">Promotion Performance</h2>
-                        <Link href="/admin/buzz/campaigns" className="text-[10px] font-black text-primary uppercase underline underline-offset-4 tracking-widest">Full Ledger &rarr;</Link>
+                        <Link href="/lord/buzz/campaigns" className="text-[10px] font-black text-primary uppercase underline underline-offset-4 tracking-widest">Full Ledger &rarr;</Link>
                     </div>
 
                     <Card className="rounded-[4rem] bg-white border border-slate-100 shadow-sm overflow-hidden">
@@ -208,7 +208,7 @@ export default function BuzzCommandCenter() {
                                                 </span>
                                             </td>
                                             <td className="px-10 py-8 text-right">
-                                                <Link href={`/admin/buzz/${camp.buzz_id}`}>
+                                                <Link href={`/lord/buzz/${camp.buzz_id}`}>
                                                     <Button size="icon" variant="ghost" className="h-12 w-12 rounded-xl text-slate-300 hover:text-primary hover:bg-white transition-all shadow-sm">
                                                         <Eye size={20} />
                                                     </Button>

@@ -202,7 +202,7 @@ export default function TicketingSecurityPage() {
         <header className="relative overflow-hidden rounded-3xl border border-orange-300/15 bg-gradient-to-br from-[#281626] via-[#1b1221] to-[#120e18] p-6 shadow-2xl shadow-black/30 sm:p-9">
           <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-20 h-72 w-72 rounded-full bg-orange-500/15 blur-[75px]" />
           <div className="relative">
-            <Link href="/admin/ticketing" className="inline-flex items-center gap-2 text-xs font-bold text-orange-200 transition hover:text-white">
+            <Link href="/lord/ticketing" className="inline-flex items-center gap-2 text-xs font-bold text-orange-200 transition hover:text-white">
               <ArrowLeft size={14} /> Back to Ticketing
             </Link>
             <div className="mt-6 flex flex-wrap items-start justify-between gap-5">

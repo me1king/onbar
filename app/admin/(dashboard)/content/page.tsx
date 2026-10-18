@@ -95,7 +95,7 @@ export default function ContentCommandHub() {
                     <p className="text-muted-foreground text-sm font-medium mt-1 italic">Orchestrating brand narratives across all platform terminals.</p>
                 </div>
                 <div className="flex gap-4">
-                    <Link href="/admin/growth/calendar">
+                    <Link href="/lord/growth/calendar">
                         <Button variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest shadow-sm">
                             <Calendar size={14} className="mr-2" /> Strategic Timeline
                         </Button>

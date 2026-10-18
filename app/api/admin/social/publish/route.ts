@@ -1,6 +1,15 @@
 import { NextResponse } from 'next/server';
+import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
 
 export async function POST(request: Request) {
+    const session = await getAdminSession();
+    if (!session) return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
+    if (!hasAdminPermission(session, 'can_manage_marketing')) {
+        return NextResponse.json({ error: 'Marketing permission required.' }, { status: 403 });
+    }
+    if (!isSameOriginRequest(request)) {
+        return NextResponse.json({ error: 'Request origin could not be verified.' }, { status: 403 });
+    }
     try {
         const body = await request.json();
         const { mediaUrl, caption, platforms } = body;

@@ -69,7 +69,7 @@ function AdminLoginContent() {
 
       // Wait a moment for the cookie to be set before redirecting
       await new Promise(resolve => setTimeout(resolve, 100));
-      window.location.href = '/admin';
+      window.location.href = '/lord';
     } catch (error: unknown) {
       setStatus({
         type: 'error',

@@ -103,18 +103,18 @@ export function canAccessRoute(
     const isAllowed = (permission: Permission) =>
         permissions[permissionKeys[permission]] === true || hasPermission(r, permission);
 
-    if (pathname === '/admin') return isAllowed('CAN_VIEW_REVENUE');
+    if (pathname === '/lord') return isAllowed('CAN_VIEW_REVENUE');
 
     const routePermissions: [string[], Permission][] = [
-        [['/admin/finance', '/admin/reports', '/admin/analytics', '/admin/behavior', '/admin/pulse'], 'CAN_VIEW_REVENUE'],
-        [['/admin/payouts'], 'CAN_EXECUTE_PAYOUTS'],
-        [['/admin/staff'], 'CAN_MANAGE_STAFF'],
-        [['/admin/audit', '/admin/security'], 'CAN_VIEW_AUDIT_LOGS'],
-        [['/admin/settings', '/admin/ticketing'], 'CAN_MANAGE_SETTINGS'],
-        [['/admin/marketing', '/admin/growth', '/admin/broadcast', '/admin/blog', '/admin/content', '/admin/subscribers', '/admin/coupons', '/admin/media', '/admin/experience'], 'CAN_MANAGE_MARKETING'],
-        [['/admin/communications', '/admin/messages', '/admin/abandoned', '/admin/support', '/admin/customers'], 'CAN_MANAGE_COMMUNICATIONS'],
-        [['/admin/orders', '/admin/dispatch', '/admin/delivery', '/admin/riders', '/admin/operations', '/admin/merchants', '/admin/traceability'], 'CAN_MANAGE_ORDERS'],
-        [['/admin/inventory', '/admin/forge', '/admin/souvenirs', '/admin/bites', '/admin/munchies', '/admin/kitchen', '/admin/warranty', '/admin/ratings', '/admin/reviews', '/admin/upload', '/admin/vault'], 'CAN_MANAGE_INVENTORY']
+        [['/lord/finance', '/lord/reports', '/lord/analytics', '/lord/behavior', '/lord/pulse'], 'CAN_VIEW_REVENUE'],
+        [['/lord/payouts'], 'CAN_EXECUTE_PAYOUTS'],
+        [['/lord/staff'], 'CAN_MANAGE_STAFF'],
+        [['/lord/audit', '/lord/security'], 'CAN_VIEW_AUDIT_LOGS'],
+        [['/lord/settings', '/lord/ticketing'], 'CAN_MANAGE_SETTINGS'],
+        [['/lord/marketing', '/lord/growth', '/lord/broadcast', '/lord/blog', '/lord/content', '/lord/subscribers', '/lord/coupons', '/lord/media', '/lord/experience'], 'CAN_MANAGE_MARKETING'],
+        [['/lord/communications', '/lord/messages', '/lord/abandoned', '/lord/support', '/lord/customers'], 'CAN_MANAGE_COMMUNICATIONS'],
+        [['/lord/orders', '/lord/dispatch', '/lord/delivery', '/lord/riders', '/lord/operations', '/lord/merchants', '/lord/traceability'], 'CAN_MANAGE_ORDERS'],
+        [['/lord/inventory', '/lord/forge', '/lord/souvenirs', '/lord/bites', '/lord/munchies', '/lord/kitchen', '/lord/warranty', '/lord/ratings', '/lord/reviews', '/lord/upload', '/lord/vault'], 'CAN_MANAGE_INVENTORY']
     ];
 
     const match = routePermissions.find(([prefixes]) =>

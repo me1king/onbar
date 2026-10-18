@@ -136,7 +136,7 @@ export default function TicketingSalesPage() {
     <main className="min-h-screen bg-[#0d0a12] px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="rounded-3xl border border-amber-200/15 bg-gradient-to-br from-[#201913] via-[#151319] to-[#0e0d12] p-5 shadow-2xl shadow-black/20 sm:p-8">
-          <Link href="/admin/ticketing" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 transition hover:text-white">
+          <Link href="/lord/ticketing" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 transition hover:text-white">
             <ArrowLeft size={14} /> Ticketing management
           </Link>
           <div className="mt-5 flex flex-wrap items-end justify-between gap-4">

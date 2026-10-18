@@ -22,7 +22,10 @@ import {
     User,
     ShieldAlert,
     LayoutGrid,
-    ExternalLink
+    ExternalLink,
+    Mail,
+    Copy,
+    Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,24 +66,47 @@ interface AffiliateSummary {
     created_at: string;
 }
 
-type TabId = 'pulse' | 'directory' | 'applications' | 'finance' | 'risk';
+interface AffiliateInvitation {
+    id: string;
+    email: string;
+    business_name: string;
+    commission_rate: number;
+    created_at: string;
+    expires_at: string;
+    accepted_at: string | null;
+    revoked_at: string | null;
+    status: 'Invited' | 'Accepted' | 'Expired' | 'Revoked';
+}
+
+type TabId = 'pulse' | 'directory' | 'applications' | 'finance' | 'risk' | 'invitations';
 
 export default function AdminAffiliateCommandCenter() {
     const { email: adminEmail } = useAdmin();
     const [activeTab, setActiveTab] = React.useState<TabId>('pulse');
     const [affiliates, setAffiliates] = React.useState<AffiliateSummary[]>([]);
+    const [invitations, setInvitations] = React.useState<AffiliateInvitation[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [selectedAffiliate, setSelectedAffiliate] = React.useState<AffiliateSummary | null>(null);
     const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [inviteEmail, setInviteEmail] = React.useState('');
+    const [inviteBusinessName, setInviteBusinessName] = React.useState('');
+    const [inviteCommissionRate, setInviteCommissionRate] = React.useState('5');
+    const [inviteLink, setInviteLink] = React.useState('');
+    const [creatingInvite, setCreatingInvite] = React.useState(false);
 
     const fetchAffiliateNetwork = React.useCallback(async () => {
         setLoading(true);
         try {
             const response = await fetch('/api/admin/affiliates', { cache: 'no-store' });
-            const result = await response.json();
+            const result = await response.json() as {
+                affiliates?: AffiliateSummary[];
+                invitations?: AffiliateInvitation[];
+                error?: string;
+            };
             if (!response.ok) throw new Error(result.error || 'Could not load affiliate applications.');
             setAffiliates(result.affiliates || []);
+            setInvitations(result.invitations || []);
             setMessage(null);
         } catch (error) {
             setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not load affiliate applications.' });
@@ -108,6 +134,80 @@ export default function AdminAffiliateCommandCenter() {
         } catch (err: unknown) {
             const error = err as Error;
             setMessage({ type: 'error', text: error.message });
+        }
+    };
+
+    const createInvitation = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setCreatingInvite(true);
+        setInviteLink('');
+        try {
+            const response = await fetch('/api/admin/affiliates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: inviteEmail,
+                    businessName: inviteBusinessName,
+                    commissionRate: Number(inviteCommissionRate)
+                })
+            });
+            const result = await response.json() as {
+                error?: string;
+                invitation?: { id: string; email: string; business_name: string; commission_rate: number };
+                inviteUrl?: string;
+                emailSent?: boolean;
+                emailError?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Could not create affiliate invitation.');
+            if (!result.inviteUrl) throw new Error('Invitation was created without returning its link. Refresh the invitations list.');
+            setInviteLink(result.inviteUrl);
+            if (result.invitation) {
+                await logAuditAction(adminEmail, 'CREATE_AFFILIATE_INVITATION', {
+                    id: result.invitation.id,
+                    businessName: result.invitation.business_name,
+                    commissionRate: result.invitation.commission_rate
+                });
+            }
+            setInviteEmail('');
+            setInviteBusinessName('');
+            setMessage({
+                type: result.emailSent ? 'success' : 'error',
+                text: result.emailSent
+                    ? 'Invitation created and emailed. Copy the link below if you also need to share it.'
+                    : result.emailError || 'Invitation created; share the link manually.'
+            });
+            await fetchAffiliateNetwork();
+        } catch (error) {
+            setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not create affiliate invitation.' });
+        } finally {
+            setCreatingInvite(false);
+        }
+    };
+
+    const revokeInvitation = async (invitationId: string) => {
+        try {
+            const response = await fetch('/api/admin/affiliates', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'revoke_invitation', invitationId })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Could not revoke invitation.');
+            await logAuditAction(adminEmail, 'REVOKE_AFFILIATE_INVITATION', { invitationId });
+            setMessage({ type: 'success', text: 'Affiliate invitation revoked.' });
+            await fetchAffiliateNetwork();
+        } catch (error) {
+            setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Could not revoke invitation.' });
+        }
+    };
+
+    const copyInviteLink = async () => {
+        try {
+            await navigator.clipboard.writeText(inviteLink);
+            setMessage({ type: 'success', text: 'Invitation link copied.' });
+        } catch (error) {
+            console.error('[AdminAffiliates] Could not copy invitation link:', error);
+            setMessage({ type: 'error', text: 'Could not copy the link. Select and copy it manually.' });
         }
     };
 
@@ -152,7 +252,7 @@ export default function AdminAffiliateCommandCenter() {
                     <Button onClick={fetchAffiliateNetwork} variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-50">
                         <RefreshCcw className="h-4 w-4 mr-2" /> Sync Grid
                     </Button>
-                    <Link href="/admin/payouts">
+                    <Link href="/lord/payouts">
                         <Button className="rounded-xl h-12 px-8 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
                             <DollarSign className="h-4 w-4 mr-2" /> Payout Queue
                         </Button>
@@ -178,6 +278,7 @@ export default function AdminAffiliateCommandCenter() {
                     { id: 'applications', label: 'Applications', icon: User, count: stats.pendingApps },
                     { id: 'finance', label: 'Financial Hub', icon: CreditCard },
                     { id: 'risk', label: 'Risk Radar', icon: ShieldAlert },
+                    { id: 'invitations', label: 'Invitations', icon: Mail, count: invitations.filter(invitation => invitation.status === 'Invited').length },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -193,6 +294,101 @@ export default function AdminAffiliateCommandCenter() {
                     </button>
                 ))}
             </div>
+
+            {activeTab === 'invitations' && (
+                <div className="grid gap-8 xl:grid-cols-[0.8fr_1.2fr]">
+                    <Card className="h-fit rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm">
+                        <div className="mb-6 flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Send size={20} /></div>
+                            <div>
+                                <h2 className="text-xl font-black uppercase tracking-tight">Invite a partner</h2>
+                                <p className="text-xs text-slate-500">Only accepted invitations unlock the affiliate catalog.</p>
+                            </div>
+                        </div>
+                        <form onSubmit={createInvitation} className="space-y-5">
+                            <label className="block space-y-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Partner email
+                                <Input required type="email" maxLength={320} autoComplete="email" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} placeholder="partner@example.com" />
+                            </label>
+                            <label className="block space-y-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Business / display name
+                                <Input required minLength={2} maxLength={120} value={inviteBusinessName} onChange={event => setInviteBusinessName(event.target.value)} placeholder="Creator or partner name" />
+                            </label>
+                            <label className="block space-y-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Commission rate (%)
+                                <Input required type="number" min="0.01" max="100" step="0.01" value={inviteCommissionRate} onChange={event => setInviteCommissionRate(event.target.value)} />
+                            </label>
+                            <Button type="submit" disabled={creatingInvite} className="h-12 w-full rounded-xl font-black uppercase tracking-widest">
+                                {creatingInvite ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                                {creatingInvite ? 'Creating invite...' : 'Create invitation'}
+                            </Button>
+                            <p className="text-xs leading-5 text-slate-500">
+                                Invitations expire after 7 days and are locked to this email address. If email delivery is not configured, copy the one-time invite link and send it yourself.
+                            </p>
+                        </form>
+                        {inviteLink && (
+                            <div className="mt-6 space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                <p className="text-xs font-black uppercase tracking-wider text-emerald-800">One-time invitation link</p>
+                                <Input readOnly value={inviteLink} aria-label="New affiliate invitation link" className="bg-white font-mono text-xs" />
+                                <Button type="button" variant="outline" onClick={copyInviteLink} className="w-full bg-white">
+                                    <Copy className="mr-2 h-4 w-4" /> Copy invitation link
+                                </Button>
+                            </div>
+                        )}
+                    </Card>
+
+                    <Card className="overflow-hidden rounded-[2.5rem] border border-slate-100 bg-white shadow-sm">
+                        <div className="border-b border-slate-100 p-7">
+                            <h2 className="text-xl font-black uppercase tracking-tight">Invitation register</h2>
+                            <p className="mt-1 text-xs text-slate-500">Only invite status is shown; invitation tokens are never listed after creation.</p>
+                        </div>
+                        {!invitations.length ? (
+                            <p className="p-8 text-center text-sm text-slate-500">No invitations have been created.</p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[650px] text-left text-sm">
+                                    <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                        <tr>
+                                            <th className="px-6 py-4">Recipient</th>
+                                            <th className="px-6 py-4">Commission</th>
+                                            <th className="px-6 py-4">Expires</th>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {invitations.map(invitation => (
+                                            <tr key={invitation.id}>
+                                                <td className="px-6 py-4">
+                                                    <p className="font-bold">{invitation.business_name}</p>
+                                                    <p className="text-xs text-slate-500">{invitation.email}</p>
+                                                </td>
+                                                <td className="px-6 py-4">{Number(invitation.commission_rate)}%</td>
+                                                <td className="px-6 py-4">{new Date(invitation.expires_at).toLocaleDateString()}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={cn(
+                                                        'rounded-full px-3 py-1 text-[9px] font-black uppercase',
+                                                        invitation.status === 'Accepted' ? 'bg-emerald-50 text-emerald-700'
+                                                            : invitation.status === 'Invited' ? 'bg-amber-50 text-amber-700'
+                                                                : 'bg-slate-100 text-slate-500'
+                                                    )}>{invitation.status}</span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {invitation.status === 'Invited' && (
+                                                        <Button type="button" size="sm" variant="outline" onClick={() => void revokeInvitation(invitation.id)} className="border-rose-200 text-rose-700 hover:bg-rose-50">
+                                                            <XCircle className="mr-1 h-3.5 w-3.5" /> Revoke
+                                                        </Button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </Card>
+                </div>
+            )}
 
             {activeTab === 'pulse' && (
                 <div className="space-y-10 animate-in fade-in duration-700 text-left">
@@ -258,8 +454,8 @@ export default function AdminAffiliateCommandCenter() {
                                 <div className="space-y-4">
                                     {[
                                         { label: 'Review Applications', icon: User, href: '#', count: stats.pendingApps },
-                                        { label: 'Manage Creatives', icon: Camera, href: '/admin/media?tab=posters' },
-                                        { label: 'Finance Review', icon: CreditCard, href: '/admin/payouts' },
+                                        { label: 'Manage Creatives', icon: Camera, href: '/lord/media?tab=posters' },
+                                        { label: 'Finance Review', icon: CreditCard, href: '/lord/payouts' },
                                     ].map(task => (
                                         <button key={task.label} className="w-full p-6 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:bg-white hover:shadow-xl transition-all text-left">
                                             <div className="flex items-center gap-4">

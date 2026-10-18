@@ -108,7 +108,7 @@ export default function CampaignHistory() {
                     <h1 className="text-3xl sm:text-4xl font-black text-foreground uppercase tracking-tighter">Campaign Records</h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1">Campaigns are drafts; an external publishing or scheduling service is not connected.</p>
                 </div>
-                <Link href="/admin/marketing/create">
+                <Link href="/lord/marketing/create">
                     <Button className="rounded-xl h-12 px-6 bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
                         <Plus size={16} className="mr-2" /> New Campaign
                     </Button>

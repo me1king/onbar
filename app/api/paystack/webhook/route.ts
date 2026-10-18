@@ -265,8 +265,8 @@ export async function POST(request: Request) {
                     }).catch(e => console.error("Admin Notify Error:", e));
 
                     // 3. Notify Customer
-                    if (firstItem.customer_email) {
-                        fetch(`${baseUrl}/api/admin/notify-customer`, {
+                    try {
+                        const customerNotification = await fetch(`${baseUrl}/api/admin/notify-customer`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -276,7 +276,12 @@ export async function POST(request: Request) {
                                 orderId: firstItem.id,
                                 status: 'Paid'
                             })
-                        }).catch(e => console.error("Customer Notify Error:", e));
+                        });
+                        if (!customerNotification.ok) {
+                            console.error("Customer Notify Error:", await customerNotification.text());
+                        }
+                    } catch (notificationError) {
+                        console.error("Customer Notify Error:", notificationError);
                     }
                 }
             }

@@ -18,7 +18,7 @@ export default function AudienceBuilder() {
                 Create and review customer segments using recorded order totals, order counts, and purchase recency. Audience reach is calculated from saved customer and order data.
             </p>
             <Button asChild variant="outline" className="w-full justify-between">
-                <Link href="/admin/marketing/audiences">
+                <Link href="/lord/marketing/audiences">
                     Manage customer audiences <ArrowRight className="h-4 w-4" />
                 </Link>
             </Button>
