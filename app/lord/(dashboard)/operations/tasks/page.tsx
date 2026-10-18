@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import Link from 'next/link';
 import {
     Plus,
     CheckCircle2,
@@ -9,9 +9,10 @@ import {
     ChevronRight,
     Zap,
     Layout,
-    MoreVertical,
     AlertCircle,
-    Trash2
+    Trash2,
+    CalendarDays,
+    ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,14 @@ interface Task {
     assigned_to: string | null;
     due_date: string | null;
     created_at: string;
+    action_label: string | null;
+    action_href: string | null;
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+    const result = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) throw new Error(result.error || `Task request failed (${response.status}).`);
+    return result as T;
 }
 
 export default function TaskCenter() {
@@ -35,20 +44,29 @@ export default function TaskCenter() {
     const [tasks, setTasks] = React.useState<Task[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [isAdding, setIsAdding] = React.useState(false);
-    const [newTask, setNewTask] = React.useState({ title: '', description: '', priority: 'Medium' as Task['priority'] });
+    const [newTask, setNewTask] = React.useState({
+        title: '',
+        description: '',
+        priority: 'Medium' as Task['priority'],
+        assigned_to: adminEmail || 'Staff',
+        due_date: ''
+    });
     const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const fetchTasks = React.useCallback(async () => {
-        if (!supabase) return;
         setLoading(true);
         try {
-            const { data, error } = await supabase.from('admin_tasks').select('*').order('created_at', { ascending: false });
-            if (error) throw error;
-            setTasks(data || []);
+            const result = await readJson<{ tasks: Task[] }>(await fetch('/api/admin/operations/tasks', {
+                cache: 'no-store'
+            }));
+            setTasks(result.tasks);
+            setMessage(null);
         } catch (err: unknown) {
-            const errorMsg = err instanceof Error ? err.message : String(err);
-            console.error("Operations Board Sync Failure:", errorMsg);
-            setMessage({ type: 'error', text: "Uplink to operations board lost." });
+            console.error('Operations Board Sync Failure:', err);
+            setMessage({
+                type: 'error',
+                text: err instanceof Error ? err.message : 'Could not load operations tasks.'
+            });
         } finally {
             setLoading(false);
         }
@@ -59,52 +77,70 @@ export default function TaskCenter() {
     }, [fetchTasks]);
 
     const handleCreateTask = async () => {
-        if (!supabase || !newTask.title.trim()) return;
+        if (!newTask.title.trim()) {
+            setMessage({ type: 'error', text: 'Add a title before creating a task.' });
+            return;
+        }
+        setLoading(true);
         try {
-            const { error } = await supabase.from('admin_tasks').insert([{
-                title: newTask.title,
-                description: newTask.description,
-                status: 'Todo',
-                priority: newTask.priority,
-                assigned_to: 'Staff',
-                created_by: adminEmail
-            }]);
-
-            if (error) throw error;
-
-            setMessage({ type: 'success', text: "New operations protocol established." });
-            setTimeout(() => setMessage(null), 3000);
+            const result = await readJson<{ task: Task }>(await fetch('/api/admin/operations/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...newTask,
+                    assigned_to: newTask.assigned_to.trim() || adminEmail || 'Staff',
+                    due_date: newTask.due_date || null
+                })
+            }));
+            setTasks(previous => [result.task, ...previous]);
+            setMessage({ type: 'success', text: 'Task added to the board.' });
             setIsAdding(false);
-            setNewTask({ title: '', description: '', priority: 'Medium' });
-            fetchTasks();
+            setNewTask({
+                title: '',
+                description: '',
+                priority: 'Medium',
+                assigned_to: adminEmail || 'Staff',
+                due_date: ''
+            });
         } catch (err: unknown) {
-            const errorMsg = err instanceof Error ? err.message : String(err);
-            console.error("Protocol Establishment Failure:", errorMsg);
-            alert("Failed to establish new protocol.");
+            console.error('Protocol Establishment Failure:', err);
+            setMessage({
+                type: 'error',
+                text: err instanceof Error ? err.message : 'Could not create task.'
+            });
+        } finally {
+            setLoading(false);
         }
     };
 
     const updateTaskStatus = async (id: string, status: Task['status']) => {
-        if (!supabase) return;
         try {
-            const { error } = await supabase.from('admin_tasks').update({ status }).eq('id', id);
-            if (error) throw error;
-            setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+            const { task } = await readJson<{ task: Task }>(await fetch('/api/admin/operations/tasks', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, status })
+            }));
+            setTasks(prev => prev.map(t => t.id === id ? task : t));
+            setMessage(null);
         } catch (err) {
-            console.error(err);
+            console.error('Could not update task status:', err);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not update task status.' });
         }
     };
 
     const deleteTask = async (id: string) => {
-        if (!supabase || !confirm("Expunge this operations protocol?")) return;
+        if (!confirm('Delete this operations task?')) return;
         try {
-            const { error } = await supabase.from('admin_tasks').delete().eq('id', id);
-            if (error) throw error;
+            await readJson<{ ok: true }>(await fetch('/api/admin/operations/tasks', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            }));
             setTasks(prev => prev.filter(t => t.id !== id));
-            setMessage({ type: 'success', text: "Protocol decommissioned." });
-            setTimeout(() => setMessage(null), 3000);
+            setMessage({ type: 'success', text: 'Task deleted.' });
         } catch (err) {
-            console.error(err);
+            console.error('Could not delete task:', err);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not delete task.' });
         }
     };
 
@@ -173,13 +209,22 @@ export default function TaskCenter() {
                                                 )}>{task.priority}</span>
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button onClick={() => deleteTask(task.id)} className="text-slate-300 hover:text-rose-500 transition-colors p-1"><Trash2 size={14} /></button>
-                                                    <button className="text-slate-300 hover:text-primary transition-colors p-1"><MoreVertical size={14} /></button>
                                                 </div>
                                             </div>
                                             <div>
                                                 <h4 className="text-sm font-black text-foreground uppercase tracking-tight leading-tight">{task.title}</h4>
-                                                <p className="text-[10px] text-muted-foreground font-medium mt-1 line-clamp-2 italic leading-relaxed">&quot;{task.description}&quot;</p>
+                                                <p className="text-[10px] text-muted-foreground font-medium mt-2 line-clamp-4 leading-relaxed">{task.description}</p>
                                             </div>
+                                            {task.due_date && (
+                                                <p className="flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground">
+                                                    <CalendarDays size={12} /> Due {new Date(`${task.due_date}T00:00:00`).toLocaleDateString()}
+                                                </p>
+                                            )}
+                                            {task.action_href?.startsWith('/lord/') && task.action_label && (
+                                                <Link href={task.action_href} className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wide text-primary hover:underline">
+                                                    {task.action_label} <ExternalLink size={11} />
+                                                </Link>
+                                            )}
                                         </div>
                                         <div className="pt-4 border-t border-border flex justify-between items-center mt-4">
                                             <div className="flex items-center gap-2">
@@ -214,7 +259,9 @@ export default function TaskCenter() {
                             {tasks.filter(t => t.status === col).length === 0 && (
                                 <div className="py-12 border-2 border-dashed border-border rounded-[2rem] flex flex-col items-center justify-center text-center opacity-20 group hover:opacity-100 transition-opacity min-h-[200px]">
                                     <CheckCircle2 size={32} className="mb-2" />
-                                    <p className="text-[8px] font-black uppercase tracking-widest italic">Column Optimized</p>
+                                    <p className="text-[8px] font-black uppercase tracking-widest italic">
+                                        {loading ? 'Loading tasks…' : col === 'Todo' && tasks.length === 0 ? 'No tasks yet — create a protocol above' : 'No tasks in this lane'}
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -235,6 +282,17 @@ export default function TaskCenter() {
                                 <Input value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} className="h-14 rounded-2xl bg-secondary border-border font-bold text-foreground" placeholder="e.g. Audit Warehouse Bin B" />
                             </div>
                             <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">What needs to happen?</label>
+                                <textarea
+                                    value={newTask.description}
+                                    onChange={e => setNewTask({ ...newTask, description: e.target.value })}
+                                    maxLength={2000}
+                                    rows={4}
+                                    className="w-full rounded-2xl bg-secondary border border-border px-4 py-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="Describe the steps and what counts as done."
+                                />
+                            </div>
+                            <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Severity</label>
                                 <select
                                     value={newTask.priority}
@@ -247,10 +305,20 @@ export default function TaskCenter() {
                                     <option>Critical</option>
                                 </select>
                             </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <label className="space-y-2 text-[10px] font-black uppercase text-muted-foreground">
+                                    Assigned to
+                                    <Input value={newTask.assigned_to} onChange={e => setNewTask({ ...newTask, assigned_to: e.target.value })} maxLength={160} className="h-12 rounded-xl bg-secondary border-border font-bold text-foreground" placeholder="Name or email" />
+                                </label>
+                                <label className="space-y-2 text-[10px] font-black uppercase text-muted-foreground">
+                                    Due date
+                                    <Input type="date" value={newTask.due_date} onChange={e => setNewTask({ ...newTask, due_date: e.target.value })} className="h-12 rounded-xl bg-secondary border-border font-bold text-foreground" />
+                                </label>
+                            </div>
                         </div>
                         <div className="flex gap-4 pt-4">
-                            <Button onClick={handleCreateTask} className="flex-1 h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 transition-all">Establish</Button>
-                            <Button onClick={() => setIsAdding(false)} variant="outline" className="flex-1 h-14 rounded-2xl font-black uppercase text-[10px] border-border">Abort</Button>
+                            <Button onClick={() => void handleCreateTask()} disabled={loading || !newTask.title.trim()} className="flex-1 h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 transition-all disabled:opacity-50">Create task</Button>
+                            <Button onClick={() => setIsAdding(false)} variant="outline" className="flex-1 h-14 rounded-2xl font-black uppercase text-[10px] border-border">Cancel</Button>
                         </div>
                     </Card>
                 </div>

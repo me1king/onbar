@@ -17,24 +17,46 @@ interface StaffRecord {
     sla_rating: number;
 }
 
+interface TaskRecord {
+    assigned_to: string | null;
+    status: string;
+    due_date: string | null;
+}
+
 export default function WorkforceHub() {
     const [staff, setStaff] = React.useState<StaffRecord[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [taskError, setTaskError] = React.useState<string | null>(null);
 
     const fetchStaff = React.useCallback(async () => {
-        if (!supabase) return;
+        if (!supabase) {
+            setLoading(false);
+            return;
+        }
 
-        // 1. Fetch Staff and their Tasks via parallel query or join
-        const [staffRes, tasksRes] = await Promise.all([
+        const [staffRes, tasksResponse] = await Promise.all([
             supabase.from('staff').select('*').order('last_activity_at', { ascending: false }),
-            supabase.from('admin_tasks').select('assigned_to, status, due_date')
+            fetch('/api/admin/operations/tasks', { cache: 'no-store' }).catch((error: unknown) => {
+                console.error('Could not load workforce task metrics:', error);
+                return null;
+            })
         ]);
+
+        let tasks: TaskRecord[] = [];
+        if (tasksResponse?.ok) {
+            const result = await tasksResponse.json().catch(() => ({})) as { tasks?: TaskRecord[] };
+            tasks = result.tasks || [];
+            setTaskError(result.tasks ? null : 'Task metrics could not be loaded.');
+        } else {
+            const result = await tasksResponse?.json().catch(() => ({})) as { error?: string } | undefined;
+            setTaskError(result?.error || 'Task metrics could not be loaded.');
+        }
 
         if (staffRes.data) {
             const now = new Date();
             const processed = staffRes.data.map(s => {
-                const staffTasks = (tasksRes.data || []).filter(t => t.assigned_to === s.email || t.assigned_to === 'Staff');
-                const overdue = (tasksRes.data || []).filter(t =>
+                const staffTasks = tasks.filter(t => t.assigned_to === s.email || t.assigned_to === 'Staff');
+                const overdue = tasks.filter(t =>
                     (t.assigned_to === s.email) &&
                     t.status !== 'Done' &&
                     t.due_date && new Date(t.due_date) < now
@@ -90,6 +112,11 @@ export default function WorkforceHub() {
             </div>
 
             <div className="grid gap-4">
+                {taskError && (
+                    <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+                        Workforce task metrics unavailable: {taskError}
+                    </p>
+                )}
                 {staff.map((s) => (
                     <div key={s.id} className="p-6 rounded-[2.5rem] bg-slate-50 border border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-6 group hover:bg-white hover:shadow-xl transition-all">
                         <div className="flex items-center gap-6 text-left w-full sm:w-auto">
