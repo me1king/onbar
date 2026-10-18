@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
+import { divIcon } from 'leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import { getCartoVoyagerTileUrl } from '@/lib/cartoMaps';
 import type { WaitlistDemandArea } from '@/lib/waitlistDemand';
 
@@ -14,11 +16,66 @@ function FitDemandAreas({ points }: { points: Array<[number, number]> }) {
   return null;
 }
 
-function demandColor(area: WaitlistDemandArea, maxSignups: number) {
+function demandColor(area: Pick<WaitlistDemandArea, 'referralTurnover' | 'serviceableSignups' | 'signups'>, maxSignups: number) {
   if (area.referralTurnover > 0) return '#059669';
   if (area.serviceableSignups > 0) return '#f59e0b';
   if (area.signups >= maxSignups * 0.6) return '#e11d48';
   return '#2563eb';
+}
+
+function demandMarkerIcon(signups: number, color: string) {
+  const size = Math.min(58, 38 + Math.sqrt(signups) * 2);
+  const count = new Intl.NumberFormat('en-KE', { notation: 'compact', maximumFractionDigits: 1 }).format(signups);
+  return divIcon({
+    className: 'waitlist-demand-marker',
+    html: `<span style="position:relative;display:flex;width:${size}px;height:${size}px;align-items:center;justify-content:center">
+      <span style="position:absolute;inset:0;border:1px solid ${color}55;border-radius:9999px;background:${color}20;box-shadow:0 0 0 7px ${color}10"></span>
+      <span style="position:relative;display:grid;width:28px;height:28px;place-items:center;border:3px solid #fff;border-radius:9999px;background:${color};box-shadow:0 3px 12px ${color}80"></span>
+      <span style="position:absolute;right:-8px;top:-5px;min-width:27px;border:2px solid white;border-radius:9999px;background:#0f172a;padding:2px 5px;color:white;text-align:center;font-size:9px;font-weight:900;line-height:13px;box-shadow:0 2px 6px #0f172a55">${count}</span>
+    </span>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2]
+  });
+}
+
+function groupDemandAreas(areas: Array<WaitlistDemandArea & { latitude: number; longitude: number }>) {
+  const groups = new Map<string, {
+    id: string;
+    latitude: number;
+    longitude: number;
+    areas: Array<WaitlistDemandArea & { latitude: number; longitude: number }>;
+    signups: number;
+    serviceableSignups: number;
+    referralSignups: number;
+    referralTurnover: number;
+    pointsCredited: number;
+    precision: WaitlistDemandArea['precision'];
+  }>();
+  for (const area of areas) {
+    const id = `${area.latitude},${area.longitude}`;
+    const group = groups.get(id) || {
+      id,
+      latitude: area.latitude,
+      longitude: area.longitude,
+      areas: [],
+      signups: 0,
+      serviceableSignups: 0,
+      referralSignups: 0,
+      referralTurnover: 0,
+      pointsCredited: 0,
+      precision: area.precision
+    };
+    group.areas.push(area);
+    group.signups += area.signups;
+    group.serviceableSignups += area.serviceableSignups;
+    group.referralSignups += area.referralSignups;
+    group.referralTurnover += area.referralTurnover;
+    group.pointsCredited += area.pointsCredited;
+    if (area.precision === 'area') group.precision = 'area';
+    groups.set(id, group);
+  }
+  return [...groups.values()];
 }
 
 function DemandCurve({ areas }: { areas: WaitlistDemandArea[] }) {
@@ -72,8 +129,9 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
   const mapped = areas.filter((area): area is WaitlistDemandArea & { latitude: number; longitude: number } =>
     area.latitude !== null && area.longitude !== null
   );
+  const markerGroups = groupDemandAreas(mapped);
   const unmapped = areas.filter(area => area.latitude === null || area.longitude === null);
-  const locations: Array<[number, number]> = mapped.map(area => [area.latitude, area.longitude]);
+  const locations: Array<[number, number]> = markerGroups.map(area => [area.latitude, area.longitude]);
   const center: [number, number] = locations[0] || [-1.2864, 36.8172];
   const maxSignups = Math.max(1, ...areas.map(area => area.signups));
   const totalSignups = areas.reduce((total, area) => total + area.signups, 0);
@@ -88,13 +146,13 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-primary">Geographic demand intelligence</p>
           <h2 className="mt-1 text-xl font-black uppercase tracking-tight text-slate-950">Waitlist demand map</h2>
-          <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Area-level signup density with service coverage and referral sales context. Pins use approximate neighbourhood or city centres from signup areas; no exact member coordinates are exposed.</p>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Area-level signup density with service coverage and referral sales context. Pins use the shared location catalogue’s locality points; city and county matches are broader. These are not exact member coordinates.</p>
         </div>
         <div className="flex flex-wrap gap-2 text-[9px] font-bold uppercase tracking-wide">
-          <span className="rounded-full bg-blue-100 px-2.5 py-1.5 text-blue-800">● Signups</span>
-          <span className="rounded-full bg-amber-100 px-2.5 py-1.5 text-amber-800">● In service area</span>
-          <span className="rounded-full bg-emerald-100 px-2.5 py-1.5 text-emerald-800">● Referral turnover</span>
-          <span className="rounded-full bg-rose-100 px-2.5 py-1.5 text-rose-800">● High demand</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-1.5 text-blue-800"><i className="h-2 w-2 rounded-full bg-blue-600" /> Standard</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1.5 text-amber-800"><i className="h-2 w-2 rounded-full bg-amber-500" /> In service area</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1.5 text-emerald-800"><i className="h-2 w-2 rounded-full bg-emerald-600" /> Referral turnover</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-2.5 py-1.5 text-rose-800"><i className="h-2 w-2 rounded-full bg-rose-600" /> Highest demand</span>
         </div>
       </header>
 
@@ -121,30 +179,37 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                 url={getCartoVoyagerTileUrl()}
               />
-              {mapped.map(area => {
-                const color = demandColor(area, maxSignups);
-                const search = [area.area, area.city, area.county, area.country].filter(Boolean).join(', ');
+              {markerGroups.map(group => {
+                const color = demandColor(group, maxSignups);
+                const search = [group.areas[0].area, group.areas[0].city, group.areas[0].county, group.areas[0].country].filter(Boolean).join(', ');
                 return (
-                  <CircleMarker
-                    key={area.id}
-                    center={[area.latitude, area.longitude]}
-                    radius={Math.min(30, 7 + Math.sqrt(area.signups) * 2)}
-                    pathOptions={{ color, fillColor: color, fillOpacity: 0.65, weight: 2 }}
+                  <Marker
+                    key={group.id}
+                    position={[group.latitude, group.longitude]}
+                    icon={demandMarkerIcon(group.signups, color)}
+                    title={`${group.signups} waitlist signups in ${group.areas.map(area => area.area || area.city).join(', ')}`}
                   >
                     <Popup>
-                      <div className="min-w-52 space-y-1.5 text-sm">
-                        <p className="font-black">{area.area || area.city || area.county}</p>
-                        <p className="text-xs text-slate-600">{[area.city, area.county, area.country].filter(Boolean).join(' · ')}</p>
-                        <p><b>{area.signups.toLocaleString('en-KE')}</b> waitlist signups</p>
-                        <p><b>{area.serviceableSignups.toLocaleString('en-KE')}</b> marked in service area</p>
-                        <p><b>{area.referralSignups.toLocaleString('en-KE')}</b> referred members</p>
-                        <p><b>KES {area.referralTurnover.toLocaleString('en-KE')}</b> referred delivered sales</p>
-                        <p><b>{area.pointsCredited.toLocaleString('en-KE')}</b> referral points credited</p>
-                        <p className="text-[10px] font-semibold text-slate-500">{area.precision === 'neighborhood' ? 'Approximate neighbourhood centre' : 'Approximate city/county centre'}</p>
+                      <div className="min-w-52 space-y-2 text-sm">
+                        <p className="font-black">{group.areas.length === 1 ? group.areas[0].area || group.areas[0].city || group.areas[0].county : `${group.areas.length} areas at this map point`}</p>
+                        {group.areas.length > 1 && (
+                          <ul className="max-h-24 list-inside list-disc overflow-y-auto text-xs text-slate-600">
+                            {group.areas.map(area => <li key={area.id}>{area.area || area.city}: {area.signups} signups</li>)}
+                          </ul>
+                        )}
+                        <p className="text-xs text-slate-600">{[group.areas[0].city, group.areas[0].county, group.areas[0].country].filter(Boolean).join(' · ')}</p>
+                        <p><b>{group.signups.toLocaleString('en-KE')}</b> waitlist signups across this point</p>
+                        <p><b>{group.serviceableSignups.toLocaleString('en-KE')}</b> marked in service area</p>
+                        <p><b>{group.referralSignups.toLocaleString('en-KE')}</b> referred members</p>
+                        <p><b>KES {group.referralTurnover.toLocaleString('en-KE')}</b> referred delivered sales</p>
+                        <p><b>{group.pointsCredited.toLocaleString('en-KE')}</b> referral points credited</p>
+                        <p className="text-[10px] font-semibold text-slate-500">
+                          {group.precision === 'area' ? 'Catalogue locality point' : group.precision === 'city' ? 'City-level point' : 'County-level point'} · approximate
+                        </p>
                         <a href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(search)}`} target="_blank" rel="noopener noreferrer" className="inline-block pt-1 font-bold text-blue-700 underline">Open area map</a>
                       </div>
                     </Popup>
-                  </CircleMarker>
+                  </Marker>
                 );
               })}
             </MapContainer>
@@ -170,6 +235,11 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
                   </div>
                   <p className="mt-1 text-[9px] text-slate-500">{area.signups} signups · {area.serviceableSignups} in coverage · {area.referralSignups} referrals</p>
                   <p className="text-[9px] text-slate-500">{`KES ${area.referralTurnover.toLocaleString('en-KE')} referred sales · ${area.pointsCredited} points`}</p>
+                  {area.precision !== 'unmapped' && (
+                    <p className="mt-1 text-[9px] font-semibold text-slate-500">
+                      {area.precision === 'area' ? 'Locality-level location' : `${area.precision}-level fallback`}
+                    </p>
+                  )}
                   {area.precision === 'unmapped' && (
                     <a href={`https://www.openstreetmap.org/search?query=${encodeURIComponent([area.area, area.city, area.county, area.country].filter(Boolean).join(', '))}`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[9px] font-bold text-blue-700 underline">Find approximate map location</a>
                   )}
@@ -182,7 +252,7 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
 
       <DemandCurve areas={sortedAreas} />
       <p className="text-[10px] leading-4 text-slate-500">
-        Showing {mapped.length} mapped areas and {unmapped.length} areas without a reliable built-in map match. {points.toLocaleString('en-KE')} referral points credited across mapped and unmapped areas. Bubble size shows signup count; turnover only includes delivered/completed member orders.
+        Showing {mapped.length} mapped areas and {unmapped.length} areas without a reliable built-in map match. {points.toLocaleString('en-KE')} referral points credited across mapped and unmapped areas. Bubble size shows signup count; turnover only includes delivered/completed member orders. For door-to-door precision, signups would need to opt in to share GPS coordinates.
       </p>
     </section>
   );
