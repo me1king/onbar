@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { Bot, RefreshCw, ShieldAlert, Zap } from 'lucide-react';
+import { readJsonResponse } from '@/lib/readJsonResponse';
 
 interface BriefData {
     brief: string;
@@ -31,7 +32,7 @@ export default function AICommanderBrief() {
         setError('');
         try {
             const response = await fetch('/api/admin/intelligence/commander-brief', { cache: 'no-store' });
-            const result = await response.json() as BriefData & { error?: string };
+            const result = await readJsonResponse<BriefData & { error?: string }>(response, 'Commander Brief');
             if (!response.ok) throw new Error(result.error || 'Commander Brief metrics are unavailable.');
             setData(result);
         } catch (cause) {

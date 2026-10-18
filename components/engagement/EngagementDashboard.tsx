@@ -128,7 +128,7 @@ export default function EngagementDashboard() {
 
                 {/* 3. Small Quick Links */}
                 <div className="lg:col-span-3 grid grid-cols-2 lg:grid-cols-1 gap-4 items-stretch">
-                    <Link href="/profile/achievements" className="group">
+                    <Link href="/profile#achievements" className="group">
                         <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm flex flex-col justify-center items-center text-center gap-4 group-hover:border-primary/20 transition-all h-full">
                             <div className="h-12 w-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform">
                                 <Trophy size={24} />

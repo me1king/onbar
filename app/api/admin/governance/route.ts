@@ -47,7 +47,7 @@ async function getAdminClient(): Promise<AdminClientResult> {
     };
 }
 
-export async function GET() {
+async function getGovernanceResponse() {
     const admin = await getAdminClient();
     if (!admin.ok) return admin.response;
 
@@ -88,4 +88,15 @@ export async function GET() {
         profiles: profilesResult.count,
         alerts: (alertsResult.data || []) as DataQualityAlert[]
     });
+}
+
+export async function GET() {
+    try {
+        return await getGovernanceResponse();
+    } catch (error) {
+        console.error('[AdminGovernance] Request failed before governance data could be loaded:', error);
+        return NextResponse.json({
+            error: error instanceof Error ? error.message : 'Governance data could not be loaded.'
+        }, { status: 503, headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+    }
 }

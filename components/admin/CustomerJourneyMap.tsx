@@ -12,6 +12,7 @@ import {
     RefreshCcw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { readJsonResponse } from '@/lib/readJsonResponse';
 
 interface FunnelStats {
     discovery: number;
@@ -33,7 +34,7 @@ export default function CustomerJourneyMap() {
         setError('');
         try {
             const response = await fetch('/api/admin/intelligence/funnel', { cache: 'no-store' });
-            const data = await response.json() as Partial<FunnelStats> & { error?: string };
+            const data = await readJsonResponse<Partial<FunnelStats> & { error?: string }>(response, 'Funnel analytics');
             if (!response.ok) throw new Error(data.error || 'Funnel analytics could not be loaded.');
             if (!isCount(data.discovery) || !isCount(data.browse)
                 || !isCount(data.cart) || !isCount(data.conversion)) {

@@ -6,6 +6,7 @@ import { Truck, Wine, DollarSign, Users, Bot, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { useRouter } from 'next/navigation';
+import { readJsonResponse } from '@/lib/readJsonResponse';
 
 interface CommandStats {
     revenue: number | null;
@@ -27,11 +28,11 @@ export default function OperatingBrainHUD() {
         async function fetchCommandData() {
             try {
                 const response = await fetch('/api/admin/operating-brain', { cache: 'no-store' });
-                const result = await response.json() as {
+                const result = await readJsonResponse<{
                     stats?: CommandStats;
                     errors?: Record<string, string>;
                     error?: string;
-                };
+                }>(response, 'Dashboard metrics');
                 if (!response.ok || !result.stats) {
                     throw new Error(result.error || 'Dashboard metrics could not be loaded.');
                 }

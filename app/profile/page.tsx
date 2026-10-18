@@ -1268,7 +1268,7 @@ export default function ProfilePage() {
                 </section>
 
                 {/* 📚 YOUR BEVERAGE LIBRARY */}
-                <section className="space-y-6">
+                <section id="achievements" className="scroll-mt-24 space-y-6">
                     <h2 className="text-xl font-black uppercase tracking-tighter text-foreground">Premium Accomplishments</h2>
                     {achievements.length > 0 ? <AchievementBadges userId={user?.id || ''} /> : (
                         <div className="py-12 text-center bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-100">

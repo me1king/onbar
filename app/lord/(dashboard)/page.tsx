@@ -47,7 +47,6 @@ import FinancePulse from '@/components/admin/FinancePulse';
 import DataGovernance from '@/components/admin/DataGovernance';
 import ExperimentLab from '@/components/admin/ExperimentLab';
 import CustomerJourneyMap from '@/components/admin/CustomerJourneyMap';
-import SessionForensics from '@/components/admin/SessionForensics';
 import IntelligenceCommand from '@/components/admin/IntelligenceCommand';
 import SnackCommandCenter from '@/components/admin/SnackCommandCenter';
 import DeliveryMetrics from '@/components/admin/DeliveryMetrics';
@@ -304,8 +303,21 @@ export default function AdminDashboard() {
       {/* JOURNEY & CONVERSION: BEHAVIORAL INTELLIGENCE */}
       <CustomerJourneyMap />
 
-      <section id="deep-forensics" className="scroll-mt-24">
-          <SessionForensics sessionId={orders[0]?.id ? String(orders[0].id) : ''} />
+      <section id="deep-forensics" className="scroll-mt-24 rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                  <div className="flex items-center gap-2 text-primary">
+                      <HistoryIcon className="h-4 w-4" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.25em]">Customer session forensics</span>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-slate-500">Select a customer session to inspect its recorded activity timeline.</p>
+              </div>
+              <Link href="/lord/behavior/sessions">
+                  <Button variant="outline" className="rounded-xl border-slate-200 text-[10px] font-black uppercase tracking-widest">
+                      Browse sessions &rarr;
+                  </Button>
+              </Link>
+          </div>
       </section>
 
       {/* DELIVERY PERFORMANCE: SPEED LOGISTICS */}

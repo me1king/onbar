@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 const FUNNEL_WINDOW_DAYS = 30;
 
-export async function GET() {
+async function getFunnelResponse() {
     const session = await getAdminSession();
     if (!session) return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
     if (!['owner', 'admin'].includes(session.role.toLowerCase())
@@ -71,4 +71,15 @@ export async function GET() {
         conversion: conversion.count ?? 0,
         windowDays: FUNNEL_WINDOW_DAYS
     }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+}
+
+export async function GET() {
+    try {
+        return await getFunnelResponse();
+    } catch (error) {
+        console.error('[AdminFunnel] Request failed before analytics could be loaded:', error);
+        return NextResponse.json({
+            error: error instanceof Error ? error.message : 'Could not load funnel analytics.'
+        }, { status: 503, headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+    }
 }

@@ -29,7 +29,7 @@ async function getRevenueTotal(database: NonNullable<ReturnType<typeof createSer
   throw new Error(`Revenue ledger scan exceeded ${MAX_REVENUE_ROWS} rows.`);
 }
 
-export async function GET() {
+async function getOperatingBrainResponse() {
   const session = await getAdminSession();
   if (!session) return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
   if (!['owner', 'admin'].includes(session.role.toLowerCase())) {
@@ -98,4 +98,15 @@ export async function GET() {
     },
     errors
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+}
+
+export async function GET() {
+  try {
+    return await getOperatingBrainResponse();
+  } catch (error) {
+    console.error('[OperatingBrain] Request failed before dashboard metrics could be loaded:', error);
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Dashboard metrics could not be loaded.'
+    }, { status: 503, headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  }
 }

@@ -55,7 +55,7 @@ async function getRevenueTotal(database: SupabaseClient, start: string, end: str
     throw new Error(`Revenue ledger scan exceeded ${MAX_REVENUE_ROWS} rows.`);
 }
 
-export async function GET() {
+async function getCommanderBriefResponse() {
     const cookieStore = await cookies();
     const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
     if (!session || (session.role !== 'owner' && session.role !== 'admin')) {
@@ -158,5 +158,16 @@ export async function GET() {
         return NextResponse.json({
             error: error instanceof Error ? error.message : 'Could not load Commander Brief metrics.'
         }, { status: 500 });
+    }
+}
+
+export async function GET() {
+    try {
+        return await getCommanderBriefResponse();
+    } catch (error) {
+        console.error('[CommanderBrief] Request failed before metrics could be generated:', error);
+        return NextResponse.json({
+            error: error instanceof Error ? error.message : 'Could not load Commander Brief metrics.'
+        }, { status: 500, headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
     }
 }

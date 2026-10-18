@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Activity, Database, Globe, Truck, CheckCircle2, ShieldAlert, Power } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { readJsonResponse } from '@/lib/readJsonResponse';
 
 export default function SystemPulseWidget() {
     const [latency, setLatency] = React.useState<{ db: number | null; api: null; logistics: null }>({ db: null, api: null, logistics: null });
@@ -17,7 +18,7 @@ export default function SystemPulseWidget() {
             const start = performance.now();
             try {
                 const response = await fetch('/api/admin/system-lockdown', { cache: 'no-store' });
-                const result = await response.json() as { active?: boolean; error?: string };
+                const result = await readJsonResponse<{ active?: boolean; error?: string }>(response, 'System status');
                 if (!response.ok) throw new Error(result.error || 'System status could not be loaded.');
                 if (typeof result.active !== 'boolean') throw new Error('System status response was invalid.');
                 const end = performance.now();
@@ -61,7 +62,7 @@ export default function SystemPulseWidget() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ active: next })
             });
-            const result = await response.json() as { active?: boolean; error?: string };
+            const result = await readJsonResponse<{ active?: boolean; error?: string }>(response, 'System lockdown');
             if (!response.ok) throw new Error(result.error || 'Could not save the lockdown setting.');
             if (typeof result.active !== 'boolean') throw new Error('Lockdown update response was invalid.');
             setKillSwitchActive(result.active);

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { ShieldCheck, ShieldAlert, Database, Info, RefreshCw } from 'lucide-react';
+import { readJsonResponse } from '@/lib/readJsonResponse';
 
 interface DataQualityAlert {
     id: number;
@@ -34,7 +35,7 @@ export default function DataGovernance() {
         setStats(prev => ({ ...prev, loading: true, error: null }));
         try {
             const response = await fetch('/api/admin/governance', { cache: 'no-store' });
-            const result = await response.json() as GovernanceResponse;
+            const result = await readJsonResponse<GovernanceResponse>(response, 'Governance data');
             if (!response.ok) throw new Error(result.error || 'Governance data could not be loaded.');
             setStats({
                 consentRecords: result.consentRecords,
@@ -83,7 +84,7 @@ export default function DataGovernance() {
                 </div>
             )}
 
-            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 sm:gap-4">
+            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                 <div className="min-w-0 space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:rounded-[2rem] sm:p-6">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Consent Records</p>
                     <p className="break-words text-xl font-black text-foreground sm:text-2xl">{stats.loading ? '…' : stats.consentRecords?.toLocaleString() ?? 'Unavailable'}</p>
@@ -92,7 +93,7 @@ export default function DataGovernance() {
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Registered Profiles</p>
                     <p className="break-words text-xl font-black text-foreground sm:text-2xl">{stats.loading ? '…' : stats.profiles?.toLocaleString() ?? 'Unavailable'}</p>
                 </div>
-                <div className="min-w-0 space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:rounded-[2rem] sm:p-6">
+                <div className="min-w-0 space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:col-span-2 sm:rounded-[2rem] sm:p-6">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Retention Policy</p>
                     <p className="text-2xl font-black text-foreground">Not tracked</p>
                 </div>

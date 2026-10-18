@@ -25,6 +25,19 @@ export default class AdminErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Admin Hub Crash:', error, errorInfo);
+    if (!/loading chunk .* failed|chunkloaderror|failed to fetch dynamically imported module|importing a module script failed/i.test(error.message)) {
+      return;
+    }
+
+    const recoveryKey = `onlinebar:chunk-recovery:${window.location.pathname}`;
+    try {
+      const lastRecovery = Number(window.sessionStorage.getItem(recoveryKey));
+      if (Number.isFinite(lastRecovery) && Date.now() - lastRecovery < 60_000) return;
+      window.sessionStorage.setItem(recoveryKey, String(Date.now()));
+      window.location.reload();
+    } catch (storageError) {
+      console.error('Could not safely retry the dashboard after a chunk load failure:', storageError);
+    }
   }
 
   private handleReset = async () => {
@@ -39,6 +52,8 @@ export default class AdminErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      const isChunkLoadError = /loading chunk .* failed|chunkloaderror|failed to fetch dynamically imported module|importing a module script failed/i
+        .test(this.state.error?.message || '');
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-left">
           <div className="bg-white rounded-[3rem] p-12 max-w-2xl w-full shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-500">
@@ -50,7 +65,9 @@ export default class AdminErrorBoundary extends Component<Props, State> {
                 Admin Hub Encountered an Error
             </h1>
             <p className="text-slate-500 font-medium text-lg mb-8 italic leading-relaxed">
-                &quot;The system detected a client-side exception. Your current session might be corrupted.&quot;
+                {isChunkLoadError
+                  ? 'A dashboard file did not match the active deployment. The page attempted one safe refresh; retry if needed.'
+                  : 'The system detected a client-side exception. Your current session might be corrupted.'}
             </p>
 
             <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mb-10 overflow-hidden">

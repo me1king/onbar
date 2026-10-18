@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { ShieldCheck, ShieldAlert, Globe, Activity, Database, HardDrive } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { readJsonResponse } from '@/lib/readJsonResponse';
 
 interface HealthReport {
     status: 'HEALTHY' | 'DEGRADED' | 'DOWN';
@@ -20,10 +21,16 @@ export default function SystemHealthMonitor() {
     const fetchHealth = React.useCallback(async () => {
         try {
             const res = await fetch('/api/health');
-            const data = await res.json();
+            const data = await readJsonResponse<HealthReport>(res, 'System health');
+            if (!res.ok) throw new Error(data.error || 'System health could not be loaded.');
             setHealth(data);
-        } catch {
-            setHealth({ status: 'DOWN', error: 'Network Failure', total_latency: '---' });
+        } catch (error) {
+            console.error('System health could not be loaded:', error);
+            setHealth({
+                status: 'DOWN',
+                error: error instanceof Error ? error.message : 'System health could not be loaded.',
+                total_latency: '---'
+            });
         } finally {
             setLoading(false);
         }
