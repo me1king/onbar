@@ -8,6 +8,7 @@ import { Flame, MapPin, Users, ChevronRight, Zap, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
+import { getCartoVoyagerTileUrl } from '@/lib/cartoMaps';
 
 interface BuzzPoint {
     id: string;
@@ -166,7 +167,7 @@ export default function TheBuzzMap() {
             >
                 <TileLayer
                     attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                    url={getCartoVoyagerTileUrl()}
                 />
 
                 {points.map((point) => (

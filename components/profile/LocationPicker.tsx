@@ -6,6 +6,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button } from '@/components/ui/button';
 import { MapPin, Navigation, CheckCircle2, Loader2, X } from 'lucide-react';
+import { getCartoVoyagerTileUrl } from '@/lib/cartoMaps';
 
 // 🛡️ Fix for Leaflet default icon issues in Next.js
 const fixLeafletIcons = () => {
@@ -125,7 +126,7 @@ export default function LocationPicker({ initialLat, initialLng, onConfirm, onCl
                     >
                         <TileLayer
                             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                            url={getCartoVoyagerTileUrl()}
                         />
                         <Marker position={pos} />
                         <MapEvents onLocationSelect={(lat, lng) => setPos([lat, lng])} />

@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import { BatteryMedium, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { decodePolyline } from '@/lib/utils/polyline';
+import { getCartoVoyagerTileUrl } from '@/lib/cartoMaps';
 
 interface Rider {
     id: number | string;
@@ -107,7 +108,7 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
         {/* 🗺️ Premium Voyager Tiles (Google Maps style) */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          url={getCartoVoyagerTileUrl()}
         />
 
         {/* 📉 Autonomous Demand Heatmap (Phase 10) */}
