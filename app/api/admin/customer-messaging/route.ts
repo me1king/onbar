@@ -10,10 +10,7 @@ import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/
 
 export const dynamic = 'force-dynamic';
 
-async function getAdminDatabase(request: Request) {
-  if (!isSameOriginRequest(request)) {
-    return { response: NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 }) };
-  }
+async function getAdminDatabase() {
   const session = await getAdminSession();
   if (!session) return { response: NextResponse.json({ error: 'Admin access is required.' }, { status: 401 }) };
   if (!hasAdminPermission(session, 'can_manage_communications')) {
@@ -24,8 +21,8 @@ async function getAdminDatabase(request: Request) {
   return { database };
 }
 
-export async function GET(request: Request) {
-  const access = await getAdminDatabase(request);
+export async function GET() {
+  const access = await getAdminDatabase();
   if ('response' in access) return access.response;
 
   const [settingResult, ordersResult, preferencesResult] = await Promise.all([
@@ -69,7 +66,10 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const access = await getAdminDatabase(request);
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+  }
+  const access = await getAdminDatabase();
   if ('response' in access) return access.response;
 
   let body: { config?: unknown };
@@ -113,7 +113,10 @@ export async function PUT(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const access = await getAdminDatabase(request);
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+  }
+  const access = await getAdminDatabase();
   if ('response' in access) return access.response;
 
   let body: { email?: unknown; phone?: unknown; channels?: unknown };
