@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 import { divIcon } from 'leaflet';
-import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
+import { Circle, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getCartoVoyagerTileUrl } from '@/lib/cartoMaps';
 import type { WaitlistDemandArea } from '@/lib/waitlistDemand';
@@ -10,8 +10,8 @@ import type { WaitlistDemandArea } from '@/lib/waitlistDemand';
 function FitDemandAreas({ points }: { points: Array<[number, number]> }) {
   const map = useMap();
   useEffect(() => {
-    if (points.length > 1) map.fitBounds(points, { padding: [32, 32], maxZoom: 12 });
-    else if (points.length === 1) map.setView(points[0], 11);
+    if (points.length > 1) map.fitBounds(points, { padding: [32, 32], maxZoom: 14 });
+    else if (points.length === 1) map.setView(points[0], 14);
   }, [map, points]);
   return null;
 }
@@ -125,13 +125,26 @@ function DemandCurve({ areas }: { areas: WaitlistDemandArea[] }) {
   );
 }
 
-export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea[] }) {
+export default function WaitlistDemandMap({
+  areas,
+  preciseLocations = [],
+  preciseLocationOptIns = 0,
+  preciseLocationSetupRequired = false
+}: {
+  areas: WaitlistDemandArea[];
+  preciseLocations?: Array<{ latitude: number; longitude: number; signups: number; averageAccuracyM: number }>;
+  preciseLocationOptIns?: number;
+  preciseLocationSetupRequired?: boolean;
+}) {
   const mapped = areas.filter((area): area is WaitlistDemandArea & { latitude: number; longitude: number } =>
     area.latitude !== null && area.longitude !== null
   );
   const markerGroups = groupDemandAreas(mapped);
   const unmapped = areas.filter(area => area.latitude === null || area.longitude === null);
-  const locations: Array<[number, number]> = markerGroups.map(area => [area.latitude, area.longitude]);
+  const locations: Array<[number, number]> = [
+    ...markerGroups.map(area => [area.latitude, area.longitude] as [number, number]),
+    ...preciseLocations.map(location => [location.latitude, location.longitude] as [number, number])
+  ];
   const center: [number, number] = locations[0] || [-1.2864, 36.8172];
   const maxSignups = Math.max(1, ...areas.map(area => area.signups));
   const totalSignups = areas.reduce((total, area) => total + area.signups, 0);
@@ -149,6 +162,7 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
           <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Area-level signup density with service coverage and referral sales context. Pins use the shared location catalogue’s locality points; city and county matches are broader. These are not exact member coordinates.</p>
         </div>
         <div className="flex flex-wrap gap-2 text-[9px] font-bold uppercase tracking-wide">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-2.5 py-1.5 text-violet-800"><i className="h-2 w-2 rounded-full bg-violet-600" /> Opt-in GPS cells</span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-1.5 text-blue-800"><i className="h-2 w-2 rounded-full bg-blue-600" /> Standard</span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1.5 text-amber-800"><i className="h-2 w-2 rounded-full bg-amber-500" /> In service area</span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1.5 text-emerald-800"><i className="h-2 w-2 rounded-full bg-emerald-600" /> Referral turnover</span>
@@ -156,9 +170,11 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         {[
           { label: 'Mapped areas', value: mapped.length },
+          { label: 'GPS opt-ins', value: preciseLocationOptIns },
+          { label: 'GPS map cells', value: preciseLocations.length },
           { label: 'Area signups', value: totalSignups },
           { label: 'Referred signups', value: referralSignups },
           { label: 'Referral turnover', value: turnover, isMoney: true }
@@ -170,15 +186,44 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
         ))}
       </div>
 
+      {preciseLocationSetupRequired && (
+        <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+          Higher-accuracy opt-in mapping is waiting for the database setup. Apply <code>supabase/WAITLIST_DEMAND_GPS_MIGRATION.sql</code>; existing approximate-area demand remains available.
+        </p>
+      )}
+
       <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="min-h-[360px] overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          {mapped.length ? (
+          {mapped.length || preciseLocations.length ? (
             <MapContainer center={center} zoom={6} style={{ height: 420, width: '100%' }} scrollWheelZoom={false}>
               <FitDemandAreas points={locations} />
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                 url={getCartoVoyagerTileUrl()}
               />
+              {preciseLocations.map(cell => (
+                <Fragment key={`${cell.latitude}:${cell.longitude}`}>
+                  <Circle
+                    center={[cell.latitude, cell.longitude]}
+                    radius={Math.min(330, Math.max(110, cell.averageAccuracyM + 80))}
+                    pathOptions={{ color: '#7c3aed', fillColor: '#8b5cf6', fillOpacity: 0.12, weight: 1.5, dashArray: '5 6' }}
+                  />
+                  <Marker
+                    position={[cell.latitude, cell.longitude]}
+                    icon={demandMarkerIcon(cell.signups, '#7c3aed')}
+                    title={`${cell.signups} opt-in signups in an approximate 100 m map cell`}
+                  >
+                    <Popup>
+                      <div className="min-w-48 space-y-2 text-sm">
+                        <p className="font-black text-violet-800">Opt-in GPS demand cell</p>
+                        <p><b>{cell.signups.toLocaleString('en-KE')}</b> consented signup{cell.signups === 1 ? '' : 's'} in this rounded map cell</p>
+                        <p>Average browser-reported GPS accuracy: <b>±{cell.averageAccuracyM} m</b></p>
+                        <p className="text-[10px] font-semibold text-slate-500">Coordinates rounded to a ~100 m grid; circle shows approximate location uncertainty. No member identity is included.</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                </Fragment>
+              ))}
               {markerGroups.map(group => {
                 const color = demandColor(group, maxSignups);
                 const search = [group.areas[0].area, group.areas[0].city, group.areas[0].county, group.areas[0].country].filter(Boolean).join(', ');
@@ -252,7 +297,7 @@ export default function WaitlistDemandMap({ areas }: { areas: WaitlistDemandArea
 
       <DemandCurve areas={sortedAreas} />
       <p className="text-[10px] leading-4 text-slate-500">
-        Showing {mapped.length} mapped areas and {unmapped.length} areas without a reliable built-in map match. {points.toLocaleString('en-KE')} referral points credited across mapped and unmapped areas. Bubble size shows signup count; turnover only includes delivered/completed member orders. For door-to-door precision, signups would need to opt in to share GPS coordinates.
+        Showing {mapped.length} catalogue-matched areas, {unmapped.length} unmatched areas, and {preciseLocations.length} anonymous opt-in GPS cells. GPS points are rounded to a ~100 m grid; the uncertainty circle uses browser-reported accuracy plus grid rounding. Area pins remain approximate. {points.toLocaleString('en-KE')} referral points credited; turnover includes delivered/completed orders only.
       </p>
     </section>
   );

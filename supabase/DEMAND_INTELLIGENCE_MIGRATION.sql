@@ -54,6 +54,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS market_waitlist_email_area_uidx
 CREATE INDEX IF NOT EXISTS market_waitlist_location_created_idx
     ON public.market_waitlist (country, county, city, area, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS public.waitlist_demand_locations (
+    waitlist_id UUID PRIMARY KEY REFERENCES public.market_waitlist(id) ON DELETE CASCADE,
+    latitude NUMERIC(6, 3) NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+    longitude NUMERIC(7, 3) NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+    accuracy_m NUMERIC(7, 2) NOT NULL CHECK (accuracy_m > 0 AND accuracy_m <= 250),
+    consented_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS waitlist_demand_locations_grid_idx
+    ON public.waitlist_demand_locations (latitude, longitude);
+ALTER TABLE public.waitlist_demand_locations ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.waitlist_demand_locations FROM anon, authenticated;
+GRANT ALL ON public.waitlist_demand_locations TO service_role;
+
 ALTER TABLE public.customer_location_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.market_waitlist ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.customer_location_preferences FROM anon, authenticated;

@@ -92,9 +92,18 @@ interface WaitlistReferralCredit {
   area: string;
   createdAt: string;
 }
+interface WaitlistDemandCell {
+  latitude: number;
+  longitude: number;
+  signups: number;
+  averageAccuracyM: number;
+}
 interface WaitlistResponse {
   contacts: WaitlistContact[];
   stats: WaitlistStats;
+  demandLocations?: WaitlistDemandCell[];
+  preciseLocationOptIns?: number;
+  demandLocationSetupRequired?: boolean;
   referralAnalytics: {
     referrers: WaitlistReferralLeaderboardEntry[];
     credits: WaitlistReferralCredit[];
@@ -973,7 +982,12 @@ export default function WaitlistPage() {
         ))}
       </section>
 
-      <WaitlistDemandMap areas={demandAreas} />
+      <WaitlistDemandMap
+        areas={demandAreas}
+        preciseLocations={data?.demandLocations || []}
+        preciseLocationOptIns={data?.preciseLocationOptIns || 0}
+        preciseLocationSetupRequired={data?.demandLocationSetupRequired || false}
+      />
       {(stats?.totalAreaCount || 0) > (stats?.areas.length || 0) && (
         <p className="text-xs font-semibold text-amber-800">
           The map is capped at {count(stats?.areas.length)} distinct areas for performance. {count((stats?.totalAreaCount || 0) - (stats?.areas.length || 0))} lower-volume areas are not included.

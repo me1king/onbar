@@ -15,6 +15,10 @@ type LocationPayload = {
   phone?: unknown;
   notificationConsent?: unknown;
   locationConsent?: unknown;
+  preciseLocationConsent?: unknown;
+  preciseLatitude?: unknown;
+  preciseLongitude?: unknown;
+  preciseAccuracyM?: unknown;
 };
 
 const requests = new Map<string, { startedAt: number; count: number }>();
@@ -112,6 +116,22 @@ export async function POST(request: Request) {
     if (body.notificationConsent !== true) {
       return NextResponse.json({ error: 'Please confirm that we may contact you about availability in this area.' }, { status: 400 });
     }
+    let preciseLocation: { latitude: number; longitude: number; accuracyM: number } | null = null;
+    if (body.preciseLocationConsent === true) {
+      const latitude = Number(body.preciseLatitude);
+      const longitude = Number(body.preciseLongitude);
+      const accuracyM = Number(body.preciseAccuracyM);
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+        || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+        || !Number.isFinite(accuracyM) || accuracyM <= 0 || accuracyM > 250) {
+        return NextResponse.json({ error: 'A reliable precise location is required for the optional demand-map opt-in. Turn that option off to join without sharing GPS.' }, { status: 400 });
+      }
+      preciseLocation = {
+        latitude: Math.round(latitude * 1000) / 1000,
+        longitude: Math.round(longitude * 1000) / 1000,
+        accuracyM
+      };
+    }
     const waitlistUserId = await verifyUser(request, url);
     if (waitlistUserId === false) return NextResponse.json({ error: 'Your sign-in could not be verified.' }, { status: 401 });
 
@@ -142,13 +162,34 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString()
     };
     const result = existingSignup
-      ? await database.from('market_waitlist').update(values).eq('id', existingSignup.id)
-      : await database.from('market_waitlist').insert(values);
+      ? await database.from('market_waitlist').update(values).eq('id', existingSignup.id).select('id').single()
+      : await database.from('market_waitlist').insert(values).select('id').single();
     if (result.error) {
       console.error('[LocationWaitlist] Could not save signup:', result.error);
       return NextResponse.json({ error: 'Your waitlist signup could not be saved. Please try again.' }, { status: 503 });
     }
-    return NextResponse.json({ success: true });
+    if (body.preciseLocationConsent === true && preciseLocation) {
+      const { error } = await database.from('waitlist_demand_locations').upsert({
+        waitlist_id: result.data.id,
+        latitude: preciseLocation.latitude,
+        longitude: preciseLocation.longitude,
+        accuracy_m: preciseLocation.accuracyM,
+        consented_at: new Date().toISOString()
+      }, { onConflict: 'waitlist_id' });
+      if (error) {
+        console.error('[LocationWaitlist] Signup saved but opted-in demand location could not be recorded:', error);
+        return NextResponse.json({
+          error: 'Your waitlist signup was saved, but the optional map location could not be recorded. Ask an admin to apply WAITLIST_DEMAND_GPS_MIGRATION.sql, then retry.'
+        }, { status: 503 });
+      }
+    } else if (body.preciseLocationConsent === false && existingSignup?.id) {
+      const { error } = await database.from('waitlist_demand_locations').delete().eq('waitlist_id', existingSignup.id);
+      if (error && error.code !== '42P01' && error.code !== 'PGRST205') {
+        console.error('[LocationWaitlist] Could not remove a withdrawn demand-map location:', error);
+        return NextResponse.json({ error: 'Your signup was updated, but its saved map location could not be removed. Please contact support.' }, { status: 503 });
+      }
+    }
+    return NextResponse.json({ success: true, preciseLocationCaptured: preciseLocation !== null });
   }
 
   const anonymousId = cleanText(body.anonymousId, 80);

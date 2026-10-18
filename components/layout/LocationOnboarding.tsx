@@ -13,6 +13,35 @@ interface SavedLocation extends Omit<LocationArea, 'latitude' | 'longitude'> {
 const DECISION_KEY = 'onbar_location_prompt_answered';
 const LOCATION_KEY = 'onbar_area_preference';
 
+function getPreciseBrowserLocation(): Promise<{ latitude: number; longitude: number; accuracyM: number }> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Precise location is not supported by this browser. Turn off the optional map-location setting to join without GPS.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const accuracyM = position.coords.accuracy;
+        if (!Number.isFinite(accuracyM) || accuracyM <= 0 || accuracyM > 250) {
+          reject(new Error('GPS accuracy is too low for the optional demand map. Try again outdoors or turn off the optional map-location setting.'));
+          return;
+        }
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracyM
+        });
+      },
+      error => reject(new Error(error.code === error.PERMISSION_DENIED
+        ? 'Location permission was declined. Turn off the optional map-location setting to join without GPS.'
+        : error.code === error.TIMEOUT
+          ? 'Precise location timed out. Try again or turn off the optional map-location setting.'
+          : 'We could not detect a reliable GPS location. Turn off the optional map-location setting to join without GPS.')),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  });
+}
+
 function createAnonymousId() {
   const existing = localStorage.getItem('ob_anonymous_id');
   if (existing) return existing;
@@ -34,6 +63,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [notificationConsent, setNotificationConsent] = useState(false);
+  const [preciseLocationConsent, setPreciseLocationConsent] = useState(false);
   const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
 
   const cities = useMemo(() => [...new Set(LOCATION_AREAS.map((item) => item.city))], []);
@@ -97,6 +127,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       setEmail('');
       setPhone('');
       setNotificationConsent(false);
+      setPreciseLocationConsent(false);
       setStatus(serviceAvailable
         ? `Saved ${areaDetails.area}, ${areaDetails.city} on this device. We’ll use it to check local availability. Admin demand reporting will update after the location database migration is installed.`
         : `Saved ${areaDetails.area}, ${areaDetails.city} on this device. We’re not serving this area yet. Admin demand reporting and the launch waitlist require the location database migration.`);
@@ -141,6 +172,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       setEmail('');
       setPhone('');
       setNotificationConsent(false);
+      setPreciseLocationConsent(false);
       setStatus(serviceAvailable
         ? `Saved ${areaDetails.area}, ${areaDetails.city}. We’ll use your area to check local availability.`
         : `Saved ${areaDetails.area}, ${areaDetails.city}. We’re not serving this area yet; you can join the launch waitlist below.`);
@@ -246,6 +278,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
     setBusy(true);
     setStatus('');
     try {
+      const preciseLocation = preciseLocationConsent ? await getPreciseBrowserLocation() : null;
       const source = new URLSearchParams(window.location.search).get('utm_source')
         || sessionStorage.getItem('ob_attribution_source')
         || 'direct';
@@ -265,16 +298,23 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
           email,
           phone,
           notificationConsent,
+          preciseLocationConsent,
+          preciseLatitude: preciseLocation?.latitude,
+          preciseLongitude: preciseLocation?.longitude,
+          preciseAccuracyM: preciseLocation?.accuracyM,
           source
         })
       });
-      const result = await response.json() as { error?: string };
+      const result = await response.json() as { error?: string; preciseLocationCaptured?: boolean };
       if (!response.ok) throw new Error(result.error || 'We could not add you to the area waitlist.');
       setWaitlistSubmitted(true);
-      setStatus(`You’re on the ${location.city} launch list. We’ll contact you when service is available.`);
+      setStatus(result.preciseLocationCaptured
+        ? `You’re on the ${location.city} launch list. Your rounded location was added to the aggregated demand map.`
+        : `You’re on the ${location.city} launch list. We’ll contact you when service is available.`);
       setEmail('');
       setPhone('');
       setNotificationConsent(false);
+      setPreciseLocationConsent(false);
     } catch (error) {
       console.error('[LocationOnboarding] Could not submit market waitlist signup:', error);
       setStatus(error instanceof Error ? error.message : 'We could not add you to the area waitlist.');
@@ -307,6 +347,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       setLocation(null);
       setWaitlistSubmitted(false);
       setNotificationConsent(false);
+      setPreciseLocationConsent(false);
       setIsOpen(false);
     } catch (error) {
       console.error('[LocationOnboarding] Could not withdraw the saved area:', error);
@@ -464,6 +505,10 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
                 <label className="flex items-start gap-2 text-xs leading-relaxed text-slate-600">
                   <input type="checkbox" checked={notificationConsent} onChange={(event) => setNotificationConsent(event.target.checked)} className="mt-0.5" />
                   I agree to be contacted about Onbar availability and launches in this area.
+                </label>
+                <label className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-slate-700">
+                  <input type="checkbox" checked={preciseLocationConsent} onChange={(event) => setPreciseLocationConsent(event.target.checked)} className="mt-0.5" />
+                  <span><b>Optional: improve the launch-demand map.</b> If enabled, your browser shares a GPS reading accurate to 250 m or better. We round it to a roughly 100 m grid, store no exact GPS point, and show only anonymous grouped counts to admins. Your name and contact details are not shown on the map. You can leave this off.</span>
                 </label>
                 <button type="submit" disabled={busy || !notificationConsent} className="w-full rounded-2xl bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white disabled:opacity-50">
                   {busy ? 'Joining waitlist…' : 'Notify me'}

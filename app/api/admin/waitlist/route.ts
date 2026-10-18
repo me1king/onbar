@@ -254,6 +254,52 @@ async function loadWaitlistStats(database: ReturnType<typeof getDatabase>) {
   return stats;
 }
 
+async function loadPreciseDemandLocations(database: ReturnType<typeof getDatabase>) {
+  if (!database) throw new Error('Waitlist database access is not configured.');
+  const cells = new Map<string, { latitude: number; longitude: number; signups: number; accuracyTotalM: number }>();
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await database.from('waitlist_demand_locations')
+      .select('latitude,longitude,accuracy_m')
+      .order('latitude', { ascending: true })
+      .order('longitude', { ascending: true })
+      .range(offset, offset + 999);
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') {
+        console.warn('[AdminWaitlist] Precise demand map is not enabled; apply WAITLIST_DEMAND_GPS_MIGRATION.sql.');
+        return { locations: [], preciseLocationOptIns: 0, setupRequired: true };
+      }
+      throw error;
+    }
+
+    for (const row of data) {
+      const latitude = Number(row.latitude);
+      const longitude = Number(row.longitude);
+      const accuracyM = Number(row.accuracy_m);
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+        || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+        || !Number.isFinite(accuracyM) || accuracyM <= 0) continue;
+      const key = `${latitude.toFixed(3)}|${longitude.toFixed(3)}`;
+      const cell = cells.get(key) || { latitude, longitude, signups: 0, accuracyTotalM: 0 };
+      cell.signups += 1;
+      cell.accuracyTotalM += accuracyM;
+      cells.set(key, cell);
+    }
+    if (data.length < 1000) break;
+  }
+
+  const locations = [...cells.values()].map(cell => ({
+    latitude: cell.latitude,
+    longitude: cell.longitude,
+    signups: cell.signups,
+    averageAccuracyM: Math.round(cell.accuracyTotalM / cell.signups)
+  }));
+  return {
+    locations,
+    preciseLocationOptIns: locations.reduce((total, cell) => total + cell.signups, 0),
+    setupRequired: false
+  };
+}
+
 async function authorize() {
   const cookieStore = await cookies();
   const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
@@ -330,10 +376,20 @@ export async function GET(request: Request) {
       error: 'Waitlist referral analytics could not be loaded. Apply the latest supabase/WAITLIST_SITE_MIGRATION.sql to the shared Supabase project and confirm orders can be read.'
     }, { status: 503 });
   }
+  let demandLocations;
+  try {
+    demandLocations = await loadPreciseDemandLocations(database);
+  } catch (error) {
+    console.error('[AdminWaitlist] Could not load aggregated precise demand locations:', error);
+    return NextResponse.json({ error: 'Aggregated demand locations could not be loaded. Check waitlist location table access.' }, { status: 503 });
+  }
   return NextResponse.json({
     contacts: list.data || [],
     stats: statsResult.stats || {},
     referralAnalytics,
+    demandLocations: demandLocations.locations,
+    preciseLocationOptIns: demandLocations.preciseLocationOptIns,
+    demandLocationSetupRequired: demandLocations.setupRequired,
     page,
     pageSize,
     hasMore: (list.data || []).length === pageSize
