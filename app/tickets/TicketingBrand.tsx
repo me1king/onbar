@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import TicketThemePicker from '@/app/tickets/TicketThemePicker';
+import TicketThemeSync from '@/app/tickets/TicketThemeSync';
 
 export default function TicketingBrand() {
   return (
@@ -17,7 +17,7 @@ export default function TicketingBrand() {
           />
         </Link>
         <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-3">
-          <TicketThemePicker />
+          <TicketThemeSync />
           <div className="text-right text-[10px] leading-5 text-slate-500">
             <p className="font-bold uppercase tracking-[0.16em]">Official ticketing by</p>
             <Link href="/" className="font-black tracking-[0.2em] text-orange-700 transition hover:text-orange-800">ONLINE BAR</Link>

@@ -1,57 +1,74 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-
-const themes = [
-  { id: 'midnight', label: 'Midnight black', swatch: 'bg-[#17121e]' },
-  { id: 'official-white', label: 'Official white', swatch: 'bg-white' },
-  { id: 'royal-violet', label: 'Royal violet', swatch: 'bg-violet-600' },
-  { id: 'emerald', label: 'Emerald', swatch: 'bg-emerald-600' }
-] as const;
-
-type ThemeId = typeof themes[number]['id'];
-const storageKey = 'onlinebar-ticketing-theme';
-
-function isThemeId(value: string | null): value is ThemeId {
-  return themes.some(theme => theme.id === value);
-}
-
-function applyTheme(theme: ThemeId) {
-  document.documentElement.dataset.ticketTheme = theme;
-}
+import { defaultTicketTheme, isTicketThemeId, ticketThemes, type TicketThemeId } from '@/lib/ticketing/theme';
 
 export default function TicketThemePicker() {
-  const [selected, setSelected] = useState<ThemeId>('midnight');
+  const [selected, setSelected] = useState<TicketThemeId>(defaultTicketTheme);
+  const [published, setPublished] = useState<TicketThemeId>(defaultTicketTheme);
+  const [status, setStatus] = useState('Loading the published customer theme…');
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    let theme: ThemeId = 'midnight';
-    try {
-      const savedTheme = window.localStorage.getItem(storageKey);
-      if (isThemeId(savedTheme)) theme = savedTheme;
-    } catch (error) {
-      console.warn('Ticketing color mode preference could not be read.', error);
+    let active = true;
+
+    async function loadPublishedTheme() {
+      try {
+        const response = await fetch('/api/ticketing/theme', { cache: 'no-store' });
+        const result = await response.json() as { theme?: unknown; error?: string };
+        if (!response.ok) throw new Error(result.error || `Ticketing theme request failed (${response.status}).`);
+        if (!isTicketThemeId(result.theme)) throw new Error('The saved customer theme is not supported.');
+        if (!active) return;
+        setSelected(result.theme);
+        setPublished(result.theme);
+        document.documentElement.dataset.ticketTheme = result.theme;
+        setStatus('Current customer theme loaded.');
+        setLoaded(true);
+      } catch (error) {
+        console.error('[TicketingTheme] Could not load the customer theme:', error);
+        if (active) setStatus(error instanceof Error ? error.message : 'The customer theme could not be loaded.');
+      }
     }
-    applyTheme(theme);
-    setSelected(theme);
+
+    void loadPublishedTheme();
+    return () => { active = false; };
   }, []);
 
-  function selectTheme(theme: ThemeId) {
-    applyTheme(theme);
+  function selectTheme(theme: TicketThemeId) {
     setSelected(theme);
+    document.documentElement.dataset.ticketTheme = theme;
+    setStatus(theme === published ? 'This is the published customer theme.' : 'Preview only. Publish to update customer ticket pages.');
+  }
+
+  async function publishTheme() {
+    setSaving(true);
+    setStatus('Publishing customer theme…');
     try {
-      window.localStorage.setItem(storageKey, theme);
+      const response = await fetch('/api/ticketing/theme', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: selected })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || `Ticketing theme publish failed (${response.status}).`);
+      setPublished(selected);
+      setStatus('Published. Customer ticket pages now use this color mode.');
     } catch (error) {
-      console.warn('Ticketing color mode preference could not be saved.', error);
+      console.error('[TicketingTheme] Could not publish customer theme:', error);
+      setStatus(error instanceof Error ? error.message : 'The customer theme could not be published.');
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
     <fieldset className="min-w-0">
       <legend className="mb-1.5 text-right text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500 sm:text-left">
-        Try a color mode
+        Customer ticket colors
       </legend>
       <div className="flex flex-wrap justify-end gap-1.5 sm:justify-start">
-        {themes.map(theme => (
+        {ticketThemes.map(theme => (
           <button
             key={theme.id}
             type="button"
@@ -59,7 +76,8 @@ export default function TicketThemePicker() {
             aria-label={`Use ${theme.label} color mode`}
             title={theme.label}
             onClick={() => selectTheme(theme.id)}
-            className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 ${
+            disabled={!loaded || saving}
+            className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 disabled:cursor-not-allowed disabled:opacity-50 ${
               selected === theme.id
                 ? 'border-orange-500 bg-orange-50 text-orange-900'
                 : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-slate-900'
@@ -70,6 +88,17 @@ export default function TicketThemePicker() {
             <span className="sm:hidden">{theme.id === 'official-white' ? 'White' : theme.id === 'royal-violet' ? 'Violet' : theme.id === 'emerald' ? 'Emerald' : 'Black'}</span>
           </button>
         ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 sm:justify-start">
+        <button
+          type="button"
+          onClick={() => void publishTheme()}
+          disabled={!loaded || saving || selected === published}
+          className="inline-flex min-h-8 items-center rounded-lg bg-amber-300 px-3 text-[9px] font-black uppercase tracking-wider text-[#170d18] transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? 'Publishing…' : selected === published ? 'Published to customers' : 'Publish to customer site'}
+        </button>
+        <p role="status" aria-live="polite" className="text-[9px] font-semibold text-slate-400">{status}</p>
       </div>
     </fieldset>
   );
