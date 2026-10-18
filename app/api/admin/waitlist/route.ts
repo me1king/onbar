@@ -159,6 +159,7 @@ async function loadWaitlistStats(database: ReturnType<typeof getDatabase>) {
     emailOptIns: 0,
     smsOptIns: 0,
     whatsappOptIns: 0,
+    totalAreaCount: 0,
     areas: [] as Array<{ country: string; county: string; city: string; area: string; total: number; inArea: number }>,
     interests: [] as Array<{ name: string; count: number }>,
     ageGroups: [
@@ -243,9 +244,10 @@ async function loadWaitlistStats(database: ReturnType<typeof getDatabase>) {
     if (data.length < 1000) break;
   }
 
+  stats.totalAreaCount = areaCounts.size;
   stats.areas = [...areaCounts.values()]
     .sort((left, right) => right.total - left.total || left.area.localeCompare(right.area))
-    .slice(0, 100);
+    .slice(0, 500);
   stats.interests = [...interestCounts]
     .map(([name, count]) => ({ name, count }))
     .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));

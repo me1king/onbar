@@ -42,12 +42,18 @@ export default function SignInTrigger() {
   if (!isMounted || !isVisible) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white/70 backdrop-blur-xl animate-in fade-in duration-500">
-      <div className="relative max-w-lg w-full bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-500">
+    <div className="fixed inset-0 z-[4000] flex items-center justify-center overflow-y-auto p-4 bg-white/70 backdrop-blur-xl animate-in fade-in duration-500">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sign-in-trigger-title"
+        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[3rem] border border-slate-100 bg-white shadow-2xl animate-in zoom-in-95 duration-500"
+      >
         {/* Close Button */}
         <button
           onClick={handleClose}
-          className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-50 text-slate-400 transition-colors z-10"
+          aria-label="Close sign-in prompt"
+          className="sticky top-4 z-20 ml-auto mr-6 -mb-12 flex h-10 w-10 items-center justify-center rounded-full border border-slate-100 bg-white/95 text-slate-500 shadow-md backdrop-blur hover:bg-slate-50 hover:text-slate-900 transition-colors"
         >
           <X className="h-5 w-5" />
         </button>
@@ -61,7 +67,7 @@ export default function SignInTrigger() {
           </div>
 
           <div className="space-y-3">
-            <h2 className="text-3xl font-black uppercase tracking-tighter text-foreground">Elevate Your Experience</h2>
+            <h2 id="sign-in-trigger-title" className="text-3xl font-black uppercase tracking-tighter text-foreground">Elevate Your Experience</h2>
             <p className="text-slate-500 font-medium italic text-sm">
                 &quot;Join our circle of patrons and unlock a new dimension of rewards.&quot;
             </p>

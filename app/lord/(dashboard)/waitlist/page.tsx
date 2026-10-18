@@ -6,6 +6,13 @@ import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, 
 import { useAdmin } from '@/context/AdminContext';
 import WaitlistFitStudioPanel from '@/components/admin/WaitlistFitStudioPanel';
 import WaitlistLaunchCountdownPreview from '@/components/admin/WaitlistLaunchCountdownPreview';
+import dynamic from 'next/dynamic';
+import { resolveWaitlistDemandArea, type WaitlistDemandArea } from '@/lib/waitlistDemand';
+
+const WaitlistDemandMap = dynamic(() => import('@/components/admin/WaitlistDemandMap'), {
+  ssr: false,
+  loading: () => <div className="flex h-72 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-500">Loading approximate demand map…</div>
+});
 
 type WaitlistStatus = 'WAITLIST' | 'INVITED' | 'NOTIFIED' | 'CONVERTED' | 'UNSUBSCRIBED';
 type RewardPath = 'wine' | 'adventure' | 'music';
@@ -53,6 +60,7 @@ interface WaitlistStats {
   emailOptIns: number;
   smsOptIns: number;
   whatsappOptIns: number;
+  totalAreaCount: number;
   areas: Array<{ country: string; county: string; city: string; area: string; total: number; inArea: number }>;
   interests: Array<{ name: string; count: number }>;
   ageGroups: Array<{ group: string; label: string; count: number }>;
@@ -322,7 +330,56 @@ export default function WaitlistPage() {
   }, [loadingSiteContent, siteContent]);
 
   const topAreas = useMemo(() => (data?.stats.areas || []).slice(0, 5), [data]);
-  const referralCredits = data?.referralAnalytics?.credits || [];
+  const referralCredits = useMemo(() => data?.referralAnalytics?.credits || [], [data?.referralAnalytics?.credits]);
+  const demandAreas = useMemo(() => {
+    const aggregated = new Map<string, WaitlistDemandArea>();
+    for (const area of data?.stats.areas || []) {
+      const parts = [area.country, area.county, area.city, area.area].map(value => value.trim().toLocaleLowerCase('en')).join('|');
+      const current = aggregated.get(parts) || {
+        id: parts,
+        country: area.country,
+        county: area.county,
+        city: area.city,
+        area: area.area,
+        signups: 0,
+        serviceableSignups: 0,
+        referralSignups: 0,
+        referralTurnover: 0,
+        pointsCredited: 0,
+        latitude: null,
+        longitude: null,
+        precision: 'unmapped' as const
+      };
+      current.signups += area.total;
+      current.serviceableSignups += area.inArea;
+      aggregated.set(parts, current);
+    }
+    const creditedInvitees = new Set<string>();
+    const inviteeTurnover = new Map<string, number>();
+    for (const credit of referralCredits) {
+      const parts = [credit.country, credit.county, credit.city, credit.area].map(value => value.trim().toLocaleLowerCase('en')).join('|');
+      const current = aggregated.get(parts);
+      if (!current) continue;
+      current.pointsCredited += credit.points;
+      if (!creditedInvitees.has(credit.inviteeId)) {
+        creditedInvitees.add(credit.inviteeId);
+        current.referralSignups += 1;
+      }
+      inviteeTurnover.set(credit.inviteeId, Math.max(inviteeTurnover.get(credit.inviteeId) || 0, credit.turnover));
+    }
+    const turnoverAreasCounted = new Set<string>();
+    for (const credit of referralCredits) {
+      const parts = [credit.country, credit.county, credit.city, credit.area].map(value => value.trim().toLocaleLowerCase('en')).join('|');
+      const current = aggregated.get(parts);
+      const inviteeArea = `${credit.inviteeId}|${parts}`;
+      if (current && !turnoverAreasCounted.has(inviteeArea)) {
+        current.referralTurnover += inviteeTurnover.get(credit.inviteeId) || 0;
+        turnoverAreasCounted.add(inviteeArea);
+      }
+    }
+    return Array.from(aggregated.values()).map(resolveWaitlistDemandArea)
+      .sort((left, right) => right.signups - left.signups || left.area.localeCompare(right.area));
+  }, [data?.stats.areas, referralCredits]);
   const referralCreditPageSize = 20;
   const referralCreditPageCount = Math.ceil(referralCredits.length / referralCreditPageSize);
   const visibleReferralCredits = referralCredits.slice(
@@ -915,6 +972,13 @@ export default function WaitlistPage() {
           </article>
         ))}
       </section>
+
+      <WaitlistDemandMap areas={demandAreas} />
+      {(stats?.totalAreaCount || 0) > (stats?.areas.length || 0) && (
+        <p className="text-xs font-semibold text-amber-800">
+          The map is capped at {count(stats?.areas.length)} distinct areas for performance. {count((stats?.totalAreaCount || 0) - (stats?.areas.length || 0))} lower-volume areas are not included.
+        </p>
+      )}
 
       <section className="space-y-4" aria-label="Waitlist referral rewards and turnover">
         <div>
