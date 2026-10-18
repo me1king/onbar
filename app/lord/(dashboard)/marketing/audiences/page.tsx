@@ -178,13 +178,13 @@ export default function AudiencesPage() {
             {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</p>}
 
             {isDefining && (
-                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-background/20 backdrop-blur-md p-6">
-                    <Card className="max-w-2xl w-full bg-white rounded-[3.5rem] border border-border shadow-2xl p-10 space-y-10 animate-in zoom-in-95 duration-500 text-left">
+                <div className="fixed inset-0 z-[150] flex items-center justify-center overflow-y-auto bg-background/20 p-4 backdrop-blur-md sm:p-6">
+                    <Card className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-[2rem] border border-border bg-white p-5 text-left shadow-2xl space-y-6 animate-in zoom-in-95 duration-500 sm:rounded-[3.5rem] sm:p-8 sm:space-y-8">
                         <div className="flex justify-between items-start">
                             <div className="flex items-center gap-4">
                                 <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Filter size={24} /></div>
                                 <div className="text-left">
-                                    <h3 className="text-2xl font-black uppercase tracking-tighter text-foreground">Rule Engine</h3>
+                                    <h3 className="text-xl font-black uppercase tracking-tighter text-foreground sm:text-2xl">Rule Engine</h3>
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Dynamic Audience Builder</p>
                                 </div>
                             </div>
@@ -214,10 +214,10 @@ export default function AudiencesPage() {
                                     </div>
                                 </div>
 
-                                <div className="p-8 rounded-[2.5rem] bg-secondary border border-border flex flex-col justify-center text-center space-y-4">
+                                <div className="flex w-full min-w-0 flex-col justify-center space-y-4 rounded-[2rem] border border-border bg-secondary p-4 text-center sm:rounded-[2.5rem] sm:p-6">
                                     <div className="space-y-1">
                                         <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Estimated Reach</p>
-                                        <h4 className="text-5xl font-black text-primary tracking-tighter tabular-nums">
+                                        <h4 className="whitespace-nowrap text-3xl font-black text-primary tracking-tighter tabular-nums sm:text-4xl">
                                             {newSegment.reach?.toLocaleString() ?? 'Unavailable'}
                                         </h4>
                                     </div>
