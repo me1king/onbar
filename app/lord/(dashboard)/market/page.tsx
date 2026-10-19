@@ -95,6 +95,19 @@ interface MarketOrderRequest {
   events: Array<{ actor: string; actor_email: string | null; action: string; from_status: string | null; to_status: string; note: string | null; created_at: string }>;
 }
 
+interface MarketCustomerReport {
+  id: string;
+  reference: string;
+  reason: 'misleading' | 'counterfeit' | 'unsafe' | 'other';
+  details: string;
+  reporter_email: string;
+  status: 'open' | 'investigating' | 'resolved' | 'dismissed';
+  admin_note: string | null;
+  created_at: string;
+  product: { name: string; slug: string } | null;
+  merchant: { name: string; slug: string } | null;
+}
+
 export default function MarketOperationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [products, setProducts] = useState<ProductListing[]>([]);
@@ -102,6 +115,9 @@ export default function MarketOperationsPage() {
   const [offers, setOffers] = useState<MarketOffer[]>([]);
   const [orders, setOrders] = useState<MarketOrderRequest[]>([]);
   const [ordersError, setOrdersError] = useState('');
+  const [reports, setReports] = useState<MarketCustomerReport[]>([]);
+  const [reportsError, setReportsError] = useState('');
+  const [reportNotes, setReportNotes] = useState<Record<string, string>>({});
   const [offerCounterAmounts, setOfferCounterAmounts] = useState<Record<string, string>>({});
   const [offerAdminMessages, setOfferAdminMessages] = useState<Record<string, string>>({});
   const [orderAdminNotes, setOrderAdminNotes] = useState<Record<string, string>>({});
@@ -122,6 +138,7 @@ export default function MarketOperationsPage() {
     setError('');
     try {
       const orderRequest = fetch('/api/admin/market/orders', { cache: 'no-store' }).catch(() => null);
+      const reportRequest = fetch('/api/admin/market/reports', { cache: 'no-store' }).catch(() => null);
       const [applicationResponse, productResponse, merchantResponse, campaignResponse, offerResponse] = await Promise.all([
         fetch('/api/admin/market/applications', { cache: 'no-store' }),
         fetch('/api/admin/market/products', { cache: 'no-store' }),
@@ -129,7 +146,7 @@ export default function MarketOperationsPage() {
         fetch('/api/admin/market/campaign', { cache: 'no-store' }),
         fetch('/api/admin/market/offers', { cache: 'no-store' })
       ]);
-      const orderResponse = await orderRequest;
+      const [orderResponse, reportResponse] = await Promise.all([orderRequest, reportRequest]);
       const [applicationResult, productResult, merchantResult, campaignResult, offerResult] = await Promise.all([
         applicationResponse.json() as Promise<{ applications?: Application[]; error?: string }>,
         productResponse.json() as Promise<{ products?: ProductListing[]; error?: string }>,
@@ -145,6 +162,14 @@ export default function MarketOperationsPage() {
       } catch {
         orderResult = { error: 'Could not read the marketplace order response.' };
       }
+      let reportResult: { reports?: MarketCustomerReport[]; error?: string };
+      try {
+        reportResult = reportResponse
+          ? await reportResponse.json() as { reports?: MarketCustomerReport[]; error?: string }
+          : { error: 'The listing report service could not be reached.' };
+      } catch {
+        reportResult = { error: 'Could not read the listing report response.' };
+      }
       if (!applicationResponse.ok) throw new Error(applicationResult.error || 'Could not load seller applications.');
       if (!productResponse.ok) throw new Error(productResult.error || 'Could not load product listings.');
       if (!merchantResponse.ok) throw new Error(merchantResult.error || 'Could not load merchants.');
@@ -156,6 +181,8 @@ export default function MarketOperationsPage() {
       setOffers(offerResult.offers || []);
       setOrders(orderResponse?.ok ? orderResult.orders || [] : []);
       setOrdersError(orderResponse?.ok ? '' : orderResult.error || 'Could not load marketplace order requests.');
+      setReports(reportResponse?.ok ? reportResult.reports || [] : []);
+      setReportsError(reportResponse?.ok ? '' : reportResult.error || 'Could not load listing reports. Apply the latest Midnight Market migration if this feature was just deployed.');
       setCampaign(campaignResult.campaign);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load seller applications.');
@@ -165,6 +192,32 @@ export default function MarketOperationsPage() {
   }, []);
 
   useEffect(() => { void loadApplications(); }, [loadApplications]);
+
+  async function reviewReport(report: MarketCustomerReport, status: 'investigating' | 'resolved' | 'dismissed') {
+    const note = reportNotes[report.id]?.trim() || '';
+    if (note.length < 5) {
+      setError('Add at least five characters explaining how the report was handled.');
+      return;
+    }
+    setError('');
+    setMessage('');
+    setWorkingId(report.id);
+    try {
+      const response = await fetch('/api/admin/market/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportId: report.id, status, note })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not update this listing report.');
+      setMessage(`${report.reference} marked ${status.replace(/_/g, ' ')}.`);
+      await loadApplications();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not update this listing report.');
+    } finally {
+      setWorkingId(null);
+    }
+  }
 
   async function review(application: Application, action: 'approve' | 'reject' | 'request_information') {
     const note = reviewNotes[application.id]?.trim() || '';
@@ -452,6 +505,51 @@ export default function MarketOperationsPage() {
                   <Button disabled={workingProductId === product.id || (reviewNotes[product.id] || '').trim().length < 5} onClick={() => void reviewProduct(product, 'pending_review')} variant="outline">Return to review</Button>
                 )}
               </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-12">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Customer safety</p>
+          <h2 className="mt-2 text-2xl font-black">Listing reports</h2>
+          <p className="mt-2 text-sm text-slate-500">Review customer reports for misleading, counterfeit, or unsafe products. Every outcome is recorded in the marketplace audit log.</p>
+        </div>
+        {reportsError && <p className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900" role="status">{reportsError}</p>}
+        {!reportsError && !loading && reports.length === 0 && (
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No customer listing reports.</div>
+        )}
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          {reports.map((report) => (
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" key={report.id}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-500">{report.reference} · {report.reason.replace(/_/g, ' ')}</p>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">{report.status}</span>
+              </div>
+              <h3 className="mt-3 text-lg font-bold text-slate-900">{report.product?.name || 'Removed product'}</h3>
+              <p className="mt-1 text-sm text-slate-500">{report.merchant?.name || 'Removed boutique'} · {report.reporter_email}</p>
+              <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{report.details}</p>
+              {report.admin_note && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">Admin note: {report.admin_note}</p>}
+              <p className="mt-3 text-xs text-slate-400">{new Date(report.created_at).toLocaleString()}</p>
+              {report.status !== 'resolved' && report.status !== 'dismissed' && (
+                <div className="mt-4 space-y-3">
+                  <label className="block text-sm font-semibold text-slate-700">
+                    Review note (required)
+                    <textarea className="mt-1 w-full rounded-lg border border-slate-300 p-3" maxLength={1000} minLength={5} rows={2}
+                      value={reportNotes[report.id] || ''} onChange={(event) => setReportNotes({ ...reportNotes, [report.id]: event.target.value })}
+                      placeholder="Describe the investigation or resolution." />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button disabled={workingId === report.id || (reportNotes[report.id] || '').trim().length < 5}
+                      onClick={() => void reviewReport(report, 'investigating')} variant="outline">Investigating</Button>
+                    <Button disabled={workingId === report.id || (reportNotes[report.id] || '').trim().length < 5}
+                      onClick={() => void reviewReport(report, 'resolved')} className="bg-emerald-700 hover:bg-emerald-800">Resolve</Button>
+                    <Button disabled={workingId === report.id || (reportNotes[report.id] || '').trim().length < 5}
+                      onClick={() => void reviewReport(report, 'dismissed')} variant="outline">Dismiss</Button>
+                  </div>
+                </div>
+              )}
             </article>
           ))}
         </div>
