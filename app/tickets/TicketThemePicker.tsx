@@ -53,7 +53,7 @@ export default function TicketThemePicker() {
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || `Ticketing theme publish failed (${response.status}).`);
       setPublished(selected);
-      setStatus('Published across the customer ticket pages, ticket wallet, scanner, and admin ticketing workspaces.');
+      setStatus('Published to customer event pages, ticket wallet, and ticket emails.');
     } catch (error) {
       console.error('[TicketingTheme] Could not publish customer theme:', error);
       setStatus(error instanceof Error ? error.message : 'The customer theme could not be published.');

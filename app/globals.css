@@ -66,7 +66,8 @@
   --ring: #D91C1C;
 }
 
-html[data-ticket-theme='midnight'] {
+html[data-ticket-theme='midnight'],
+.ticket-theme-scope[data-ticket-theme='midnight'] {
   --ticket-page: #0d0a12;
   --ticket-panel: #17121e;
   --ticket-panel-muted: #110e17;
@@ -84,7 +85,8 @@ html[data-ticket-theme='midnight'] {
   --ticket-action-text: #170d18;
 }
 
-html[data-ticket-theme='official-white'] {
+html[data-ticket-theme='official-white'],
+.ticket-theme-scope[data-ticket-theme='official-white'] {
   --ticket-page: #f8fafc;
   --ticket-panel: #ffffff;
   --ticket-panel-muted: #f8fafc;
@@ -102,7 +104,8 @@ html[data-ticket-theme='official-white'] {
   --ticket-action-text: #ffffff;
 }
 
-html[data-ticket-theme='royal-violet'] {
+html[data-ticket-theme='royal-violet'],
+.ticket-theme-scope[data-ticket-theme='royal-violet'] {
   --ticket-page: #f5f3ff;
   --ticket-panel: #ffffff;
   --ticket-panel-muted: #f5f3ff;
@@ -120,7 +123,8 @@ html[data-ticket-theme='royal-violet'] {
   --ticket-action-text: #ffffff;
 }
 
-html[data-ticket-theme='emerald'] {
+html[data-ticket-theme='emerald'],
+.ticket-theme-scope[data-ticket-theme='emerald'] {
   --ticket-page: #ecfdf5;
   --ticket-panel: #ffffff;
   --ticket-panel-muted: #f0fdf4;
@@ -153,12 +157,18 @@ html[data-ticket-theme='emerald'] {
 html[data-ticket-theme='official-white'] .ticket-theme-page,
 html[data-ticket-theme='official-white'] .ticket-theme-header,
 html[data-ticket-theme='official-white'] .ticket-admin-theme,
+.ticket-theme-scope[data-ticket-theme='official-white'] .ticket-theme-page,
+.ticket-theme-scope[data-ticket-theme='official-white'] .ticket-theme-header,
 html[data-ticket-theme='royal-violet'] .ticket-theme-page,
 html[data-ticket-theme='royal-violet'] .ticket-theme-header,
 html[data-ticket-theme='royal-violet'] .ticket-admin-theme,
+.ticket-theme-scope[data-ticket-theme='royal-violet'] .ticket-theme-page,
+.ticket-theme-scope[data-ticket-theme='royal-violet'] .ticket-theme-header,
 html[data-ticket-theme='emerald'] .ticket-theme-page,
 html[data-ticket-theme='emerald'] .ticket-theme-header,
-html[data-ticket-theme='emerald'] .ticket-admin-theme {
+html[data-ticket-theme='emerald'] .ticket-admin-theme,
+.ticket-theme-scope[data-ticket-theme='emerald'] .ticket-theme-page,
+.ticket-theme-scope[data-ticket-theme='emerald'] .ticket-theme-header {
   color-scheme: light;
 }
 

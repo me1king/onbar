@@ -18,6 +18,7 @@ export default function TicketThemeSync() {
         if (!response.ok) throw new Error(result.error || `Ticketing theme request failed (${response.status}).`);
         if (active && isTicketThemeId(result.theme)) {
           document.documentElement.dataset.ticketTheme = result.theme;
+          document.querySelector<HTMLElement>('.ticket-theme-scope')?.setAttribute('data-ticket-theme', result.theme);
         }
       } catch (error) {
         if (active && !didLogFailure) {
