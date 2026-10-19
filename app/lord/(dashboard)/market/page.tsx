@@ -27,6 +27,8 @@ interface ProductListing {
   id: string;
   name: string;
   description: string | null;
+  availability_status: 'available_now' | 'planned' | 'made_to_order';
+  estimated_available_on: string | null;
   status: 'draft' | 'pending_review' | 'published' | 'rejected' | 'archived';
   review_note: string | null;
   attributes: Record<string, string>;
@@ -417,6 +419,17 @@ export default function MarketOperationsPage() {
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" key={product.id}>
               {product.images[0] && <div className="relative mb-4 aspect-[4/3] w-full overflow-hidden rounded-xl">{product.images[0].mediaType === 'video' ? <video className="h-full w-full object-cover" src={product.images[0].url} controls aria-label={product.images[0].alt} /> : <Image className="object-cover" src={product.images[0].url} alt={product.images[0].alt} fill unoptimized sizes="(max-width: 800px) 100vw, 50vw" />}</div>}
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{product.merchant.name} · {product.category?.name || 'Uncategorized'} · {product.status.replace(/_/g, ' ')}</p>
+              <p className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${
+                product.availability_status === 'planned' ? 'bg-amber-100 text-amber-900'
+                  : product.availability_status === 'made_to_order' ? 'bg-violet-100 text-violet-900'
+                    : 'bg-emerald-100 text-emerald-900'
+              }`}>
+                Availability: {product.availability_status.replace(/_/g, ' ')}
+                {product.estimated_available_on ? ` · estimated ${product.estimated_available_on}` : ''}
+              </p>
+              {product.availability_status !== 'available_now' && (
+                <p className="mt-2 text-xs text-amber-900">Interest enquiries only. This listing cannot take orders or payment until its availability is changed and approved.</p>
+              )}
               <h3 className="mt-2 text-lg font-bold text-slate-900">{product.name}</h3>
               {product.description && <p className="mt-2 text-sm text-slate-600">{product.description}</p>}
               {product.review_note && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Last admin note: {product.review_note}</p>}

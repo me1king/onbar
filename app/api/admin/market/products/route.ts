@@ -29,7 +29,7 @@ export async function GET() {
 
   const { data, error } = await access.database
     .from('mm_products')
-    .select('id, name, slug, description, attributes, delivery_information, return_policy, status, review_note, created_at, merchant:mm_merchants!inner(name, slug), category:mm_categories(name), media:mm_product_media(storage_path, media_type, alt_text), variants:mm_product_variants(price_minor, sale_price_minor, sku, currency, size, color)')
+    .select('id, name, slug, description, availability_status, estimated_available_on, attributes, delivery_information, return_policy, status, review_note, created_at, merchant:mm_merchants!inner(name, slug), category:mm_categories(name), media:mm_product_media(storage_path, media_type, alt_text), variants:mm_product_variants(price_minor, sale_price_minor, sku, currency, size, color)')
     .order('created_at', { ascending: false })
     .limit(200);
   if (error) {
