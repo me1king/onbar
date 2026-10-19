@@ -8,7 +8,8 @@ import {
   createTicketCredentials
 } from '@/lib/ticketing/credentials.server';
 import { initializePaystackTicketCheckout } from '@/lib/ticketing/paystack.server';
-import { sendTicketOrderEmail } from '@/lib/ticketing/email.server';
+import { encryptTicketWalletToken, normalizeTicketPhoneNumber } from '@/lib/ticketing/whatsapp.server';
+import { logTicketNotificationFailures, sendTicketOrderNotifications } from '@/lib/ticketing/notifications.server';
 import { getPublicBaseUrl } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -65,13 +66,15 @@ export async function POST(request: Request) {
   const quantity = typeof body.quantity === 'number' ? body.quantity : Number.NaN;
   const buyerEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const buyerName = typeof body.name === 'string' ? body.name.trim() : '';
+  const buyerPhone = typeof body.phone === 'string' ? normalizeTicketPhoneNumber(body.phone) : null;
   const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
   const accessToken = typeof body.accessToken === 'string' ? body.accessToken : '';
   if (!uuidPattern.test(eventId) || !uuidPattern.test(ticketTypeId)
       || !Number.isInteger(quantity) || quantity < 1 || quantity > 20
       || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail) || buyerEmail.length > 320
-      || buyerName.length > 160 || !tokenPattern.test(idempotencyKey) || !tokenPattern.test(accessToken)) {
-    return NextResponse.json({ error: 'Enter a valid name, email and ticket quantity.' }, { status: 400 });
+      || buyerName.length > 160 || !buyerPhone || body.whatsappConsent !== true
+      || !tokenPattern.test(idempotencyKey) || !tokenPattern.test(accessToken)) {
+    return NextResponse.json({ error: 'Enter a valid name, email, WhatsApp number and ticket quantity, and agree to receive your ticket link.' }, { status: 400 });
   }
 
   const paymentReference = `OBT-${randomBytes(16).toString('hex').toUpperCase()}`;
@@ -104,23 +107,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Checkout could not be verified.' }, { status: 503 });
   }
 
+  const { error: contactError } = await database.from('ticketing_orders').update({
+    buyer_phone: buyerPhone,
+    access_token_ciphertext: encryptTicketWalletToken(accessToken)
+  }).eq('id', checkout.order_id).eq('access_token_hash', hashTicketAccessToken(accessToken));
+  if (contactError) {
+    console.error('[TicketingCheckout] Could not save ticket-message contact details:', contactError);
+    return NextResponse.json({
+      error: 'Checkout was prepared but secure ticket-message details could not be saved. Retry this checkout.'
+    }, { status: 503 });
+  }
+
   const walletUrl = new URL('/tickets/confirmation', getPublicBaseUrl());
   walletUrl.searchParams.set('order', checkout.order_id);
   walletUrl.searchParams.set('token', accessToken);
 
   if (checkout.status === 'paid') {
-    let emailSent = false;
-    try {
-      const delivery = await sendTicketOrderEmail(database, checkout.order_id);
-      emailSent = delivery === 'sent' || delivery === 'already_sent';
-    } catch (emailError) {
-      console.error('[TicketingCheckout] Ticket is issued but email delivery needs retry:', emailError);
-    }
+    const delivery = await sendTicketOrderNotifications(database, checkout.order_id);
+    logTicketNotificationFailures('[TicketingCheckout] Ticket is already issued.', delivery);
     return NextResponse.json({
       authorizationUrl: walletUrl.toString(),
       orderReference: checkout.order_reference,
       orderId: checkout.order_id,
-      emailSent
+      emailSent: delivery.email.status === 'sent' && ['sent', 'already_sent'].includes(delivery.email.value),
+      whatsappSent: delivery.whatsapp.status === 'sent' && ['sent', 'already_sent'].includes(delivery.whatsapp.value)
     });
   }
   if (checkout.status === 'reconciliation_required') {
@@ -150,18 +160,14 @@ export async function POST(request: Request) {
           orderReference: checkout.order_reference
         }, { status: 202 });
       }
-      let emailSent = false;
-      try {
-        const delivery = await sendTicketOrderEmail(database, checkout.order_id);
-        emailSent = delivery === 'sent' || delivery === 'already_sent';
-      } catch (emailError) {
-        console.error('[TicketingCheckout] Complimentary tickets are issued but email delivery needs retry:', emailError);
-      }
+      const delivery = await sendTicketOrderNotifications(database, checkout.order_id);
+      logTicketNotificationFailures('[TicketingCheckout] Complimentary tickets are issued.', delivery);
       return NextResponse.json({
         authorizationUrl: walletUrl.toString(),
         orderReference: checkout.order_reference,
         orderId: checkout.order_id,
-        emailSent
+        emailSent: delivery.email.status === 'sent' && ['sent', 'already_sent'].includes(delivery.email.value),
+        whatsappSent: delivery.whatsapp.status === 'sent' && ['sent', 'already_sent'].includes(delivery.whatsapp.value)
       });
     } catch (confirmationError) {
       console.error('[TicketingCheckout] Could not issue complimentary tickets:', confirmationError);

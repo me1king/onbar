@@ -43,6 +43,8 @@ export default function TicketCheckoutButton({
   const [error, setError] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [whatsappConsent, setWhatsappConsent] = useState(false);
   const [quantity, setQuantity] = useState(minPerOrder);
   const keys = useRef<{ idempotencyKey: string; accessToken: string } | null>(null);
   const maximum = Math.min(20, maxPerOrder, remaining);
@@ -63,6 +65,8 @@ export default function TicketCheckoutButton({
           quantity,
           name,
           email,
+          phone,
+          whatsappConsent,
           idempotencyKey: keys.current.idempotencyKey,
           accessToken: keys.current.accessToken
         })
@@ -114,6 +118,31 @@ export default function TicketCheckoutButton({
               onChange={event => { setName(event.target.value); keys.current = null; }}
               className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
+          </label>
+          <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
+            WhatsApp number (include country code)
+            <input
+              autoComplete="tel"
+              type="tel"
+              inputMode="tel"
+              maxLength={20}
+              pattern="[+][1-9][0-9 ()-]{7,24}"
+              placeholder="+254712345678"
+              required
+              value={phone}
+              onChange={event => { setPhone(event.target.value); keys.current = null; }}
+              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+            />
+          </label>
+          <label className="ticket-theme-copy flex items-start gap-2 text-[10px] leading-4">
+            <input
+              type="checkbox"
+              required
+              checked={whatsappConsent}
+              onChange={event => { setWhatsappConsent(event.target.checked); keys.current = null; }}
+              className="mt-0.5 accent-orange-500"
+            />
+            <span>Send my ticket wallet link to this number by WhatsApp after payment is confirmed.</span>
           </label>
           <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
             Buyer email for payment

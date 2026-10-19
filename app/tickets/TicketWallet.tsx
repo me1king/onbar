@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { AlertCircle, CalendarDays, LoaderCircle, Mail, MapPin, ShieldCheck, Ticket } from 'lucide-react';
+import { AlertCircle, CalendarDays, LoaderCircle, Mail, MapPin, MessageCircle, ShieldCheck, Ticket } from 'lucide-react';
 import QRCode from 'qrcode';
 import TicketingBrand from '@/app/tickets/TicketingBrand';
 
@@ -32,6 +32,7 @@ type Wallet = {
   };
   tickets?: WalletTicket[];
   emailDelivery?: 'pending' | 'sending' | 'sent' | 'unknown';
+  whatsappDelivery?: 'pending' | 'sending' | 'sent' | 'unknown';
   error?: string;
 };
 
@@ -80,6 +81,8 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
   const [accessToken, setAccessToken] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [messageSending, setMessageSending] = useState(false);
+  const [messageError, setMessageError] = useState('');
 
   useEffect(() => {
     if (!/^[0-9a-f-]{36}$/i.test(orderId)) {
@@ -176,6 +179,31 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
     }
   }
 
+  async function sendTicketMessage() {
+    if (!accessToken || messageSending) return;
+    setMessageSending(true);
+    setMessageError('');
+    try {
+      const response = await fetch('/api/ticketing/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: orderId, token: accessToken }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as { status?: string; error?: string };
+      if (!response.ok && response.status !== 202) {
+        throw new Error(result.error || 'Ticket link could not be sent by WhatsApp. Please try again.');
+      }
+      setWallet(current => current
+        ? { ...current, whatsappDelivery: result.status === 'sent' || result.status === 'already_sent' ? 'sent' : 'sending' }
+        : current);
+    } catch (sendError) {
+      setMessageError(sendError instanceof Error ? sendError.message : 'Ticket link could not be sent by WhatsApp. Please try again.');
+    } finally {
+      setMessageSending(false);
+    }
+  }
+
   const event = wallet?.event;
   const tickets = wallet?.tickets;
 
@@ -246,6 +274,30 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
                 </button>
               )}
               {emailError && <p role="alert" className="w-full text-xs text-rose-700">{emailError}</p>}
+            </section>
+
+            <section className="ticket-theme-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4">
+              <div className="flex items-center gap-3">
+                <MessageCircle className="ticket-theme-accent shrink-0" size={18} />
+                <div>
+                  <p className="ticket-theme-text text-sm font-bold">
+                    {wallet.whatsappDelivery === 'sent' ? 'Ticket link sent on WhatsApp' : 'WhatsApp ticket link'}
+                  </p>
+                  <p className="ticket-theme-copy mt-1 text-xs">
+                    {wallet.whatsappDelivery === 'sent'
+                      ? 'A secure link to your ticket wallet was sent to your checkout number.'
+                      : 'Send or retry the secure wallet link to your checkout WhatsApp number.'}
+                  </p>
+                </div>
+              </div>
+              {wallet.whatsappDelivery !== 'sent' && (
+                <button type="button" onClick={sendTicketMessage} disabled={messageSending || !accessToken}
+                  className="ticket-theme-accent-soft inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-black disabled:cursor-not-allowed disabled:opacity-60">
+                  {messageSending ? <LoaderCircle size={15} className="animate-spin" /> : <MessageCircle size={15} />}
+                  {messageSending ? 'Sending…' : 'Send WhatsApp link'}
+                </button>
+              )}
+              {messageError && <p role="alert" className="w-full text-xs text-rose-700">{messageError}</p>}
             </section>
 
             {tickets.map((ticket, index) => (

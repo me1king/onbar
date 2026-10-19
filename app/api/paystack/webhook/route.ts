@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { getPublicBaseUrl } from "@/lib/utils";
 import { recordVerifiedPaystackPayment } from "@/lib/paystackServer";
 import { createTicketCredentials } from "@/lib/ticketing/credentials.server";
-import { sendTicketOrderEmail } from "@/lib/ticketing/email.server";
+import { logTicketNotificationFailures, sendTicketOrderNotifications } from "@/lib/ticketing/notifications.server";
 import { verifyPaystackTicketTransaction } from "@/lib/ticketing/paystack.server";
 
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
@@ -68,14 +68,11 @@ export async function POST(request: Request) {
                 }
                 if (ticketAttempt.status === 'succeeded' || ticketAttempt.status === 'reconciliation_required') {
                     if (ticketAttempt.status === 'succeeded') {
-                        try {
-                            const delivery = await sendTicketOrderEmail(database, ticketAttempt.order_id);
-                            if (delivery === 'busy') {
-                                return NextResponse.json({ error: 'Ticket email delivery is still in progress.' }, { status: 503 });
-                            }
-                        } catch (emailError) {
-                            console.error('[TicketingPaystack] Could not deliver ticket email after a duplicate callback:', emailError);
-                            return NextResponse.json({ error: 'Ticket email delivery failed and will be retried.' }, { status: 503 });
+                        const delivery = await sendTicketOrderNotifications(database, ticketAttempt.order_id);
+                        logTicketNotificationFailures('[TicketingPaystack] Duplicate callback notification retry.', delivery);
+                        if (delivery.email.status === 'failed' || delivery.whatsapp.status === 'failed'
+                            || delivery.email.value === 'busy' || delivery.whatsapp.value === 'busy') {
+                            return NextResponse.json({ error: 'Ticket notification delivery failed and will be retried.' }, { status: 503 });
                         }
                     }
                     return NextResponse.json({
@@ -137,9 +134,11 @@ export async function POST(request: Request) {
                         throw new Error('Ticketing payment confirmation returned an invalid status.');
                     }
                     if (confirmationResult.status === 'paid') {
-                        const delivery = await sendTicketOrderEmail(database, ticketOrder.id);
-                        if (delivery === 'busy') {
-                            return NextResponse.json({ error: 'Ticket email delivery is still in progress.' }, { status: 503 });
+                        const delivery = await sendTicketOrderNotifications(database, ticketOrder.id);
+                        logTicketNotificationFailures('[TicketingPaystack] Confirmed order notification.', delivery);
+                        if (delivery.email.status === 'failed' || delivery.whatsapp.status === 'failed'
+                            || delivery.email.value === 'busy' || delivery.whatsapp.value === 'busy') {
+                            return NextResponse.json({ error: 'Ticket notification delivery failed and will be retried.' }, { status: 503 });
                         }
                     }
                     return NextResponse.json({
