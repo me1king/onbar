@@ -72,6 +72,13 @@ storage plus a private delivery ledger and claim/finish functions for retryable
 WhatsApp template messages. Successfully delivered wallet links have their
 encrypted token copy removed. Configure the approved Meta template and
 server-only WhatsApp credentials before enabling customer purchases.
+
+## Demand Intelligence area contacts
+
+For an existing database, run `DEMAND_INTELLIGENCE_CONTACT_NAMES_MIGRATION.sql`
+after `DEMAND_INTELLIGENCE_MIGRATION.sql`. It adds the optional waitlist display
+name used when an authorized admin opens an area row; the dashboard only shows
+contacts who opted in to launch updates.
 The payment-currency fix adds the KES default required by the checkout RPC on
 projects where the original commerce migration is already installed.
 Payment verification and ticket issuance are implemented; complete the

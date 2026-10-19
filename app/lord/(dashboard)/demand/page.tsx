@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, ArrowUpRight, MapPin, RefreshCw, Users, UserRoundPlus } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowUpRight, Mail, MapPin, Phone, RefreshCw, Users, UserRoundPlus, X } from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
 
 interface DemandLocation {
@@ -25,8 +25,10 @@ interface DemandLocation {
 
 interface WaitlistContact {
   id: string;
+  fullName: string | null;
   email: string;
   phone: string | null;
+  county: string;
   city: string;
   area: string;
   source: string;
@@ -61,6 +63,7 @@ function numberValue(value: number) {
 export default function DemandIntelligencePage() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<DemandResponse | null>(null);
+  const [selectedArea, setSelectedArea] = useState<Pick<DemandLocation, 'county' | 'city' | 'area'> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -108,6 +111,13 @@ export default function DemandIntelligencePage() {
     .filter((location) => !location.serviceAvailable && location.waitlistSignups > 0)
     .sort((a, b) => b.waitlistSignups - a.waitlistSignups)
     .slice(0, 3);
+  const selectedAreaContacts = selectedArea
+    ? (data?.waitlistContacts || []).filter((contact) =>
+      contact.county.trim().toLowerCase() === selectedArea.county.trim().toLowerCase()
+      && contact.city.trim().toLowerCase() === selectedArea.city.trim().toLowerCase()
+      && contact.area.trim().toLowerCase() === selectedArea.area.trim().toLowerCase()
+    )
+    : [];
 
   const maxTrend = Math.max(1, ...(data?.dailyTrend || []).map((point) =>
     Math.max(point.activeSessions, point.newSignups, point.waitlistSignups)
@@ -116,14 +126,22 @@ export default function DemandIntelligencePage() {
   return (
     <main className="min-h-screen space-y-6 bg-slate-50 p-4 sm:p-6 lg:p-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-primary">
-            <MapPin size={14} /> Market planning · consented areas only
-          </p>
-          <h1 className="mt-2 break-words text-2xl font-black uppercase tracking-tight text-slate-950 sm:text-4xl">Demand Intelligence</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-            Area-level demand, launches and traffic sources. Exact customer GPS coordinates are not included or stored by this dashboard.
-          </p>
+        <div className="flex min-w-0 items-start gap-4">
+          <div aria-hidden="true" className="relative mt-1 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white shadow-lg shadow-indigo-900/20 ring-1 ring-white">
+            <MapPin size={28} strokeWidth={2.3} />
+            <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-lg border-2 border-slate-50 bg-emerald-400 text-emerald-950 shadow-sm">
+              <Activity size={13} strokeWidth={3} />
+            </span>
+          </div>
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-primary">
+              ONLINE BAR <span className="text-slate-300">/</span> Market signals
+            </p>
+            <h1 className="mt-2 break-words text-2xl font-black uppercase tracking-tight text-slate-950 sm:text-4xl">Demand Intelligence</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
+              Area-level demand, launches and traffic sources. Exact customer GPS coordinates are not included or stored by this dashboard.
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="sr-only" htmlFor="demand-range">Time range</label>
@@ -168,7 +186,7 @@ export default function DemandIntelligencePage() {
         <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-5">
             <h2 className="text-lg font-black uppercase tracking-tight text-slate-950">Demand by area</h2>
-            <p className="mt-1 text-xs text-slate-500">Only customers who opted in to area-level location are included.</p>
+            <p className="mt-1 text-xs text-slate-500">Only customers who opted in to area-level location are included. Tap an area name to see consenting launch contacts there.</p>
           </div>
           {loading && !data ? <p className="py-10 text-center text-sm text-slate-500">Loading area demand…</p>
             : (data?.locations.length || 0) === 0 ? <p className="rounded-xl bg-slate-50 p-6 text-sm text-slate-600">No opted-in area data yet. New signups appear here as customers choose to share their area.</p>
@@ -181,7 +199,18 @@ export default function DemandIntelligencePage() {
                     <tbody className="divide-y divide-slate-100">
                       {data?.locations.map((location) => (
                         <tr key={`${location.county}-${location.city}-${location.area}`} className="align-top hover:bg-slate-50">
-                          <td className="px-3 py-4"><p className="font-bold text-slate-900">{location.area}</p><p className="text-xs text-slate-500">{location.city}, {location.county}</p></td>
+                          <td className="px-3 py-4">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedArea({ county: location.county, city: location.city, area: location.area })}
+                              aria-label={`Show opted-in people in ${location.area}, ${location.city}`}
+                              aria-pressed={selectedArea?.area === location.area && selectedArea.city === location.city && selectedArea.county === location.county}
+                              className="rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <span className="font-bold text-slate-900 underline decoration-dotted underline-offset-4">{location.area}</span>
+                              <span className="block text-xs text-slate-500">{location.city}, {location.county}</span>
+                            </button>
+                          </td>
                           <td className="px-3 py-4 font-semibold">{numberValue(location.knownVisitors)}</td>
                           <td className="px-3 py-4">{numberValue(location.totalUsers)}</td>
                           <td className="px-3 py-4">{numberValue(location.newSignups)}</td>
@@ -205,6 +234,40 @@ export default function DemandIntelligencePage() {
                   </table>
                 </div>
               )}
+          {selectedArea && (
+            <section aria-label={`People in ${selectedArea.area}`} className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-indigo-700">Opted-in people in this area</p>
+                  <h3 className="mt-1 text-base font-black text-slate-950">{selectedArea.area} · {selectedArea.city}</h3>
+                  <p className="mt-1 text-xs text-slate-600">{selectedAreaContacts.length} consenting launch-list contact{selectedAreaContacts.length === 1 ? '' : 's'}</p>
+                </div>
+                <button type="button" onClick={() => setSelectedArea(null)} aria-label="Close area people details" className="rounded-lg p-2 text-slate-500 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+                  <X size={16} />
+                </button>
+              </div>
+              {selectedAreaContacts.length ? (
+                <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {selectedAreaContacts.map((contact) => (
+                    <li key={contact.id} className="min-w-0 rounded-xl border border-indigo-100 bg-white p-4">
+                      <p className="break-words font-bold text-slate-950">{contact.fullName || 'Name not provided'}</p>
+                      <a className="mt-2 flex min-w-0 items-center gap-2 break-all text-xs font-semibold text-primary hover:underline" href={`mailto:${encodeURIComponent(contact.email)}`}>
+                        <Mail className="shrink-0" size={13} />{contact.email}
+                      </a>
+                      {contact.phone && (
+                        <a className="mt-2 flex items-center gap-2 text-xs text-slate-600 hover:underline" href={`tel:${encodeURIComponent(contact.phone)}`}>
+                          <Phone className="shrink-0" size={13} />{contact.phone}
+                        </a>
+                      )}
+                      <p className="mt-3 text-[10px] text-slate-500">Joined {new Date(contact.createdAt).toLocaleDateString('en-KE')} · {contact.status} · {contact.source}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-600">No opted-in launch contacts are available for this area.</p>
+              )}
+            </section>
+          )}
           <p className="mt-4 text-right text-xs font-bold text-slate-500">Recorded paid revenue: {formatPrice(totals.revenue)}</p>
         </article>
 
@@ -281,7 +344,7 @@ export default function DemandIntelligencePage() {
               <tbody className="divide-y divide-slate-100">
                 {data.waitlistContacts.map((contact) => (
                   <tr key={contact.id}>
-                    <td className="px-3 py-3"><p className="font-bold">{contact.city} · {contact.area}</p><p className="text-xs text-slate-500">{contact.source}</p></td>
+                    <td className="px-3 py-3"><button type="button" onClick={() => setSelectedArea({ county: contact.county, city: contact.city, area: contact.area })} className="text-left font-bold underline decoration-dotted underline-offset-4 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{contact.city} · {contact.area}</button><p className="text-xs text-slate-500">{contact.source}</p></td>
                     <td className="px-3 py-3"><a className="break-all font-semibold text-primary hover:underline" href={`mailto:${encodeURIComponent(contact.email)}`}>{contact.email}</a>{contact.phone && <p className="mt-1"><a className="text-xs text-slate-600 hover:underline" href={`tel:${encodeURIComponent(contact.phone)}`}>{contact.phone}</a></p>}</td>
                     <td className="px-3 py-3 text-xs text-slate-600">{new Date(contact.createdAt).toLocaleDateString('en-KE')}</td>
                     <td className="px-3 py-3"><span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black uppercase text-amber-800">{contact.status}</span></td>

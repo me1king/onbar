@@ -33,6 +33,7 @@ ALTER TABLE public.customer_sessions
 CREATE TABLE IF NOT EXISTS public.market_waitlist (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    full_name TEXT,
     email TEXT NOT NULL,
     phone TEXT,
     country TEXT NOT NULL DEFAULT 'Kenya',
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS public.market_waitlist (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT market_waitlist_notification_consent_check CHECK (notification_consent = true)
 );
+ALTER TABLE public.market_waitlist ADD COLUMN IF NOT EXISTS full_name TEXT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS market_waitlist_email_area_uidx
     ON public.market_waitlist (lower(email), lower(city), lower(area));

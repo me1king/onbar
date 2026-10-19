@@ -66,8 +66,39 @@ export async function GET(request: Request) {
   const result = data as {
     days?: number;
     locations?: Array<{ area?: string }>;
+    waitlistContacts?: Array<{
+      id: string;
+      email: string;
+      phone: string | null;
+      county: string;
+      city: string;
+      area: string;
+      source: string;
+      status: string;
+      createdAt: string;
+      fullName?: string | null;
+    }>;
     [key: string]: unknown;
   };
+  const contacts = result.waitlistContacts || [];
+  if (contacts.length) {
+    const { data: people, error: peopleError } = await database
+      .from('market_waitlist')
+      .select('id,full_name')
+      .eq('notification_consent', true)
+      .in('id', contacts.map((contact) => contact.id));
+    if (peopleError) {
+      console.error('[DemandIntelligence] Could not load opted-in contact names:', peopleError);
+      return NextResponse.json({
+        error: 'Contact names are unavailable. Run supabase/DEMAND_INTELLIGENCE_CONTACT_NAMES_MIGRATION.sql, then refresh.'
+      }, { status: 503 });
+    }
+    const nameById = new Map((people || []).map((person) => [person.id, person.full_name]));
+    result.waitlistContacts = contacts.map((contact) => ({
+      ...contact,
+      fullName: nameById.get(contact.id) || null
+    }));
+  }
   const response = {
     ...result,
     locations: (result.locations || []).map((location) => ({

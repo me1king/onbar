@@ -1535,6 +1535,7 @@ ALTER TABLE public.customer_sessions
 CREATE TABLE IF NOT EXISTS public.market_waitlist (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    full_name TEXT,
     email TEXT NOT NULL,
     phone TEXT,
     country TEXT NOT NULL DEFAULT 'Kenya',
