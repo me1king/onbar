@@ -126,22 +126,14 @@ export default function DemandIntelligencePage() {
   return (
     <main className="min-h-screen space-y-6 bg-slate-50 p-4 sm:p-6 lg:p-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <div aria-hidden="true" className="relative mt-1 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white shadow-lg shadow-indigo-900/20 ring-1 ring-white">
-            <MapPin size={28} strokeWidth={2.3} />
-            <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-lg border-2 border-slate-50 bg-emerald-400 text-emerald-950 shadow-sm">
-              <Activity size={13} strokeWidth={3} />
-            </span>
-          </div>
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-primary">
-              ONLINE BAR <span className="text-slate-300">/</span> Market signals
-            </p>
-            <h1 className="mt-2 break-words text-2xl font-black uppercase tracking-tight text-slate-950 sm:text-4xl">Demand Intelligence</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-              Area-level demand, launches and traffic sources. Exact customer GPS coordinates are not included or stored by this dashboard.
-            </p>
-          </div>
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-primary">
+            <MapPin size={14} /> Market planning · consented areas only
+          </p>
+          <h1 className="mt-2 break-words text-2xl font-black uppercase tracking-tight text-slate-950 sm:text-4xl">Demand Intelligence</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
+            Area-level demand, launches and traffic sources. Exact customer GPS coordinates are not included or stored by this dashboard.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="sr-only" htmlFor="demand-range">Time range</label>
