@@ -56,13 +56,20 @@ export async function POST(request: Request) {
     });
   }
 
-  const [eventResult, itemsResult] = await Promise.all([
-    database.from('ticketing_events').select('title,starts_at,ends_at,venue_name,city,timezone')
+  const [eventResult, itemsResult, emailResult] = await Promise.all([
+    database.from('ticketing_events').select('title,starts_at,ends_at,doors_open_at,venue_name,venue_address,city,timezone,age_limit')
       .eq('id', order.event_id).maybeSingle(),
     database.from('ticketing_order_items')
       .select('id,ticket_name_snapshot')
+      .eq('order_id', order.id),
+    database.from('ticketing_email_deliveries')
+      .select('status')
       .eq('order_id', order.id)
+      .maybeSingle()
   ]);
+  if (emailResult.error) {
+    console.error('[TicketingWallet] Could not load ticket email delivery state:', emailResult.error);
+  }
   if (eventResult.error || itemsResult.error || !eventResult.data || !itemsResult.data?.length) {
     console.error('[TicketingWallet] Could not load issued order details:', eventResult.error || itemsResult.error);
     return NextResponse.json({ error: 'Your issued ticket details could not be loaded.' }, { status: 503 });
@@ -104,7 +111,8 @@ export async function POST(request: Request) {
         currency: order.currency
       },
       event: eventResult.data,
-      tickets: walletTickets
+      tickets: walletTickets,
+      emailDelivery: emailResult.error ? 'unknown' : emailResult.data?.status || 'pending'
     }, {
       headers: { 'Cache-Control': 'private, no-store, max-age=0', 'Referrer-Policy': 'no-referrer' }
     });

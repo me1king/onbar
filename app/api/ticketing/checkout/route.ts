@@ -8,6 +8,7 @@ import {
   createTicketCredentials
 } from '@/lib/ticketing/credentials.server';
 import { initializePaystackTicketCheckout } from '@/lib/ticketing/paystack.server';
+import { sendTicketOrderEmail } from '@/lib/ticketing/email.server';
 import { getPublicBaseUrl } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -108,10 +109,18 @@ export async function POST(request: Request) {
   walletUrl.searchParams.set('token', accessToken);
 
   if (checkout.status === 'paid') {
+    let emailSent = false;
+    try {
+      const delivery = await sendTicketOrderEmail(database, checkout.order_id);
+      emailSent = delivery === 'sent' || delivery === 'already_sent';
+    } catch (emailError) {
+      console.error('[TicketingCheckout] Ticket is issued but email delivery needs retry:', emailError);
+    }
     return NextResponse.json({
       authorizationUrl: walletUrl.toString(),
       orderReference: checkout.order_reference,
-      orderId: checkout.order_id
+      orderId: checkout.order_id,
+      emailSent
     });
   }
   if (checkout.status === 'reconciliation_required') {
@@ -141,10 +150,18 @@ export async function POST(request: Request) {
           orderReference: checkout.order_reference
         }, { status: 202 });
       }
+      let emailSent = false;
+      try {
+        const delivery = await sendTicketOrderEmail(database, checkout.order_id);
+        emailSent = delivery === 'sent' || delivery === 'already_sent';
+      } catch (emailError) {
+        console.error('[TicketingCheckout] Complimentary tickets are issued but email delivery needs retry:', emailError);
+      }
       return NextResponse.json({
         authorizationUrl: walletUrl.toString(),
         orderReference: checkout.order_reference,
-        orderId: checkout.order_id
+        orderId: checkout.order_id,
+        emailSent
       });
     } catch (confirmationError) {
       console.error('[TicketingCheckout] Could not issue complimentary tickets:', confirmationError);

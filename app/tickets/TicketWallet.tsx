@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { AlertCircle, CalendarDays, LoaderCircle, MapPin, ShieldCheck, Ticket } from 'lucide-react';
+import { AlertCircle, CalendarDays, LoaderCircle, Mail, MapPin, ShieldCheck, Ticket } from 'lucide-react';
 import QRCode from 'qrcode';
 import TicketingBrand from '@/app/tickets/TicketingBrand';
 
@@ -19,8 +19,19 @@ type Wallet = {
   orderReference?: string;
   message?: string;
   order?: { reference: string; totalMinor: number; currency: string };
-  event?: { title: string; starts_at: string; ends_at: string; venue_name: string; city: string; timezone: string };
+  event?: {
+    title: string;
+    starts_at: string;
+    ends_at: string;
+    doors_open_at: string | null;
+    venue_name: string;
+    venue_address: string;
+    city: string;
+    timezone: string;
+    age_limit: number | null;
+  };
   tickets?: WalletTicket[];
+  emailDelivery?: 'pending' | 'sending' | 'sent' | 'unknown';
   error?: string;
 };
 
@@ -66,6 +77,9 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [error, setError] = useState('');
   const [waiting, setWaiting] = useState(false);
+  const [accessToken, setAccessToken] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState('');
 
   useEffect(() => {
     if (!/^[0-9a-f-]{36}$/i.test(orderId)) {
@@ -84,6 +98,7 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
       setError('This ticket wallet link is missing its private access code. Reopen the link from your payment confirmation.');
       return;
     }
+    setAccessToken(token);
     try {
       window.sessionStorage.setItem(`ticket-wallet:${orderId}`, token);
     } catch {
@@ -134,6 +149,36 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
     };
   }, [initialToken, orderId]);
 
+  async function sendTicketEmail() {
+    if (!accessToken || emailSending) return;
+    setEmailSending(true);
+    setEmailError('');
+    try {
+      const response = await fetch('/api/ticketing/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: orderId, token: accessToken }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as { status?: string; error?: string };
+      if (!response.ok && response.status !== 202) {
+        throw new Error(result.error || 'Ticket email could not be sent. Please try again.');
+      }
+      if (result.status === 'sent' || result.status === 'already_sent') {
+        setWallet(current => current ? { ...current, emailDelivery: 'sent' } : current);
+      } else {
+        setWallet(current => current ? { ...current, emailDelivery: 'sending' } : current);
+      }
+    } catch (sendError) {
+      setEmailError(sendError instanceof Error ? sendError.message : 'Ticket email could not be sent. Please try again.');
+    } finally {
+      setEmailSending(false);
+    }
+  }
+
+  const event = wallet?.event;
+  const tickets = wallet?.tickets;
+
   return (
     <>
     <TicketingBrand />
@@ -161,29 +206,71 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
           </section>
         )}
 
-        {wallet?.status === 'paid' && wallet.event && wallet.order && wallet.tickets?.length ? (
+        {wallet?.status === 'paid' && event && wallet.order && tickets?.length ? (
           <>
             <section className="ticket-theme-panel rounded-3xl border p-5 shadow-lg shadow-slate-900/5 sm:p-7">
               <div className="flex items-start gap-3">
                 <span className="rounded-xl bg-emerald-50 p-2 text-emerald-700"><ShieldCheck size={20} /></span>
                 <div className="min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Payment verified · tickets issued</p>
-                  <h2 className="ticket-theme-text mt-1 text-2xl font-black">{wallet.event.title}</h2>
-                  <p className="ticket-theme-copy mt-2 flex items-center gap-2 text-xs"><CalendarDays size={14} />{formatDate(wallet.event.starts_at, wallet.event.timezone)}</p>
-                  <p className="ticket-theme-copy mt-1 flex items-center gap-2 text-xs"><MapPin size={14} />{wallet.event.venue_name} · {wallet.event.city}</p>
+                  <h2 className="ticket-theme-text mt-1 text-2xl font-black">{event.title}</h2>
+                  <p className="ticket-theme-copy mt-2 flex items-center gap-2 text-xs"><CalendarDays size={14} />{formatDate(event.starts_at, event.timezone)}</p>
+                  <p className="ticket-theme-copy mt-1 flex items-center gap-2 text-xs"><MapPin size={14} />{event.venue_name} · {event.city}</p>
+                  {event.venue_address && <p className="ticket-theme-copy mt-1 text-xs">{event.venue_address}</p>}
+                  {event.doors_open_at && <p className="ticket-theme-copy mt-1 text-xs">Doors open: {formatDate(event.doors_open_at, event.timezone)}</p>}
+                  {event.age_limit !== null && <p className="ticket-theme-copy mt-1 text-xs">{event.age_limit}+ event</p>}
                   <p className="ticket-theme-muted mt-3 text-[10px]">Order {wallet.order.reference} · {formatPrice(wallet.order.totalMinor, wallet.order.currency)}</p>
                 </div>
               </div>
             </section>
 
-            {wallet.tickets.map((ticket, index) => (
-              <article key={ticket.reference} className="ticket-theme-panel rounded-3xl border p-5 text-center shadow-lg shadow-slate-900/5 sm:p-7">
-                <span className="ticket-theme-accent-soft mx-auto flex h-11 w-11 items-center justify-center rounded-xl border"><Ticket size={20} /></span>
-                <p className="ticket-theme-accent mt-3 text-[10px] font-black uppercase tracking-[0.18em]">Ticket {index + 1} of {wallet.tickets?.length ?? 0}</p>
-                <h3 className="ticket-theme-text mt-1 text-xl font-black">{ticket.ticketName}</h3>
-                <p className="ticket-theme-copy mt-1 text-xs">{ticket.attendeeName || 'Guest'} · {ticket.reference}</p>
-                <div className="my-5"><TicketQr credential={ticket.credential} reference={ticket.reference} /></div>
-                <p className="ticket-theme-copy text-[10px] leading-5">Present this QR at the gate. Each ticket admits one guest and is valid for one scan only. Do not share this screen or QR image.</p>
+            <section className="ticket-theme-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4">
+              <div className="flex items-center gap-3">
+                <Mail className="ticket-theme-accent shrink-0" size={18} />
+                <div>
+                  <p className="ticket-theme-text text-sm font-bold">
+                    {wallet.emailDelivery === 'sent' ? 'Ticket email sent' : 'Ticket email not confirmed'}
+                  </p>
+                  <p className="ticket-theme-copy mt-1 text-xs">
+                    {wallet.emailDelivery === 'sent'
+                      ? 'Your ticket QR codes were sent to the checkout email.'
+                      : 'Send a copy of your tickets to the checkout email address.'}
+                  </p>
+                </div>
+              </div>
+              {wallet.emailDelivery !== 'sent' && (
+                <button type="button" onClick={sendTicketEmail} disabled={emailSending || !accessToken}
+                  className="ticket-theme-accent-soft inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-black disabled:cursor-not-allowed disabled:opacity-60">
+                  {emailSending ? <LoaderCircle size={15} className="animate-spin" /> : <Mail size={15} />}
+                  {emailSending ? 'Sending…' : 'Send ticket email'}
+                </button>
+              )}
+              {emailError && <p role="alert" className="w-full text-xs text-rose-700">{emailError}</p>}
+            </section>
+
+            {tickets.map((ticket, index) => (
+              <article key={ticket.reference} className="ticket-theme-panel overflow-hidden rounded-3xl border shadow-lg shadow-slate-900/5">
+                <div className="ticket-theme-hero border-b p-5 sm:p-7">
+                  <p className="ticket-theme-accent text-[10px] font-black uppercase tracking-[0.2em]">Online Bar · Admit one · Ticket {index + 1} / {tickets.length}</p>
+                  <h3 className="ticket-theme-text mt-2 text-2xl font-black sm:text-3xl">{event.title}</h3>
+                  <p className="ticket-theme-copy mt-2 text-xs">{formatDate(event.starts_at, event.timezone)}</p>
+                </div>
+                <div className="grid sm:grid-cols-[1fr_240px]">
+                  <div className="p-5 sm:p-7">
+                    <span className="ticket-theme-accent-soft inline-flex h-10 w-10 items-center justify-center rounded-xl border"><Ticket size={19} /></span>
+                    <p className="ticket-theme-accent mt-4 text-[10px] font-black uppercase tracking-[0.18em]">Admission</p>
+                    <p className="ticket-theme-text mt-1 text-lg font-black">{ticket.ticketName}</p>
+                    <p className="ticket-theme-copy mt-2 text-sm">{ticket.attendeeName || 'Guest'}</p>
+                    <p className="ticket-theme-muted mt-5 text-[10px] font-bold uppercase tracking-wider">Ticket reference</p>
+                    <p className="ticket-theme-text mt-1 font-mono text-sm font-bold">{ticket.reference}</p>
+                    <p className="ticket-theme-copy mt-5 text-[10px] leading-5">Each ticket admits one guest. Present the QR code at the entrance; it is valid for one scan only. Keep it private.</p>
+                  </div>
+                  <div className="ticket-theme-panel border-t border-dashed p-5 text-center sm:border-l sm:border-t-0">
+                    <p className="ticket-theme-text text-xs font-black uppercase tracking-[0.2em]">Scan at entry</p>
+                    <div className="my-4"><TicketQr credential={ticket.credential} reference={ticket.reference} /></div>
+                    <p className="ticket-theme-muted text-[10px]">ONE GUEST · ONE ENTRY</p>
+                  </div>
+                </div>
               </article>
             ))}
           </>

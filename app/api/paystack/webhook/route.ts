@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { getPublicBaseUrl } from "@/lib/utils";
 import { recordVerifiedPaystackPayment } from "@/lib/paystackServer";
 import { createTicketCredentials } from "@/lib/ticketing/credentials.server";
+import { sendTicketOrderEmail } from "@/lib/ticketing/email.server";
 import { verifyPaystackTicketTransaction } from "@/lib/ticketing/paystack.server";
 
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
@@ -66,10 +67,21 @@ export async function POST(request: Request) {
                     return NextResponse.json({ received: true, message: 'Ticketing payment failure recorded.' });
                 }
                 if (ticketAttempt.status === 'succeeded' || ticketAttempt.status === 'reconciliation_required') {
+                    if (ticketAttempt.status === 'succeeded') {
+                        try {
+                            const delivery = await sendTicketOrderEmail(database, ticketAttempt.order_id);
+                            if (delivery === 'busy') {
+                                return NextResponse.json({ error: 'Ticket email delivery is still in progress.' }, { status: 503 });
+                            }
+                        } catch (emailError) {
+                            console.error('[TicketingPaystack] Could not deliver ticket email after a duplicate callback:', emailError);
+                            return NextResponse.json({ error: 'Ticket email delivery failed and will be retried.' }, { status: 503 });
+                        }
+                    }
                     return NextResponse.json({
                         received: true,
                         message: ticketAttempt.status === 'succeeded'
-                            ? 'Ticketing payment already processed.'
+                            ? 'Ticketing payment already processed; ticket email is delivered.'
                             : 'Ticketing payment awaits manual reconciliation.'
                     });
                 }
@@ -123,6 +135,12 @@ export async function POST(request: Request) {
                     const confirmationResult = confirmation as { status?: string } | null;
                     if (!confirmationResult || !['paid', 'reconciliation_required'].includes(confirmationResult.status || '')) {
                         throw new Error('Ticketing payment confirmation returned an invalid status.');
+                    }
+                    if (confirmationResult.status === 'paid') {
+                        const delivery = await sendTicketOrderEmail(database, ticketOrder.id);
+                        if (delivery === 'busy') {
+                            return NextResponse.json({ error: 'Ticket email delivery is still in progress.' }, { status: 503 });
+                        }
                     }
                     return NextResponse.json({
                         received: true,

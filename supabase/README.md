@@ -52,8 +52,9 @@ For the Online Bar Admin Ticketing module, apply
 `TICKETING_COMMERCE_MIGRATION.sql`,
 `TICKETING_PAYMENT_CURRENCY_FIX_MIGRATION.sql`,
 `TICKETING_SALES_REPORT_MIGRATION.sql`,
-`TICKETING_EVENT_PUBLISHING_MIGRATION.sql`, and finally
-`TICKETING_VENUE_LOCATION_MIGRATION.sql`.
+`TICKETING_EVENT_PUBLISHING_MIGRATION.sql`,
+`TICKETING_VENUE_LOCATION_MIGRATION.sql`, and finally
+`TICKETING_EMAIL_DELIVERY_MIGRATION.sql`.
 Wave I/II/III configuration, audited admin controls, transactional reservation
 gates, and the server-side availability query support public event listings.
 The publishing migration installs the owner-only event publish/pause RPC used
@@ -61,7 +62,10 @@ by OnBar Admin. It validates approved organizer status, future event dates,
 venue details and an available active ticket wave before making an event public.
 The venue-location migration adds the OnBar Admin map pin and public entrance,
 parking, and transit guidance fields. Apply it before deploying code that reads
-or writes those fields.
+or writes those fields. The email-delivery migration installs a service-role-only
+delivery ledger and lease-based claim/finish functions so payment callbacks and
+the buyer's protected wallet can retry failed ticket emails without issuing
+duplicate messages.
 The payment-currency fix adds the KES default required by the checkout RPC on
 projects where the original commerce migration is already installed.
 Payment verification and ticket issuance are implemented; complete the
