@@ -361,7 +361,7 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
 
       {canManage && <div id="waitlist-fit-studio-items" className="scroll-mt-5 rounded-xl border-2 border-primary/20 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div><p className="text-[10px] font-black uppercase tracking-wide text-primary">Admin · add outfit items and products</p><h3 className="mt-1 text-lg font-black text-slate-900">Upload a wig, belt, outfit or accessory photo</h3><p className="mt-1 max-w-3xl text-sm text-slate-600">Give each find its own listing: choose a photo, name the item, select its category and add a price. Save as a draft or publish it for members requesting that kind of help.</p></div>
+          <div><p className="text-[10px] font-black uppercase tracking-wide text-primary">Admin · add outfit items and products</p><h3 className="mt-1 text-lg font-black text-slate-900">Upload a wig, belt, outfit or accessory photo</h3><p className="mt-1 max-w-3xl text-sm text-slate-600">Give each find its own listing: choose a photo, name the item, select its category and add a price. Only published, available listings appear for matching members and in the public Halloween shop.</p></div>
           <button type="button" onClick={() => setOfferingDraft(emptyOffering)} className="min-h-10 shrink-0 rounded-lg border border-slate-200 px-3 text-xs font-bold text-primary">Add another item</button>
         </div>
         <form onSubmit={saveOffering} className="space-y-3">
@@ -379,7 +379,7 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
             </div>
             <div className="flex flex-col justify-center gap-3 rounded-lg bg-slate-50 p-3 text-xs">
               <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.available} onChange={event => setOfferingDraft({ ...offeringDraft, available: event.target.checked })} />Available for requests</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.published} onChange={event => setOfferingDraft({ ...offeringDraft, published: event.target.checked })} />Publish to matching members</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={offeringDraft.published} onChange={event => setOfferingDraft({ ...offeringDraft, published: event.target.checked })} />Publish to matching members and Halloween shop</label>
             </div>
           </div>
           <button disabled={savingOffering || uploadingOfferingImage} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white disabled:opacity-50"><Save size={14} />{savingOffering ? 'Saving item…' : offeringDraft.id ? 'Update item listing' : 'Save item listing'}</button>
@@ -388,7 +388,7 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
         {(data?.offerings || []).length > 0 && <ul className="mt-4 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-3">
           {(data?.offerings || []).map(offering => <li key={offering.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3 text-xs">
             {offering.image_url && <div role="img" aria-label={`${offering.title} photo`} className="h-14 w-14 shrink-0 rounded-md bg-cover bg-center" style={{ backgroundImage: `url("${offering.image_url.replaceAll('"', '%22')}")` }} />}
-            <span className="min-w-0 flex-1"><b className="block truncate">{offering.title}</b><span className="block text-slate-500">{serviceOptions.find(([key]) => key === offering.service_key)?.[1]} · {offering.price_kes === null ? 'Quote' : `KSh ${count(offering.price_kes)}`}</span><span className="block text-slate-500">{offering.published ? 'Published' : 'Draft'} · {offering.available ? 'Available' : 'Unavailable'}</span></span>
+            <span className="min-w-0 flex-1"><b className="block truncate">{offering.title}</b><span className="block text-slate-500">{serviceOptions.find(([key]) => key === offering.service_key)?.[1]} · {offering.price_kes === null ? 'Quote' : `KSh ${count(offering.price_kes)}`}</span><span className="block text-slate-500">{offering.published && offering.available ? 'Visible in Halloween shop' : !offering.published ? 'Draft · hidden from shop' : 'Unavailable · hidden from shop'}</span></span>
             <button type="button" onClick={() => setOfferingDraft({
               id: offering.id, provider_id: offering.provider_id || '', service_key: offering.service_key,
               title: offering.title, description: offering.description || '',
