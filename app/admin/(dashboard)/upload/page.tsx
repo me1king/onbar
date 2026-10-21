@@ -38,6 +38,7 @@ import { useAdmin } from '@/context/AdminContext';
 import { useSettings } from '@/lib/useSettings';
 import { logAuditAction } from '@/lib/auditService';
 import { auditImageQuality, standardizeImageCanvas, type ImageAuditResult } from '@/lib/engines/imageEngine';
+import { getStoredVariantPrices } from '@/lib/productPricing';
 
 const initialForm = {
   name: '',
@@ -139,7 +140,16 @@ interface Product {
   width_cm?: number;
   height_cm?: number;
   variant_stock?: Record<string, number>;
-  beverage_specs?: Record<string, string>;
+  beverage_specs?: {
+    [key: string]: unknown;
+    origin?: string;
+    region?: string;
+    body?: string;
+    sweetness?: string;
+    abv?: string;
+    glassware?: string;
+    variant_prices?: Record<string, number> | null;
+  };
   sensory_metrics?: Record<string, number>;
   pairing_suggestions?: string[];
   bought_together_ids?: number[];
@@ -401,7 +411,8 @@ function UploadContent() {
     const vStock: Record<string, string> = {};
     if (product.variant_stock) Object.entries(product.variant_stock).forEach(([k, v]) => vStock[k] = v.toString());
     const vPrices: Record<string, string> = {};
-    if (product.variant_prices) Object.entries(product.variant_prices).forEach(([k, v]) => vPrices[k] = String(v));
+    const savedVariantPrices = getStoredVariantPrices(product.variant_prices, product.beverage_specs);
+    if (savedVariantPrices) Object.entries(savedVariantPrices).forEach(([k, v]) => vPrices[k] = String(v));
 
     setForm({
       ...initialForm,
@@ -439,7 +450,10 @@ function UploadContent() {
     setExistingImages(product.images || [product.image_url]);
     setVariantStock(vStock);
     setVariantPrices(vPrices);
-    setBeverageSpecs(product.beverage_specs ? Object.entries(product.beverage_specs).map(([key, value]) => ({ key, value })) : []);
+    setBeverageSpecs(product.beverage_specs
+      ? Object.entries(product.beverage_specs)
+          .flatMap(([key, value]) => key !== 'variant_prices' && typeof value === 'string' ? [{ key, value }] : [])
+      : []);
     setEditingId(product.id);
     setFormSession(prev => prev + 1);
 
@@ -516,7 +530,7 @@ function UploadContent() {
           sweetness: form.sweetness,
           glassware: form.glassware
       };
-      beverageSpecs.forEach(s => { if (s.key) specs[s.key] = s.value; });
+      beverageSpecs.forEach(s => { if (s.key && s.key !== 'variant_prices') specs[s.key] = s.value; });
 
       const productData = {
           name: form.name.trim(),
@@ -923,22 +937,23 @@ function UploadContent() {
                   {openSections.inventory && (
                       <CardContent className="p-10 pt-0 space-y-10">
                           <div className="space-y-4 text-left">
-                              <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Sizes / Portions (Comma Separated)</label>
-                              <Input name="sizes" value={form.sizes} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. 750ml, 1 Litre" />
+                              <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Bottle sizes / portions</label>
+                              <Input name="sizes" value={form.sizes} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. 250ml, 375ml, 750ml, 1L" />
+                              <p className="px-1 text-xs text-slate-500">Separate sizes with commas. Each size gets its own price and stock field below, just like the bottle options customers see.</p>
                           </div>
 
                           {currentVariants.length > 0 && (
                               <div className="space-y-3 text-left">
                                   <div>
-                                      <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-600">Price and stock for each size</h3>
-                                      <p className="mt-1 text-xs text-slate-400">Leave a size price blank to use the Sell Price fallback below.</p>
+                                      <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-700">Set price and stock for each bottle size</h3>
+                                      <p className="mt-1 text-xs text-slate-500">These prices appear as separate customer choices. Leave a price blank only when that size should use the main Sell Price.</p>
                                   </div>
                                   <div className="grid sm:grid-cols-2 gap-4">
                                       {currentVariants.map(variant => (
                                           <div key={variant} className="space-y-3 p-5 rounded-2xl bg-slate-50 border border-slate-100 group hover:border-primary/20 transition-all">
                                               <span className="block text-[10px] font-black uppercase text-slate-600">{variant}</span>
                                               <div className="grid grid-cols-2 gap-3">
-                                                  <label className="space-y-1 text-xs font-bold text-slate-500">
+                                                  <label className="space-y-1 text-xs font-bold text-slate-700">
                                                       Price (Ksh)
                                                       <Input
                                                         type="number"

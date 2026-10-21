@@ -21,7 +21,6 @@ import { OB_OS } from "@/lib/onlineBarOS";
 import { v4 as uuidv4 } from 'uuid';
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import { DeliveryArea, findDeliveryArea, parseDeliveryAreas } from "@/lib/deliveryAreas";
-import { getStoredVariantPrices } from "@/lib/productPricing";
 
 const LocationPicker = dynamic(() => import("@/components/profile/LocationPicker"), {
     ssr: false,
@@ -37,17 +36,6 @@ interface Coupon {
   code: string;
   discount_percent: number;
   discount_amount?: number;
-}
-
-interface DBProduct {
-  id: number;
-  name: string;
-  stock: number;
-  variant_stock: Record<string, number> | null;
-  price: number;
-  variant_prices: Record<string, number> | null;
-  beverage_specs: { variant_prices?: Record<string, number> | null } | null;
-  cost_price: number;
 }
 
 interface PaystackResponse {
@@ -437,61 +425,72 @@ function CheckoutContent() {
     }
 
     setIsPlacingOrder(true);
-    setCheckoutStatus({ type: "processing", message: "Verifying beverage availability..." });
+    setCheckoutStatus({ type: "processing", message: "Verifying prices and beverage availability..." });
 
     try {
       const client = supabase;
       if (!client) return;
-      // 0.5 Smart Stock Guard: Final real-time check
-      let dbProducts: DBProduct[] = [];
-      const productIds = cart.map(item => item.id);
-      const productQuery = await client
-          .from('products')
-          .select('id, name, stock, variant_stock, price, variant_prices, beverage_specs, cost_price')
-          .in('id', productIds);
-      if (productQuery.error && /variant_prices/i.test(productQuery.error.message)) {
-          const legacyQuery = await client
-              .from('products')
-              .select('id, name, stock, variant_stock, price, beverage_specs, cost_price')
-              .in('id', productIds);
-          if (legacyQuery.error) throw legacyQuery.error;
-          dbProducts = (legacyQuery.data as DBProduct[] | null) || [];
-      } else {
-          if (productQuery.error) throw productQuery.error;
-          dbProducts = (productQuery.data as DBProduct[] | null) || [];
-      }
-
-      for (const item of cart) {
-          const dbProd = dbProducts.find(p => p.id === item.id);
-          if (!dbProd) {
-              throw new Error(`Product ${item.name} is no longer available. Please refresh your cart.`);
-          }
-
-          const variantPrices = getStoredVariantPrices(dbProd.variant_prices, dbProd.beverage_specs);
-          const currentPrice = variantPrices?.[item.size || 'Standard'] ?? dbProd.price;
-          if (Number(item.base_price) !== Number(currentPrice)) {
-              throw new Error(`${dbProd.name} (${item.size || 'Standard'}) has a new price. Remove it from your cart and add it again.`);
-          }
-
-          const vStock = dbProd.variant_stock?.[item.size || 'Standard'] ?? dbProd.stock;
-          if (vStock < item.quantity) {
-              setCheckoutStatus({
-                  type: "error",
-                  message: `Sorry, ${dbProd.name} (${item.size || 'Standard'}) just sold out or has insufficient stock! Please remove it from your cart.`
-              });
-              setIsPlacingOrder(false);
-              return;
-          }
-      }
-
-      const checkoutRequestId = `OB-ref-${Date.now()}`;
+      const { data: { session } } = await client.auth.getSession();
+      const sessionId = localStorage.getItem('ob_session_id');
+      if (!sessionId) throw new Error('Your checkout session expired. Refresh the page and try again.');
+      const orderResponse = await fetch('/api/checkout/orders', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+          },
+          body: JSON.stringify({
+              items: cart.map(item => ({
+                  productId: item.id,
+                  quantity: item.quantity,
+                  size: item.size || 'Standard',
+                  addonIds: (item.addons || []).map(addon => addon.id)
+              })),
+              customerName,
+              customerPhone,
+              customerEmail: customerEmail.trim() || null,
+              paymentMethod: paymentMethod === 'M-Pesa' ? 'Paystack' : 'COD',
+              sessionId,
+              shippingRegionId,
+              coordinates: coords.lat !== null && coords.lng !== null
+                  ? { lat: coords.lat, lng: coords.lng }
+                  : profile?.latitude != null && profile.longitude != null
+                      ? { lat: profile.latitude, lng: profile.longitude }
+                      : null,
+              deliveryBuilding: deliveryBuilding.trim() || null,
+              deliveryLandmark: deliveryLandmark.trim() || null,
+              deliveryInstructions: deliveryInstructions.trim() || null,
+              notificationPreferences: {
+                  inApp: orderUpdatesInApp,
+                  whatsapp: orderUpdatesWhatsApp,
+                  sms: orderUpdatesSms,
+                  email: orderUpdatesEmail
+              },
+              couponCode: activeCoupon?.code || null,
+              usePoints,
+              referralCode,
+              attributionId: sessionStorage.getItem('ob_attribution_id'),
+              isGift,
+              giftMessage: giftMessage.trim() || null,
+              giftRecipient: giftRecipient.trim() || null,
+              giftOccasion: giftOccasion.trim() || null
+          })
+      });
+      const orderResult = await orderResponse.json() as {
+          error?: string;
+          orderId?: number;
+          reference?: string | null;
+          total?: number;
+          currency?: string;
+      };
+      if (!orderResponse.ok || !orderResult.orderId || typeof orderResult.total !== 'number') {
+          throw new Error(orderResult.error || 'The order could not be created.');
+      const orderId = orderResult.orderId;
+      const authoritativeTotal = orderResult.total;
+      setPlacedOrderId(orderId);
 
       if (paymentMethod === "M-Pesa") {
-        // 1. Save order as Pending first (Persistence)
-        const orderId = await saveOrder(checkoutRequestId, dbProducts);
-        if (!orderId) return;
-
-        // 2. Launch Paystack
+        if (!orderResult.reference) throw new Error('The payment reference could not be created. Please try again.');
         if (!window.PaystackPop) {
             setCheckoutStatus({ type: "error", message: "Payment system failing to load. Please check your connection." });
             setIsPlacingOrder(false);
@@ -503,11 +502,11 @@ function CheckoutContent() {
         const handler = window.PaystackPop.setup({
             key: paystackPublicKey,
             email: customerEmail.trim(),
-            amount: Math.round(total * 100), // KES to Cents
-            currency: 'KES',
-            ref: checkoutRequestId,
+            amount: Math.round(authoritativeTotal * 100),
+            currency: orderResult.currency || 'KES',
+            ref: orderResult.reference,
             callback: async (response: PaystackResponse) => {
-                if (response.status === 'success' && supabase) {
+                if (response.status === 'success') {
                     try {
                         const verification = await fetch('/api/paystack/verify-order', {
                             method: 'POST',
@@ -535,30 +534,16 @@ function CheckoutContent() {
             },
             onClose: async () => {
                 setIsPlacingOrder(false);
-
-                // Mark order as Failed in DB for accurate analytics
-                if (supabase && orderId) {
-                    const { data: currentOrder } = await supabase.from('orders').select('status').eq('id', orderId).single();
-                    if (currentOrder?.status === 'Pending') {
-                        await supabase.from('orders').update({
-                            status: 'Payment Failed',
-                            note: 'Transaction cancelled by user (Window Closed)'
-                        }).eq('id', orderId);
-                    }
-                }
-
                 setCheckoutStatus({
                     type: "error",
-                    message: "Payment process was interrupted. Please re-initiate payment to secure your order."
+                    message: "Payment was not completed. Your order remains pending; you can safely retry checkout."
                 });
             }
         });
 
         handler.openIframe();
       } else {
-        // COD - Save immediately
-        const orderId = await saveOrder(null, dbProducts);
-        if (orderId) finalizeOrder(orderId);
+        finalizeOrder(orderId, authoritativeTotal);
       }
     } catch (error: unknown) {
         const err = error as Error;
@@ -568,109 +553,21 @@ function CheckoutContent() {
     }
   };
 
-  const saveOrder = async (requestId: string | null, products: DBProduct[]) => {
-    const client = supabase;
-    if (!client) return null;
-    try {
-      setCheckoutStatus({ type: "processing", message: "Synchronizing payload with database..." });
-
-      const sessionId = localStorage.getItem('ob_session_id');
-
-      // 1. Create Master Order (Header)
-      const headerPayload = {
-          user_id: user?.id || null,
-          session_id: sessionId,
-          customer_name: customerName.trim(),
-          customer_phone: customerPhone.trim(),
-          customer_email: customerEmail.trim() || null,
-          total_price: total,
-          delivery_cost: deliveryFee,
-          status: "Pending",
-          payment_method: paymentMethod === 'M-Pesa' ? 'Paystack' : paymentMethod,
-          checkout_request_id: requestId,
-          referred_by_code: referralCode,
-          loyalty_points_redeemed: user && usePoints
-            ? Math.min(loyaltyPoints, Math.ceil(pointsDiscount * pointsPerKsh))
-            : 0,
-          attribution_id: typeof window !== 'undefined' ? sessionStorage.getItem('ob_attribution_id') : null,
-          captured_by: 'system',
-          latitude: coords.lat ?? profile?.latitude ?? null,
-          longitude: coords.lng ?? profile?.longitude ?? null,
-          delivery_area: matchedFreeDeliveryArea?.name || currentRegion.label,
-          delivery_building: deliveryBuilding.trim() || null,
-          delivery_landmark: deliveryLandmark.trim() || null,
-          delivery_instructions: deliveryInstructions.trim() || null,
-          is_gift: isGift,
-          gift_message: giftMessage.trim() || null,
-          gift_recipient: isGift ? giftRecipient || null : null,
-          gift_occasion: isGift ? giftOccasion || null : null,
-          note: `Region: ${currentRegion.label}${matchedFreeDeliveryArea ? ` | Free delivery area: ${matchedFreeDeliveryArea.name}` : ''}${activeCoupon ? ` | Coupon: ${activeCoupon.code}` : ''}${usePoints ? ` | Used ${Math.min(loyaltyPoints, Math.ceil(pointsDiscount * pointsPerKsh))} points` : ''}${referralCode ? ` | Referred by ${referralCode}` : ''}${isGift ? ` | 🎁 GIFT: ${giftMessage}` : ''}`
-      };
-
-      const { data: headerData, error: headerError } = await client
-          .from("orders")
-          .insert([headerPayload])
-          .select('id')
-          .single();
-
-      if (headerError) {
-          throw headerError;
-      }
-
-      if (!headerData) throw new Error("The order could not be saved.");
-
-      try {
-          await createOrderItems(headerData.id, products);
-      } catch (itemError) {
-          const { error: cleanupError } = await client.from("orders").delete().eq("id", headerData.id);
-          if (cleanupError) console.error("Unable to remove incomplete order:", cleanupError);
-          throw itemError;
-      }
-
-      setPlacedOrderId(headerData.id);
-      return headerData.id;
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error("Order save error:", err);
-      throw err;
-    }
-  };
-
-  const createOrderItems = async (orderId: number, products: DBProduct[]) => {
-      if (!supabase) return;
-      const itemRows = cart.map(item => {
-          const dbProd = products?.find(p => p.id === item.id);
-          return {
-              order_id: orderId,
-              product_id: item.id,
-              quantity: item.quantity,
-              unit_price: item.price,
-              unit_cost: dbProd?.cost_price || 0,
-              size: item.size || 'Standard',
-              addons: item.addons || [],
-              status: 'Pending'
-          };
-      });
-
-      const { error } = await supabase.from("order_items").insert(itemRows);
-      if (error) throw error;
-  };
-
-  const finalizeOrder = async (orderId?: number) => {
+  const finalizeOrder = async (orderId?: number, orderTotal = total) => {
     const finalId = orderId || placedOrderId;
 
     // 🚀 [MASTER_OS] Track Purchase Completion
     OB_OS.track('PURCHASE_COMPLETED', {
         userId: user?.id,
         orderId: finalId || undefined,
-        amount: total,
+        amount: orderTotal,
         details: { cart_size: cart.length }
     });
 
     // Meta Tracking: Purchase
     if (typeof window !== 'undefined' && window.fbq) {
         window.fbq('track', 'Purchase', {
-            value: total,
+            value: orderTotal,
             currency: 'KES',
             content_ids: cart.map(item => item.id),
             content_type: 'product'
@@ -681,7 +578,7 @@ function CheckoutContent() {
     const client = supabase;
     if (user && client) {
         try {
-            await runPostCheckoutAudit(user.id, total);
+            await runPostCheckoutAudit(user.id, orderTotal);
         } catch (err) {
             console.error("Loyalty update error:", err);
         }

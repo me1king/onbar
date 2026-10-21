@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, PackageCheck, Smartphone, MessageSquare, ArrowRight, Truck, ShieldCheck, Heart, Zap } from "lucide-react";
+import { CheckCircle2, PackageCheck, Smartphone, MessageSquare, ArrowRight, Truck, ShieldCheck, Heart, Zap, Clock3 } from "lucide-react";
 import Link from "next/link";
 import { formatPrice, getReferralLink } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
@@ -17,6 +17,8 @@ interface Order {
     status: string;
     user_id: string | null;
     session_id: string | null;
+    payment_method: string | null;
+    isAccountOrder?: boolean;
 }
 
 function SuccessContent() {
@@ -26,6 +28,7 @@ function SuccessContent() {
     const [referralCode, setReferralCode] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [loyaltyNotice, setLoyaltyNotice] = useState('');
+    const [statusError, setStatusError] = useState('');
     const { settings } = useSettings();
 
     useEffect(() => {
@@ -88,6 +91,102 @@ function SuccessContent() {
         }
     }, [orderId]);
 
+    useEffect(() => {
+        let active = true;
+        let pollTimer: ReturnType<typeof setTimeout> | undefined;
+        let loyaltyProcessed = false;
+
+        const loadStatus = async () => {
+            const client = supabase;
+            if (!client || !orderId) {
+                if (active) {
+                    setStatusError('We could not find this order. Check your order link or contact support.');
+                    setLoading(false);
+                }
+                return;
+            }
+
+            const { data: { session } } = await client.auth.getSession();
+            const sessionId = localStorage.getItem('ob_session_id');
+            const params = new URLSearchParams({ id: orderId });
+            if (sessionId) params.set('sessionId', sessionId);
+
+            const fetchStatus = async () => {
+                const response = await fetch(`/api/orders/status?${params.toString()}`, {
+                    cache: 'no-store',
+                    headers: session?.access_token
+                        ? { Authorization: `Bearer ${session.access_token}` }
+                        : undefined
+                });
+                const result = await response.json() as { error?: string; order?: Order };
+                if (!response.ok || !result.order) {
+                    throw new Error(result.error || 'Order status could not be loaded.');
+                }
+                if (!active) return;
+
+                setOrder(result.order);
+                setStatusError('');
+                if (
+                    !loyaltyProcessed
+                    && session
+                    && result.order.isAccountOrder
+                    && ['Paid', 'Delivered', 'Completed'].includes(result.order.status)
+                ) {
+                    loyaltyProcessed = true;
+                    try {
+                        const loyaltyResponse = await fetch('/api/member/loyalty', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                Authorization: `Bearer ${session.access_token}`
+                            },
+                            body: JSON.stringify({ action: 'process-order', orderId: result.order.id })
+                        });
+                        const loyaltyResult = await loyaltyResponse.json();
+                        if (!loyaltyResponse.ok) throw new Error(loyaltyResult.error || 'Points could not be updated.');
+                        if (loyaltyResult.earnedPoints > 0 && active) {
+                            setLoyaltyNotice(`${loyaltyResult.earnedPoints} loyalty points added to your account.`);
+                        }
+                    } catch (loyaltyError) {
+                        console.error('Order confirmed but loyalty points could not be processed:', loyaltyError);
+                        if (active) setLoyaltyNotice('Your order is confirmed. Loyalty points are still syncing; refresh this page shortly.');
+                    }
+                }
+
+                if (result.order.payment_method === 'Paystack' && result.order.status === 'Pending') {
+                    pollTimer = setTimeout(() => {
+                        fetchStatus().catch((error: unknown) => {
+                            console.error('Could not refresh Paystack order status:', error);
+                            if (active) {
+                                setStatusError('Payment confirmation is still processing. This page will keep checking automatically.');
+                            }
+                            pollTimer = setTimeout(() => {
+                                fetchStatus().catch((retryError: unknown) => {
+                                    console.error('Could not refresh Paystack order status:', retryError);
+                                });
+                            }, 5000);
+                        });
+                    }, 2500);
+                }
+            };
+
+            try {
+                await fetchStatus();
+            } catch (error) {
+                console.error('Could not load order confirmation:', error);
+                if (active) setStatusError('Order status could not be loaded. Please refresh this page or contact support.');
+            } finally {
+                if (active) setLoading(false);
+            }
+        };
+
+        void loadStatus();
+        return () => {
+            active = false;
+            if (pollTimer) clearTimeout(pollTimer);
+        };
+    }, [orderId]);
+
     const shareToWhatsApp = () => {
         if (!order) return;
         const message = `Hello Online Bar Nairobi! I just placed an order.\n\n*Order ID:* #${order.id}\n*Customer:* ${order.customer_name}\n*Total:* ${formatPrice(order.total_price)}\n\nPlease confirm my dispatch status. Thanks!`;
@@ -102,14 +201,28 @@ function SuccessContent() {
         );
     }
 
+    const isConfirmed = order && ['Paid', 'Delivered', 'Completed'].includes(order.status);
+    const isPaymentPending = order?.payment_method === 'Paystack' && order.status === 'Pending';
+
     return (
         <div className="container mx-auto px-4 py-12 max-w-2xl text-center">
             <div className="mb-12 flex flex-col items-center">
-                <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-6 animate-pulse">
-                    <CheckCircle2 className="h-12 w-12" />
+                <div className={`h-24 w-24 rounded-full ${isPaymentPending ? 'bg-amber-100 text-amber-700' : 'bg-primary/10 text-primary'} flex items-center justify-center mb-6`}>
+                    {isPaymentPending ? <Clock3 className="h-12 w-12" /> : <CheckCircle2 className="h-12 w-12" />}
                 </div>
-                <h1 className="text-5xl font-black uppercase tracking-tighter text-foreground mb-2">Order Confirmed</h1>
-                <p className="text-slate-500 font-medium italic">Your order is officially secured. Preparing for dispatch.</p>
+                <h1 className="text-5xl font-black uppercase tracking-tighter text-foreground mb-2">
+                    {isConfirmed ? 'Order Confirmed' : isPaymentPending ? 'Confirming Payment' : order ? 'Order Received' : 'Order Status'}
+                </h1>
+                <p className="text-slate-500 font-medium italic">
+                    {isConfirmed
+                        ? 'Your payment is confirmed and your order is preparing for dispatch.'
+                        : isPaymentPending
+                            ? 'Paystack verified your payment. We are waiting for the order confirmation to finish.'
+                            : order
+                                ? 'We received your order and will contact you shortly to confirm delivery.'
+                                : 'We could not load the order status.'}
+                </p>
+                {statusError && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{statusError}</p>}
             </div>
 
             <Card className="rounded-[2.5rem] border-slate-100 shadow-2xl shadow-slate-200/50 overflow-hidden mb-10">
@@ -122,7 +235,7 @@ function SuccessContent() {
                         <div className="text-right">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</p>
                             <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-[9px] font-bold text-primary uppercase tracking-wider">
-                                {order?.status || 'Paid'}
+                                {order?.status || 'Checking'}
                             </span>
                         </div>
                     </div>
@@ -134,8 +247,16 @@ function SuccessContent() {
                                 <Smartphone className="h-6 w-6" />
                             </div>
                             <div>
-                                <h4 className="font-bold text-foreground">Order Secured</h4>
-                                <p className="text-sm text-slate-500">We&apos;ve received your payment and are validating the items.</p>
+                                <h4 className="font-bold text-foreground">
+                                    {isConfirmed ? 'Payment Confirmed' : isPaymentPending ? 'Payment Received' : 'Order Received'}
+                                </h4>
+                                <p className="text-sm text-slate-500">
+                                    {isConfirmed
+                                        ? 'Your payment is confirmed and the order is being prepared.'
+                                        : isPaymentPending
+                                            ? 'Your payment is verified. We are finishing the order confirmation.'
+                                            : 'Your order has been saved. We will contact you to confirm delivery.'}
+                                </p>
                             </div>
                         </div>
 
@@ -151,7 +272,7 @@ function SuccessContent() {
 
                         <div className="pt-6 border-t border-dashed border-slate-200">
                             <div className="flex justify-between items-center mb-6">
-                                <span className="text-slate-500 font-medium">Total Amount Paid</span>
+                                <span className="text-slate-500 font-medium">{isConfirmed ? 'Total Amount Paid' : 'Order Total'}</span>
                                 <span className="text-2xl font-black text-foreground">{formatPrice(order?.total_price || 0)}</span>
                             </div>
 
@@ -159,13 +280,14 @@ function SuccessContent() {
                                 <Button
                                     onClick={shareToWhatsApp}
                                     variant="outline"
+                                    disabled={!order}
                                     className="rounded-2xl h-14 border-slate-200 font-black uppercase tracking-widest text-[10px] gap-2 hover:bg-primary/5 hover:border-primary/20 hover:text-primary transition-all"
                                 >
                                     <MessageSquare className="h-4 w-4" /> Get Receipt
                                 </Button>
                                 <Button
                                     asChild
-                                    className="rounded-2xl h-14 font-black uppercase tracking-widest text-[10px] gap-2 shadow-xl shadow-primary/20"
+                                    className={`rounded-2xl h-14 font-black uppercase tracking-widest text-[10px] gap-2 shadow-xl shadow-primary/20 ${!order ? 'pointer-events-none opacity-50' : ''}`}
                                 >
                                     <Link href={`/track?id=${order?.id}`}>
                                         Track Order <ArrowRight className="h-4 w-4" />

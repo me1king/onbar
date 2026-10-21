@@ -185,7 +185,7 @@ export async function POST(request: Request) {
                 // Fetch the order first to see if it's already processed
                 const { data: matchedOrder, error: orderLookupError } = await database
                     .from('orders')
-                    .select('id, total_price, payment_method, status, payment_verified_at')
+                    .select('id, customer_name, total_price, payment_method, status, payment_verified_at')
                     .eq('checkout_request_id', reference)
                     .maybeSingle();
 
@@ -216,6 +216,13 @@ export async function POST(request: Request) {
                     return NextResponse.json({ error: "Payment confirmation record failed" }, { status: 500 });
                 }
                 if (matchedOrder.status === 'Paid' && matchedOrder.payment_verified_at) {
+                    const { error: inventoryError } = await database.rpc('deduct_paid_order_inventory', {
+                        order_id_input: matchedOrder.id
+                    });
+                    if (inventoryError) {
+                        console.error("Webhook inventory fulfillment retry failed:", inventoryError);
+                        return NextResponse.json({ error: "Inventory fulfillment failed" }, { status: 500 });
+                    }
                     return NextResponse.json({ received: true, message: "Already processed" });
                 }
 
@@ -237,31 +244,38 @@ export async function POST(request: Request) {
                     return NextResponse.json({ error: "Database update failed" }, { status: 500 });
                 }
                 if (!orderItems || orderItems.length === 0) {
+                    const { data: currentOrder, error: currentOrderError } = await database
+                        .from('orders')
+                        .select('status, payment_verified_at')
+                        .eq('id', matchedOrder.id)
+                        .maybeSingle();
+                    if (currentOrderError) {
+                        console.error("Webhook Order Status Lookup Error:", currentOrderError);
+                        return NextResponse.json({ error: "Database lookup failed" }, { status: 500 });
+                    }
+                    if (currentOrder?.status === 'Paid' && currentOrder.payment_verified_at) {
+                        const { error: inventoryError } = await database.rpc('deduct_paid_order_inventory', {
+                            order_id_input: matchedOrder.id
+                        });
+                        if (inventoryError) {
+                            console.error("Webhook inventory fulfillment retry failed:", inventoryError);
+                            return NextResponse.json({ error: "Inventory fulfillment failed" }, { status: 500 });
+                        }
+                    }
                     return NextResponse.json({ received: true, message: "Order status already changed" });
+                }
+
+                const { error: inventoryError } = await database.rpc('deduct_paid_order_inventory', {
+                    order_id_input: matchedOrder.id
+                });
+                if (inventoryError) {
+                    console.error("Webhook inventory fulfillment failed:", inventoryError);
+                    return NextResponse.json({ error: "Inventory fulfillment failed" }, { status: 500 });
                 }
 
                 // Post-Success Fulfillment Logic
                 if (orderItems && orderItems.length > 0) {
-                    const firstItem = orderItems[0];
                     const baseUrl = getPublicBaseUrl();
-
-                    // 1. Deduct Stock for each item in the order
-                    for (const item of orderItems) {
-                        if (item.product_id) {
-                            const { data: product } = await database
-                                .from('products')
-                                .select('stock')
-                                .eq('id', item.product_id)
-                                .single();
-
-                            if (product) {
-                                await database
-                                    .from('products')
-                                    .update({ stock: Math.max(0, (product.stock || 0) - (item.quantity || 1)) })
-                                    .eq('id', item.product_id);
-                            }
-                        }
-                    }
 
                     // 2. Notify Admin
                     fetch(`${baseUrl}/api/admin/notify-admin`, {
@@ -273,9 +287,9 @@ export async function POST(request: Request) {
                         body: JSON.stringify({
                             type: 'NEW_ORDER',
                             details: {
-                                orderId: firstItem.id,
-                                customerName: firstItem.customer_name,
-                                amount: orderItems.reduce((acc, curr) => acc + (curr.total_price || 0), 0),
+                                orderId: matchedOrder.id,
+                                customerName: matchedOrder.customer_name,
+                                amount: Number(matchedOrder.total_price),
                                 paymentMethod: 'Paystack (M-Pesa/Card)'
                             }
                         })

@@ -8,7 +8,6 @@ import {
   LogOut,
   Menu,
   X,
-  Store,
   Plus,
   Box,
   Truck,
@@ -71,9 +70,6 @@ export default function SupplierLayoutClient({
           {/* Mobile Header */}
           <div className="md:hidden flex items-center justify-between px-6 py-5 bg-white border-b border-slate-100 sticky top-0 z-50 shadow-sm">
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
-                <Store className="h-5 w-5 text-white" />
-              </div>
               <span className="font-black text-foreground uppercase tracking-tighter text-sm">Supplier Hub</span>
             </div>
             <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
