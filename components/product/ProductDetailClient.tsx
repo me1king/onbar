@@ -804,6 +804,25 @@ export default function ProductDetailClient({
                     </div>
                 </div>
 
+                <div className="space-y-3 rounded-2xl border border-amber-100 bg-white p-4 shadow-sm sm:p-5">
+                    <p className="flex items-start gap-3 text-sm leading-relaxed text-slate-800">
+                        <Zap size={18} className="mt-0.5 shrink-0 fill-amber-500 text-amber-500" />
+                        <span><strong>Fast delivery in Nairobi</strong> · 30 minutes for most areas, or next-day countrywide.</span>
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+                        <span className="mr-1">We accept</span>
+                        <span className="rounded-lg border border-emerald-200 bg-emerald-600 px-2.5 py-1 text-white">M-PESA</span>
+                        <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 italic text-blue-900">VISA</span>
+                        <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-rose-600">Mastercard</span>
+                        <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800">Cash</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-[11px] font-bold text-slate-600">
+                        <span className="inline-flex items-center gap-1.5"><Lock size={13} className="text-emerald-600" /> Secure checkout</span>
+                        <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-emerald-600" /> 100% genuine</span>
+                        <span className="inline-flex items-center gap-1.5"><Globe size={13} className="text-rose-600" /> Over 18s only</span>
+                    </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-3 pt-10 border-t border-slate-100">
                     {[
                         { l: 'Secure Pay', i: Lock, c: 'bg-emerald-50 text-emerald-600 border-emerald-100' },

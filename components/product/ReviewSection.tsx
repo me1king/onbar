@@ -23,6 +23,8 @@ interface Review {
 export default function ReviewSection({ productId, isLive = true }: { productId: number, isLive?: boolean }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [user, setUser] = useState<{ id: string } | null>(null);
+  const [reviewOrderId, setReviewOrderId] = useState<number | null>(null);
+  const [eligibilityLoading, setEligibilityLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [comment, setComment] = useState('');
@@ -30,6 +32,8 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
   const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rewardClaimed, setRewardClaimed] = useState(false);
+  const [website, setWebsite] = useState('');
+  const [formStartedAt] = useState(() => Date.now());
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchReviews = useCallback(async () => {
@@ -41,6 +45,23 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
       // Get User Session
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user || null);
+      if (session) {
+        const eligibilityResponse = await fetch(`/api/reviews?productId=${productId}`, {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        const eligibilityResult = await eligibilityResponse.json() as {
+          error?: string;
+          eligible?: boolean;
+          orderId?: number;
+        };
+        if (!eligibilityResponse.ok) throw new Error(eligibilityResult.error || 'Review eligibility could not be checked.');
+        setReviewOrderId(eligibilityResult.eligible && Number.isSafeInteger(eligibilityResult.orderId)
+          ? eligibilityResult.orderId!
+          : null);
+      } else {
+        setReviewOrderId(null);
+      }
 
       const { data, error } = await supabase
         .from('reviews')
@@ -53,8 +74,10 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
       setReviews(data || []);
     } catch (err) {
       console.error('Error fetching reviews:', err);
+      setMessage({ type: 'error', text: 'Purchase eligibility could not be verified. Please refresh and try again.' });
     } finally {
       setLoading(false);
+      setEligibilityLoading(false);
     }
   }, [productId, isLive]);
 
@@ -80,7 +103,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
-    if (!name.trim() || !comment.trim()) return;
+    if (!user || !reviewOrderId || !name.trim() || !comment.trim()) return;
 
     setIsSubmitting(true);
     setMessage(null);
@@ -111,10 +134,13 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
         },
         body: JSON.stringify({
           productId,
+          orderId: reviewOrderId,
           customerName: name.trim(),
           rating,
           comment: comment.trim(),
-          photoUrls
+          photoUrls,
+          website,
+          formStartedAt
         })
       });
       const result = await response.json() as { error?: string; id?: number };
@@ -169,6 +195,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
       setComment('');
       setRating(5);
       setSelectedPhotos([]);
+      setReviewOrderId(null);
       fetchReviews();
     } catch (err: unknown) {
       console.error('Error posting review:', err);
@@ -213,7 +240,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="bg-slate-50 rounded-3xl p-6 space-y-4 relative overflow-hidden">
+          <div className="bg-slate-50 rounded-3xl p-6 space-y-4 relative overflow-hidden">
             {!isLive && (
                 <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
                     <div className="h-12 w-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 mb-4 shadow-sm">
@@ -226,8 +253,28 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                 </div>
             )}
 
-            <h3 className="font-black text-xs uppercase tracking-widest text-slate-400 mb-2">Write a Review</h3>
+            <h3 className="font-black text-xs uppercase tracking-widest text-slate-400 mb-2">Verified buyers only</h3>
+            {isLive && !user && (
+              <p className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-xs font-medium leading-relaxed text-amber-900">
+                Sign in with the account used to place a paid or completed order for this product to leave a review.
+              </p>
+            )}
+            {isLive && user && eligibilityLoading && (
+              <p role="status" className="rounded-xl bg-white p-4 text-xs font-medium text-slate-600">Checking your purchase…</p>
+            )}
+            {isLive && user && !eligibilityLoading && !reviewOrderId && (
+              <p className="rounded-xl border border-slate-200 bg-white p-4 text-xs font-medium leading-relaxed text-slate-600">
+                Reviews are open to customers with a paid or completed purchase of this product. Once your order is confirmed, come back here to share your experience.
+              </p>
+            )}
 
+          {isLive && user && reviewOrderId && !eligibilityLoading && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <p className="text-xs font-medium text-emerald-700">Your paid purchase is verified. You can submit one review for this order.</p>
+            <div aria-hidden="true" className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden">
+              <label htmlFor="review-website">Leave this field empty</label>
+              <input id="review-website" name="website" tabIndex={-1} autoComplete="off" value={website} onChange={event => setWebsite(event.target.value)} />
+            </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Your Name</label>
               <Input
@@ -236,7 +283,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                 placeholder="Name"
                 className="rounded-xl border-none bg-white py-6"
                 required
-                disabled={!isLive}
+                disabled={!isLive || isSubmitting}
               />
             </div>
 
@@ -249,7 +296,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                     type="button"
                     onClick={() => setRating(star)}
                     className={`transition-colors ${star <= rating ? 'text-amber-500' : 'text-slate-200'}`}
-                    disabled={!isLive}
+                    disabled={!isLive || isSubmitting}
                   >
                     <Star className={`h-6 w-6 ${star <= rating ? 'fill-current' : ''}`} />
                   </button>
@@ -265,7 +312,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                 placeholder="What do you think about this drink?"
                 className="rounded-xl border-none bg-white min-h-[100px] resize-none"
                 required
-                disabled={!isLive}
+                disabled={!isLive || isSubmitting}
               />
             </div>
 
@@ -283,7 +330,7 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                           "h-16 w-16 rounded-xl border-2 border-dashed flex flex-col items-center justify-center transition-all cursor-pointer bg-white",
                           !isLive ? "border-slate-100 text-slate-100 cursor-not-allowed" : "border-slate-200 text-slate-300 hover:border-primary/50 hover:text-primary"
                       )}>
-                          <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} disabled={!isLive} />
+                          <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} disabled={!isLive || isSubmitting} />
                           <Camera className="h-5 w-5" />
                           <span className="text-[7px] font-black uppercase mt-1">Add</span>
                       </label>
@@ -293,17 +340,11 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
 
             <Button
               type="submit"
-              disabled={isSubmitting || !isLive}
+              disabled={isSubmitting || !isLive || !reviewOrderId}
               className="w-full rounded-xl py-6 font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20"
             >
               {isSubmitting ? 'Syncing...' : <><Send className="h-4 w-4 mr-2" /> Post Verified Review</>}
             </Button>
-
-            {message && (
-              <p className={`text-[10px] font-bold text-center mt-2 ${message.type === 'success' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {message.text}
-              </p>
-            )}
 
             {rewardClaimed && (
                 <div className="mt-4 p-4 rounded-2xl bg-emerald-500 text-white flex items-center gap-3 animate-bounce shadow-xl shadow-emerald-500/20">
@@ -312,6 +353,14 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                 </div>
             )}
           </form>
+          )}
+
+          {message && (
+            <p role="status" className={`text-[10px] font-bold text-center mt-2 ${message.type === 'success' ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {message.text}
+            </p>
+          )}
+          </div>
         </div>
 
         {/* Reviews List */}
