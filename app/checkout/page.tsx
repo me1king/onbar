@@ -460,12 +460,6 @@ function CheckoutContent() {
               deliveryBuilding: deliveryBuilding.trim() || null,
               deliveryLandmark: deliveryLandmark.trim() || null,
               deliveryInstructions: deliveryInstructions.trim() || null,
-              notificationPreferences: {
-                  inApp: orderUpdatesInApp,
-                  whatsapp: orderUpdatesWhatsApp,
-                  sms: orderUpdatesSms,
-                  email: orderUpdatesEmail
-              },
               couponCode: activeCoupon?.code || null,
               usePoints,
               referralCode,
@@ -485,6 +479,7 @@ function CheckoutContent() {
       };
       if (!orderResponse.ok || !orderResult.orderId || typeof orderResult.total !== 'number') {
           throw new Error(orderResult.error || 'The order could not be created.');
+      }
       const orderId = orderResult.orderId;
       const authoritativeTotal = orderResult.total;
       setPlacedOrderId(orderId);

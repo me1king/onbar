@@ -29,7 +29,7 @@ type CheckoutBody = {
     whatsapp: boolean;
     sms: boolean;
     email: boolean;
-  };
+  } | null;
   couponCode: string | null;
   usePoints: boolean;
   referralCode: string | null;
@@ -140,8 +140,9 @@ function readBody(value: unknown): CheckoutBody | null {
     || (couponCode !== null && typeof couponCode !== 'string')
     || (referralCode !== null && typeof referralCode !== 'string')
     || (attributionId !== null && typeof attributionId !== 'string')
-    || !isRecord(notificationPreferences)
-    || ['inApp', 'whatsapp', 'sms', 'email'].some((key) => typeof notificationPreferences[key] !== 'boolean')
+    || (notificationPreferences !== undefined && !isRecord(notificationPreferences))
+    || (isRecord(notificationPreferences)
+      && ['inApp', 'whatsapp', 'sms', 'email'].some((key) => typeof notificationPreferences[key] !== 'boolean'))
   ) return null;
 
   const coordinate = coordinates === null
@@ -185,7 +186,9 @@ function readBody(value: unknown): CheckoutBody | null {
     deliveryBuilding: building as string | null,
     deliveryLandmark: landmark as string | null,
     deliveryInstructions: instructions as string | null,
-    notificationPreferences: notificationPreferences as CheckoutBody['notificationPreferences'],
+    notificationPreferences: isRecord(notificationPreferences)
+      ? notificationPreferences as NonNullable<CheckoutBody['notificationPreferences']>
+      : null,
     couponCode: normalizedCoupon as string | null,
     usePoints,
     referralCode: normalizedReferral as string | null,
@@ -451,10 +454,10 @@ export async function POST(request: Request) {
       customer_name: body.customerName,
       customer_phone: body.customerPhone,
       customer_email: body.customerEmail,
-      notification_in_app_opt_in: body.notificationPreferences.inApp,
-      notification_whatsapp_opt_in: body.notificationPreferences.whatsapp,
-      notification_sms_opt_in: body.notificationPreferences.sms,
-      notification_email_opt_in: body.notificationPreferences.email,
+      notification_in_app_opt_in: body.notificationPreferences?.inApp ?? true,
+      notification_whatsapp_opt_in: body.notificationPreferences?.whatsapp ?? false,
+      notification_sms_opt_in: body.notificationPreferences?.sms ?? false,
+      notification_email_opt_in: body.notificationPreferences?.email ?? false,
       total_price: total,
       delivery_cost: deliveryFee,
       status: 'Pending',

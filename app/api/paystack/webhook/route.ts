@@ -304,7 +304,7 @@ export async function POST(request: Request) {
                                 'Authorization': `Bearer ${PAYSTACK_SECRET_KEY}`
                             },
                             body: JSON.stringify({
-                                orderId: firstItem.id,
+                                orderId: matchedOrder.id,
                                 status: 'Paid'
                             })
                         });
