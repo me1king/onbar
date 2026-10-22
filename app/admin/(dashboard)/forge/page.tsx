@@ -37,37 +37,42 @@ type ForgeFilterMode = 'all' | '3d' | 'gaps' | 'readiness';
 export default function ProductForgeDashboard() {
     const [products, setProducts] = React.useState<ForgeProduct[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState('');
     const [search, setSearch] = React.useState('');
     const [filterMode, setFilterMode] = React.useState<ForgeFilterMode>('all');
 
     const fetchData = React.useCallback(async () => {
         if (!supabase) {
             setProducts([]);
+            setLoadError('The catalog database is not configured. Contact your administrator.');
             setLoading(false);
             return;
         }
         setLoading(true);
+        setLoadError('');
         try {
             const { data, error } = await supabase
                 .from('products')
-                .select('*')
-                .order('name');
+                .select('id, name, brand, price, image_url, stock, beverage_specs')
+                .order('name')
+                .limit(1000)
+                .abortSignal(AbortSignal.timeout(15000));
 
-            if (!error && data) {
-                setProducts(data.map(p => ({
-                    id: p.id,
-                    name: p.name,
-                    brand: p.brand || 'Brand unavailable',
-                    price: p.price,
-                    image_url: p.image_url,
-                    stock: p.stock,
-                    has_3d: !!p.beverage_specs?.model_3d_url
-                })));
-            } else {
-                setProducts([]);
-            }
+            if (error) throw error;
+            setProducts((data || []).map(p => ({
+                id: p.id,
+                name: p.name,
+                brand: p.brand || 'Brand unavailable',
+                price: p.price,
+                image_url: p.image_url,
+                stock: p.stock,
+                has_3d: !!p.beverage_specs?.model_3d_url
+            })));
         } catch (err) {
-            console.error(err);
+            console.error('[ProductForge] Could not load the product catalog:', err);
+            setLoadError(err instanceof Error && err.name === 'AbortError'
+                ? 'The catalog request timed out. Check your connection and try again.'
+                : 'The product catalog could not be loaded. Check your connection and try again.');
         } finally {
             setLoading(false);
         }
@@ -170,6 +175,14 @@ export default function ProductForgeDashboard() {
                             <Loader2 className="h-10 w-10 text-primary animate-spin" />
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-300">Synchronizing Forge Hub...</p>
                         </div>
+                    ) : loadError && products.length === 0 ? (
+                        <div className="col-span-full flex flex-col items-center gap-4 rounded-3xl border border-amber-200 bg-amber-50 px-6 py-12 text-center">
+                            <AlertTriangle className="h-8 w-8 text-amber-600" />
+                            <p role="alert" className="max-w-lg text-sm font-semibold text-amber-900">{loadError}</p>
+                            <Button onClick={fetchData} variant="outline" className="rounded-xl border-amber-300 bg-white px-5 font-bold text-amber-900 hover:bg-amber-100">
+                                <RefreshCcw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} /> Try again
+                            </Button>
+                        </div>
                     ) : filtered.length === 0 ? (
                         <div className="col-span-full py-20 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">
                             No product data available
@@ -239,6 +252,9 @@ export default function ProductForgeDashboard() {
                         </Card>
                     ))}
                 </div>
+                {loadError && products.length > 0 && (
+                    <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{loadError} Showing the last successfully loaded catalog.</p>
+                )}
             </div>
 
             {/* MASTER HUD OVERLAY */}
