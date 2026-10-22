@@ -44,14 +44,32 @@ export async function POST(request: Request) {
   }
   if (!order) return NextResponse.json({ error: 'This ticket-wallet link is invalid or expired.' }, { status: 401 });
   if (order.status !== 'paid') {
+    const { data: paymentAttempt, error: paymentAttemptError } = await database
+      .from('ticketing_payment_attempts')
+      .select('provider,provider_payload')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (paymentAttemptError) {
+      console.error('[TicketingWallet] Could not load payment provider status:', paymentAttemptError);
+      return NextResponse.json({ error: 'Ticket payment status could not be checked.' }, { status: 503 });
+    }
+
     return NextResponse.json({
       status: order.status,
       orderReference: order.reference,
       message: order.status === 'reconciliation_required'
         ? 'Payment needs manual review. Contact ONLINE BAR support and quote this order reference.'
+        : ['payment_failed', 'expired', 'cancelled'].includes(order.status)
+          ? 'Payment was not completed and no tickets were issued. Return to the event page to start a fresh checkout if you still want tickets.'
+        : paymentAttempt?.provider === 'payhero'
+          ? paymentAttempt.provider_payload?.payhero_reference
+            ? 'Check your phone for the M-Pesa prompt and approve it to complete your ticket payment. Keep this page open; do not start a second payment.'
+            : 'Your M-Pesa request is still being set up. Keep this page open and do not start a second payment. If no prompt arrives, contact ONLINE BAR support and quote this order reference.'
         : 'Payment is still being confirmed. Keep this page open while we check.'
     }, {
-      status: order.status === 'reconciliation_required' ? 409 : 202,
+      status: ['reconciliation_required', 'payment_failed', 'expired', 'cancelled'].includes(order.status) ? 409 : 202,
       headers: { 'Cache-Control': 'private, no-store, max-age=0', 'Referrer-Policy': 'no-referrer' }
     });
   }

@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS public.ticketing_order_items (
 CREATE TABLE IF NOT EXISTS public.ticketing_payment_attempts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES public.ticketing_orders(id) ON DELETE RESTRICT,
-    provider TEXT NOT NULL CHECK (provider IN ('daraja', 'paystack', 'complimentary', 'manual')),
+    provider TEXT NOT NULL CHECK (provider IN ('daraja', 'paystack', 'payhero', 'complimentary', 'manual')),
     provider_reference TEXT,
     idempotency_key TEXT NOT NULL UNIQUE,
     amount_minor BIGINT NOT NULL CHECK (amount_minor >= 0),

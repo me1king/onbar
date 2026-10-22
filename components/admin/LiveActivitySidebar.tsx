@@ -69,23 +69,6 @@ export default function LiveActivitySidebar({ isOpen, setIsOpen }: { isOpen: boo
                 };
                 setPulseEvents(prev => [newEvent, ...prev].slice(0, 10));
             })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rider_status' }, (payload) => {
-                const newStatus = (payload.new as { status: string }).status;
-                const oldStatus = (payload.old as { status: string }).status;
-                const riderName = (payload.new as { rider_name: string }).rider_name;
-
-                if (newStatus === 'Idle' && oldStatus === 'Offline') {
-                    const newEvent: ActivityEvent = {
-                        id: Math.random().toString(),
-                        label: `Runner ${riderName} came Online`,
-                        time: 'Just now',
-                        type: 'rider',
-                        url: '/lord/dispatch',
-                        color: 'primary'
-                    };
-                    setPulseEvents(prev => [newEvent, ...prev].slice(0, 10));
-                }
-            })
             .subscribe();
 
         return () => {

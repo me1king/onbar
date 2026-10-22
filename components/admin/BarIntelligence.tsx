@@ -43,13 +43,20 @@ export default function BarIntelligence() {
                 const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
                 // Tactical Data Scans
-                const [ordersRes, productsRes, suppliersRes, intelRes, ledgerRes] = await Promise.all([
+                const [ordersRes, productsRes, suppliersRes, intelRes, financeResponse] = await Promise.all([
                     supabase.from('orders').select('total_price, created_at').gte('created_at', fourteenDaysAgo),
                     supabase.from('products').select('stock'),
                     supabase.from('suppliers').select('rating'),
                     supabase.from('customer_intelligence').select('user_id').gt('churn_risk_score', 80),
-                    supabase.from('financial_ledger').select('amount, entry_type, created_at').gte('created_at', fourteenDaysAgo)
+                    fetch('/api/admin/finance-data', { cache: 'no-store' })
                 ]);
+                const financeData = await financeResponse.json() as {
+                    ledger?: { amount: number; entry_type: string; created_at: string }[];
+                    errors?: { ledger?: string | null };
+                    error?: string;
+                };
+                if (!financeResponse.ok) throw new Error(financeData.error || 'Financial data could not be loaded.');
+                if (financeData.errors?.ledger) throw new Error(financeData.errors.ledger);
 
                 // Calculate Volume Trends
                 const recentOrders = ordersRes.data?.filter(o => o.created_at >= sevenDaysAgo) || [];
@@ -62,8 +69,9 @@ export default function BarIntelligence() {
                 const ordersUp = previousOrders.length > 0 ? ((recentOrders.length - previousOrders.length) / previousOrders.length) * 100 : 0;
 
                 // Margin Trend
-                const recentLedger = ledgerRes.data?.filter(l => l.created_at >= sevenDaysAgo) || [];
-                const prevLedger = ledgerRes.data?.filter(l => l.created_at < sevenDaysAgo) || [];
+                const ledger = financeData.ledger || [];
+                const recentLedger = ledger.filter(l => l.created_at >= sevenDaysAgo);
+                const prevLedger = ledger.filter(l => l.created_at < sevenDaysAgo);
 
                 const calcMargin = (entries: { amount: number, entry_type: string }[]) => {
                     const rev = entries.filter(l => l.entry_type === 'REVENUE').reduce((s, l) => s + Number(l.amount), 0);

@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Card } from '@/components/ui/card';
 import { User, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,20 +26,29 @@ export default function WorkforceHub() {
     const [staff, setStaff] = React.useState<StaffRecord[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [taskError, setTaskError] = React.useState<string | null>(null);
+    const [staffError, setStaffError] = React.useState<string | null>(null);
 
     const fetchStaff = React.useCallback(async () => {
-        if (!supabase) {
-            setLoading(false);
-            return;
-        }
-
-        const [staffRes, tasksResponse] = await Promise.all([
-            supabase.from('staff').select('*').order('last_activity_at', { ascending: false }),
+        const [staffResponse, tasksResponse] = await Promise.all([
+            fetch('/api/admin/staff', { cache: 'no-store' }).catch((error: unknown) => {
+                console.error('Could not load workforce records:', error);
+                return null;
+            }),
             fetch('/api/admin/operations/tasks', { cache: 'no-store' }).catch((error: unknown) => {
                 console.error('Could not load workforce task metrics:', error);
                 return null;
             })
         ]);
+
+        let staffRecords: StaffRecord[] = [];
+        if (staffResponse?.ok) {
+            const result = await staffResponse.json().catch(() => ({})) as { staff?: StaffRecord[] };
+            staffRecords = result.staff || [];
+            setStaffError(result.staff ? null : 'Staff records could not be loaded.');
+        } else {
+            const result = await staffResponse?.json().catch(() => ({})) as { error?: string } | undefined;
+            setStaffError(result?.error || 'Staff records could not be loaded.');
+        }
 
         let tasks: TaskRecord[] = [];
         if (tasksResponse?.ok) {
@@ -52,9 +60,9 @@ export default function WorkforceHub() {
             setTaskError(result?.error || 'Task metrics could not be loaded.');
         }
 
-        if (staffRes.data) {
+        if (staffResponse?.ok) {
             const now = new Date();
-            const processed = staffRes.data.map(s => {
+            const processed = staffRecords.map(s => {
                 const staffTasks = tasks.filter(t => t.assigned_to === s.email || t.assigned_to === 'Staff');
                 const overdue = tasks.filter(t =>
                     (t.assigned_to === s.email) &&
@@ -68,28 +76,15 @@ export default function WorkforceHub() {
                     overdue_tasks: overdue,
                 };
             });
-            setStaff(processed as StaffRecord[]);
+            setStaff(processed);
         }
         setLoading(false);
     }, []);
 
     React.useEffect(() => {
-        fetchStaff();
-
-        if (!supabase) return;
-
-        const channelId = `staff-updates-${Math.random().toString(36).substring(7)}`;
-        const staffSub = supabase.channel(channelId)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'staff' }, () => {
-                fetchStaff();
-            })
-            .subscribe();
-
-        return () => {
-            if (supabase) {
-                supabase.removeChannel(staffSub);
-            }
-        };
+        void fetchStaff();
+        const interval = window.setInterval(() => void fetchStaff(), 30_000);
+        return () => window.clearInterval(interval);
     }, [fetchStaff]);
 
     if (loading) return <div className="h-48 bg-slate-50 rounded-[3rem] animate-pulse" />;
@@ -111,6 +106,7 @@ export default function WorkforceHub() {
                 </div>
             </div>
 
+            {staffError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{staffError}</p>}
             <div className="grid gap-4">
                 {taskError && (
                     <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">

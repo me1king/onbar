@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Card } from '@/components/ui/card';
 import { DollarSign, ArrowUpRight, TrendingUp, Wallet, ArrowDownRight, Loader2 } from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
@@ -17,24 +16,28 @@ export default function FinancePulse() {
     const [loadError, setLoadError] = React.useState('');
 
     const fetchLedger = React.useCallback(async () => {
-        if (!supabase) return;
         setLoadError('');
         try {
-            const { data, error } = await supabase.from('financial_ledger').select('amount, entry_type');
-            if (error) throw error;
-            if (data) {
-                const gross = data.filter(e => e.entry_type === 'REVENUE').reduce((sum, e) => sum + Number(e.amount), 0);
-                const cost = data.filter(e => e.entry_type === 'COST').reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
-                const payouts = data.filter(e => e.entry_type === 'WITHDRAWAL').reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
-                const fees = data.filter(e => e.entry_type === 'PAYMENT_FEE').reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
+            const response = await fetch('/api/admin/finance-data', { cache: 'no-store' });
+            const result = await response.json() as {
+                ledger?: { amount: number; entry_type: string }[];
+                errors?: { ledger?: string | null };
+                error?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Financial data could not be loaded.');
+            if (result.errors?.ledger) throw new Error(result.errors.ledger);
+            const data = result.ledger || [];
+            const gross = data.filter(e => e.entry_type === 'REVENUE').reduce((sum, e) => sum + Number(e.amount), 0);
+            const cost = data.filter(e => e.entry_type === 'COST').reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
+            const payouts = data.filter(e => e.entry_type === 'WITHDRAWAL').reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
+            const fees = data.filter(e => e.entry_type === 'PAYMENT_FEE').reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
 
-                setStats({
-                    grossRevenue: gross,
-                    totalPayouts: payouts,
-                    netProfit: gross - cost - fees,
-                    fees
-                });
-            }
+            setStats({
+                grossRevenue: gross,
+                totalPayouts: payouts,
+                netProfit: gross - cost - fees,
+                fees
+            });
         } catch (error) {
             console.error('[FinancePulse] Could not load financial ledger:', error);
             setLoadError(error instanceof Error ? error.message : 'Financial ledger could not be loaded.');

@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { useState, useEffect, useCallback, Suspense } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Truck,
     LogOut,
@@ -65,7 +64,6 @@ function RiderDashboardContent() {
     const [activeMission, setActiveMission] = useState<Mission | null>(null);
 
     const verifyAndFetch = useCallback(async (riderPhone: string, riderPin: string, savedToken?: string) => {
-        if (!supabase) return;
         setLoading(true);
         setAuthError(null);
         try {
@@ -80,7 +78,16 @@ function RiderDashboardContent() {
             });
             const sessionData = await sessionResponse.json() as {
                 token?: string;
-                rider?: { id: number; name: string; phone: string; status: string; verificationStatus: string };
+                rider?: {
+                    id: number;
+                    name: string;
+                    phone: string;
+                    status: string;
+                    verificationStatus: string;
+                    currentTier?: string;
+                    rating?: number;
+                    acceptanceRate?: number;
+                };
                 error?: string;
             };
             if (!sessionResponse.ok || !sessionData.rider) {
@@ -90,21 +97,11 @@ function RiderDashboardContent() {
             if (!activeToken) throw new Error('The server did not issue a rider session.');
             const canonicalPhone = sessionData.rider.phone;
 
-            const { data: riderData, error: authErr } = await supabase
-                .from('rider_status')
-                .select('id, rider_name, rider_phone, status, verification_status, current_tier, rating, acceptance_rate, battery_level')
-                .eq('rider_phone', canonicalPhone)
-                .maybeSingle();
-
-            if (authErr || !riderData) {
-                throw new Error(authErr?.message || 'Rider profile could not be loaded.');
-            }
-
             // Fetch Real Stats & Wallet
             setStats({
-                tier: riderData.current_tier || 'Bronze',
-                rating: riderData.rating || 5.0,
-                acceptance: riderData.acceptance_rate || 100,
+                tier: sessionData.rider.currentTier || 'Bronze',
+                rating: sessionData.rider.rating || 5.0,
+                acceptance: sessionData.rider.acceptanceRate || 100,
                 maintenance: 'Healthy'
             });
 
@@ -130,10 +127,10 @@ function RiderDashboardContent() {
             localStorage.removeItem('ob_rider_pin');
             setPhone(canonicalPhone);
             setSessionToken(activeToken);
-            setRider(riderData);
+            setRider(sessionData.rider);
             setMissions(currentMissions);
             setIsIdentified(true);
-            setIsOnline(riderData.status === 'Idle' || riderData.status === 'Delivering');
+            setIsOnline(sessionData.rider.status === 'Idle' || sessionData.rider.status === 'Delivering');
         } catch (error) {
             setAuthError(error instanceof Error ? error.message : 'Rider sign-in failed.');
         } finally {

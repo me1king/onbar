@@ -585,6 +585,16 @@ html[data-ticket-theme='emerald'] .ticket-admin-theme,
   background-color: #fff7ed !important;
 }
 
+.ticket-theme-page [role="status"] {
+  background: #fff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.ticket-theme-page [role="status"] :is(.ticket-theme-text, .ticket-theme-copy, .ticket-theme-muted, .ticket-theme-accent, .ticket-theme-accent-soft) {
+  color: #0f172a !important;
+}
+
 @media (max-width: 1023px) {
   body:has([data-mobile-bottom-nav]) {
     padding-bottom: calc(5rem + env(safe-area-inset-bottom));

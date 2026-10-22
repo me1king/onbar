@@ -14,9 +14,7 @@ import {
   Play,
   Music,
   Ghost,
-  AtSign,
-  Store,
-  Activity
+  AtSign
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -254,14 +252,6 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
                           ? "inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-all duration-300 font-bold uppercase tracking-widest"
                           : "text-xs text-muted-foreground hover:text-primary transition-all duration-300 inline-block font-bold uppercase tracking-widest"}
                       >
-                        {link.href === "/merchant/onboarding" && (
-                          <span aria-hidden="true" className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600 text-white shadow-sm shadow-violet-900/20">
-                            <Store className="h-4 w-4" strokeWidth={2.4} />
-                            <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-md border-2 border-background bg-emerald-400 text-emerald-950">
-                              <Activity className="h-2 w-2" strokeWidth={3} />
-                            </span>
-                          </span>
-                        )}
                         {link.label}
                       </Link>
                     </li>

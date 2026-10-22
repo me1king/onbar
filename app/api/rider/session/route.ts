@@ -12,13 +12,16 @@ function getDatabase() {
     : null;
 }
 
-function serializeRider(rider: Record<string, unknown>) {
+function serializeRider(rider: Record<string, unknown>, dashboard?: Record<string, unknown>) {
   return {
     id: rider.id,
     name: rider.rider_name,
     phone: rider.rider_phone,
     status: rider.status,
-    verificationStatus: rider.verification_status
+    verificationStatus: rider.verification_status,
+    currentTier: dashboard?.current_tier,
+    rating: dashboard?.rating,
+    acceptanceRate: dashboard?.acceptance_rate
   };
 }
 
@@ -80,8 +83,17 @@ export async function POST(request: Request) {
   }
 
   try {
+    const { data: dashboard, error: dashboardError } = await database
+      .from('rider_status')
+      .select('current_tier, rating, acceptance_rate')
+      .eq('rider_phone', data.rider_phone)
+      .maybeSingle();
+    if (dashboardError || !dashboard) {
+      console.error('[RiderSession] Could not load rider dashboard details:', dashboardError);
+      return NextResponse.json({ error: 'Rider dashboard details could not be loaded.' }, { status: 503 });
+    }
     return NextResponse.json({
-      rider: serializeRider(data),
+      rider: serializeRider(data, dashboard),
       token: createRiderSession(data.rider_phone)
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (sessionError) {
@@ -100,7 +112,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await database
     .from('rider_status')
-    .select('id, rider_name, rider_phone, status, verification_status')
+    .select('id, rider_name, rider_phone, status, verification_status, current_tier, rating, acceptance_rate')
     .eq('rider_phone', session.phone)
     .maybeSingle();
   if (error) {
@@ -111,7 +123,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'This rider account is no longer approved.' }, { status: 401 });
   }
 
-  return NextResponse.json({ rider: serializeRider(data) }, {
+  return NextResponse.json({ rider: serializeRider(data, data) }, {
     headers: { 'Cache-Control': 'no-store' }
   });
 }

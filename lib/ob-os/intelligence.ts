@@ -52,12 +52,15 @@ export async function scanForExceptions(): Promise<OBException[]> {
     }
 
     // Scans for Dispatched riders who haven't updated location for 45 mins
-    const fortyFiveMinsAgo = new Date(now.getTime() - 45 * 60 * 1000).toISOString();
-    const { data: stalledRiders } = await supabase
-        .from('rider_status')
-        .select('rider_name, updated_at')
-        .eq('status', 'Delivering')
-        .lt('updated_at', fortyFiveMinsAgo);
+    const stalledRidersResponse = await fetch('/api/admin/intelligence/stalled-riders', { cache: 'no-store' });
+    const stalledRidersResult = await stalledRidersResponse.json() as {
+        riders?: { rider_name: string; updated_at: string }[];
+        error?: string;
+    };
+    if (!stalledRidersResponse.ok) {
+        throw new Error(stalledRidersResult.error || 'Rider health data could not be loaded.');
+    }
+    const stalledRiders = stalledRidersResult.riders || [];
 
     stalledRiders?.forEach(rider => {
         exceptions.push({

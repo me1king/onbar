@@ -73,7 +73,8 @@ export default function TicketCheckoutButton({
       });
       const result = await response.json() as { authorizationUrl?: string; error?: string; orderReference?: string; orderId?: string };
       if (!response.ok || !result.authorizationUrl) {
-        setError(result.error || 'Checkout could not be started. Please try again.');
+        const orderReference = result.orderReference ? ` Order reference: ${result.orderReference}.` : '';
+        setError(`${result.error || 'Checkout could not be started. Please try again.'}${orderReference}`);
         if (response.status === 409 || response.status === 400) keys.current = null;
         return;
       }
@@ -81,7 +82,7 @@ export default function TicketCheckoutButton({
         try {
           window.sessionStorage.setItem(`ticket-wallet:${result.orderId}`, keys.current.accessToken);
         } catch {
-          // The Paystack return link still carries the one-time wallet access token.
+          // The ticket wallet link carries the one-time access token as well.
         }
       }
       window.location.assign(result.authorizationUrl);
@@ -120,19 +121,20 @@ export default function TicketCheckoutButton({
             />
           </label>
           <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
-            WhatsApp number (include country code)
+            WhatsApp number
             <input
               autoComplete="tel"
               type="tel"
               inputMode="tel"
               maxLength={20}
-              pattern="[+][1-9][0-9 ()-]{7,24}"
-              placeholder="+254712345678"
+              pattern="(?:\+254[17][0-9]{8}|0[17][0-9]{8}|[17][0-9]{8})"
+              placeholder="0712345678 or +254712345678"
               required
               value={phone}
               onChange={event => { setPhone(event.target.value); keys.current = null; }}
               className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
+            <span className="ticket-theme-muted font-normal">Kenyan local numbers are converted to +254 automatically.</span>
           </label>
           <label className="ticket-theme-copy flex items-start gap-2 text-[10px] leading-4">
             <input
@@ -181,7 +183,7 @@ export default function TicketCheckoutButton({
               Cancel
             </button>
           </div>
-          <p className="ticket-theme-muted text-[9px] leading-4">Card and M-Pesa mobile money are processed by Paystack. Tickets are issued only after server verification.</p>
+          <p className="ticket-theme-muted text-[9px] leading-4">Paid tickets use PayHero M-Pesa. Approve the prompt sent to your phone; tickets appear here after server verification.</p>
         </form>
       )}
     </div>

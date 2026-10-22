@@ -4,13 +4,11 @@ import { randomUUID } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { decryptTicketCredential, encryptTicketCredential } from '@/lib/ticketing/credentials.server';
 import { getPublicBaseUrl } from '@/lib/utils';
+import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
 
 type Database = SupabaseClient;
 
-export function normalizeTicketPhoneNumber(value: string) {
-  const phone = value.trim().replace(/[\s()-]/g, '');
-  return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null;
-}
+export { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
 
 export function encryptTicketWalletToken(token: string) {
   return encryptTicketCredential(token);

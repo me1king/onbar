@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { NextResponse } from 'next/server';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
@@ -8,7 +8,12 @@ import {
   createTicketCredentials
 } from '@/lib/ticketing/credentials.server';
 import { initializePaystackTicketCheckout } from '@/lib/ticketing/paystack.server';
-import { encryptTicketWalletToken, normalizeTicketPhoneNumber } from '@/lib/ticketing/whatsapp.server';
+import {
+  assertPayHeroTicketPaymentConfiguration,
+  initializePayHeroTicketCheckout
+} from '@/lib/ticketing/payhero.server';
+import { encryptTicketWalletToken } from '@/lib/ticketing/whatsapp.server';
+import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
 import { logTicketNotificationFailures, sendTicketOrderNotifications } from '@/lib/ticketing/notifications.server';
 import { getPublicBaseUrl } from '@/lib/utils';
 
@@ -23,14 +28,20 @@ type CheckoutResult = {
   amount_minor: number;
   currency: string;
   payment_reference: string;
-  provider: 'paystack' | 'complimentary';
+  provider: 'paystack' | 'payhero' | 'complimentary';
   authorization_url: string | null;
+  payhero_reference?: string | null;
+  checkout_request_id?: string | null;
+  initialization_status?: string | null;
   status: string;
 };
 
-function mapCheckoutError(code?: string) {
+function mapCheckoutError(code?: string, message?: string) {
   if (code === 'P0002') return { status: 409, message: 'This event or ticket option is not currently available.' };
   if (code === 'P0001') return { status: 409, message: 'There are not enough tickets available for that quantity.' };
+  if (code === '22023' && message?.includes('whole KES')) {
+    return { status: 400, message: 'PayHero M-Pesa ticket payments must be a whole KES amount. Please contact the event organizer to correct this ticket price.' };
+  }
   if (code === '22023') return { status: 400, message: 'Check the ticket quantity and buyer details, then try again.' };
   return null;
 }
@@ -43,9 +54,6 @@ export async function POST(request: Request) {
   const database = createServerSupabaseClient();
   if (!database) {
     return NextResponse.json({ error: 'Ticketing checkout is not configured.' }, { status: 503 });
-  }
-  if (!process.env.PAYSTACK_SECRET_KEY?.trim()) {
-    return NextResponse.json({ error: 'Ticketing payment processing is not configured.' }, { status: 503 });
   }
   try {
     assertTicketCredentialEncryptionKey();
@@ -69,16 +77,30 @@ export async function POST(request: Request) {
   const buyerPhone = typeof body.phone === 'string' ? normalizeTicketPhoneNumber(body.phone) : null;
   const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
   const accessToken = typeof body.accessToken === 'string' ? body.accessToken : '';
-  if (!uuidPattern.test(eventId) || !uuidPattern.test(ticketTypeId)
-      || !Number.isInteger(quantity) || quantity < 1 || quantity > 20
-      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail) || buyerEmail.length > 320
-      || buyerName.length > 160 || !buyerPhone || body.whatsappConsent !== true
-      || !tokenPattern.test(idempotencyKey) || !tokenPattern.test(accessToken)) {
-    return NextResponse.json({ error: 'Enter a valid name, email, WhatsApp number and ticket quantity, and agree to receive your ticket link.' }, { status: 400 });
+  if (!uuidPattern.test(eventId) || !uuidPattern.test(ticketTypeId)) {
+    return NextResponse.json({ error: 'This ticket option is invalid. Refresh the page and choose a ticket again.' }, { status: 400 });
+  }
+  if (!buyerName || buyerName.length > 160) {
+    return NextResponse.json({ error: 'Enter your name to continue.' }, { status: 400 });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail) || buyerEmail.length > 320) {
+    return NextResponse.json({ error: 'Enter a valid email address to continue.' }, { status: 400 });
+  }
+  if (!buyerPhone || !/^\+254[17]\d{8}$/.test(buyerPhone)) {
+    return NextResponse.json({ error: 'Enter a valid Kenyan M-Pesa number, such as 0712345678 or +254712345678.' }, { status: 400 });
+  }
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+    return NextResponse.json({ error: 'Choose a valid ticket quantity.' }, { status: 400 });
+  }
+  if (body.whatsappConsent !== true) {
+    return NextResponse.json({ error: 'Please agree to receive your ticket wallet link by WhatsApp.' }, { status: 400 });
+  }
+  if (!tokenPattern.test(idempotencyKey) || !tokenPattern.test(accessToken)) {
+    return NextResponse.json({ error: 'Checkout security verification failed. Refresh the page and try again.' }, { status: 400 });
   }
 
   const paymentReference = `OBT-${randomBytes(16).toString('hex').toUpperCase()}`;
-  const { data, error } = await database.rpc('ticketing_create_checkout', {
+  const { data, error } = await database.rpc('ticketing_create_payhero_checkout', {
     p_event_id: eventId,
     p_ticket_type_id: ticketTypeId,
     p_quantity: quantity,
@@ -90,7 +112,7 @@ export async function POST(request: Request) {
   });
 
   if (error) {
-    const mapped = mapCheckoutError(error.code);
+    const mapped = mapCheckoutError(error.code, error.message);
     if (mapped) return NextResponse.json({ error: mapped.message }, { status: mapped.status });
     console.error('[TicketingCheckout] Could not create checkout:', error);
     return NextResponse.json({
@@ -102,7 +124,7 @@ export async function POST(request: Request) {
   if (!checkout?.order_id || !checkout.payment_reference
       || !Number.isSafeInteger(Number(checkout.amount_minor))
       || checkout.currency !== 'KES'
-      || !['paystack', 'complimentary'].includes(checkout.provider)) {
+      || !['paystack', 'payhero', 'complimentary'].includes(checkout.provider)) {
     console.error('[TicketingCheckout] Checkout RPC returned an invalid response.');
     return NextResponse.json({ error: 'Checkout could not be verified.' }, { status: 503 });
   }
@@ -181,6 +203,92 @@ export async function POST(request: Request) {
       orderReference: checkout.order_reference,
       orderId: checkout.order_id
     });
+  }
+
+  if (checkout.provider === 'payhero') {
+    if (checkout.payhero_reference) {
+      return NextResponse.json({
+        authorizationUrl: walletUrl.toString(),
+        orderReference: checkout.order_reference,
+        orderId: checkout.order_id
+      });
+    }
+    if (checkout.initialization_status) {
+      return NextResponse.json({
+        authorizationUrl: walletUrl.toString(),
+        orderReference: checkout.order_reference,
+        orderId: checkout.order_id
+      });
+    }
+
+    try {
+      assertPayHeroTicketPaymentConfiguration();
+    } catch (configurationError) {
+      console.error('[TicketingCheckout] PayHero configuration is missing:', configurationError);
+      return NextResponse.json({
+        error: 'Ticketing M-Pesa payment is not configured. Contact ONLINE BAR support.',
+        orderReference: checkout.order_reference
+      }, { status: 503 });
+    }
+
+    const { data: claimed, error: claimError } = await database.rpc('ticketing_claim_payhero_initialization', {
+      p_payment_reference: checkout.payment_reference
+    });
+    if (claimError) {
+      console.error('[TicketingCheckout] Could not claim PayHero initialization:', claimError);
+      return NextResponse.json({
+        error: 'The M-Pesa request could not be safely started. Contact ONLINE BAR support and quote the order reference.',
+        orderReference: checkout.order_reference
+      }, { status: 503 });
+    }
+    if (claimed !== true) {
+      return NextResponse.json({
+        authorizationUrl: walletUrl.toString(),
+        orderReference: checkout.order_reference,
+        orderId: checkout.order_id
+      });
+    }
+
+    try {
+      const callbackUrl = new URL('/api/payhero/ticketing/webhook', getPublicBaseUrl());
+      const callbackSecret = randomBytes(32).toString('hex');
+      callbackUrl.searchParams.set('key', callbackSecret);
+      const payment = await initializePayHeroTicketCheckout({
+        amountMinor: Number(checkout.amount_minor),
+        phone: buyerPhone,
+        customerName: buyerName,
+        externalReference: checkout.payment_reference,
+        callbackUrl: callbackUrl.toString()
+      });
+      const { data: saved, error: saveError } = await database.rpc('ticketing_save_payhero_reference', {
+        p_payment_reference: checkout.payment_reference,
+        p_payhero_reference: payment.reference,
+        p_checkout_request_id: payment.checkoutRequestId,
+        p_callback_secret_hash: createHash('sha256').update(callbackSecret).digest('hex')
+      });
+      if (saveError || saved !== true) {
+        console.error('[TicketingCheckout] Could not save the PayHero transaction reference:', saveError);
+        return NextResponse.json({
+          error: 'The M-Pesa request may already be on your phone. Do not start or approve another request; contact ONLINE BAR support and quote the order reference.',
+          orderReference: checkout.order_reference
+        }, { status: 503 });
+      }
+      return NextResponse.json({
+        authorizationUrl: walletUrl.toString(),
+        orderReference: checkout.order_reference,
+        orderId: checkout.order_id
+      });
+    } catch (checkoutError) {
+      console.error('[TicketingCheckout] PayHero could not initialize ticket payment:', checkoutError);
+      return NextResponse.json({
+        error: 'PayHero could not confirm whether the M-Pesa request started. Check your phone before retrying; do not approve a duplicate prompt.',
+        orderReference: checkout.order_reference
+      }, { status: 503 });
+    }
+  }
+
+  if (!process.env.PAYSTACK_SECRET_KEY?.trim()) {
+    return NextResponse.json({ error: 'Paystack is not configured for this existing ticket payment. Contact support before retrying.' }, { status: 503 });
   }
 
   try {

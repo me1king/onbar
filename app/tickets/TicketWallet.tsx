@@ -122,7 +122,7 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
         });
         const result = await response.json() as Wallet;
         if (!active) return;
-        if (response.status === 202 && attempts < 20) {
+        if (response.status === 202 && attempts < 120) {
           attempts += 1;
           setWaiting(true);
           setWallet(result);
@@ -221,14 +221,14 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
         {waiting && (
           <section role="status" className="ticket-theme-accent-soft flex items-start gap-3 rounded-2xl border p-4">
             <LoaderCircle className="mt-0.5 shrink-0 animate-spin" size={18} />
-            <div><p className="ticket-theme-text text-sm font-black">Confirming your payment</p><p className="ticket-theme-copy mt-1 text-xs leading-5">We are waiting for the verified payment callback. Keep this page open; no second payment is needed.</p></div>
+            <div><p className="ticket-theme-text text-sm font-black">Confirming your payment</p><p className="ticket-theme-copy mt-1 text-xs leading-5">{wallet?.message || 'We are waiting for the verified payment callback. Keep this page open; no second payment is needed.'}</p></div>
           </section>
         )}
 
         {error && !waiting && (
           <section role="alert" className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
             <AlertCircle className="mt-0.5 shrink-0 text-rose-700" size={18} />
-            <div><p className="text-sm font-black text-slate-900">We could not open your ticket wallet</p><p className="mt-1 text-xs leading-5 text-slate-700">{error}</p>
+            <div><p className="text-sm font-black text-slate-900">{wallet?.status === 'pending_payment' ? 'Payment is not confirmed yet' : wallet?.status === 'payment_failed' ? 'Payment was not completed' : 'We could not open your ticket wallet'}</p><p className="mt-1 text-xs leading-5 text-slate-700">{error}</p>
               {wallet?.orderReference && <p className="mt-2 text-xs font-bold text-slate-900">Order reference: {wallet.orderReference}</p>}
             </div>
           </section>

@@ -42,6 +42,10 @@ The admin APIs use the server-side `SUPABASE_SERVICE_ROLE_KEY`. Keep that key
 server-only; the recovery migration denies direct browser access to its finance
 tables.
 
+If the marketing dashboard reports that `marketing_campaigns.name` is missing,
+run `ADMIN_DASHBOARD_LOG_FIX_MIGRATION.sql` in the Supabase SQL Editor. It adds
+the column and fills existing campaign names from `title` when available.
+
 ## Ticketing release waves
 
 For the Online Bar Admin Ticketing module, apply
@@ -55,7 +59,8 @@ For the Online Bar Admin Ticketing module, apply
 `TICKETING_EVENT_PUBLISHING_MIGRATION.sql`,
 `TICKETING_VENUE_LOCATION_MIGRATION.sql`, and finally
 `TICKETING_EMAIL_DELIVERY_MIGRATION.sql` followed by
-`TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql`.
+`TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql` and
+`PAYHERO_TICKETING_MIGRATION.sql`.
 Wave I/II/III configuration, audited admin controls, transactional reservation
 gates, and the server-side availability query support public event listings.
 The publishing migration installs the owner-only event publish/pause RPC used

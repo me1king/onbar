@@ -388,6 +388,7 @@ CREATE TABLE IF NOT EXISTS public.marketing_campaigns (
 );
 
 ALTER TABLE public.marketing_campaigns
+    ADD COLUMN IF NOT EXISTS name TEXT,
     ADD COLUMN IF NOT EXISTS base_message TEXT,
     ADD COLUMN IF NOT EXISTS type TEXT,
     ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Draft',

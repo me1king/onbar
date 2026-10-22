@@ -1,18 +1,41 @@
 import { randomInt } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { verifySessionCookie } from '@/lib/adminAuth';
+import { getAdminSession, hasAdminPermission } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 
 export const dynamic = 'force-dynamic';
 
+export async function GET(request: Request) {
+  const session = await getAdminSession();
+  if (!session) return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
+  if (!hasAdminPermission(session, 'can_manage_orders')) {
+    return NextResponse.json({ error: 'Rider management permission is required.' }, { status: 403 });
+  }
+
+  const query = new URL(request.url).searchParams.get('q')?.trim() || '';
+  if (query.length < 2 || query.length > 80) {
+    return NextResponse.json({ riders: [] }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  }
+  const database = createServerSupabaseClient();
+  if (!database) return NextResponse.json({ error: 'Server-side rider database access is not configured.' }, { status: 503 });
+
+  const { data, error } = await database
+    .from('rider_status')
+    .select('rider_name, rider_phone')
+    .ilike('rider_name', `%${query}%`)
+    .limit(2);
+  if (error) {
+    console.error('[AdminDispatch] Could not search riders:', error);
+    return NextResponse.json({ error: 'Rider search is unavailable.' }, { status: 500 });
+  }
+  return NextResponse.json({ riders: data || [] }, {
+    headers: { 'Cache-Control': 'private, no-store, max-age=0' }
+  });
+}
+
 export async function POST(request: Request) {
-  const cookieStore = await cookies();
-  const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
-  if (!session || (
-    !['owner', 'admin'].includes(session.role.toLowerCase())
-    && session.permissions?.can_manage_orders !== true
-  )) {
+  const session = await getAdminSession();
+  if (!session || !hasAdminPermission(session, 'can_manage_orders')) {
     return NextResponse.json({ error: 'Rider management permission is required.' }, { status: 403 });
   }
 

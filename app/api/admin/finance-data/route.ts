@@ -18,7 +18,7 @@ export async function GET() {
     database.from('financial_ledger')
       .select('id, order_id, entry_type, amount, description, is_reconciled, created_at')
       .order('created_at', { ascending: false })
-      .limit(500),
+      .limit(1000),
     database.from('products').select('stock, cost_price, price').limit(5000),
     database.from('ledger_entries').select('amount, account_id').or('account_id.eq.2100,account_id.eq.2200').limit(5000),
     database.from('reconciliation_staging').select('is_matched, amount').limit(5000)
