@@ -525,9 +525,9 @@ export default function RiderOnboarding() {
                                     <h2 className="text-2xl font-black text-foreground uppercase">Bar Grid Online</h2>
                                     <p className="text-sm text-slate-500 font-medium italic">&quot;Uplink established. Welcome to the Online Bar team, bro.&quot;</p>
                                 </div>
-                                <Link href="/rider/dashboard" className="block">
+                                <Link href="/profile#workspaces" className="block">
                                     <Button className="w-full h-18 rounded-[1.8rem] bg-primary text-white font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-primary/20">
-                                        Enter Runner Hub
+                                        Open my profile
                                     </Button>
                                 </Link>
                             </div>

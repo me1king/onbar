@@ -92,7 +92,6 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
     {
       title: "Logistics",
       links: [
-        { href: "/rider/dashboard", label: "Runner Command" },
         { href: "/track", label: "Live Tracking" },
       ],
     },
@@ -101,9 +100,7 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
       links: [
         { href: "/affiliate/register", label: "Become an Affiliate" },
         { href: "/merchant/onboarding", label: "Become a Merchant" },
-        { href: "/merchant/network", label: "Partner Workspace" },
         { href: "/rider/onboarding", label: "Become a Runner" },
-        { href: "/supplier", label: "Supplier Login" },
       ],
     },
     {

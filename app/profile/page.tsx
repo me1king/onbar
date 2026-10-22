@@ -873,7 +873,7 @@ export default function ProfilePage() {
         </header>
 
         {(workspaceAccess.loading || workspaceAccess.error || workspaceAccess.merchantApplications.length > 0 || workspaceAccess.riderApproved) && (
-            <section aria-labelledby="workspaces-title" className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+            <section id="workspaces" aria-labelledby="workspaces-title" className="scroll-mt-24 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
                 <div className="flex items-start gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                         <Store size={22} />

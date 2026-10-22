@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +69,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Your approved workspace access could not be checked.' }, { status: 503 });
   }
 
-  const variants = phoneVariants(typeof profile?.phone_number === 'string' ? profile.phone_number : '');
+  const profilePhone = typeof profile?.phone_number === 'string'
+    ? normalizeTicketPhoneNumber(profile.phone_number)
+    : null;
+  const variants = profilePhone ? phoneVariants(profilePhone) : [];
   let riderApproved = false;
   if (variants.length > 0) {
     const { data: riders, error: ridersError } = await database
@@ -80,10 +84,9 @@ export async function GET(request: Request) {
       console.error('[ProfileWorkspaces] Could not check rider approval:', ridersError);
       return NextResponse.json({ error: 'Your approved workspace access could not be checked.' }, { status: 503 });
     }
-    const profileDigits = profile?.phone_number?.replace(/\D/g, '');
     riderApproved = (riders || []).some(rider =>
       rider.verification_status === 'Verified'
-      && rider.rider_phone.replace(/\D/g, '') === profileDigits
+      && normalizeTicketPhoneNumber(rider.rider_phone) === profilePhone
     );
   }
 

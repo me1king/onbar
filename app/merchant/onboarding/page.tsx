@@ -212,10 +212,10 @@ export default function MerchantOnboarding() {
           </p>
           {submittedApplicationId && <p className="mt-4 text-xs font-semibold text-slate-500">Application reference: {submittedApplicationId}</p>}
           <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
-            Track your application and, after approval, manage linked orders and inventory in the Partner Workspace. Sign in with a verified account using the same email address you submitted.
+            Track your application from your profile. Once approved, the Partner Workspace button will appear there for the verified account using the email address you submitted.
           </p>
-          <Link href="/merchant/network" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-primary px-6 text-sm font-black uppercase text-white hover:opacity-90">
-            Open Partner Workspace
+          <Link href="/profile#workspaces" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-primary px-6 text-sm font-black uppercase text-white hover:opacity-90">
+            Go to my profile
           </Link>
           <Link href="/" className="mt-8 inline-flex text-sm font-bold text-primary hover:underline">Return to OnBar</Link>
         </Card>
