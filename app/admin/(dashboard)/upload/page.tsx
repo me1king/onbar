@@ -39,6 +39,7 @@ import { useSettings } from '@/lib/useSettings';
 import { logAuditAction } from '@/lib/auditService';
 import { auditImageQuality, standardizeImageCanvas, type ImageAuditResult } from '@/lib/engines/imageEngine';
 import { getStoredVariantPrices } from '@/lib/productPricing';
+import { getAdminProductCategoryOptions } from '@/lib/productCategories';
 
 const initialForm = {
   name: '',
@@ -207,9 +208,7 @@ function UploadContent() {
           : products,
       [categoryScope, products]
   );
-  const categoryOptions = settings.catalog.categories.some(category => category.id.toLowerCase() === 'extras')
-      ? settings.catalog.categories
-      : [...settings.catalog.categories, { id: 'extras', label: 'Extras' }];
+  const categoryOptions = getAdminProductCategoryOptions(settings.catalog.categories);
 
   // Section States
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
