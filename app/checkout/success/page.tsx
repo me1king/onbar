@@ -9,12 +9,16 @@ import Link from "next/link";
 import { formatPrice, getReferralLink } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useSettings } from "@/lib/useSettings";
+import ReceiptPrintButton from "@/components/receipt/ReceiptPrintButton";
+import { generateReceiptPDF } from "@/lib/receiptService";
 
 interface Order {
     id: number;
     customer_name: string;
+    customer_phone: string;
     total_price: number;
     status: string;
+    created_at: string;
     user_id: string | null;
     session_id: string | null;
     payment_method: string | null;
@@ -193,6 +197,22 @@ function SuccessContent() {
         window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
     };
 
+    const downloadReceipt = async () => {
+        if (!order) throw new Error('Order details are not available yet.');
+        const receipt = await generateReceiptPDF({
+            id: order.id,
+            customer_name: order.customer_name,
+            customer_phone: order.customer_phone,
+            created_at: order.created_at,
+            payment_method: order.payment_method || 'Not specified',
+            product_name: 'Online Bar order',
+            quantity: 1,
+            total_price: order.total_price,
+            status: order.status
+        });
+        receipt.save(`Receipt_OnlineBar_${order.id}.pdf`);
+    };
+
     if (loading) {
         return (
             <div className="flex min-h-[60dvh] items-center justify-center">
@@ -276,7 +296,15 @@ function SuccessContent() {
                                 <span className="text-2xl font-black text-foreground">{formatPrice(order?.total_price || 0)}</span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                <ReceiptPrintButton
+                                    orderId={order?.id || 'pending'}
+                                    total={order?.total_price || 0}
+                                    paymentMethod={order?.payment_method || 'Payment'}
+                                    status={order?.status || 'Checking'}
+                                    onPrint={downloadReceipt}
+                                    disabled={!order}
+                                />
                                 <Button
                                     onClick={shareToWhatsApp}
                                     variant="outline"

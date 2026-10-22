@@ -1,5 +1,34 @@
 @import "tailwindcss";
 
+@keyframes receipt-print {
+  from { transform: translateY(-115%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes receipt-progress {
+  from { width: 0; }
+  to { width: 88%; }
+}
+
+.receipt-paper {
+  animation: receipt-print 1.35s cubic-bezier(.18,.72,.22,1) both;
+}
+
+.receipt-paper-done {
+  transform: translateY(0);
+}
+
+.receipt-progress {
+  animation: receipt-progress 1.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .receipt-paper,
+  .receipt-progress {
+    animation-duration: 0.01ms;
+  }
+}
+
 :root {
   /* Original brand palette: warm cream, deep green, and bold red */
   --background: #F9F4EC;

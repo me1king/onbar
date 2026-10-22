@@ -10,7 +10,6 @@ import {
   User,
   DollarSign,
   Tag,
-  FileDown,
   MessageSquareShare,
   Table,
   Link2,
@@ -30,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { formatPrice, cn } from '@/lib/utils';
 import { generateReceiptPDF, getWhatsAppReceiptLink } from '@/lib/receiptService';
+import ReceiptPrintButton from '@/components/receipt/ReceiptPrintButton';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 
@@ -291,8 +291,16 @@ export default function AdminOrdersPage() {
   };
 
   const handleDownloadReceipt = async (order: OrderRecord) => {
-      const productName = order.order_items?.[0] ? productNameMap.get(order.order_items[0].product_id) : 'Multiple Beverages';
-      const doc = await generateReceiptPDF({...order, product_name: productName} as Parameters<typeof generateReceiptPDF>[0]);
+      const receiptItems = order.order_items?.map(item => ({
+          ...item,
+          product_name: productNameMap.get(item.product_id) || 'Beverage Purchase'
+      }));
+      const doc = await generateReceiptPDF({
+          ...order,
+          quantity: order.order_items?.reduce((sum, item) => sum + item.quantity, 0) || 1,
+          product_name: receiptItems?.length === 1 ? receiptItems[0].product_name : 'Multiple Beverages',
+          order_items: receiptItems
+      });
       doc.save(`Receipt_OnlineBar_${order.id}.pdf`);
   };
 
@@ -892,15 +900,15 @@ export default function AdminOrdersPage() {
                                 </td>
                                 <td className="px-8 py-8 text-right rounded-r-[1.5rem]">
                                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-9 w-9 rounded-xl hover:bg-white hover:shadow-xl text-slate-400 hover:text-primary transition-all active:scale-95"
-                                            onClick={() => handleDownloadReceipt(order)}
-                                            title="Download PDF Receipt"
-                                        >
-                                            <FileDown className="h-4 w-4" />
-                                        </Button>
+                                        <ReceiptPrintButton
+                                            orderId={order.id}
+                                            total={order.total_price}
+                                            paymentMethod={order.payment_method}
+                                            status={order.status}
+                                            onPrint={() => handleDownloadReceipt(order)}
+                                            iconOnly
+                                            className="hover:bg-white hover:shadow-xl hover:text-primary"
+                                        />
                                         <Button
                                             variant="ghost"
                                             size="icon"

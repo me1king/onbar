@@ -10,9 +10,16 @@ interface Order {
     payment_method: string;
     product_id?: string | number;
     product_name?: string;
-    quantity: number;
+    quantity?: number;
     total_price: number;
     status: string;
+    order_items?: Array<{
+        product_id: number;
+        quantity: number;
+        unit_price: number;
+        size?: string;
+        product_name?: string;
+    }>;
 }
 
 /**
@@ -38,32 +45,39 @@ export async function generateReceiptPDF(order: Order) {
     doc.setFontSize(10);
     doc.text(`Date: ${new Date(order.created_at).toLocaleDateString()}`, 140, 26);
     doc.text(`Payment: ${order.payment_method}`, 140, 31);
+    doc.text(`Status: ${order.status}`, 140, 36);
 
     // Customer Info
-    doc.line(14, 40, 196, 40);
+    doc.line(14, 44, 196, 44);
     doc.setFontSize(10);
-    doc.text('BILL TO:', 14, 50);
+    doc.text('BILL TO:', 14, 53);
     doc.setFontSize(12);
-    doc.text(order.customer_name, 14, 56);
+    doc.text(order.customer_name, 14, 59);
     doc.setFontSize(10);
-    doc.text(order.customer_phone, 14, 61);
+    doc.text(order.customer_phone, 14, 64);
 
     // Table
-    const tableData = [
-        ['Item ID', 'Description', 'Qty', 'Unit Price', 'Total'],
-        [
-            `#${order.product_id || 'N/A'}`,
-            order.product_name || 'Beverage Purchase',
-            order.quantity,
-            formatPrice(order.total_price / order.quantity),
-            formatPrice(order.total_price)
-        ]
-    ];
+    const items = order.order_items?.length
+        ? order.order_items
+        : [{
+            product_id: Number(order.product_id) || 0,
+            product_name: order.product_name || 'Online Bar Order',
+            quantity: order.quantity || 1,
+            unit_price: order.total_price / (order.quantity || 1),
+            size: ''
+        }];
+    const tableRows = items.map(item => [
+        `#${item.product_id || 'N/A'}`,
+        `${item.product_name || 'Beverage Purchase'}${item.size ? ` (${item.size})` : ''}`,
+        String(item.quantity),
+        formatPrice(item.unit_price),
+        formatPrice(item.unit_price * item.quantity)
+    ]);
 
     autoTable(doc, {
-        startY: 75,
-        head: [tableData[0]],
-        body: [tableData[1]],
+        startY: 78,
+        head: [['Item ID', 'Description', 'Qty', 'Unit Price', 'Total']],
+        body: tableRows,
         theme: 'grid',
         headStyles: { fillColor: [20, 20, 20], textColor: [255, 255, 255] },
         styles: { fontSize: 10, cellPadding: 5 }
