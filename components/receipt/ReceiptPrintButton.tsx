@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, LoaderCircle, Printer, ReceiptText, Sparkles, X } from 'lucide-react';
 import { cn, formatPrice } from '@/lib/utils';
 
@@ -10,6 +10,7 @@ type ReceiptPrintButtonProps = {
   paymentMethod: string;
   status: string;
   onPrint: () => Promise<void> | void;
+  autoStart?: boolean;
   className?: string;
   iconOnly?: boolean;
   disabled?: boolean;
@@ -21,6 +22,7 @@ export default function ReceiptPrintButton({
   paymentMethod,
   status,
   onPrint,
+  autoStart = false,
   className,
   iconOnly = false,
   disabled = false
@@ -29,8 +31,9 @@ export default function ReceiptPrintButton({
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoStarted = useRef(false);
 
-  const startPrinting = async () => {
+  const startPrinting = useCallback(async () => {
     if (isPrinting || disabled) return;
     setError('');
     setIsComplete(false);
@@ -50,7 +53,14 @@ export default function ReceiptPrintButton({
       setError(printError instanceof Error ? printError.message : 'The receipt could not be printed.');
       setIsPrinting(false);
     }
-  };
+  }, [disabled, isPrinting, onPrint]);
+
+  useEffect(() => {
+    if (autoStart && !disabled && !autoStarted.current) {
+      autoStarted.current = true;
+      void startPrinting();
+    }
+  }, [autoStart, disabled, startPrinting]);
 
   const closeAnimation = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -79,12 +89,12 @@ export default function ReceiptPrintButton({
 
       {(isPrinting || error) && (
         <div
-          className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-md"
+          className="fixed inset-0 z-[500] flex justify-end bg-slate-950/65 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
           aria-labelledby="receipt-print-title"
         >
-          <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/70 bg-[#fffdf9] p-6 text-center shadow-[0_32px_100px_rgba(0,0,0,0.35)] sm:p-8">
+          <div className="receipt-side-panel relative flex min-h-full w-full max-w-md flex-col justify-center overflow-hidden rounded-l-[2rem] border border-r-0 border-white/70 bg-[#fffdf9] p-6 text-center shadow-[-24px_0_80px_rgba(0,0,0,0.22)] sm:min-h-0 sm:self-center sm:rounded-[2rem] sm:border-r sm:p-8">
             <button
               type="button"
               aria-label="Close receipt animation"

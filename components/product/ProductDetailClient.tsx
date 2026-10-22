@@ -95,6 +95,14 @@ export default function ProductDetailClient({
   const { trackClick } = useInteractionTracking();
   const isFoodProduct = Boolean(product.is_bite || product.is_snack);
   const variantPrices = getStoredVariantPrices(product.variant_prices, product.beverage_specs);
+  const productCategory = `${product.category || ''} ${product.sub_category || ''} ${product.name}`.toLowerCase();
+  const servingSuggestion = /whisk|whiskey|whisky|spirit|brandy|gin|vodka|rum|tequila|cognac|liqueur/.test(productCategory)
+    ? 'Enjoy neat or over ice'
+    : /wine|champagne|prosecco|beer|cider/.test(productCategory)
+      ? 'Best enjoyed chilled'
+      : null;
+  const recommendedGlassware = product.beverage_specs?.perfect_serve?.glassware
+    || product.beverage_specs?.glassware;
 
   const [dossier, setDossier] = useState<ProductDossier | null>(null);
   const sensoryProfile = getSensoryProfile(dossier?.sensory_dna)
@@ -572,19 +580,6 @@ export default function ProductDetailClient({
                     </div>
                 </div>
 
-                <div className="space-y-6 px-4">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-3">
-                        <Utensils size={14} className="text-brand-red" /> Goes Well With
-                    </p>
-                    <div className="flex flex-wrap gap-3">
-                        {(product.pairing_suggestions || []).map(chip => (
-                            <span key={chip} className="px-5 py-2.5 bg-white border border-slate-100 rounded-full text-[11px] font-black text-slate-600 uppercase shadow-sm hover:border-brand-red transition-colors cursor-default">{chip}</span>
-                        ))}
-                        {(!product.pairing_suggestions || product.pairing_suggestions.length === 0) && (
-                            <p className="text-xs font-medium text-slate-400">Pairing suggestions are unavailable for this product.</p>
-                        )}
-                    </div>
-                </div>
             </div>
             )}
         </div>
@@ -803,6 +798,71 @@ export default function ProductDetailClient({
                         </Button>
                     </div>
                 </div>
+
+                {!isFoodProduct && (
+                    <section className="group/pairings relative isolate overflow-hidden rounded-[1.75rem] border border-orange-100 bg-gradient-to-br from-[#fffdfa] via-white to-orange-50/70 p-5 shadow-[0_14px_35px_-24px_rgba(194,65,12,0.4)] transition-all duration-500 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_22px_45px_-24px_rgba(194,65,12,0.38)] sm:p-6">
+                        <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-16 -z-10 h-40 w-40 rounded-full bg-amber-200/30 blur-3xl transition-transform duration-700 group-hover/pairings:scale-150" />
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-brand-red text-white shadow-lg shadow-orange-900/15 transition-transform duration-500 group-hover/pairings:rotate-6 group-hover/pairings:scale-110">
+                                <Utensils size={18} />
+                            </div>
+                            <div>
+                                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-orange-700">Made for a great pour</p>
+                                <h2 className="text-lg font-black tracking-tight text-slate-950">Pairs well with</h2>
+                            </div>
+                            <Heart size={17} className="ml-auto text-rose-300 transition-all duration-500 group-hover/pairings:scale-125 group-hover/pairings:fill-rose-300" />
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {(product.pairing_suggestions || []).slice(0, 6).map((pairing, index) => {
+                                const suggestion = pairing.toLowerCase();
+                                const icon = /choma|grill|beef|meat|steak|bbq/.test(suggestion) ? '🥩'
+                                    : /cheese|cheddar/.test(suggestion) ? '🧀'
+                                        : /chocolate|dessert|sweet/.test(suggestion) ? '🍫'
+                                            : /nut/.test(suggestion) ? '🥜'
+                                                : /fish|seafood/.test(suggestion) ? '🐟'
+                                                    : /fruit|berry|apple/.test(suggestion) ? '🍓'
+                                                        : ['🍽️', '✨', '🍊', '🫒', '🥂', '🌿'][index % 6];
+                                return (
+                                    <span
+                                        key={`${pairing}-${index}`}
+                                        className="inline-flex animate-in fade-in slide-in-from-bottom-1 items-center gap-2 rounded-full border border-orange-100 bg-white/90 px-3.5 py-2 text-xs font-bold text-slate-800 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-50 hover:shadow-md"
+                                        style={{ animationDelay: `${index * 60}ms` }}
+                                    >
+                                        <span aria-hidden="true">{icon}</span>
+                                        {pairing}
+                                    </span>
+                                );
+                            })}
+                            {(!product.pairing_suggestions || product.pairing_suggestions.length === 0) && (
+                                <span className="rounded-full border border-orange-100 bg-white/90 px-3.5 py-2 text-xs font-semibold text-slate-600">
+                                    A relaxed pour with your favourite bites
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-orange-100/80 pt-4 text-xs text-slate-700">
+                            {product.temperature_celsius != null && Number.isFinite(Number(product.temperature_celsius)) && (
+                                <span className="inline-flex items-center gap-2">
+                                    <span aria-hidden="true">🌡️</span>
+                                    Serve at <strong className="text-brand-red">{Number(product.temperature_celsius)}°C</strong>
+                                </span>
+                            )}
+                            {recommendedGlassware && (
+                                <span className="inline-flex items-center gap-2">
+                                    <span aria-hidden="true">🥂</span>
+                                    Glass <strong className="text-brand-red">{recommendedGlassware}</strong>
+                                </span>
+                            )}
+                            {servingSuggestion && (
+                                <span className="inline-flex items-center gap-2">
+                                    <span aria-hidden="true">🧊</span>
+                                    <strong className="text-brand-red">{servingSuggestion}</strong>
+                                </span>
+                            )}
+                        </div>
+                    </section>
+                )}
 
                 <div className="space-y-3 rounded-2xl border border-amber-100 bg-white p-4 shadow-sm sm:p-5">
                     <p className="flex items-start gap-3 text-sm leading-relaxed text-slate-800">

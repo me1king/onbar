@@ -23,6 +23,7 @@ export interface Product {
   wholesale_price?: number;
   wholesale_min_qty?: number;
   stock?: number;
+  temperature_celsius?: number | null;
   sizes?: string[];
   variant_stock?: Record<string, number>;
   variant_prices?: Record<string, number>;

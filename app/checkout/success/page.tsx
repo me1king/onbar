@@ -22,6 +22,13 @@ interface Order {
     user_id: string | null;
     session_id: string | null;
     payment_method: string | null;
+    order_items?: Array<{
+        product_id: number | null;
+        product_name?: string;
+        quantity: number;
+        unit_price: number;
+        size?: string;
+    }>;
     isAccountOrder?: boolean;
 }
 
@@ -29,6 +36,7 @@ function SuccessContent() {
     const searchParams = useSearchParams();
     const orderId = searchParams?.get("orderId");
     const [order, setOrder] = useState<Order | null>(null);
+    const [receiptDetailsLoaded, setReceiptDetailsLoaded] = useState(false);
     const [referralCode, setReferralCode] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [loyaltyNotice, setLoyaltyNotice] = useState('');
@@ -129,6 +137,7 @@ function SuccessContent() {
                 if (!active) return;
 
                 setOrder(result.order);
+                setReceiptDetailsLoaded(true);
                 setStatusError('');
                 if (
                     !loyaltyProcessed
@@ -205,6 +214,13 @@ function SuccessContent() {
             customer_phone: order.customer_phone,
             created_at: order.created_at,
             payment_method: order.payment_method || 'Not specified',
+            order_items: order.order_items?.map((item) => ({
+                product_id: item.product_id ?? 0,
+                product_name: item.product_name || `Product ${item.product_id ?? ''}`.trim(),
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                size: item.size || undefined
+            })),
             product_name: 'Online Bar order',
             quantity: 1,
             total_price: order.total_price,
@@ -303,7 +319,8 @@ function SuccessContent() {
                                     paymentMethod={order?.payment_method || 'Payment'}
                                     status={order?.status || 'Checking'}
                                     onPrint={downloadReceipt}
-                                    disabled={!order}
+                                    autoStart={Boolean(isConfirmed && receiptDetailsLoaded)}
+                                    disabled={!isConfirmed}
                                 />
                                 <Button
                                     onClick={shareToWhatsApp}

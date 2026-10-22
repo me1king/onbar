@@ -10,6 +10,15 @@
   to { width: 88%; }
 }
 
+@keyframes receipt-panel-enter {
+  from { opacity: 0; transform: translateX(36px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.receipt-side-panel {
+  animation: receipt-panel-enter 320ms cubic-bezier(.2,.75,.25,1) both;
+}
+
 .receipt-paper {
   animation: receipt-print 1.35s cubic-bezier(.18,.72,.22,1) both;
 }
@@ -24,7 +33,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .receipt-paper,
-  .receipt-progress {
+  .receipt-progress,
+  .receipt-side-panel {
     animation-duration: 0.01ms;
   }
 }

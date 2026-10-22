@@ -52,6 +52,35 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
   }
 
+  let orderItems: Array<{ product_id: number | null; quantity: number; unit_price: number; size: string | null }> = [];
+  if (['Paid', 'Delivered', 'Completed'].includes(order.status)) {
+    const { data, error } = await database
+      .from('order_items')
+      .select('product_id, quantity, unit_price, size')
+      .eq('order_id', orderId);
+    if (error) {
+      console.error('[OrderStatus] Could not load order items for receipt:', error);
+    } else {
+      orderItems = data || [];
+    }
+  }
+
+  const productIds = [...new Set((orderItems || [])
+    .map((item) => item.product_id)
+    .filter((productId): productId is number => typeof productId === 'number'))];
+  let productNames = new Map<number, string>();
+  if (productIds.length > 0) {
+    const { data: products, error: productsError } = await database
+      .from('products')
+      .select('id, name')
+      .in('id', productIds);
+    if (productsError) {
+      console.error('[OrderStatus] Could not load product names for receipt:', productsError);
+    } else {
+      productNames = new Map((products || []).map((product) => [product.id, product.name]));
+    }
+  }
+
   return NextResponse.json({
     order: {
       id: order.id,
@@ -61,6 +90,13 @@ export async function GET(request: Request) {
       status: order.status,
       payment_method: order.payment_method,
       created_at: order.created_at,
+      order_items: (orderItems || []).map((item) => ({
+        product_id: item.product_id,
+        product_name: item.product_id ? productNames.get(item.product_id) : undefined,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        size: item.size
+      })),
       isAccountOrder: Boolean(authenticatedUserId && order.user_id === authenticatedUserId)
     }
   }, {
