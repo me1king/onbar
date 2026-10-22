@@ -5,7 +5,7 @@ import { useWishlist } from "@/context/WishlistContext";
 import { getLocalSession } from "@/lib/localAuth";
 import { supabase } from "../../lib/supabaseClient";
 import Image from 'next/image';
-import { Menu, Search, ShoppingCart, Heart, X, Wine, Zap, Package, User as UserIcon, Bell, CheckCircle, ChevronRight, History, ArrowRight } from "lucide-react";
+import { Menu, Search, ShoppingCart, Heart, X, Zap, Package, User as UserIcon, Bell, CheckCircle, ChevronRight, History, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
@@ -421,14 +421,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
               href="/"
               aria-label="Online Bar Home"
             >
-              {settings?.branding?.logo_url ? (
-                  <Image src={settings.branding.logo_url} alt="Logo" width={100} height={40} className="h-6 sm:h-8 w-auto" priority />
-              ) : (
-                  <>
-                    <Wine className="h-5 w-5 max-[360px]:h-4 max-[360px]:w-4 sm:h-6 sm:w-6 text-primary" />
-                    <span>Online<span className="text-primary">Bar</span></span>
-                  </>
-              )}
+              <span>Online<span className="text-primary">Bar</span></span>
             </Link>
 
           </div>

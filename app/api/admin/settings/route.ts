@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { sanitizeSettingsRows } from '@/lib/settingsSanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,18 @@ type SettingUpdate = {
   value: Record<string, unknown>;
   is_published?: boolean;
 };
+
+const AI_SECRET_FIELDS = [
+  'google_gemini_api_key',
+  'openai_api_key',
+  'anthropic_claude_api_key'
+] as const;
+
+function removeStoredAiSecrets(value: Record<string, unknown>) {
+  const safeValue = { ...value };
+  for (const field of AI_SECRET_FIELDS) delete safeValue[field];
+  return safeValue;
+}
 
 function isHexColor(value: unknown): value is string {
   return typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
@@ -53,6 +66,28 @@ function isSettingUpdate(value: unknown): value is SettingUpdate {
   }
 
   return true;
+}
+
+export async function GET() {
+  const session = await getAdminSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Admin access is required.' }, { status: 401 });
+  }
+  if (!hasAdminPermission(session, 'can_manage_settings')) {
+    return NextResponse.json({ error: 'Website settings management access is required.' }, { status: 403 });
+  }
+  const database = createServerSupabaseClient();
+  if (!database) {
+    return NextResponse.json({ error: 'Server database access is not configured.' }, { status: 503 });
+  }
+  const { data, error } = await database.from('settings').select('*');
+  if (error) {
+    console.error('[AdminSettings] Could not load settings:', error);
+    return NextResponse.json({ error: 'Settings could not be loaded.' }, { status: 503 });
+  }
+  return NextResponse.json({ settings: sanitizeSettingsRows(data || []) }, {
+    headers: { 'Cache-Control': 'private, no-store, max-age=0' }
+  });
 }
 
 export async function PUT(request: Request) {
@@ -95,7 +130,7 @@ export async function PUT(request: Request) {
   const { error } = await database.from('settings').upsert(
     body.settings.map((setting: SettingUpdate) => ({
       key: setting.key,
-      value: setting.value,
+      value: setting.key === 'ai_config' ? removeStoredAiSecrets(setting.value) : setting.value,
       is_published: setting.is_published ?? true,
       updated_at: updatedAt
     })),

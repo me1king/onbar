@@ -511,6 +511,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The order items could not be saved. Please try again.' }, { status: 503 });
     }
 
+    if (pointsRedeemed > 0 && userId) {
+      const { error: redemptionError } = await database.rpc('apply_loyalty_points', {
+        profile_id_input: userId,
+        amount_input: -pointsRedeemed,
+        description_input: `Reserved at checkout for order #${order.id}`,
+        event_key_input: `order:${order.id}:redeem`
+      });
+      if (redemptionError) {
+        const { error: cleanupError } = await database.from('orders').delete().eq('id', order.id);
+        if (cleanupError) {
+          console.error('[CheckoutOrder] Could not remove order after points reservation failed:', cleanupError);
+        }
+        const pointsChanged = /insufficient loyalty points/i.test(redemptionError.message);
+        if (!pointsChanged) {
+          console.error('[CheckoutOrder] Could not reserve loyalty points:', redemptionError);
+        }
+        return NextResponse.json({
+          error: pointsChanged
+            ? 'Your loyalty balance changed during checkout. Refresh and try again.'
+            : 'Loyalty points could not be reserved. Please try again.'
+        }, { status: pointsChanged ? 409 : 503 });
+      }
+    }
+
     return NextResponse.json({
       orderId: order.id,
       reference,

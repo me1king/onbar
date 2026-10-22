@@ -22,6 +22,7 @@ import {
   MapPin,
   Phone,
   User as UserIcon,
+  Store,
   X,
   Loader2,
   ChevronRight,
@@ -119,6 +120,13 @@ interface ReferralNetworkStats {
   levelCounts: number[];
 }
 
+interface WorkspaceAccess {
+  loading: boolean;
+  error: string | null;
+  merchantApplications: Array<{ id: string; businessName: string; status: string }>;
+  riderApproved: boolean;
+}
+
 interface Coupon {
   code: string;
   discount: string;
@@ -194,6 +202,12 @@ export default function ProfilePage() {
   const [referralStats, setReferralStats] = useState<ReferralNetworkStats | null>(null);
   const [referralStatsError, setReferralStatsError] = useState<string | null>(null);
   const [affiliateStatus, setAffiliateStatus] = useState<string | null>(null);
+  const [workspaceAccess, setWorkspaceAccess] = useState<WorkspaceAccess>({
+    loading: true,
+    error: null,
+    merchantApplications: [],
+    riderApproved: false
+  });
   const [abandonedBag, setAbandonedBag] = useState<AbandonedCart | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [isPickingLocation, setIsPickingLocation] = useState(false);
@@ -236,6 +250,34 @@ export default function ProfilePage() {
         }
 
         setUser(session.user);
+        void (async () => {
+            try {
+                const response = await fetch('/api/profile/workspaces', {
+                    headers: { Authorization: `Bearer ${session.access_token}` },
+                    cache: 'no-store'
+                });
+                const result = await response.json() as {
+                    merchantApplications?: WorkspaceAccess['merchantApplications'];
+                    riderApproved?: boolean;
+                    error?: string;
+                };
+                if (!response.ok) throw new Error(result.error || 'Workspace access could not be checked.');
+                setWorkspaceAccess({
+                    loading: false,
+                    error: null,
+                    merchantApplications: result.merchantApplications || [],
+                    riderApproved: result.riderApproved === true
+                });
+            } catch (workspaceError) {
+                console.error('[Profile] Could not load approved workspace access:', workspaceError);
+                setWorkspaceAccess({
+                    loading: false,
+                    error: workspaceError instanceof Error ? workspaceError.message : 'Workspace access could not be checked.',
+                    merchantApplications: [],
+                    riderApproved: false
+                });
+            }
+        })();
         try {
             const response = await fetch('/api/affiliate', {
                 headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -829,6 +871,51 @@ export default function ProfilePage() {
             {/* Background Pattern */}
             <Zap className="absolute -bottom-10 -right-10 h-64 w-64 text-slate-100/50 rotate-12 -z-0" />
         </header>
+
+        {(workspaceAccess.loading || workspaceAccess.error || workspaceAccess.merchantApplications.length > 0 || workspaceAccess.riderApproved) && (
+            <section aria-labelledby="workspaces-title" className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+                <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                        <Store size={22} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <h2 id="workspaces-title" className="text-lg font-black uppercase tracking-tight text-foreground">Your workspaces</h2>
+                        <p className="mt-1 text-sm text-slate-500">Dashboard access appears here after OnBar approves the matching business or rider account.</p>
+                        {workspaceAccess.loading ? (
+                            <p role="status" className="mt-4 text-sm text-slate-500">Checking approved workspace access…</p>
+                        ) : workspaceAccess.error ? (
+                            <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                                Workspace access could not be checked. Refresh your profile or contact OnBar support.
+                            </p>
+                        ) : (
+                            <div className="mt-4 flex flex-wrap gap-3">
+                                {workspaceAccess.merchantApplications.map(application => application.status === 'approved' ? (
+                                    <Link
+                                        key={application.id}
+                                        href="/merchant/network"
+                                        className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-xs font-black uppercase tracking-wide text-white transition hover:opacity-90"
+                                    >
+                                        <Store size={15} /> {application.businessName} workspace
+                                    </Link>
+                                ) : (
+                                    <p key={application.id} className="w-full text-sm text-slate-600">
+                                        Merchant application for <strong>{application.businessName}</strong>: {application.status.replaceAll('_', ' ')}. The workspace link will appear after approval.
+                                    </p>
+                                ))}
+                                {workspaceAccess.riderApproved && (
+                                    <Link
+                                        href={profile?.phone_number ? `/rider/dashboard?phone=${encodeURIComponent(profile.phone_number)}` : '/rider/dashboard'}
+                                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-foreground transition hover:border-primary/40 hover:text-primary"
+                                    >
+                                        <Truck size={15} /> Open rider dashboard
+                                    </Link>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </section>
+        )}
 
         {/* 📦 MY ORDERS & DISPATCH HISTORY */}
         <section id="orders" className="space-y-6 scroll-mt-24">

@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
 
 export async function POST(request: Request) {
     try {
+        if (!isSameOriginRequest(request)) {
+            return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+        }
+        const session = await getAdminSession();
+        if (!session || !hasAdminPermission(session, 'can_manage_inventory')) {
+            return NextResponse.json({ error: 'Inventory management access is required.' }, { status: 403 });
+        }
+
         const { name, category, description, locale } = await request.json();
 
         if (typeof name !== 'string' || !name.trim()) {
@@ -16,27 +24,8 @@ export async function POST(request: Request) {
         ].filter(Boolean).join('\n');
         let providerFailure = false;
 
-        // 1. Resolve Active Gemini / OpenAI API Key (Environment variable or Admin Panel Settings)
-        let activeGeminiKey = process.env.GOOGLE_GEMINI_API_KEY;
-        let activeOpenAIKey = process.env.OPENAI_API_KEY;
-
-        if ((!activeGeminiKey || !activeOpenAIKey) && supabase) {
-            try {
-                const { data: aiSettings } = await supabase
-                    .from('settings')
-                    .select('value')
-                    .eq('key', 'ai_config')
-                    .single();
-
-                if (aiSettings?.value) {
-                    const cfg = aiSettings.value as Record<string, string>;
-                    if (cfg.google_gemini_api_key) activeGeminiKey = cfg.google_gemini_api_key;
-                    if (cfg.openai_api_key) activeOpenAIKey = cfg.openai_api_key;
-                }
-            } catch (err) {
-                console.warn("AI Settings Key Fetch Warning:", err);
-            }
-        }
+        const activeGeminiKey = process.env.GOOGLE_GEMINI_API_KEY?.trim();
+        const activeOpenAIKey = process.env.OPENAI_API_KEY?.trim();
 
         // If Gemini fails or returns no description, try the configured OpenAI provider.
         if (activeGeminiKey) {

@@ -5,6 +5,7 @@ import { verifySessionCookie } from '@/lib/adminAuth';
 import { InvalidImageUploadError, normalizeImageToAvif } from '@/lib/imageStorage.server';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 const BUCKET = 'onlinebar-assets';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -31,7 +32,7 @@ async function getAuthorizedDatabase(): Promise<AuthorizedDatabase> {
     };
 }
 
-export async function POST(request: Request) {
+async function uploadProductImage(request: Request) {
     const access = await getAuthorizedDatabase();
     if ('response' in access) return access.response;
 
@@ -71,8 +72,8 @@ export async function POST(request: Request) {
         return NextResponse.json({
             error: missingBucket
                 ? `The ${BUCKET} Storage bucket is missing. Run supabase/FINAL_ESTABLISHMENT_SQL.sql in Supabase.`
-                : `Product image upload failed: ${error.message}`
-        }, { status: 500 });
+                : 'Product image storage is temporarily unavailable. Please try again.'
+        }, { status: 503 });
     }
 
     return NextResponse.json({
@@ -81,7 +82,16 @@ export async function POST(request: Request) {
     });
 }
 
-export async function DELETE(request: Request) {
+export async function POST(request: Request) {
+    try {
+        return await uploadProductImage(request);
+    } catch (error) {
+        console.error('[ProductImage] Unexpected product image upload failure:', error);
+        return NextResponse.json({ error: 'Product image upload could not be completed. Please try again.' }, { status: 500 });
+    }
+}
+
+async function deleteProductImage(request: Request) {
     const access = await getAuthorizedDatabase();
     if ('response' in access) return access.response;
 
@@ -101,4 +111,13 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: `Could not remove the unlinked product photo: ${error.message}` }, { status: 500 });
     }
     return NextResponse.json({ success: true });
+}
+
+export async function DELETE(request: Request) {
+    try {
+        return await deleteProductImage(request);
+    } catch (error) {
+        console.error('[ProductImage] Unexpected product image cleanup failure:', error);
+        return NextResponse.json({ error: 'The unlinked product image could not be removed. Please try again.' }, { status: 500 });
+    }
 }

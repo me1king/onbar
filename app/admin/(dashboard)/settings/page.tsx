@@ -94,9 +94,10 @@ const DEFAULTS = {
         build_setup_limit: 5000,
         assistant_name: "Bar AI",
         response_style: "Premium",
-        google_gemini_api_key: "",
-        openai_api_key: "",
-        anthropic_claude_api_key: "",
+        concierge_mode: 'classic' as 'classic' | 'managed',
+        party_categories: ['spirits', 'snacks', 'mixers'],
+        date_night_categories: ['wine', 'snacks', 'mixers'],
+        recommendation_limit: 4,
         primary_gateway: "AUTO"
     },
     onboarding_config: {
@@ -196,13 +197,16 @@ export default function AdminSettingsPage() {
     const heroInputRef = useRef<HTMLInputElement>(null);
 
     const fetchSettings = async () => {
-        if (!supabase) return;
         setLoading(true);
         try {
-            const { data: settingsData, error: settingsError } = await supabase.from('settings').select('*');
-            if (settingsError) throw settingsError;
-            if (settingsData && settingsData.length > 0) {
-                settingsData.forEach((item: { key: string; value: Record<string, unknown> }) => {
+            const response = await fetch('/api/admin/settings', { cache: 'no-store' });
+            const result = await response.json() as {
+                settings?: Array<{ key: string; value: Record<string, unknown> }>;
+                error?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Could not load settings.');
+            if (result.settings && result.settings.length > 0) {
+                result.settings.forEach((item: { key: string; value: Record<string, unknown> }) => {
                     if (item.key === 'contact') setContact(item.value as typeof DEFAULTS.contact);
                     if (item.key === 'branding') {
                         setBranding(item.value as typeof DEFAULTS.branding);
@@ -238,12 +242,28 @@ export default function AdminSettingsPage() {
                     if (item.key === 'seo_config') setSeo(item.value as typeof DEFAULTS.seo_config);
                     if (item.key === 'social_links') setSocial(item.value as typeof DEFAULTS.social_links);
                     if (item.key === 'store_info') setStore(item.value as typeof DEFAULTS.store_info);
-                    if (item.key === 'ai_config') setAiConfig(item.value as typeof DEFAULTS.ai_config);
+                    if (item.key === 'ai_config') setAiConfig({
+                        ...DEFAULTS.ai_config,
+                        ...Object.fromEntries(Object.entries(item.value).filter(([key]) =>
+                            !['google_gemini_api_key', 'openai_api_key', 'anthropic_claude_api_key'].includes(key)
+                        )),
+                        concierge_mode: item.value.concierge_mode === 'managed' ? 'managed' : 'classic',
+                        party_categories: Array.isArray(item.value.party_categories)
+                            ? item.value.party_categories.filter((category): category is string => typeof category === 'string')
+                            : DEFAULTS.ai_config.party_categories,
+                        date_night_categories: Array.isArray(item.value.date_night_categories)
+                            ? item.value.date_night_categories.filter((category): category is string => typeof category === 'string')
+                            : DEFAULTS.ai_config.date_night_categories,
+                        recommendation_limit: Number.isInteger(item.value.recommendation_limit)
+                            ? Math.min(6, Math.max(1, Number(item.value.recommendation_limit)))
+                            : DEFAULTS.ai_config.recommendation_limit
+                    } as typeof DEFAULTS.ai_config);
                     if (item.key === 'onboarding_config') setOnboarding(item.value as typeof DEFAULTS.onboarding_config);
                     if (item.key === 'features') setFeatures(item.value as typeof features);
                 });
             }
 
+            if (!supabase) throw new Error('Product database access is not configured.');
             const { data: productData, error: productsError } = await supabase
                 .from('products')
                 .select('id, name, stock')
@@ -299,6 +319,29 @@ export default function AdminSettingsPage() {
     };
 
     const handleSave = async (key: string, value: unknown, publish: boolean = true) => {
+        if (key === 'ai_config') {
+            const config = value as typeof aiConfig;
+            const allowedCategories = new Set(['wine', 'spirits', 'beer', 'snacks', 'mixers', 'extras']);
+            if (
+                config.concierge_mode === 'managed'
+                && (
+                    !Number.isInteger(config.recommendation_limit)
+                    || config.recommendation_limit < 1
+                    || config.recommendation_limit > 6
+                    || !Number.isFinite(config.build_setup_limit)
+                    || config.build_setup_limit < 1
+                    || ![config.party_categories, config.date_night_categories].every(categories =>
+                        categories.length > 0 && categories.every(category => allowedCategories.has(category))
+                    )
+                )
+            ) {
+                setMessage({
+                    type: 'error',
+                    text: 'Managed Concierge needs a budget above zero, 1–6 recommendations, and valid product categories.'
+                });
+                return;
+            }
+        }
         if (key === 'catalog') {
             const catalogValue = value as typeof catalog;
             if (catalogValue.navigation.some(item => !item.label.trim())) {
@@ -1348,6 +1391,82 @@ export default function AdminSettingsPage() {
                                 </div>
 
                                 <div className="space-y-8">
+                                    <div className="rounded-3xl border border-primary/15 bg-primary/5 p-6 space-y-5">
+                                        <div>
+                                            <h3 className="text-xs font-black uppercase tracking-widest text-foreground">AI Concierge behavior</h3>
+                                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                                Switch back to Classic any time to restore the original recommendation rules and ignore managed settings.
+                                            </p>
+                                        </div>
+                                        <div className="grid gap-5 sm:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-muted-foreground">Recommendation mode</label>
+                                                <select
+                                                    value={aiConfig.concierge_mode}
+                                                    onChange={e => setAiConfig({
+                                                        ...aiConfig,
+                                                        concierge_mode: e.target.value === 'managed' ? 'managed' : 'classic'
+                                                    })}
+                                                    className="h-14 w-full rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground"
+                                                >
+                                                    <option value="classic">Classic — restore original behavior</option>
+                                                    <option value="managed">Managed — use the controls below</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-muted-foreground">Maximum recommendations (1–6)</label>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    max={6}
+                                                    value={aiConfig.recommendation_limit}
+                                                    disabled={aiConfig.concierge_mode !== 'managed'}
+                                                    onChange={e => setAiConfig({ ...aiConfig, recommendation_limit: Number(e.target.value) })}
+                                                    className="h-14 rounded-2xl bg-white border-border font-bold text-foreground"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-muted-foreground">House party categories</label>
+                                                <Input
+                                                    value={aiConfig.party_categories.join(', ')}
+                                                    disabled={aiConfig.concierge_mode !== 'managed'}
+                                                    onChange={e => setAiConfig({
+                                                        ...aiConfig,
+                                                        party_categories: e.target.value.split(',').map(category => category.trim().toLowerCase()).filter(Boolean)
+                                                    })}
+                                                    placeholder="spirits, snacks, mixers"
+                                                    className="h-14 rounded-2xl bg-white border-border font-bold text-foreground"
+                                                />
+                                                <p className="text-[10px] text-muted-foreground">Enter product categories separated by commas.</p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-muted-foreground">Date night categories</label>
+                                                <Input
+                                                    value={aiConfig.date_night_categories.join(', ')}
+                                                    disabled={aiConfig.concierge_mode !== 'managed'}
+                                                    onChange={e => setAiConfig({
+                                                        ...aiConfig,
+                                                        date_night_categories: e.target.value.split(',').map(category => category.trim().toLowerCase()).filter(Boolean)
+                                                    })}
+                                                    placeholder="wine, snacks, mixers"
+                                                    className="h-14 rounded-2xl bg-white border-border font-bold text-foreground"
+                                                />
+                                                <p className="text-[10px] text-muted-foreground">Enter product categories separated by commas.</p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-muted-foreground">Setup / gaming budget cap</label>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    value={aiConfig.build_setup_limit}
+                                                    disabled={aiConfig.concierge_mode !== 'managed'}
+                                                    onChange={e => setAiConfig({ ...aiConfig, build_setup_limit: Number(e.target.value) })}
+                                                    className="h-14 rounded-2xl bg-white border-border font-bold text-foreground"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {/* AI GATEWAY KEYS SECTION */}
                                     <div className="space-y-6">
                                         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Generative API Gateways</h3>
@@ -1355,7 +1474,7 @@ export default function AdminSettingsPage() {
                                         {/* Google Gemini */}
                                         <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3">
                                             <div className="flex justify-between items-center">
-                                                <label className="text-[10px] font-black uppercase text-foreground">Google Gemini 1.5 Flash API Key</label>
+                                                <label className="text-[10px] font-black uppercase text-foreground">Google Gemini</label>
                                                 <Button
                                                     type="button"
                                                     variant="outline"
@@ -1364,7 +1483,7 @@ export default function AdminSettingsPage() {
                                                             const res = await fetch('/api/admin/ai/verify', {
                                                                 method: 'POST',
                                                                 headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ provider: 'GEMINI', apiKey: aiConfig.google_gemini_api_key })
+                                                                body: JSON.stringify({ provider: 'GEMINI' })
                                                             });
                                                             const data = await res.json();
                                                             alert(data.message || `${data.status}`);
@@ -1377,19 +1496,13 @@ export default function AdminSettingsPage() {
                                                     <Zap size={12} className="mr-1 text-amber-500 fill-current" /> Test Gemini Gateway
                                                 </Button>
                                             </div>
-                                            <Input
-                                                type="password"
-                                                placeholder="AIzaSy..."
-                                                value={aiConfig.google_gemini_api_key || ''}
-                                                onChange={e => setAiConfig({...aiConfig, google_gemini_api_key: e.target.value})}
-                                                className="h-14 rounded-2xl bg-white border-slate-200 font-mono text-xs text-foreground"
-                                            />
+                                            <p className="text-xs text-slate-500">The API key is stored only in your server environment as <code>GOOGLE_GEMINI_API_KEY</code>.</p>
                                         </div>
 
                                         {/* OpenAI GPT-4o */}
                                         <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3">
                                             <div className="flex justify-between items-center">
-                                                <label className="text-[10px] font-black uppercase text-foreground">OpenAI GPT-4o API Key</label>
+                                                <label className="text-[10px] font-black uppercase text-foreground">OpenAI</label>
                                                 <Button
                                                     type="button"
                                                     variant="outline"
@@ -1398,7 +1511,7 @@ export default function AdminSettingsPage() {
                                                             const res = await fetch('/api/admin/ai/verify', {
                                                                 method: 'POST',
                                                                 headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ provider: 'OPENAI', apiKey: aiConfig.openai_api_key })
+                                                                body: JSON.stringify({ provider: 'OPENAI' })
                                                             });
                                                             const data = await res.json();
                                                             alert(data.message || `${data.status}`);
@@ -1411,19 +1524,13 @@ export default function AdminSettingsPage() {
                                                     <Zap size={12} className="mr-1 text-emerald-500 fill-current" /> Test OpenAI Gateway
                                                 </Button>
                                             </div>
-                                            <Input
-                                                type="password"
-                                                placeholder="sk-proj-..."
-                                                value={aiConfig.openai_api_key || ''}
-                                                onChange={e => setAiConfig({...aiConfig, openai_api_key: e.target.value})}
-                                                className="h-14 rounded-2xl bg-white border-slate-200 font-mono text-xs text-foreground"
-                                            />
+                                            <p className="text-xs text-slate-500">The API key is stored only in your server environment as <code>OPENAI_API_KEY</code>.</p>
                                         </div>
 
                                         {/* Anthropic Claude */}
                                         <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-3">
                                             <div className="flex justify-between items-center">
-                                                <label className="text-[10px] font-black uppercase text-foreground">Anthropic Claude 3.5 API Key</label>
+                                                <label className="text-[10px] font-black uppercase text-foreground">Anthropic Claude</label>
                                                 <Button
                                                     type="button"
                                                     variant="outline"
@@ -1432,7 +1539,7 @@ export default function AdminSettingsPage() {
                                                             const res = await fetch('/api/admin/ai/verify', {
                                                                 method: 'POST',
                                                                 headers: { 'Content-Type': 'application/json' },
-                                                                body: JSON.stringify({ provider: 'CLAUDE', apiKey: aiConfig.anthropic_claude_api_key })
+                                                                body: JSON.stringify({ provider: 'CLAUDE' })
                                                             });
                                                             const data = await res.json();
                                                             alert(data.message || `${data.status}`);
@@ -1445,13 +1552,7 @@ export default function AdminSettingsPage() {
                                                     <Zap size={12} className="mr-1 text-indigo-500 fill-current" /> Test Claude Gateway
                                                 </Button>
                                             </div>
-                                            <Input
-                                                type="password"
-                                                placeholder="sk-ant-..."
-                                                value={aiConfig.anthropic_claude_api_key || ''}
-                                                onChange={e => setAiConfig({...aiConfig, anthropic_claude_api_key: e.target.value})}
-                                                className="h-14 rounded-2xl bg-white border-slate-200 font-mono text-xs text-foreground"
-                                            />
+                                            <p className="text-xs text-slate-500">The API key is stored only in your server environment as <code>ANTHROPIC_API_KEY</code>.</p>
                                         </div>
                                     </div>
 

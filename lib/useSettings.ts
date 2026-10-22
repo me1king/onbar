@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
+const CONCIERGE_CATEGORIES = new Set(['wine', 'spirits', 'beer', 'snacks', 'mixers', 'extras']);
+
+function normalizeConciergeCategories(value: unknown, fallback: string[]) {
+    if (!Array.isArray(value)) return fallback;
+    const categories = [...new Set(value.filter((category: unknown): category is string =>
+        typeof category === 'string' && CONCIERGE_CATEGORIES.has(category)
+    ))];
+    return categories.length ? categories : fallback;
+}
 
 export interface CatalogNavigationItem {
     id: string;
@@ -134,6 +142,10 @@ export interface StoreSettings {
         build_setup_limit: number;
         assistant_name: string;
         response_style: string;
+        concierge_mode: 'classic' | 'managed';
+        party_categories: string[];
+        date_night_categories: string[];
+        recommendation_limit: number;
     };
     promotions?: {
         flash_sale_text: string;
@@ -256,6 +268,15 @@ export const DEFAULT_SETTINGS: StoreSettings = {
         dynamic_pricing_enabled: true,
         gamification_enabled: true,
         fraud_shield_enabled: true
+    },
+    ai_config: {
+        build_setup_limit: 5000,
+        assistant_name: 'Online Bar AI',
+        response_style: 'Premium',
+        concierge_mode: 'classic',
+        party_categories: ['spirits', 'snacks', 'mixers'],
+        date_night_categories: ['wine', 'snacks', 'mixers'],
+        recommendation_limit: 4
     }
 };
 
@@ -268,16 +289,13 @@ export function useSettings() {
 
     useEffect(() => {
         async function loadSettings() {
-            if (!supabase) {
-                setLoading(false);
-                return;
-            }
-
             try {
-                const { data } = await supabase
-                    .from('settings')
-                    .select('*')
-                    .eq('is_published', true);
+                const response = await fetch('/api/settings', { cache: 'no-store' });
+                if (!response.ok) throw new Error('Published store settings could not be loaded.');
+                const result = await response.json() as {
+                    settings?: Array<{ key: string; value: Record<string, unknown> }>;
+                };
+                const data = result.settings || [];
 
                 if (data && data.length > 0) {
                     const newSettings = { ...DEFAULT_SETTINGS };
@@ -297,8 +315,30 @@ export function useSettings() {
                         if (item.key === 'social_links') newSettings.social_links = { ...newSettings.social_links, ...item.value };
                         if (item.key === 'store_info') newSettings.store_info = { ...newSettings.store_info, ...item.value };
                         if (item.key === 'features') newSettings.features = { ...newSettings.features, ...item.value };
-                        if (item.key === 'ai_config') newSettings.ai_config = { ...newSettings.ai_config, ...item.value };
-                        if (item.key === 'promotions') newSettings.promotions = { ...newSettings.promotions, ...item.value };
+                        if (item.key === 'ai_config') {
+                            newSettings.ai_config = {
+                                ...DEFAULT_SETTINGS.ai_config!,
+                                ...item.value,
+                                concierge_mode: item.value.concierge_mode === 'managed' ? 'managed' : 'classic',
+                                party_categories: normalizeConciergeCategories(
+                                    item.value.party_categories,
+                                    DEFAULT_SETTINGS.ai_config!.party_categories
+                                ),
+                                date_night_categories: normalizeConciergeCategories(
+                                    item.value.date_night_categories,
+                                    DEFAULT_SETTINGS.ai_config!.date_night_categories
+                                ),
+                                recommendation_limit: Number.isInteger(item.value.recommendation_limit)
+                                    ? Math.min(6, Math.max(1, Number(item.value.recommendation_limit)))
+                                    : DEFAULT_SETTINGS.ai_config!.recommendation_limit
+                            };
+                        }
+                        if (item.key === 'promotions') {
+                            newSettings.promotions = {
+                                ...DEFAULT_SETTINGS.promotions!,
+                                ...item.value
+                            } as NonNullable<StoreSettings['promotions']>;
+                        }
                     });
                     setSettings(newSettings);
                 }

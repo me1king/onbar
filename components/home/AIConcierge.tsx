@@ -101,7 +101,22 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
         try {
             // Real Database Vector/Keyword Search Node
             const low = userMsg.toLowerCase();
-            const config = settings?.ai_config || { build_setup_limit: 5000, assistant_name: 'Online Bar AI', response_style: 'Premium' };
+            const conciergeSettings = settings?.ai_config;
+            const useClassicBehavior = conciergeSettings?.concierge_mode !== 'managed';
+            const config = {
+                build_setup_limit: conciergeSettings?.build_setup_limit || 5000,
+                assistant_name: conciergeSettings?.assistant_name || 'Online Bar AI',
+                party_categories: useClassicBehavior
+                    ? ['spirits', 'snacks', 'mixers']
+                    : conciergeSettings?.party_categories || ['spirits', 'snacks', 'mixers'],
+                date_night_categories: useClassicBehavior
+                    ? ['wine', 'snacks', 'mixers']
+                    : conciergeSettings?.date_night_categories || ['wine', 'snacks', 'mixers'],
+                recommendation_limit: useClassicBehavior ? 4 : conciergeSettings?.recommendation_limit || 4
+            };
+            const queryLimit = (classicLimit: number) => useClassicBehavior
+                ? classicLimit
+                : Math.min(6, Math.max(1, config.recommendation_limit));
 
             let reply = `I'm analyzing the cellar for your premium selection. As ${config.assistant_name}, I recommend these:`;
             let suggestions: Suggestion[] = [];
@@ -109,31 +124,39 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
             if (low.includes('date night') || low.includes('couple') || low.includes('romantic')) {
                 reply = "I've curated a refined selection for your evening. Our cellar recommends these pairings:";
                 if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*').in('category', ['wine', 'snacks', 'mixers']).limit(3);
+                const { data: prods } = await supabase.from('products').select('*')
+                    .in('category', config.date_night_categories)
+                    .limit(queryLimit(3));
                 suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
             } else if (low.includes('host') || low.includes('people') || low.includes('party')) {
                 reply = "For your gathering, I recommend these essentials to keep the grid alive:";
                 if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*').in('category', ['spirits', 'snacks', 'mixers']).limit(4);
+                const { data: prods } = await supabase.from('products').select('*')
+                    .in('category', config.party_categories)
+                    .limit(queryLimit(4));
                 suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
             } else if (low.includes('setup') || low.includes('office') || low.includes('gaming')) {
                 const limit = config.build_setup_limit || 5000;
                 if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*').lte('price', limit).limit(3);
+                const { data: prods } = await supabase.from('products').select('*')
+                    .lte('price', limit)
+                    .limit(queryLimit(3));
                 suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
                 if (suggestions.length === 0) {
                     reply = `I couldn't find a complete selection under ${formatPrice(limit)}. I've pulled our closest premium essentials instead:`;
-                    const { data: alt } = await supabase.from('products').select('*').limit(2);
+                    const { data: alt } = await supabase.from('products').select('*').limit(queryLimit(2));
                     suggestions = (alt || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
                 }
             } else if (low.includes('cheap') || low.includes('budget') || low.includes('under')) {
                 if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*').order('price', { ascending: true }).limit(2);
+                const { data: prods } = await supabase.from('products').select('*')
+                    .order('price', { ascending: true })
+                    .limit(queryLimit(2));
                 suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
             } else {
                 reply = "I recommend these premium essentials to upgrade your bar experience.";
                 if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*').limit(2);
+                const { data: prods } = await supabase.from('products').select('*').limit(queryLimit(2));
                 suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
             }
 
