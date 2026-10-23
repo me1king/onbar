@@ -38,6 +38,9 @@ interface BeverageNode {
     price: number;
     stock: number;
     size_label?: string;
+    sizes?: string[];
+    variant_prices?: Record<string, number>;
+    beverage_specs?: { variant_prices?: Record<string, number> | null } | null;
     is_ice_cold?: boolean;
     temperature_celsius?: number;
     is_available_now?: boolean;
@@ -60,13 +63,14 @@ export default function BeverageCommandAdmin() {
     const [imageFile, setImageFile] = React.useState<File | null>(null);
     const [imagePreview, setImagePreview] = React.useState<string | null>(null);
     const [stockDrafts, setStockDrafts] = React.useState<Record<string, string>>({});
+    const [variantPrices, setVariantPrices] = React.useState<Record<string, string>>({});
 
     // Form state
     const [form, setForm] = React.useState({
         name: '',
         brand: 'BAR OS Originals',
         category: 'Soft Drinks',
-        size_label: '500ml',
+        sizes: '500ml',
         price: '',
         stock: '0',
         temperature: '',
@@ -123,10 +127,27 @@ export default function BeverageCommandAdmin() {
     const handleCreateBeverage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!supabase) return;
-        const price = Number(form.price);
+        const sizes = form.sizes.split(',').map(size => size.trim()).filter(Boolean);
+        const normalizedSizes = new Set(sizes.map(size => size.toLowerCase()));
+        if (sizes.length === 0 || normalizedSizes.size !== sizes.length || sizes.length > 12) {
+            setFormFeedback({ type: 'error', text: 'Enter 1 to 12 unique bottle sizes, separated by commas.' });
+            return;
+        }
+        const parsedVariantPrices: Record<string, number> = {};
+        const fallbackPrice = form.price.trim() ? Number(form.price) : Number.NaN;
+        for (const size of sizes) {
+            const value = variantPrices[size]?.trim();
+            const variantPrice = value ? Number(value) : fallbackPrice;
+            if (!Number.isFinite(variantPrice) || variantPrice <= 0) {
+                setFormFeedback({ type: 'error', text: `Enter a valid price greater than zero for ${size}, or provide a starting price.` });
+                return;
+            }
+            parsedVariantPrices[size] = variantPrice;
+        }
+        const price = Math.min(...Object.values(parsedVariantPrices));
         const stock = Number(form.stock);
         if (!form.name.trim() || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
-            setFormFeedback({ type: 'error', text: 'Enter a beverage name, a price greater than zero, and a whole-number stock quantity of zero or more.' });
+            setFormFeedback({ type: 'error', text: 'Enter a beverage name, a valid price for every size, and a whole-number stock quantity of zero or more.' });
             return;
         }
         if (form.temperature !== '' && (!Number.isFinite(Number(form.temperature)) || Number(form.temperature) < -20 || Number(form.temperature) > 30)) {
@@ -165,8 +186,9 @@ export default function BeverageCommandAdmin() {
                 sub_category: form.category,
                 price,
                 stock,
-                size_label: form.size_label,
-                sizes: form.size_label.trim() ? [form.size_label.trim()] : ['Standard'],
+                size_label: sizes[0],
+                sizes,
+                variant_prices: parsedVariantPrices,
                 is_ice_cold: Boolean(form.temperature),
                 temperature_celsius: form.temperature ? Number(form.temperature) : null,
                 is_available_now: stock > 0,
@@ -194,13 +216,14 @@ export default function BeverageCommandAdmin() {
                 name: '',
                 brand: 'BAR OS Originals',
                 category: 'Soft Drinks',
-                size_label: '500ml',
+                sizes: '500ml',
                 price: '',
                 stock: '0',
                 temperature: '',
                 image_url: '',
                 pairings: ''
             });
+            setVariantPrices({});
 
             await fetchBeverages();
         } catch (err: unknown) {
@@ -306,15 +329,26 @@ export default function BeverageCommandAdmin() {
         const q = searchQuery.toLowerCase();
         return (b.name || '').toLowerCase().includes(q) || (b.category || '').toLowerCase().includes(q) || (b.brand || '').toLowerCase().includes(q);
     });
+    const formSizes = form.sizes.split(',').map(size => size.trim()).filter(Boolean);
     const listingChecks = [
         Boolean(form.name.trim()),
-        Number.isFinite(Number(form.price)) && Number(form.price) > 0,
+        formSizes.length > 0 && formSizes.every(size => {
+            const value = variantPrices[size]?.trim();
+            const price = value ? Number(value) : Number(form.price);
+            return Number.isFinite(price) && price > 0;
+        }),
         Number.isInteger(Number(form.stock)) && Number(form.stock) >= 0,
         Boolean(form.category)
     ];
     const completedListingChecks = listingChecks.filter(Boolean).length;
     const listingProgress = Math.round((completedListingChecks / listingChecks.length) * 100);
     const pairingSuggestions = form.pairings.split(',').map(pairing => pairing.trim()).filter(Boolean);
+    const previewPrice = formSizes.length
+        ? Math.min(...formSizes.map(size => {
+            const sizePrice = Number(variantPrices[size]);
+            return Number.isFinite(sizePrice) && sizePrice > 0 ? sizePrice : Number(form.price) || 0;
+        }))
+        : Number(form.price) || 0;
 
     return (
         <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left selection:bg-primary/20 pb-40">
@@ -403,6 +437,8 @@ export default function BeverageCommandAdmin() {
                         {filteredBeverages.map(bev => {
                             const img = bev.image_url || bev.image || '';
                             const isLive = bev.is_available_now !== false && Number(bev.stock) > 0;
+                            const sizes = bev.sizes?.length ? bev.sizes : [bev.size_label || '500ml'];
+                            const pricesBySize = bev.variant_prices ?? bev.beverage_specs?.variant_prices;
 
                             return (
                                 <div key={bev.id} className="group flex flex-col items-stretch gap-4 p-6 transition-all hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between sm:p-8">
@@ -425,8 +461,13 @@ export default function BeverageCommandAdmin() {
                                                 </span>
                                             </div>
                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                                {bev.brand || 'BAR OS'} &bull; {bev.category} &bull; Size: <span className="text-foreground font-black">{bev.size_label || '500ml'}</span> &bull; Stock: <span className="text-foreground font-black">{bev.stock ?? 50} units</span>
+                                                {bev.brand || 'BAR OS'} &bull; {bev.category} &bull; Sizes: <span className="text-foreground font-black">{sizes.join(', ')}</span> &bull; Stock: <span className="text-foreground font-black">{bev.stock ?? 50} units</span>
                                             </p>
+                                            {sizes.length > 1 && (
+                                                <p className="text-[10px] font-bold text-orange-700">
+                                                    {sizes.map(size => `${size} · ${formatPrice(Number(pricesBySize?.[size] ?? bev.price))}`).join('  /  ')}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap items-center justify-start gap-3 sm:justify-end">
@@ -575,15 +616,36 @@ export default function BeverageCommandAdmin() {
                                         <h4 className="text-xs font-black uppercase tracking-widest text-slate-800">Price & stock</h4>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-                                        <Field label="Price · KSh">
-                                            <Input type="number" min="0" step="0.01" required value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="120" className="h-12 rounded-xl border-slate-200 bg-slate-50/80 font-black text-orange-700 shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100" />
+                                        <Field label="Starting price · KSh (fallback)">
+                                            <Input type="number" min="0" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="Used for blank size prices" className="h-12 rounded-xl border-slate-200 bg-slate-50/80 font-black text-orange-700 shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100" />
                                         </Field>
-                                        <Field label="Pack size">
-                                            <Input maxLength={40} value={form.size_label} onChange={e => setForm({ ...form, size_label: e.target.value })} placeholder="500ml" className="h-12 rounded-xl border-slate-200 bg-slate-50/80 font-semibold shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100" />
+                                        <Field label="Bottle sizes">
+                                            <Input maxLength={240} value={form.sizes} onChange={e => setForm({ ...form, sizes: e.target.value })} placeholder="250ml, 350ml, 750ml, 1L" className="h-12 rounded-xl border-slate-200 bg-slate-50/80 font-semibold shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100" />
                                         </Field>
                                         <Field label="Units in stock">
                                             <Input type="number" min="0" step="1" required value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} placeholder="100" className="col-span-2 h-12 rounded-xl border-slate-200 bg-slate-50/80 font-semibold shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100 sm:col-span-1" />
                                         </Field>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-700">Price for each size · KSh</p>
+                                            <p className="mt-1 text-xs leading-relaxed text-slate-500">Add sizes separated by commas. Enter a different price for each size, or leave it blank to use the starting price.</p>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            {formSizes.map(size => (
+                                                <Field key={size} label={size}>
+                                                    <Input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={variantPrices[size] ?? ''}
+                                                        onChange={e => setVariantPrices(previous => ({ ...previous, [size]: e.target.value }))}
+                                                        placeholder={form.price || 'Starting price'}
+                                                        className="h-12 rounded-xl border-slate-200 bg-slate-50/80 font-black text-orange-700 shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100"
+                                                    />
+                                                </Field>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -680,13 +742,13 @@ export default function BeverageCommandAdmin() {
                                     </div>
                                     <div className="space-y-3 p-5">
                                         <div>
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{form.brand || 'Your brand'}{form.size_label ? ` · ${form.size_label}` : ''}</p>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{form.brand || 'Your brand'}{formSizes[0] ? ` · ${formSizes[0]}` : ''}</p>
                                             <h5 className="mt-1 min-h-12 text-lg font-black leading-tight text-slate-900">{form.name.trim() || 'Your beverage name'}</h5>
                                         </div>
                                         <div className="flex items-end justify-between border-t border-slate-100 pt-3">
                                             <div>
                                                 <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Your price</p>
-                                                <p className="mt-0.5 text-xl font-black text-orange-600 transition-all duration-200">{form.price ? formatPrice(Number(form.price)) : 'KSh —'}</p>
+                                                <p className="mt-0.5 text-xl font-black text-orange-600 transition-all duration-200">{previewPrice ? formatPrice(previewPrice) : 'KSh —'}</p>
                                             </div>
                                             <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wide text-emerald-700">
                                                 <PackageCheck size={13} /> {Number(form.stock) > 0 ? `${form.stock} in stock` : 'Stock pending'}

@@ -639,7 +639,7 @@ export default function ProductDetailClient({
                 )}
 
                 <div className="space-y-6">
-                    <label className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 ml-1 italic">{isFoodProduct ? 'Choose your portion' : 'Select Configuration'}</label>
+                    <label className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 ml-1 italic">{isFoodProduct ? 'Choose your portion' : 'Choose a size'}</label>
                     <div className="grid grid-cols-2 gap-4">
                         {product.sizes?.map(size => {
                             const isSelected = selectedVariant === size;
