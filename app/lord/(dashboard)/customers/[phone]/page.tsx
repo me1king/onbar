@@ -21,6 +21,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn, formatPrice } from '@/lib/utils';
 import dynamic from 'next/dynamic';
+import CustomerCrmPanel from '@/components/admin/customers/CustomerCrmPanel';
 
 const SessionForensics = dynamic(() => import('@/components/admin/SessionForensics'), { ssr: false });
 
@@ -501,6 +502,7 @@ export default function CustomerProfilePage() {
 
                 {/* RIGHT: TIMELINE & FORENSICS */}
                 <div className="lg:col-span-8 space-y-8">
+                    <CustomerCrmPanel phone={profile.phone_number || phone} />
                     {/* COMMERCIAL HISTORY */}
                     <Card className="rounded-[3rem] border border-slate-100 bg-white shadow-sm overflow-hidden">
                         <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">

@@ -11,7 +11,8 @@ import {
   ShieldAlert,
   Activity as Zap,
   MapPin,
-  Calendar
+  Calendar,
+  Download
 } from 'lucide-react';
 import { formatPrice, cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -232,8 +233,8 @@ export default function AdminCustomersPage() {
 
             if (c.totalSpend >= 100000 || c.totalOrders >= 10) segment = 'VIP Premium';
             else if (c.totalSpend >= 50000) segment = 'High Value';
-            else if (daysSinceLastOrder > 60) segment = 'At Risk';
             else if (daysSinceLastOrder > 120) segment = 'Dormant';
+            else if (daysSinceLastOrder > 60) segment = 'At Risk';
             else if (c.totalOrders > 1) segment = 'Repeat Buyer';
         }
 
@@ -330,6 +331,34 @@ export default function AdminCustomersPage() {
     });
   }, [customers, searchQuery, segmentFilter]);
 
+  const exportCustomers = () => {
+    const escapeCsv = (value: string | number) => {
+      let safeValue = String(value);
+      if (/^[=+\-@\t\r]/.test(safeValue)) safeValue = `'${safeValue}`;
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    };
+    const rows = [
+      ['Name', 'Phone', 'Segment', 'Orders', 'Lifetime spend', 'Last order', 'Address', 'Referrals'],
+      ...filteredCustomers.map(customer => [
+        customer.name,
+        customer.phone,
+        customer.segment,
+        customer.totalOrders,
+        customer.totalSpend.toFixed(2),
+        customer.lastOrder,
+        customer.location,
+        customer.referredCount
+      ])
+    ];
+    const csv = rows.map(row => row.map(escapeCsv).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'onlinebar-customers.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (isLoading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[50dvh]">
@@ -358,7 +387,7 @@ export default function AdminCustomersPage() {
         </div>
         <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row">
             <div className="flex w-full min-w-0 overflow-x-auto rounded-2xl border border-slate-100 bg-white p-1 shadow-sm no-scrollbar sm:w-auto sm:max-w-none">
-                {['all', 'VIP Premium', 'Repeat Buyer', 'Partner'].map(f => (
+                {['all', 'VIP Premium', 'High Value', 'Repeat Buyer', 'At Risk', 'Dormant', 'Partner', 'New Customer'].map(f => (
                     <button
                         key={f}
                         onClick={() => setSegmentFilter(f)}
@@ -380,6 +409,9 @@ export default function AdminCustomersPage() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
             </div>
+            <Button type="button" variant="outline" onClick={exportCustomers} disabled={filteredCustomers.length === 0} className="h-14 shrink-0 rounded-2xl border-slate-100 bg-white px-4 font-bold">
+              <Download className="mr-2 h-4 w-4" /> Export CSV
+            </Button>
         </div>
 
       </div>
