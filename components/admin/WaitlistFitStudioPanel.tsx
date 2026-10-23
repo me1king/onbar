@@ -361,7 +361,7 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
 
       {canManage && <div id="waitlist-fit-studio-items" className="scroll-mt-5 rounded-xl border-2 border-primary/20 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div><p className="text-[10px] font-black uppercase tracking-wide text-primary">Admin · add outfit items and products</p><h3 className="mt-1 text-lg font-black text-slate-900">Upload a wig, belt, outfit or accessory photo</h3><p className="mt-1 max-w-3xl text-sm text-slate-600">Give each find its own listing: choose a photo, name the item, select its category and add a price. Only published, available listings appear for matching members and in the public Halloween shop.</p></div>
+          <div><p className="text-[10px] font-black uppercase tracking-wide text-primary">Admin · add outfit items and products</p><h3 className="mt-1 text-lg font-black text-slate-900">Upload a wig, belt, outfit or accessory photo</h3><p className="mt-1 max-w-3xl text-sm text-slate-600">Give each find its own listing: choose a photo, name the item, select its category and add a price. Published listings appear in the public Halloween shop; availability separately controls whether members can request them.</p></div>
           <button type="button" onClick={() => setOfferingDraft(emptyOffering)} className="min-h-10 shrink-0 rounded-lg border border-slate-200 px-3 text-xs font-bold text-primary">Add another item</button>
         </div>
         <form onSubmit={saveOffering} className="space-y-3">
@@ -388,7 +388,7 @@ export default function WaitlistFitStudioPanel({ canView, canManage, canExport }
         {(data?.offerings || []).length > 0 && <ul className="mt-4 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 xl:grid-cols-3">
           {(data?.offerings || []).map(offering => <li key={offering.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3 text-xs">
             {offering.image_url && <div role="img" aria-label={`${offering.title} photo`} className="h-14 w-14 shrink-0 rounded-md bg-cover bg-center" style={{ backgroundImage: `url("${offering.image_url.replaceAll('"', '%22')}")` }} />}
-            <span className="min-w-0 flex-1"><b className="block truncate">{offering.title}</b><span className="block text-slate-500">{serviceOptions.find(([key]) => key === offering.service_key)?.[1]} · {offering.price_kes === null ? 'Quote' : `KSh ${count(offering.price_kes)}`}</span><span className="block text-slate-500">{offering.published && offering.available ? 'Visible in Halloween shop' : !offering.published ? 'Draft · hidden from shop' : 'Unavailable · hidden from shop'}</span></span>
+            <span className="min-w-0 flex-1"><b className="block truncate">{offering.title}</b><span className="block text-slate-500">{serviceOptions.find(([key]) => key === offering.service_key)?.[1]} · {offering.price_kes === null ? 'Quote' : `KSh ${count(offering.price_kes)}`}</span><span className="block text-slate-500">{offering.published ? `Visible in Halloween shop · ${offering.available ? 'available for requests' : 'not available for requests'}` : 'Draft · hidden from shop'}</span></span>
             <button type="button" onClick={() => setOfferingDraft({
               id: offering.id, provider_id: offering.provider_id || '', service_key: offering.service_key,
               title: offering.title, description: offering.description || '',
