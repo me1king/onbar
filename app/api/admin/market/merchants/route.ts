@@ -31,7 +31,6 @@ export async function GET() {
   const { data, error } = await access.database
     .from('mm_merchants')
     .select('id, name, slug, description, status, contact_name, contact_email, contact_phone, created_at')
-    .in('status', ['approved', 'suspended'])
     .order('created_at', { ascending: false });
   if (error) {
     console.error('[MarketAdmin] Could not load merchants:', error);

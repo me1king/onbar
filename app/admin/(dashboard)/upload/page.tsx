@@ -54,7 +54,7 @@ const initialForm = {
   description: '',
   short_description: '',
   what_is_in_the_box: '',
-  sizes: 'Standard',
+  sizes: '750ml',
   stock: '',
   low_stock_alert: '5',
   warehouse_location: '',
@@ -359,7 +359,18 @@ function UploadContent() {
     const target = e.target;
     const { name, value, type } = target;
     const val = type === 'checkbox' ? (target as HTMLInputElement).checked : value;
-    setForm(prev => ({ ...prev, [name]: val }));
+    if (name === 'sizes' && typeof val === 'string') {
+        const firstSize = val.split(',').map(size => size.trim()).find(Boolean);
+        setForm(prev => ({ ...prev, sizes: val, ...(firstSize ? { size_label: firstSize } : {}) }));
+    } else if (name === 'size_label' && typeof val === 'string') {
+        setForm(prev => ({
+            ...prev,
+            size_label: val,
+            ...(currentVariants.length <= 1 ? { sizes: val } : {})
+        }));
+    } else {
+        setForm(prev => ({ ...prev, [name]: val }));
+    }
   };
 
   const handleVariantStockChange = (variant: string, value: string) => {
@@ -491,6 +502,10 @@ function UploadContent() {
 
     try {
       const currentVariants = form.sizes.split(',').map(size => size.trim()).filter(Boolean);
+      const normalizedVariants = currentVariants.map(size => size.toLowerCase());
+      if (currentVariants.length === 0 || currentVariants.length > 12 || new Set(normalizedVariants).size !== currentVariants.length) {
+          throw new Error('Enter 1 to 12 unique sizes, separated by commas.');
+      }
       const vStock: Record<string, number> = {};
       currentVariants.forEach(variant => vStock[variant] = Number(variantStock[variant] || 0));
       const vPrices: Record<string, number> = {};
@@ -539,7 +554,7 @@ function UploadContent() {
           body: form.body.trim(),
           sweetness: form.sweetness.trim(),
           abv_label: form.abv_label.trim(),
-          size_label: form.size_label.trim(),
+          size_label: currentVariants[0] || form.size_label.trim(),
           manufacturer: form.manufacturer.trim(),
           price: Number(form.price),
           old_price: form.old_price ? Number(form.old_price) : null,
@@ -797,6 +812,7 @@ function UploadContent() {
                               <div className="space-y-2 text-left">
                                   <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Volume / Bottle Size</label>
                                   <Input name="size_label" value={form.size_label} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. 750ml, 1L, 350ml" />
+                                  <p className="px-1 text-xs text-slate-500">For multiple customer choices and prices, add each size in Economic Hub below.</p>
                               </div>
                               <div className="space-y-2 text-left">
                                   <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Beverage Body Profile</label>
@@ -860,6 +876,45 @@ function UploadContent() {
                                   <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Unit Cost</label>
                                   <Input type="number" name="cost_price" value={form.cost_price} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold text-slate-500" />
                               </div>
+                          </div>
+
+                          <div className="space-y-5 rounded-[2rem] border-2 border-primary/15 bg-primary/[0.03] p-5 sm:p-7">
+                              <div className="space-y-2">
+                                  <h3 className="text-sm font-black uppercase tracking-wide text-foreground">Drink sizes &amp; prices</h3>
+                                  <p className="text-xs leading-relaxed text-slate-600">Enter the bottle sizes customers can choose, then set a price for each one. Separate sizes with commas, for example: 250ml, 350ml, 750ml, 1L.</p>
+                              </div>
+                              <div className="space-y-2 text-left">
+                                  <label htmlFor="product-size-options" className="text-[9px] font-black uppercase text-slate-500">Available size options</label>
+                                  <Input
+                                      id="product-size-options"
+                                      name="sizes"
+                                      value={form.sizes}
+                                      onChange={handleInputChange}
+                                      className="h-14 rounded-2xl border-primary/20 bg-white font-bold"
+                                      placeholder="250ml, 350ml, 750ml, 1L"
+                                      aria-describedby="product-size-options-help"
+                                  />
+                                  <p id="product-size-options-help" className="text-xs text-slate-500">These become the selectable size buttons on the customer product page.</p>
+                              </div>
+                              {currentVariants.length > 0 && (
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                      {currentVariants.map(variant => (
+                                          <label key={variant} className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
+                                              <span className="block text-[10px] font-black uppercase tracking-widest text-slate-700">{variant} price · KSh</span>
+                                              <Input
+                                                  type="number"
+                                                  min="0"
+                                                  step="0.01"
+                                                  value={variantPrices[variant] ?? ''}
+                                                  onChange={e => handleVariantPriceChange(variant, e.target.value)}
+                                                  className="h-12 rounded-xl border-slate-200 bg-slate-50 text-lg font-black"
+                                                  placeholder={form.price || 'Use main sell price'}
+                                              />
+                                              <span className="block text-[10px] text-slate-500">Leave blank to use the main sell price.</span>
+                                          </label>
+                                      ))}
+                                  </div>
+                              )}
                           </div>
 
                           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
@@ -935,46 +990,26 @@ function UploadContent() {
                   </button>
                   {openSections.inventory && (
                       <CardContent className="p-10 pt-0 space-y-10">
-                          <div className="space-y-4 text-left">
-                              <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Bottle sizes / portions</label>
-                              <Input name="sizes" value={form.sizes} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. 250ml, 375ml, 750ml, 1L" />
-                              <p className="px-1 text-xs text-slate-500">Separate sizes with commas. Each size gets its own price and stock field below, just like the bottle options customers see.</p>
-                          </div>
-
                           {currentVariants.length > 0 && (
                               <div className="space-y-3 text-left">
                                   <div>
-                                      <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-700">Set price and stock for each bottle size</h3>
-                                      <p className="mt-1 text-xs text-slate-500">These prices appear as separate customer choices. Leave a price blank only when that size should use the main Sell Price.</p>
+                                      <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-700">Stock for each bottle size</h3>
+                                      <p className="mt-1 text-xs text-slate-500">Manage available units for each size. Set customer prices in Economic Hub above.</p>
                                   </div>
-                                  <div className="grid sm:grid-cols-2 gap-4">
+                                  <div className="grid gap-4 sm:grid-cols-2">
                                       {currentVariants.map(variant => (
-                                          <div key={variant} className="space-y-3 p-5 rounded-2xl bg-slate-50 border border-slate-100 group hover:border-primary/20 transition-all">
+                                          <div key={variant} className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-5 transition-all hover:border-primary/20">
                                               <span className="block text-[10px] font-black uppercase text-slate-600">{variant}</span>
-                                              <div className="grid grid-cols-2 gap-3">
-                                                  <label className="space-y-1 text-xs font-bold text-slate-700">
-                                                      Price (Ksh)
-                                                      <Input
-                                                        type="number"
-                                                        min="0"
-                                                        step="0.01"
-                                                        value={variantPrices[variant] ?? ''}
-                                                        onChange={(e) => handleVariantPriceChange(variant, e.target.value)}
-                                                        className="h-10 rounded-xl border-slate-200 bg-white text-center font-black"
-                                                        placeholder={form.price || 'Base price'}
-                                                      />
-                                                  </label>
-                                                  <label className="space-y-1 text-xs font-bold text-slate-500">
-                                                      Stock
-                                                      <Input
-                                                        type="number"
-                                                        min="0"
-                                                        value={variantStock[variant] || '0'}
-                                                        onChange={(e) => handleVariantStockChange(variant, e.target.value)}
-                                                        className="h-10 rounded-xl border-slate-200 bg-white text-center font-black"
-                                                      />
-                                                  </label>
-                                              </div>
+                                              <label className="block space-y-1 text-xs font-bold text-slate-700">
+                                                  Stock units
+                                                  <Input
+                                                      type="number"
+                                                      min="0"
+                                                      value={variantStock[variant] || '0'}
+                                                      onChange={(e) => handleVariantStockChange(variant, e.target.value)}
+                                                      className="h-10 rounded-xl border-slate-200 bg-white text-center font-black"
+                                                  />
+                                              </label>
                                           </div>
                                       ))}
                                   </div>

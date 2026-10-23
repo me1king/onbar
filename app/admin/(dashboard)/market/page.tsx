@@ -42,7 +42,7 @@ interface Merchant {
   id: string;
   name: string;
   slug: string;
-  status: 'approved' | 'suspended';
+  status: 'pending' | 'approved' | 'rejected' | 'suspended';
   contact_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
@@ -657,7 +657,7 @@ export default function MarketOperationsPage() {
           <p className="mt-2 text-sm text-slate-500">Suspension immediately blocks seller uploads and removes the shop’s products from public browsing.</p>
         </div>
         {!loading && merchants.length === 0 && (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No approved boutiques yet.</div>
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No boutiques have been registered yet.</div>
         )}
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {merchants.map((merchant) => (
@@ -672,14 +672,20 @@ export default function MarketOperationsPage() {
                   {!merchant.contact_email && !merchant.contact_phone && <span className="text-slate-500">Contact details unavailable</span>}
                 </div>
               </div>
-              <Button
-                disabled={workingMerchantId === merchant.id}
-                onClick={() => void setMerchantStatus(merchant, merchant.status === 'approved' ? 'suspended' : 'approved')}
-                variant="outline"
-                className={merchant.status === 'approved' ? 'gap-2 border-rose-200 text-rose-700 hover:bg-rose-50' : 'gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50'}
-              >
-                {merchant.status === 'approved' ? <><Ban size={15} /> Suspend</> : <><ShieldCheck size={15} /> Restore</>}
-              </Button>
+              {merchant.status === 'approved' || merchant.status === 'suspended' ? (
+                <Button
+                  disabled={workingMerchantId === merchant.id}
+                  onClick={() => void setMerchantStatus(merchant, merchant.status === 'approved' ? 'suspended' : 'approved')}
+                  variant="outline"
+                  className={merchant.status === 'approved' ? 'gap-2 border-rose-200 text-rose-700 hover:bg-rose-50' : 'gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50'}
+                >
+                  {merchant.status === 'approved' ? <><Ban size={15} /> Suspend</> : <><ShieldCheck size={15} /> Restore</>}
+                </Button>
+              ) : (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                  {merchant.status === 'pending' ? 'Pending' : merchant.status === 'rejected' ? 'Rejected' : 'Inactive'}
+                </span>
+              )}
             </article>
           ))}
         </div>
