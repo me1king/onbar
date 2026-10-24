@@ -14,6 +14,43 @@ export interface HalloweenProduct {
   fitNote: string;
   badges: string[];
   tryOnLabel: string;
+  image?: string;
+  stock?: number;
+}
+
+export interface HalloweenMerchantListing {
+  id: number;
+  name: string;
+  category: string;
+  size: string;
+  price: number;
+  stock: number;
+  description: string;
+  image: string;
+  createdAt: string;
+}
+
+export const HALLOWEEN_LISTINGS_STORAGE_KEY = 'halloween_merchant_listings';
+export const HALLOWEEN_LISTINGS_UPDATED_EVENT = 'halloween-merchant-listings-updated';
+
+function isHalloweenMerchantListing(item: unknown): item is HalloweenMerchantListing {
+  if (typeof item !== 'object' || item === null) return false;
+  const listing = item as Record<string, unknown>;
+  return Number.isSafeInteger(listing.id) && Number(listing.id) > 0
+    && typeof listing.name === 'string' && listing.name.trim().length > 0
+    && typeof listing.category === 'string'
+    && typeof listing.size === 'string'
+    && typeof listing.price === 'number' && Number.isFinite(listing.price) && listing.price > 0
+    && typeof listing.stock === 'number' && Number.isSafeInteger(listing.stock) && listing.stock >= 0
+    && typeof listing.description === 'string'
+    && typeof listing.image === 'string'
+    && typeof listing.createdAt === 'string';
+}
+
+export function parseHalloweenMerchantListings(value: string | null): HalloweenMerchantListing[] {
+  if (!value) return [];
+  const parsed: unknown = JSON.parse(value);
+  return Array.isArray(parsed) ? parsed.filter(isHalloweenMerchantListing) : [];
 }
 
 export const halloweenCategories: HalloweenTheme[] = ['All', 'Witch', 'Vampire', 'Space', 'Masquerade', 'Hero', 'Classic'];

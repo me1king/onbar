@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, RefreshCw, Save, Search, Upload, Users } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, RefreshCw, Save, Search, Store, Upload, Users } from 'lucide-react';
 import { useAdmin } from '@/context/AdminContext';
 import WaitlistFitStudioPanel from '@/components/admin/WaitlistFitStudioPanel';
 import WaitlistLaunchCountdownPreview from '@/components/admin/WaitlistLaunchCountdownPreview';
@@ -252,6 +253,7 @@ export default function WaitlistPage() {
 
   const canView = role === 'owner' || role === 'admin'
     || permissions.can_manage_communications || permissions.can_manage_customer_care;
+  const canManageMarket = role === 'owner' || role === 'admin' || permissions.can_manage_inventory;
   const canManageSite = role === 'owner' || role === 'admin' || permissions.can_manage_settings;
   const canExportFitStudio = role === 'owner' || role === 'admin' || permissions.can_view_sensitive_data;
 
@@ -569,6 +571,7 @@ export default function WaitlistPage() {
           <p className="mt-2 max-w-2xl text-sm text-slate-600">Signups from the standalone early-access site and storefront waitlist. Area demand helps us prepare coverage for the planned same-day, late-night treats delivery system. Exact GPS coordinates are never stored.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {canManageMarket && <Link href="/lord/market" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-violet-800 hover:bg-violet-50"><Store size={15} /> Manage Halloween shop</Link>}
           {canManageSite && <>
             <a href="#waitlist-fit-studio-items" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-primary/30 bg-white px-4 text-sm font-bold text-primary hover:bg-primary/5"><ImageIcon size={15} /> Upload wig, belt or item photos</a>
             <a href="#waitlist-age-music" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white hover:opacity-90"><Upload size={15} /> Upload age-group songs</a>

@@ -1,14 +1,60 @@
 'use client';
 
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
-import { HalloweenTheme, halloweenCatalog, halloweenCategories } from '@/lib/halloweenCatalog';
+import {
+  HALLOWEEN_LISTINGS_STORAGE_KEY,
+  HALLOWEEN_LISTINGS_UPDATED_EVENT,
+  HalloweenMerchantListing,
+  HalloweenProduct,
+  HalloweenTheme,
+  halloweenCatalog,
+  halloweenCategories,
+  parseHalloweenMerchantListings
+} from '@/lib/halloweenCatalog';
 import { HalloweenTryOnStudio } from '@/components/tryon/HalloweenTryOnStudio';
 import { HalloweenFitQuiz } from '@/components/halloween/HalloweenFitQuiz';
 import { HalloweenPhotoTryOn } from '@/components/halloween/HalloweenPhotoTryOn';
 import { ArrowRight, Sparkles, Tag, Wand2, Shirt, Camera } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+const themePalettes: Record<Exclude<HalloweenTheme, 'All'>, [string, string, string]> = {
+  Witch: ['#2f1b52', '#8b5cf6', '#f5d0fe'],
+  Vampire: ['#1f2937', '#dc2626', '#fca5a5'],
+  Space: ['#0f172a', '#38bdf8', '#dbeafe'],
+  Masquerade: ['#1f2937', '#fbbf24', '#fef3c7'],
+  Hero: ['#111827', '#f97316', '#fef2f2'],
+  Classic: ['#f8fafc', '#cbd5e1', '#e2e8f0']
+};
+
+function getListingTheme(category: string): Exclude<HalloweenTheme, 'All'> {
+  for (const theme of halloweenCategories) {
+    if (theme !== 'All' && theme.toLowerCase() === category.trim().toLowerCase()) return theme;
+  }
+  return 'Classic';
+}
+
+function toStorefrontProduct(listing: HalloweenMerchantListing): HalloweenProduct {
+  const theme = getListingTheme(listing.category);
+  return {
+    id: listing.id,
+    name: listing.name,
+    category: listing.category,
+    theme,
+    price: listing.price,
+    description: listing.description,
+    accent: themePalettes[theme][1],
+    palette: themePalettes[theme],
+    sizes: [listing.size],
+    fitNote: 'Check the merchant listing for sizing details.',
+    badges: ['Merchant listing'],
+    tryOnLabel: `${theme} fit`,
+    image: listing.image || undefined,
+    stock: listing.stock
+  };
+}
 
 export function HalloweenShop() {
   const { addToCart } = useCart();
@@ -16,13 +62,34 @@ export function HalloweenShop() {
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [showFitQuiz, setShowFitQuiz] = useState(false);
   const [showPhotoTryOn, setShowPhotoTryOn] = useState(false);
+  const [merchantListings, setMerchantListings] = useState<HalloweenMerchantListing[]>([]);
+  const [selectedSizes, setSelectedSizes] = useState<Record<number, string>>({});
 
-  const filteredProducts = useMemo(() => {
-    const list = activeTheme === 'All' ? halloweenCatalog : halloweenCatalog.filter((item) => item.theme === activeTheme);
-    return list;
-  }, [activeTheme]);
+  useEffect(() => {
+    const loadListings = () => {
+      try {
+        setMerchantListings(parseHalloweenMerchantListings(localStorage.getItem(HALLOWEEN_LISTINGS_STORAGE_KEY)));
+      } catch (error) {
+        console.error('[HalloweenShop] Could not load merchant listings from this browser:', error);
+      }
+    };
+    loadListings();
+    window.addEventListener('storage', loadListings);
+    window.addEventListener(HALLOWEEN_LISTINGS_UPDATED_EVENT, loadListings);
+    return () => {
+      window.removeEventListener('storage', loadListings);
+      window.removeEventListener(HALLOWEEN_LISTINGS_UPDATED_EVENT, loadListings);
+    };
+  }, []);
 
-  const selectedProduct = halloweenCatalog.find((item) => item.id === selectedProductId) ?? null;
+  const allProducts = useMemo(() => [
+    ...halloweenCatalog,
+    ...merchantListings.filter(listing => listing.stock > 0).map(toStorefrontProduct)
+  ], [merchantListings]);
+  const filteredProducts = useMemo(() => activeTheme === 'All'
+    ? allProducts
+    : allProducts.filter(item => item.theme === activeTheme), [activeTheme, allProducts]);
+  const selectedProduct = allProducts.find(item => item.id === selectedProductId) ?? null;
 
   return (
     <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -36,7 +103,7 @@ export function HalloweenShop() {
               Costume store <span className="text-violet-300">for the season</span>
             </h1>
             <p className="mt-4 max-w-xl text-base text-violet-100/80 sm:text-lg">
-              Discover ready-to-wear looks, custom party fits, and a 3D virtual try-on preview before you add it to cart.
+              Browse costume drops, view real merchant-uploaded product photos, and preview each look in the 3D studio.
             </p>
           </div>
 
@@ -82,17 +149,23 @@ export function HalloweenShop() {
           </button>
 
           <Link href="/checkout" className="rounded-[1.5rem] border border-violet-400/30 bg-violet-500/10 p-4 text-left text-white hover:bg-violet-500/20">
-            <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.24em] text-violet-200"><ArrowRight size={12} /> Checkout</div>
-            <div className="mt-3 text-xl font-black uppercase tracking-tighter">M-Pesa + cards</div>
+          <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.24em] text-violet-200"><ArrowRight size={12} /> Shopping cart</div>
+          <div className="mt-3 text-xl font-black uppercase tracking-tighter">Review your cart</div>
           </Link>
         </div>
+      </div>
+
+      <div role="note" className="mt-5 rounded-2xl border border-amber-300/40 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+        Halloween listings and cart actions are currently a storefront preview. Merchant uploads stay in this browser; listings, inventory, paid checkout, and fulfilment are not connected to a shared marketplace backend yet.
       </div>
 
       <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {filteredProducts.map((product) => (
           <article key={product.id} className="group overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
             <div className="relative h-72 overflow-hidden bg-gradient-to-br" style={{ backgroundImage: `linear-gradient(135deg, ${product.palette[0]}, ${product.palette[1]}, ${product.palette[2]})` }}>
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.5),transparent_40%)]" />
+            {product.image && <Image src={product.image} alt={product.name} fill sizes="(max-width: 768px) 100vw, 33vw" unoptimized className="object-cover transition duration-500 group-hover:scale-105" />}
+            {product.image && <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-slate-950/15" />}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.5),transparent_40%)]" />
               <div className="absolute left-4 top-4 flex flex-wrap gap-2">
                 {product.badges.map((badge) => (
                   <span key={badge} className="rounded-full border border-white/40 bg-slate-950/20 px-2 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-white">
@@ -132,9 +205,17 @@ export function HalloweenShop() {
 
               <div className="flex flex-wrap gap-2">
                 {product.sizes.map((size) => (
-                  <span key={size} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-600">
-                    {size}
-                  </span>
+                  <button
+                    key={size}
+                    type="button"
+                    aria-pressed={(selectedSizes[product.id] ?? product.sizes[0]) === size}
+                    onClick={() => setSelectedSizes(current => ({ ...current, [product.id]: size }))}
+                    className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] ${
+                      (selectedSizes[product.id] ?? product.sizes[0]) === size
+                        ? 'border-violet-500 bg-violet-100 text-violet-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                    }`}
+                  >{size}</button>
                 ))}
               </div>
 
@@ -147,10 +228,10 @@ export function HalloweenShop() {
                       name: product.name,
                       price: product.price,
                       base_price: product.price,
-                      image: '',
+                      image: product.image ?? '',
                       quantity: 1,
                       category: product.category,
-                      size: product.sizes[0]
+                      size: selectedSizes[product.id] ?? product.sizes[0]
                     });
                   }}
                 >

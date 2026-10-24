@@ -390,6 +390,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
   };
 
   const navItems = [
+    { href: "/halloween", label: "Halloween Costumes" },
     { href: "/tickets", label: "Halloween Tickets" },
     { href: "/shop", label: "Build My Bar" },
     { href: "/beverages", label: "Drinks" },

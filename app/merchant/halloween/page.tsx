@@ -1,50 +1,60 @@
 'use client';
 
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { ImagePlus, Package, Sparkles, Store } from 'lucide-react';
-import { ChangeEvent, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
+import {
+  HALLOWEEN_LISTINGS_STORAGE_KEY,
+  HALLOWEEN_LISTINGS_UPDATED_EVENT,
+  HalloweenMerchantListing,
+  parseHalloweenMerchantListings
+} from '@/lib/halloweenCatalog';
 
-interface CostumeListing {
-  id: number;
-  name: string;
-  category: string;
-  size: string;
-  price: number;
-  stock: number;
-  description: string;
-  image: string;
-  createdAt: string;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_STORED_IMAGE_BYTES = 320 * 1024;
+
+function resizeProductImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const imageElement = new window.Image();
+    imageElement.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const scale = Math.min(1, 1000 / Math.max(imageElement.naturalWidth, imageElement.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(imageElement.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(imageElement.naturalHeight * scale));
+      const context = canvas.getContext('2d');
+      if (!context) {
+        reject(new Error('This browser could not prepare the uploaded image.'));
+        return;
+      }
+      context.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => {
+        if (!blob) {
+          reject(new Error('The uploaded image could not be processed.'));
+          return;
+        }
+        if (blob.size > MAX_STORED_IMAGE_BYTES) {
+          reject(new Error('This image is too large after compression. Choose a smaller image.'));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('The processed image could not be read.'));
+        reader.readAsDataURL(blob);
+      }, 'image/webp', 0.78);
+    };
+    imageElement.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('The selected file is not a readable image.'));
+    };
+    imageElement.src = objectUrl;
+  });
 }
 
-const STORAGE_KEY = 'halloween_merchant_listings';
-
-const initialListings: CostumeListing[] = [
-  {
-    id: 1,
-    name: 'Midnight Witch Set',
-    category: 'Witch',
-    size: 'M',
-    price: 3200,
-    stock: 12,
-    description: 'Velvet witch look with cape and wide-brim hat.',
-    image: '',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 2,
-    name: 'Blood Moon Vampire',
-    category: 'Vampire',
-    size: 'L',
-    price: 3600,
-    stock: 8,
-    description: 'Classic satin vampire look with tailored cape and collar.',
-    image: '',
-    createdAt: new Date().toISOString()
-  }
-];
-
 export default function MerchantHalloweenPage() {
-  const [listings, setListings] = useState<CostumeListing[]>(initialListings);
+  const [listings, setListings] = useState<HalloweenMerchantListing[]>([]);
   const [form, setForm] = useState({
     name: '',
     category: 'Witch',
@@ -54,46 +64,85 @@ export default function MerchantHalloweenPage() {
     description: ''
   });
   const [image, setImage] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return;
-    try {
-      const parsed = JSON.parse(saved) as CostumeListing[];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        setListings(parsed);
+    const loadListings = () => {
+      try {
+        setListings(parseHalloweenMerchantListings(localStorage.getItem(HALLOWEEN_LISTINGS_STORAGE_KEY)));
+      } catch (cause) {
+        console.error('[HalloweenMerchant] Could not restore costume listings:', cause);
+        setError('Saved listings could not be read in this browser. Export or clear the invalid browser data before continuing.');
       }
-    } catch (error) {
-      console.warn('Could not restore costume listings:', error);
-    }
+    };
+    loadListings();
+    window.addEventListener('storage', loadListings);
+    return () => window.removeEventListener('storage', loadListings);
   }, []);
 
-  const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setImage(String(reader.result || ''));
-    reader.readAsDataURL(file);
+    setError('');
+    setNotice('');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Use a JPEG, PNG, or WebP product image.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError('Choose a product image smaller than 8 MB.');
+      event.target.value = '';
+      return;
+    }
+    try {
+      setImage(await resizeProductImage(file));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The product image could not be prepared.');
+      event.target.value = '';
+    }
   };
 
-  const handleSubmit = () => {
-    const nextListing: CostumeListing = {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    const name = form.name.trim();
+    const description = form.description.trim();
+    const price = Number(form.price);
+    const stock = Number(form.stock);
+    if (!name || !description || !image || !Number.isSafeInteger(price) || price < 1
+      || !Number.isSafeInteger(stock) || stock < 0) {
+      setError('Add a name, description, product photo, whole-KES price, and valid stock quantity.');
+      return;
+    }
+
+    const nextListing: HalloweenMerchantListing = {
       id: Date.now(),
-      name: form.name || 'New Halloween fit',
+      name,
       category: form.category,
       size: form.size,
-      price: Number(form.price) || 0,
-      stock: Number(form.stock) || 0,
-      description: form.description || 'Fresh seasonal drop.',
-      image: image || '',
+      price,
+      stock,
+      description,
+      image,
       createdAt: new Date().toISOString()
     };
 
     const next = [nextListing, ...listings];
-    setListings(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    try {
+      localStorage.setItem(HALLOWEEN_LISTINGS_STORAGE_KEY, JSON.stringify(next));
+      setListings(next);
+      window.dispatchEvent(new Event(HALLOWEEN_LISTINGS_UPDATED_EVENT));
+    } catch (cause) {
+      console.error('[HalloweenMerchant] Could not save costume listing:', cause);
+      setError('This browser could not save the listing. Remove older listings or use a smaller product photo.');
+      return;
+    }
     setForm({ name: '', category: 'Witch', size: 'M', price: '3200', stock: '10', description: '' });
     setImage(null);
+    setNotice('Listing published to the Halloween shop in this browser.');
   };
 
   return (
@@ -107,10 +156,13 @@ export default function MerchantHalloweenPage() {
             <h1 className="mt-4 text-4xl font-black uppercase tracking-[-0.06em] sm:text-5xl">Halloween costume seller</h1>
           </div>
           <div className="rounded-full border border-violet-400/30 bg-violet-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-violet-200">
-            Multi-vendor ready
+            Browser demo
           </div>
         </div>
       </div>
+      <p className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+        Merchant Studio preview: listings are saved only in this browser and appear in its Halloween shop. This demo is not connected to shared seller accounts, server storage, or marketplace payouts.
+      </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
@@ -118,10 +170,10 @@ export default function MerchantHalloweenPage() {
             <Sparkles size={12} /> New listing
           </div>
 
-          <div className="space-y-4">
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <label className="block text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
               Costume name
-              <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none" />
+              <input required maxLength={100} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none" />
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -152,35 +204,38 @@ export default function MerchantHalloweenPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
                 Price (KES)
-                <input type="number" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none" />
+                <input type="number" min="1" step="1" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none" />
               </label>
 
               <label className="block text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
                 Stock
-                <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none" />
+                <input type="number" min="0" step="1" required value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none" />
               </label>
             </div>
 
             <label className="block text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
               Description
-              <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="mt-2 min-h-[100px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none" />
+              <textarea required maxLength={600} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="mt-2 min-h-[100px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900 outline-none" />
             </label>
 
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-200 bg-violet-50 px-4 py-4 text-[9px] font-black uppercase tracking-[0.25em] text-violet-700">
-              <ImagePlus size={14} /> Upload product image
-              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+              <ImagePlus size={14} /> {image ? 'Replace product image' : 'Upload product image'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageUpload} />
             </label>
 
             {image && (
               <div className="overflow-hidden rounded-[1.4rem] border border-slate-200">
-                <img src={image} alt="Selected costume preview" className="h-40 w-full object-cover" />
+                <Image src={image} alt="Selected costume preview" width={800} height={400} unoptimized className="h-40 w-full object-cover" />
               </div>
             )}
 
-            <Button className="w-full rounded-2xl bg-slate-950 text-white hover:bg-slate-800 font-black uppercase tracking-[0.2em] text-[9px]" onClick={handleSubmit}>
+            {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+            {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+
+            <Button type="submit" className="w-full rounded-2xl bg-slate-950 text-white hover:bg-slate-800 font-black uppercase tracking-[0.2em] text-[9px]">
               Publish listing
             </Button>
-          </div>
+          </form>
         </div>
 
         <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
@@ -194,7 +249,7 @@ export default function MerchantHalloweenPage() {
                 <div className="flex gap-3">
                   <div className="h-20 w-20 overflow-hidden rounded-2xl bg-slate-200">
                     {listing.image ? (
-                      <img src={listing.image} alt={listing.name} className="h-full w-full object-cover" />
+                      <Image src={listing.image} alt={listing.name} width={80} height={80} unoptimized className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">No image</div>
                     )}
