@@ -75,6 +75,7 @@ export async function POST(request: Request) {
   const buyerEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const buyerName = typeof body.name === 'string' ? body.name.trim() : '';
   const buyerPhone = typeof body.phone === 'string' ? normalizeTicketPhoneNumber(body.phone) : null;
+  const promotionCode = typeof body.promotionCode === 'string' ? body.promotionCode.trim().toUpperCase() : '';
   const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
   const accessToken = typeof body.accessToken === 'string' ? body.accessToken : '';
   if (!uuidPattern.test(eventId) || !uuidPattern.test(ticketTypeId)) {
@@ -98,9 +99,12 @@ export async function POST(request: Request) {
   if (!tokenPattern.test(idempotencyKey) || !tokenPattern.test(accessToken)) {
     return NextResponse.json({ error: 'Checkout security verification failed. Refresh the page and try again.' }, { status: 400 });
   }
+  if (promotionCode.length > 40 || (promotionCode !== '' && !/^[A-Z0-9][A-Z0-9_-]{1,39}$/.test(promotionCode))) {
+    return NextResponse.json({ error: 'Enter a valid promo code.' }, { status: 400 });
+  }
 
   const paymentReference = `OBT-${randomBytes(16).toString('hex').toUpperCase()}`;
-  const { data, error } = await database.rpc('ticketing_create_payhero_checkout', {
+  const { data, error } = await database.rpc('ticketing_create_checkout_with_promotion', {
     p_event_id: eventId,
     p_ticket_type_id: ticketTypeId,
     p_quantity: quantity,
@@ -108,15 +112,19 @@ export async function POST(request: Request) {
     p_buyer_name: buyerName,
     p_idempotency_key: idempotencyKey,
     p_access_token_hash: hashTicketAccessToken(accessToken),
-    p_payment_reference: paymentReference
+    p_payment_reference: paymentReference,
+    p_promotion_code: promotionCode || null
   });
 
   if (error) {
+    if (error.code === 'P2001') return NextResponse.json({ error: 'This promo code is invalid or unavailable for this event.' }, { status: 400 });
+    if (error.code === 'P2002') return NextResponse.json({ error: 'This promo code has reached its redemption limit.' }, { status: 409 });
+    if (error.code === 'P2003') return NextResponse.json({ error: 'This checkout was already started with a different promo code. Start checkout again.' }, { status: 409 });
     const mapped = mapCheckoutError(error.code, error.message);
     if (mapped) return NextResponse.json({ error: mapped.message }, { status: mapped.status });
     console.error('[TicketingCheckout] Could not create checkout:', error);
     return NextResponse.json({
-      error: 'Checkout could not be prepared. Confirm the Ticketing commerce migration is installed.'
+      error: 'Checkout could not be prepared. Confirm the Ticketing commerce and promotions migrations are installed.'
     }, { status: 503 });
   }
 
@@ -127,6 +135,15 @@ export async function POST(request: Request) {
       || !['paystack', 'payhero', 'complimentary'].includes(checkout.provider)) {
     console.error('[TicketingCheckout] Checkout RPC returned an invalid response.');
     return NextResponse.json({ error: 'Checkout could not be verified.' }, { status: 503 });
+  }
+  if (checkout.provider === 'paystack' && !process.env.PAYSTACK_SECRET_KEY?.trim()) {
+    const { error: releaseError } = await database.rpc('ticketing_fail_checkout', {
+      p_payment_reference: checkout.payment_reference
+    });
+    if (releaseError) {
+      console.error('[TicketingCheckout] Payment configuration is missing and the reservation could not be released:', releaseError);
+    }
+    return NextResponse.json({ error: 'Ticketing payment processing is not configured.' }, { status: 503 });
   }
 
   const { error: contactError } = await database.from('ticketing_orders').update({

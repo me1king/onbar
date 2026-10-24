@@ -45,6 +45,11 @@ export default function TicketCheckoutButton({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [whatsappConsent, setWhatsappConsent] = useState(false);
+  const [promoInput, setPromoInput] = useState('');
+  const [promotionCode, setPromotionCode] = useState('');
+  const [promotionDiscount, setPromotionDiscount] = useState(0);
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [promoMessage, setPromoMessage] = useState('');
   const [quantity, setQuantity] = useState(minPerOrder);
   const keys = useRef<{ idempotencyKey: string; accessToken: string } | null>(null);
   const maximum = Math.min(20, maxPerOrder, remaining);
@@ -63,6 +68,7 @@ export default function TicketCheckoutButton({
           eventId,
           ticketTypeId,
           quantity,
+          promotionCode,
           name,
           email,
           phone,
@@ -78,6 +84,7 @@ export default function TicketCheckoutButton({
         if (response.status === 409 || response.status === 400) keys.current = null;
         return;
       }
+
       if (result.orderId) {
         try {
           window.sessionStorage.setItem(`ticket-wallet:${result.orderId}`, keys.current.accessToken);
@@ -90,6 +97,33 @@ export default function TicketCheckoutButton({
       setError('The checkout service could not be reached. Please retry.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function applyPromotion() {
+    setPromoBusy(true);
+    setPromoMessage('');
+    setError('');
+    try {
+      const response = await fetch('/api/ticketing/promotions/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, ticketTypeId, quantity, code: promoInput })
+      });
+      const result = await response.json() as { code?: string; discountMinor?: number; error?: string };
+      if (!response.ok || !result.code || !Number.isSafeInteger(result.discountMinor)) {
+        throw new Error(result.error || 'Promo code could not be validated.');
+      }
+      setPromotionCode(result.code);
+      setPromotionDiscount(result.discountMinor || 0);
+      keys.current = null;
+      setPromoMessage(`${result.code} applied. Discount: ${formatPrice(result.discountMinor || 0, currency)}.`);
+    } catch (cause) {
+      setPromotionCode('');
+      setPromotionDiscount(0);
+      setPromoMessage(cause instanceof Error ? cause.message : 'Promo code could not be validated.');
+    } finally {
+      setPromoBusy(false);
     }
   }
 
@@ -162,7 +196,13 @@ export default function TicketCheckoutButton({
             Quantity
             <select
               value={quantity}
-              onChange={event => { setQuantity(Number(event.target.value)); keys.current = null; }}
+              onChange={event => {
+                setQuantity(Number(event.target.value));
+                setPromotionCode('');
+                setPromotionDiscount(0);
+                setPromoMessage('');
+                keys.current = null;
+              }}
               className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             >
               {Array.from({ length: maximum - minPerOrder + 1 }, (_, index) => minPerOrder + index).map(value => (
@@ -170,9 +210,36 @@ export default function TicketCheckoutButton({
               ))}
             </select>
           </label>
-          <p className="ticket-theme-copy text-[10px]">
-            Total: {formatPrice((priceMinor + feeMinor) * quantity, currency)} · includes service fee
-          </p>
+          <div className="grid gap-2">
+            <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
+              Promo code (optional)
+              <span className="flex gap-2">
+                <input
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  maxLength={40}
+                  value={promoInput}
+                  onChange={event => {
+                    setPromoInput(event.target.value.toUpperCase());
+                    setPromotionCode('');
+                    setPromotionDiscount(0);
+                    setPromoMessage('');
+                    keys.current = null;
+                  }}
+                  className="ticket-theme-input min-h-10 min-w-0 flex-1 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  placeholder="Enter code"
+                />
+                <button type="button" disabled={promoBusy || !promoInput.trim()} onClick={() => void applyPromotion()} className="min-h-10 rounded-lg border border-slate-300 px-3 text-[10px] font-bold disabled:opacity-50">
+                  {promoBusy ? 'Checking…' : 'Apply'}
+                </button>
+              </span>
+            </label>
+            {promoMessage && <p role={promotionCode ? 'status' : 'alert'} className={`text-[10px] leading-4 ${promotionCode ? 'text-emerald-700' : 'text-rose-700'}`}>{promoMessage}</p>}
+          </div>
+          <div className="ticket-theme-copy text-[10px]">
+            {promotionDiscount > 0 && <p>Promo discount: −{formatPrice(promotionDiscount, currency)}</p>}
+            <p className="font-bold">Total: {formatPrice(Math.max(0, (priceMinor + feeMinor) * quantity - promotionDiscount), currency)} · includes service fee</p>
+          </div>
           {error && <p role="alert" className="text-[10px] leading-4 text-rose-700">{error}</p>}
           <div className="flex gap-2">
             <button type="submit" disabled={busy} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-orange-400 px-3 text-xs font-black text-[#170d18] disabled:opacity-60">

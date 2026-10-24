@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { CalendarDays, ChevronRight, Clock3, Ghost, MapPin, ShieldCheck, Ticket } from 'lucide-react';
-import { getPublicTicketEvents, type PublicTicketEvent } from '@/lib/ticketing/publicEvents.server';
+import { Ghost, ShieldCheck, Ticket } from 'lucide-react';
+import { getPublicTicketEvents } from '@/lib/ticketing/publicEvents.server';
 import TicketingBrand from '@/app/tickets/TicketingBrand';
+import TicketEventDiscovery from '@/app/tickets/TicketEventDiscovery';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,78 +11,6 @@ export const metadata: Metadata = {
   title: 'Halloween Tickets | ONLINE BAR',
   description: 'Find your next after-dark event with ONLINE BAR Ticketing.'
 };
-
-function formatEventDate(value: string, timezone: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Date to be announced';
-  return new Intl.DateTimeFormat('en-KE', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: timezone
-  }).format(date);
-}
-
-function formatPrice(amount: number, currency: string) {
-  return new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency: currency.trim(),
-    maximumFractionDigits: 2
-  }).format(amount / 100);
-}
-
-function EventCard({ event }: { event: PublicTicketEvent }) {
-  const availableTicketTypes = event.ticket_types.filter(ticketType => ticketType.wave_open && ticketType.remaining > 0);
-  const lowestPrice = availableTicketTypes.length
-    ? Math.min(...availableTicketTypes.map(ticketType => ticketType.price_minor))
-    : null;
-
-  return (
-    <article className="ticket-theme-panel group overflow-hidden rounded-3xl border shadow-lg shadow-slate-900/5 transition duration-300 hover:-translate-y-1 hover:border-orange-300 hover:shadow-orange-900/10">
-      <div className="ticket-theme-hero relative isolate min-h-56 overflow-hidden border-b p-6">
-        <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-14 -z-10 h-56 w-56 rounded-full bg-orange-200/45 blur-[70px]" />
-        <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 left-1/4 -z-10 h-48 w-48 rounded-full bg-violet-200/35 blur-[70px]" />
-        <div className="flex items-start justify-between gap-3">
-          <span className="ticket-theme-accent-soft inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em]"><Ghost size={13} /> After dark</span>
-          {event.age_limit !== null && <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-[10px] font-black text-slate-700">{event.age_limit}+</span>}
-        </div>
-        <div className="absolute bottom-6 left-6 right-6">
-          <p className="ticket-theme-accent text-[10px] font-black uppercase tracking-[0.18em]">{event.city}</p>
-          <h2 className="ticket-theme-text mt-2 max-w-xl text-2xl font-black tracking-tight sm:text-3xl">{event.title}</h2>
-          <p className="ticket-theme-copy mt-2 flex items-center gap-2 text-xs"><MapPin size={13} />{event.venue_name}</p>
-        </div>
-      </div>
-      <div className="p-5 sm:p-6">
-        <div className="ticket-theme-copy flex flex-wrap gap-x-5 gap-y-2 text-xs">
-          <span className="inline-flex items-center gap-2"><CalendarDays size={14} className="ticket-theme-accent" />{formatEventDate(event.starts_at, event.timezone)}</span>
-          {event.doors_open_at && <span className="inline-flex items-center gap-2"><Clock3 size={14} className="ticket-theme-accent" />Doors {formatEventDate(event.doors_open_at, event.timezone)}</span>}
-        </div>
-        <p className="ticket-theme-copy mt-4 line-clamp-3 text-sm leading-6">{event.description || 'Get ready for a night out. Event details and ticket options are available here.'}</p>
-        {event.ticket_types.some(ticketType => ticketType.wave_number !== null) && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {event.ticket_types.filter(ticketType => ticketType.wave_number !== null).map(ticketType => (
-            <span key={ticketType.id} className="ticket-theme-accent-soft rounded-full border px-3 py-1 text-[9px] font-bold">
-              {ticketType.wave_label} · {ticketType.admission_type}
-            </span>
-          ))}
-        </div>
-        )}
-        <div className="mt-5 flex flex-wrap items-end justify-between gap-4 border-t border-slate-200 pt-4" style={{ borderColor: 'var(--ticket-border)' }}>
-        <div>
-          <p className="ticket-theme-muted text-[9px] font-black uppercase tracking-[0.15em]">{lowestPrice === null ? 'Next release' : 'Tickets from'}</p>
-          <p className="ticket-theme-accent mt-1 text-lg font-black">{lowestPrice === null ? 'No wave open' : formatPrice(lowestPrice, event.ticket_types[0]?.currency || 'KES')}</p>
-        </div>
-          <Link href={`/tickets/${encodeURIComponent(event.slug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-4 text-xs font-black text-[#170d18] transition hover:bg-orange-300">
-            Event & tickets <ChevronRight size={15} />
-          </Link>
-        </div>
-      </div>
-    </article>
-  );
-}
 
 export default async function TicketDiscoveryPage() {
   const result = await getPublicTicketEvents();
@@ -122,7 +51,7 @@ export default async function TicketDiscoveryPage() {
           {!result.ok ? (
             <div role="alert" className="ticket-theme-panel rounded-2xl border p-7 text-sm leading-6 shadow-sm">{result.message}</div>
           ) : result.events.length ? (
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{result.events.map(event => <EventCard key={event.id} event={event} />)}</div>
+            <TicketEventDiscovery events={result.events} />
           ) : (
             <div className="ticket-theme-panel rounded-3xl border border-dashed px-6 py-14 text-center shadow-sm">
               <span className="ticket-theme-accent-soft mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border"><Ghost size={25} /></span>

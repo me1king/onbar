@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TicketThemePicker from '@/app/tickets/TicketThemePicker';
+import TicketPromotionManager from '@/app/admin/(dashboard)/ticketing/TicketPromotionManager';
 import {
   ArrowUpRight,
   BadgeCheck,
@@ -622,6 +623,7 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
           <div className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Tier allocation</p><p className="mt-1 text-sm font-black text-white">{allocated.toLocaleString('en-KE')}{event.capacity ? ` / ${event.capacity.toLocaleString('en-KE')}` : ''}</p></div>
           <div className="rounded-xl border border-white/5 bg-white/[0.035] p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Event ends</p><p className="mt-1 text-sm font-black text-white">{eventDate(event.ends_at)}</p></div>
         </div>
+        <TicketPromotionManager eventId={event.id} />
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.025] p-3">
           <div className="flex flex-wrap items-center gap-4">
             <p className="text-xs text-slate-300">Service fee: <strong className="text-white">{money(event.service_fee_minor)} per ticket</strong></p>
