@@ -38,6 +38,9 @@ type RecentSale = {
   collectedMinor: string;
   currency: string;
   paidAt: string;
+  paymentProvider: string | null;
+  paymentReference: string | null;
+  verifiedAt: string | null;
 };
 
 type SalesReport = {
@@ -100,14 +103,19 @@ export default function TicketingSalesPage() {
     }
   }, [period]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const refreshTimer = window.setInterval(() => { void load(); }, 30_000);
+    return () => window.clearInterval(refreshTimer);
+  }, [load]);
 
   function exportCsv() {
     if (!report) return;
     const rows = [
-      ['Type', 'Reference', 'Event', 'Paid at', 'Tickets', 'Gross ticket sales', 'Service fees', 'Discounts', 'Collected', 'Currency'],
+      ['Type', 'Order reference', 'Payment provider', 'Payment reference', 'Event', 'Verified at', 'Tickets', 'Gross ticket sales', 'Service fees', 'Discounts', 'Collected', 'Currency'],
       ...report.recentOrders.map(order => [
-        'Ticket order', order.reference, order.eventTitle, order.paidAt, order.tickets,
+        'Ticket order', order.reference, order.paymentProvider || '', order.paymentReference || '',
+        order.eventTitle, order.verifiedAt || order.paidAt, order.tickets,
         order.grossSalesMinor, order.serviceFeesMinor, order.discountsMinor, order.collectedMinor, order.currency
       ])
     ];
@@ -144,7 +152,7 @@ export default function TicketingSalesPage() {
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Dedicated ticketing ledger</p>
               <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Ticket sales<span className="text-amber-300">.</span></h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                Only verified paid records from the isolated Ticketing orders, payment attempts and refund tables appear here.
+                Only server-verified paid Ticketing orders and successful refunds appear here. Recent payments include their provider transaction reference for reconciliation; this report refreshes every 30 seconds.
                 Beverage orders, shop reports, product stock and merchant payouts are not included.
               </p>
             </div>
@@ -222,28 +230,34 @@ export default function TicketingSalesPage() {
             <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#17121e]">
               <div className="border-b border-white/10 p-5">
                 <h2 className="text-lg font-black">Recent verified orders</h2>
-                <p className="mt-1 text-xs text-slate-400">Latest 50 paid ticket orders. Customer contact details and ticket credentials are intentionally excluded.</p>
+                <p className="mt-1 text-xs text-slate-400">Latest 50 server-verified payments with their provider references. Customer contact details and ticket credentials are intentionally excluded.</p>
               </div>
               {report.recentOrders.length ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[820px] text-left text-sm">
+                  <table className="w-full min-w-[1040px] text-left text-sm">
                     <thead className="bg-white/[0.03] text-[10px] uppercase tracking-wider text-slate-400">
-                      <tr><th className="px-5 py-3">Ticket order</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">Tickets</th><th className="px-4 py-3">Amount paid</th><th className="px-5 py-3">Verified at</th></tr>
+                      <tr><th className="px-5 py-3">Ticket order</th><th className="px-4 py-3">Payment provider reference</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">Tickets</th><th className="px-4 py-3">Amount paid</th><th className="px-5 py-3">Verified at</th></tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.06]">
                       {report.recentOrders.map(order => (
                         <tr key={order.reference}>
                           <td className="px-5 py-4 font-mono text-xs text-amber-100">{order.reference}</td>
+                          <td className="px-4 py-4">
+                            <span className="block text-[10px] font-black uppercase text-slate-400">{order.paymentProvider || 'Provider unavailable'}</span>
+                            <span className={`mt-1 block font-mono text-xs ${order.paymentReference ? 'text-slate-200' : 'text-red-200'}`}>{order.paymentReference || 'Missing successful payment record'}</span>
+                          </td>
                           <td className="px-4 py-4 font-semibold text-white">{order.eventTitle}</td>
                           <td className="px-4 py-4 text-slate-300">{count(order.tickets)}</td>
                           <td className="px-4 py-4 font-black text-white">{money(order.collectedMinor, order.currency)}</td>
-                          <td className="px-5 py-4 text-xs text-slate-400">{dateTime(order.paidAt)}</td>
+                          <td className="px-5 py-4 text-xs text-slate-400">{dateTime(order.verifiedAt || order.paidAt)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              ) : <p className="p-8 text-center text-sm text-slate-400">No paid ticket orders are recorded yet.</p>}
+              ) : (
+                <p className="p-8 text-center text-sm text-slate-400">No verified ticket payments are recorded yet.</p>
+              )}
             </section>
           </>
         ) : null}

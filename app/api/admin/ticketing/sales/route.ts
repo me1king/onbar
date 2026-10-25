@@ -40,6 +40,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Ticket sales could not be loaded.' }, { status: 503 });
   }
 
+  const report = data as { reportVersion?: number; recentOrders?: unknown[] } | null;
+  if (report?.reportVersion !== 2 || report.recentOrders?.some(order =>
+    typeof order !== 'object' || order === null
+    || !('paymentProvider' in order) || !('paymentReference' in order) || !('verifiedAt' in order))) {
+    return NextResponse.json({
+      error: 'Reapply supabase/TICKETING_SALES_REPORT_MIGRATION.sql to include verified payment references in the Ticketing ledger.'
+    }, { status: 503 });
+  }
+
   return NextResponse.json(data, {
     headers: { 'Cache-Control': 'private, no-store, max-age=0' }
   });

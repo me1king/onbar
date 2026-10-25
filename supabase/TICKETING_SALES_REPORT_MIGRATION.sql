@@ -168,6 +168,14 @@ BEGIN
         FROM public.ticketing_order_items AS items
         JOIN paid_orders ON paid_orders.id = items.order_id
         GROUP BY items.order_id
+    ),
+    successful_payments AS (
+        SELECT DISTINCT ON (attempts.order_id)
+               attempts.order_id, attempts.provider, attempts.provider_reference, attempts.verified_at
+        FROM public.ticketing_payment_attempts AS attempts
+        WHERE attempts.status = 'succeeded'
+        ORDER BY attempts.order_id, attempts.verified_at DESC NULLS LAST,
+                 attempts.updated_at DESC, attempts.created_at DESC
     )
     SELECT COALESCE(jsonb_agg(recent.item ORDER BY recent.paid_at DESC), '[]'::JSONB)
     INTO v_recent_orders
@@ -182,10 +190,14 @@ BEGIN
                    'discountsMinor', paid_orders.discount_minor::TEXT,
                    'collectedMinor', paid_orders.total_minor::TEXT,
                    'currency', paid_orders.currency,
-                   'paidAt', paid_orders.paid_at
+                   'paidAt', paid_orders.paid_at,
+                   'paymentProvider', successful_payments.provider,
+                   'paymentReference', successful_payments.provider_reference,
+                   'verifiedAt', successful_payments.verified_at
                ) AS item
         FROM paid_orders
         LEFT JOIN order_quantities ON order_quantities.order_id = paid_orders.id
+        LEFT JOIN successful_payments ON successful_payments.order_id = paid_orders.id
         ORDER BY paid_orders.paid_at DESC
         LIMIT 50
     ) AS recent;
@@ -207,6 +219,7 @@ BEGIN
     );
 
     RETURN jsonb_build_object(
+        'reportVersion', 2,
         'summary', v_summary,
         'byEvent', v_by_event,
         'recentOrders', v_recent_orders,
