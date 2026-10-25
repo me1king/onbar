@@ -53,6 +53,40 @@ interface MarketCampaign {
   title: string;
   message: string;
   published: boolean;
+  storefrontEyebrow: string;
+  storefrontTitle: string;
+  storefrontSubtitle: string;
+  collectionEyebrow: string;
+  collectionTitle: string;
+  searchPlaceholder: string;
+  categoriesLabel: string;
+  countdownLabel: string;
+  countdownEndsAt: string | null;
+  showPreviewDesigns: boolean;
+}
+
+const defaultMarketCampaign: MarketCampaign = {
+  title: '',
+  message: '',
+  published: false,
+  storefrontEyebrow: 'HALLOWEEN DROP',
+  storefrontTitle: 'COSTUME STORE FOR THE SEASON',
+  storefrontSubtitle: 'Browse costume drops, explore fit and photo previews, and discover real merchant listings when they’re published.',
+  collectionEyebrow: 'THE COLLECTION',
+  collectionTitle: 'Find your look.',
+  searchPlaceholder: 'Search costumes, styles, and descriptions',
+  categoriesLabel: 'SHOP LIVE CATEGORIES',
+  countdownLabel: 'HALLOWEEN COUNTDOWN',
+  countdownEndsAt: null,
+  showPreviewDesigns: true
+};
+
+function localDateTimeValue(value: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 interface MarketOffer {
@@ -119,7 +153,7 @@ export default function MarketOperationsPage() {
   const [offerCounterAmounts, setOfferCounterAmounts] = useState<Record<string, string>>({});
   const [offerAdminMessages, setOfferAdminMessages] = useState<Record<string, string>>({});
   const [orderAdminNotes, setOrderAdminNotes] = useState<Record<string, string>>({});
-  const [campaign, setCampaign] = useState<MarketCampaign>({ title: '', message: '', published: false });
+  const [campaign, setCampaign] = useState<MarketCampaign>(defaultMarketCampaign);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
@@ -283,7 +317,7 @@ export default function MarketOperationsPage() {
       const result = await response.json() as { campaign?: MarketCampaign; error?: string };
       if (!response.ok || !result.campaign) throw new Error(result.error || 'Could not save Market campaign settings.');
       setCampaign(result.campaign);
-      setMessage(result.campaign.published ? 'Market campaign published.' : 'Market campaign unpublished.');
+      setMessage(result.campaign.published ? 'Halloween storefront settings published.' : 'Halloween storefront settings saved; campaign is unpublished.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save Market campaign settings.');
     } finally {
@@ -725,25 +759,82 @@ export default function MarketOperationsPage() {
 
       <section className="mt-12">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Campaign studio</p>
-          <h2 className="mt-2 text-2xl font-black">Market storefront message</h2>
-          <p className="mt-2 text-sm text-slate-500">Publish or hide this message on the Market homepage without changing the Midnight Society waitlist campaign.</p>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Halloween shop content</p>
+          <h2 className="mt-2 text-2xl font-black">Storefront content and countdown</h2>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500">Control the customer-facing Waitlist Halloween hero, collection labels, search text, live category heading, and countdown here. Product names, photos, descriptions, sizes, stock and prices are entered by merchants in their studio and appear after an admin publishes the listing. The built-in costume concepts are previews; hide them when you want the shop to show only real merchant inventory.</p>
         </div>
         <form onSubmit={saveCampaign} className="mt-5 grid max-w-3xl gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <h3 className="border-b border-slate-200 pb-2 text-sm font-black uppercase tracking-wider text-slate-700">Storefront hero</h3>
           <label className="grid gap-2 text-sm font-semibold text-slate-700">
-            Campaign title
+            Small heading
+            <input required minLength={2} maxLength={80} value={campaign.storefrontEyebrow} onChange={(event) => setCampaign({ ...campaign, storefrontEyebrow: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-slate-700">
+            Main title
+            <textarea required minLength={2} maxLength={120} rows={2} value={campaign.storefrontTitle} onChange={(event) => setCampaign({ ...campaign, storefrontTitle: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-slate-700">
+            Intro text
+            <textarea required minLength={2} maxLength={500} rows={3} value={campaign.storefrontSubtitle} onChange={(event) => setCampaign({ ...campaign, storefrontSubtitle: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
+          </label>
+
+          <h3 className="mt-3 border-b border-slate-200 pb-2 text-sm font-black uppercase tracking-wider text-slate-700">Collection and search labels</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              Collection eyebrow
+              <input required minLength={2} maxLength={60} value={campaign.collectionEyebrow} onChange={(event) => setCampaign({ ...campaign, collectionEyebrow: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              Collection heading
+              <input required minLength={2} maxLength={100} value={campaign.collectionTitle} onChange={(event) => setCampaign({ ...campaign, collectionTitle: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              Search placeholder
+              <input required minLength={2} maxLength={100} value={campaign.searchPlaceholder} onChange={(event) => setCampaign({ ...campaign, searchPlaceholder: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              Live categories heading
+              <input required minLength={2} maxLength={60} value={campaign.categoriesLabel} onChange={(event) => setCampaign({ ...campaign, categoriesLabel: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
+            </label>
+          </div>
+
+          <h3 className="mt-3 border-b border-slate-200 pb-2 text-sm font-black uppercase tracking-wider text-slate-700">Countdown</h3>
+          <label className="grid gap-2 text-sm font-semibold text-slate-700">
+            Countdown label
+            <input required minLength={2} maxLength={60} value={campaign.countdownLabel} onChange={(event) => setCampaign({ ...campaign, countdownLabel: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-slate-700">
+            Countdown ends at (your local time)
+            <input
+              type="datetime-local"
+              value={localDateTimeValue(campaign.countdownEndsAt)}
+              onChange={(event) => setCampaign({ ...campaign, countdownEndsAt: event.target.value ? new Date(event.target.value).toISOString() : null })}
+              className="rounded-lg border border-slate-200 p-3"
+            />
+            <span className="text-xs font-normal text-slate-500">Leave blank to hide the countdown. The shop displays a live timer and marks it ended after this time.</span>
+          </label>
+
+          <h3 className="mt-3 border-b border-slate-200 pb-2 text-sm font-black uppercase tracking-wider text-slate-700">Store content visibility</h3>
+          <label className="flex items-start gap-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={campaign.showPreviewDesigns} onChange={(event) => setCampaign({ ...campaign, showPreviewDesigns: event.target.checked })} />
+            <span>Show the built-in costume concept previews <span className="block pt-1 text-xs font-normal text-slate-500">Turn this off to show only published, real merchant listings. Preview concepts are not inventory and cannot be purchased.</span></span>
+          </label>
+
+          <h3 className="mt-3 border-b border-slate-200 pb-2 text-sm font-black uppercase tracking-wider text-slate-700">Published Market spotlight</h3>
+          <label className="grid gap-2 text-sm font-semibold text-slate-700">
+            Spotlight title
             <input required minLength={2} maxLength={120} value={campaign.title} onChange={(event) => setCampaign({ ...campaign, title: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
           </label>
           <label className="grid gap-2 text-sm font-semibold text-slate-700">
-            Homepage message
+            Spotlight message
             <textarea required minLength={2} maxLength={500} rows={3} value={campaign.message} onChange={(event) => setCampaign({ ...campaign, message: event.target.value })} className="rounded-lg border border-slate-200 p-3" />
           </label>
           <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
             <input type="checkbox" checked={campaign.published} onChange={(event) => setCampaign({ ...campaign, published: event.target.checked })} />
-            Publish this Market campaign
+            Publish this spotlight on the Waitlist Halloween shop
           </label>
           <div>
-            <Button type="submit" disabled={loading || campaignWorking}>{campaignWorking ? 'Saving…' : campaign.published ? 'Save and publish' : 'Save as unpublished'}</Button>
+            <Button type="submit" disabled={loading || campaignWorking}>{campaignWorking ? 'Saving…' : 'Save storefront settings'}</Button>
           </div>
         </form>
       </section>
