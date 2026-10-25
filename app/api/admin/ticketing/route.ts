@@ -417,7 +417,7 @@ export async function POST(request: Request) {
       if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event or wave was not found.' }, { status: 404 });
       if (error?.code === '22023') return NextResponse.json({ error: 'Wave configuration is invalid.' }, { status: 400 });
       console.error('[TicketingAdmin] Could not update ticket wave:', error);
-      return NextResponse.json({ error: 'Ticket wave could not be updated. Confirm that TICKETING_WAVES_MIGRATION.sql has been applied.' }, { status: 503 });
+      return NextResponse.json({ error: 'Ticket wave could not be updated. Apply TICKETING_SAFE_LIVE_TICKET_EDIT_MIGRATION.sql and retry.' }, { status: 503 });
     }
     return NextResponse.json({ ticketType: data });
   }
@@ -485,7 +485,7 @@ export async function POST(request: Request) {
     const salesStartAt = body.salesStartAt ? parseDate(body.salesStartAt) : null;
     const salesEndAt = body.salesEndAt ? parseDate(body.salesEndAt) : null;
     if (!/^[0-9a-f-]{36}$/i.test(eventId) || name.length < 2 || name.length > 100
-      || description.length > 2_000 || priceMinor === null
+      || description.length > 2_000 || priceMinor === null || priceMinor < 1
       || !Number.isSafeInteger(capacity) || capacity < 1 || capacity > 1_000_000
       || !Number.isSafeInteger(minPerOrder) || !Number.isSafeInteger(maxPerOrder)
       || minPerOrder < 1 || maxPerOrder < minPerOrder || maxPerOrder > 100
@@ -520,6 +520,56 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The ticket tier could not be saved.' }, { status: 503 });
     }
     return NextResponse.json({ ticketType: data as Record<string, unknown> }, { status: 201 });
+  }
+
+  if (body.action === 'update_ticket_type') {
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const ticketTypeId = typeof body.ticketTypeId === 'string' ? body.ticketTypeId : '';
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const priceMinor = parseMoney(body.price);
+    const capacity = Number(body.capacity);
+    const minPerOrder = Number(body.minPerOrder ?? 1);
+    const maxPerOrder = Number(body.maxPerOrder ?? 10);
+    const salesStartAt = body.salesStartAt ? parseDate(body.salesStartAt) : null;
+    const salesEndAt = body.salesEndAt ? parseDate(body.salesEndAt) : null;
+    const benefits = parseBenefits(body.benefits);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ticketTypeId)
+      || name.length < 2 || name.length > 100 || description.length > 2_000
+      || priceMinor === null || priceMinor < 1
+      || !Number.isSafeInteger(capacity) || capacity < 1 || capacity > 1_000_000
+      || !Number.isSafeInteger(minPerOrder) || !Number.isSafeInteger(maxPerOrder)
+      || minPerOrder < 1 || maxPerOrder < minPerOrder || maxPerOrder > 100
+      || (body.salesStartAt && !salesStartAt) || (body.salesEndAt && !salesEndAt)
+      || (salesStartAt && salesEndAt && new Date(salesEndAt) <= new Date(salesStartAt))
+      || !benefits) {
+      return NextResponse.json({ error: 'Enter a valid tier name, price, capacity, order limit, benefits and sale window.' }, { status: 400 });
+    }
+
+    const { data, error } = await database.rpc('ticketing_update_ticket_type', {
+      p_event_id: eventId,
+      p_ticket_type_id: ticketTypeId,
+      p_name: name,
+      p_description: description,
+      p_price_minor: priceMinor,
+      p_capacity: capacity,
+      p_min_per_order: minPerOrder,
+      p_max_per_order: maxPerOrder,
+      p_sales_start_at: salesStartAt,
+      p_sales_end_at: salesEndAt,
+      p_benefits: benefits,
+      p_actor_email: session?.email || ''
+    });
+    if (error || !data) {
+      if (error?.code === '23514') return NextResponse.json({ error: 'This tier allocation exceeds event capacity.' }, { status: 400 });
+      if (error?.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 409 });
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event or tier was not found.' }, { status: 404 });
+      if (error?.code === '22023') return NextResponse.json({ error: 'Ticket tier details are invalid.' }, { status: 400 });
+      console.error('[TicketingAdmin] Could not update ticket tier:', error);
+      return NextResponse.json({ error: 'Ticket tier could not be updated. Apply TICKETING_SAFE_LIVE_TICKET_EDIT_MIGRATION.sql and retry.' }, { status: 503 });
+    }
+    return NextResponse.json({ ticketType: data });
   }
 
   return NextResponse.json({ error: 'Choose a supported ticketing action.' }, { status: 400 });

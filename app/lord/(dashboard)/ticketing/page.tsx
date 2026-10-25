@@ -286,7 +286,12 @@ function VenueLocationForm({ event, onSaved, onCancel }: { event: TicketEvent; o
   );
 }
 
-function TierForm({ event, onCreated, onCancel }: { event: TicketEvent; onCreated: () => void; onCancel: () => void }) {
+function TierForm({ event, ticketType, onSaved, onCancel }: {
+  event: TicketEvent;
+  ticketType?: TicketType;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -298,8 +303,9 @@ function TierForm({ event, onCreated, onCancel }: { event: TicketEvent; onCreate
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'create_ticket_type',
+          action: ticketType ? 'update_ticket_type' : 'create_ticket_type',
           eventId: event.id,
+          ticketTypeId: ticketType?.id,
           name: formData.get('name'),
           description: formData.get('description'),
           price: formData.get('price'),
@@ -307,10 +313,11 @@ function TierForm({ event, onCreated, onCancel }: { event: TicketEvent; onCreate
           minPerOrder: formData.get('minPerOrder'),
           maxPerOrder: formData.get('maxPerOrder'),
           salesStartAt: formData.get('salesStartAt'),
-          salesEndAt: formData.get('salesEndAt')
+          salesEndAt: formData.get('salesEndAt'),
+          benefits: String(formData.get('benefits') || '').split(/\r?\n/).map(value => value.trim()).filter(Boolean)
         })
       }));
-      onCreated();
+      onSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The ticket tier could not be saved.');
     } finally {
@@ -321,23 +328,27 @@ function TierForm({ event, onCreated, onCancel }: { event: TicketEvent; onCreate
   return (
     <form action={submit} className="mt-4 rounded-xl border border-white/10 bg-[#100d17] p-4">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h4 className="text-sm font-black text-white">Add ticket tier</h4>
+        <h4 className="text-sm font-black text-white">{ticketType ? 'Edit ticket tier' : 'Add ticket tier'}</h4>
         <button type="button" onClick={onCancel} className="text-xs font-bold text-slate-400">Cancel</button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <label className={labelClass}>Tier name<input className={inputClass} name="name" required maxLength={100} placeholder="Early Bird" /></label>
-        <label className={labelClass}>Price (KES)<input className={inputClass} name="price" required type="number" min="0" max="999999999" step="0.01" placeholder="2500.00" /></label>
-        <label className={labelClass}>Allocation<input className={inputClass} name="capacity" required type="number" min="1" max="1000000" placeholder="100" /></label>
-        <label className={`${labelClass} sm:col-span-2 lg:col-span-3`}>Description<input className={inputClass} name="description" maxLength={2000} placeholder="What's included with this tier?" /></label>
-        <label className={labelClass}>Minimum per order<input className={inputClass} name="minPerOrder" required type="number" min="1" max="100" defaultValue="1" /></label>
-        <label className={labelClass}>Maximum per order<input className={inputClass} name="maxPerOrder" required type="number" min="1" max="100" defaultValue="10" /></label>
-        <label className={labelClass}>Sales open<input className={inputClass} name="salesStartAt" type="datetime-local" /></label>
-        <label className={labelClass}>Sales close<input className={inputClass} name="salesEndAt" type="datetime-local" /></label>
+        <label className={labelClass}>Tier name<input className={inputClass} name="name" required maxLength={100} defaultValue={ticketType?.name || ''} placeholder="Early Bird" /></label>
+        <label className={labelClass}>Price (KES)<input className={inputClass} name="price" required type="number" min="0.01" max="999999999.99" step="0.01" defaultValue={ticketType ? (ticketType.price_minor / 100).toFixed(2) : ''} placeholder="2500.00" /></label>
+        <label className={labelClass}>Allocation<input className={inputClass} name="capacity" required type="number" min="1" max="1000000" defaultValue={ticketType?.capacity ?? ''} placeholder="100" /></label>
+        <label className={`${labelClass} sm:col-span-2 lg:col-span-3`}>Description<input className={inputClass} name="description" maxLength={2000} defaultValue={ticketType?.description || ''} placeholder="What's included with this tier?" /></label>
+        <label className={labelClass}>Minimum per order<input className={inputClass} name="minPerOrder" required type="number" min="1" max="100" defaultValue={ticketType?.min_per_order ?? 1} /></label>
+        <label className={labelClass}>Maximum per order<input className={inputClass} name="maxPerOrder" required type="number" min="1" max="100" defaultValue={ticketType?.max_per_order ?? 10} /></label>
+        <label className={labelClass}>Sales open<input className={inputClass} name="salesStartAt" type="datetime-local" defaultValue={dateTimeInput(ticketType?.sales_start_at || null)} /></label>
+        <label className={labelClass}>Sales close<input className={inputClass} name="salesEndAt" type="datetime-local" defaultValue={dateTimeInput(ticketType?.sales_end_at || null)} /></label>
+        {ticketType && <label className={`${labelClass} sm:col-span-2 lg:col-span-3`}>Included benefits (one per line)
+          <textarea className={`${inputClass} min-h-20 py-3`} name="benefits" maxLength={4000} defaultValue={ticketType.benefits.join('\n')} />
+        </label>}
       </div>
       {error && <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       <button disabled={saving} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-orange-400 px-4 text-sm font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
-        <Plus size={15} /> {saving ? 'Saving tier…' : 'Save ticket tier'}
+        <Plus size={15} /> {saving ? 'Saving tier…' : ticketType ? 'Save tier changes' : 'Save ticket tier'}
       </button>
+      {ticketType && <p className="mt-2 text-[10px] leading-4 text-slate-500">Past orders keep their purchase-time ticket name and price. Capacity cannot be reduced below sold tickets or active reservations.</p>}
     </form>
   );
 }
@@ -456,6 +467,7 @@ function TicketWaveForm({ event, ticketType, onSaved, onCancel }: {
         </label>
         <label className={labelClass}>Sales open (EAT)
           <input className={inputClass} name="salesStartAt" type="datetime-local" required={activationMode === 'scheduled'} disabled={activationMode !== 'scheduled'} value={salesStartAt} onChange={change => setSalesStartAt(change.target.value)} />
+          {activationMode !== 'scheduled' && <input type="hidden" name="salesStartAt" value={salesStartAt} />}
         </label>
         <label className={labelClass}>Sales close (EAT, optional)
           <input className={inputClass} name="salesEndAt" type="datetime-local" defaultValue={dateTimeInput(ticketType?.sales_end_at || null)} />
@@ -478,7 +490,7 @@ function TicketWaveForm({ event, ticketType, onSaved, onCancel }: {
       <button disabled={saving || (!ticketType && availableWaveNumbers.length === 0) || (activationMode === 'previous_sold_out' && !hasPreviousWave)} className="mt-4 min-h-10 rounded-lg bg-orange-400 px-4 text-xs font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
         {saving ? 'Saving wave…' : ticketType ? 'Save wave changes' : 'Save ticket wave'}
       </button>
-      {ticketType && <p className="mt-2 text-[10px] text-slate-500">Existing order history locks wave pricing and terms in the database.</p>}
+      {ticketType && <p className="mt-2 text-[10px] leading-4 text-slate-500">Past orders keep their purchase-time ticket name and price. Capacity cannot be reduced below sold tickets or active reservations.</p>}
     </form>
   );
 }
@@ -534,6 +546,7 @@ function ServiceFeeForm({ event, onSaved, onCancel }: { event: TicketEvent; onSa
 function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPublish: boolean; onRefresh: () => void }) {
   const [addingTier, setAddingTier] = useState(false);
   const [addingWave, setAddingWave] = useState(false);
+  const [editingTierId, setEditingTierId] = useState<string | null>(null);
   const [editingWaveId, setEditingWaveId] = useState<string | null>(null);
   const [waveSavingId, setWaveSavingId] = useState<string | null>(null);
   const [statusError, setStatusError] = useState('');
@@ -681,15 +694,17 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
                       const isClosed = tier.status === 'paused' || (tier.activation_mode === 'manual' && !tier.wave_manual_open);
                       void setWaveStatus(tier, isClosed ? 'active' : 'paused');
                     }} disabled={waveSavingId === tier.id} className="min-h-9 rounded-lg border border-white/10 px-3 text-xs font-bold text-amber-100 hover:bg-white/5 disabled:opacity-50">{waveSavingId === tier.id ? 'Saving…' : tier.status === 'paused' || (tier.activation_mode === 'manual' && !tier.wave_manual_open) ? 'Activate wave' : 'Pause wave'}</button>}
-                    {tier.wave_number !== null && ['draft', 'scheduled'].includes(event.status) && <button type="button" onClick={() => setEditingWaveId(value => value === tier.id ? null : tier.id)} className="min-h-9 rounded-lg border border-white/10 px-3 text-xs font-bold text-orange-100 hover:bg-white/5">{editingWaveId === tier.id ? 'Close' : 'Edit wave'}</button>}
+                    {['draft', 'scheduled', 'on_sale'].includes(event.status) && tier.status !== 'archived' && tier.wave_number === null && <button type="button" onClick={() => setEditingTierId(value => value === tier.id ? null : tier.id)} className="min-h-9 rounded-lg border border-white/10 px-3 text-xs font-bold text-orange-100 hover:bg-white/5">{editingTierId === tier.id ? 'Close' : 'Edit tier'}</button>}
+                    {['draft', 'scheduled', 'on_sale'].includes(event.status) && tier.status !== 'archived' && tier.wave_number !== null && <button type="button" onClick={() => setEditingWaveId(value => value === tier.id ? null : tier.id)} className="min-h-9 rounded-lg border border-white/10 px-3 text-xs font-bold text-orange-100 hover:bg-white/5">{editingWaveId === tier.id ? 'Close' : 'Edit wave'}</button>}
                   </div>
                 </div>
+                {editingTierId === tier.id && <div className="px-4 pb-4"><TierForm event={event} ticketType={tier} onCancel={() => setEditingTierId(null)} onSaved={() => { setEditingTierId(null); onRefresh(); }} /></div>}
                 {editingWaveId === tier.id && <div className="px-4 pb-4"><TicketWaveForm event={event} ticketType={tier} onCancel={() => setEditingWaveId(null)} onSaved={() => { setEditingWaveId(null); onRefresh(); }} /></div>}
               </div>
             ))}
           </div>
         ) : <p className="mt-4 rounded-xl border border-dashed border-white/15 p-4 text-sm text-slate-400">No ticket tiers yet. Add tiers before moving this event toward review.</p>}
-        {addingTier && <TierForm event={event} onCancel={() => setAddingTier(false)} onCreated={() => { setAddingTier(false); onRefresh(); }} />}
+        {addingTier && <TierForm event={event} onCancel={() => setAddingTier(false)} onSaved={() => { setAddingTier(false); onRefresh(); }} />}
         {addingWave && <TicketWaveForm event={event} onCancel={() => setAddingWave(false)} onSaved={() => { setAddingWave(false); onRefresh(); }} />}
       </div>
     </article>
@@ -724,6 +739,7 @@ export default function TicketingPage() {
     return (data?.events || []).filter(event => `${event.title} ${event.venue_name} ${event.city}`.toLowerCase().includes(normalized));
   }, [data, query]);
   const canSetPrices = (data?.events || []).some(event => ['draft', 'scheduled'].includes(event.status));
+  const hasLiveEvents = (data?.events || []).some(event => event.status === 'on_sale');
   const hasEvents = Boolean(data?.events.length);
 
   return (
@@ -813,9 +829,9 @@ export default function TicketingPage() {
               <Wallet size={17} /> {hasEvents ? 'Go to ticket prices' : 'Create event to set prices'}
             </button>
           </div>
-          {!loading && data && !canSetPrices && hasEvents && (
+          {!loading && data && !canSetPrices && hasLiveEvents && (
             <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-300/5 p-3 text-xs leading-5 text-amber-100/80">
-              Existing event ticket terms are locked in this event state. Create a draft or scheduled event to configure new prices; paid order terms must not be silently changed.
+              Live event prices and tiers can be edited from their event cards. You can change existing tiers here; adding a new tier requires a draft or scheduled event.
             </p>
           )}
           {error && /TICKETING_WAVES_MIGRATION\.sql/i.test(error) && (
