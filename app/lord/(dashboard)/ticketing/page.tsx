@@ -3,9 +3,12 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TicketThemePicker from '@/app/tickets/TicketThemePicker';
+import TicketingMfaEnrollment from '@/components/ticketing/TicketingMfaEnrollment';
+import TicketingTransferLink from '@/components/ticketing/TicketingTransferLink';
 import {
   ArrowUpRight,
   BadgeCheck,
+  BarChart3,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -738,6 +741,8 @@ export default function TicketingPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/lord/ticketing/sales" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Wallet size={15} /> Ticket sales</Link>
+              <Link href="/lord/ticketing/insights" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><BarChart3 size={15} /> Demand insights</Link>
+              <TicketingTransferLink />
               <Link href="/lord/ticketing/staff" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Users size={15} /> Gate staff</Link>
               <Link href="/scanner" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ScanLine size={15} /> Open scanner</Link>
               <Link href="/lord/ticketing/security" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-bold text-slate-200 transition hover:border-amber-200/30 hover:bg-white/[0.06]"><ShieldAlert size={15} /> Trust centre</Link>
@@ -752,6 +757,8 @@ export default function TicketingPage() {
             <Metric icon={Wallet} label="Orders recorded" value={data?.totals.orders} />
           </div>
         </header>
+
+        <TicketingMfaEnrollment />
 
         <section aria-labelledby="ticketing-steps-heading" className="rounded-2xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
           <div className="mb-4">
