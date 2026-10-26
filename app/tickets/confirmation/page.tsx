@@ -4,7 +4,7 @@ import TicketWallet from '@/app/tickets/TicketWallet';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Ticket wallet | ONLINE BAR',
+  title: 'Ticket wallet | Apex Market',
   robots: { index: false, follow: false },
   referrer: 'no-referrer'
 };

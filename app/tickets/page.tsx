@@ -9,8 +9,8 @@ import PublicLaunchCountdown from '@/components/ticketing/PublicLaunchCountdown'
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Halloween Tickets | ONLINE BAR',
-  description: 'Find your next after-dark event with ONLINE BAR Ticketing.'
+  title: 'Tickets | Apex Market',
+  description: 'Find events and book verified tickets on Apex Market, built by Online Bar in collaboration with Apex Market.'
 };
 
 export default async function TicketDiscoveryPage() {
@@ -31,7 +31,7 @@ export default async function TicketDiscoveryPage() {
               <div className="ticket-theme-accent-soft inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.22em]"><Ghost size={14} /> Midnight Society KE · Official events</div>
               <p className="ticket-theme-accent mt-6 text-[10px] font-black uppercase tracking-[0.25em]">The night is yours</p>
               <h1 className="ticket-theme-text mt-2 text-4xl font-black leading-[0.98] tracking-tight sm:text-6xl lg:text-7xl">Find your<br />after-dark<span className="ticket-theme-accent">.</span></h1>
-              <p className="ticket-theme-copy mt-5 max-w-xl text-sm leading-6 sm:text-base">Discover events worth staying up for. Choose your night, check the details, and find ticket options in one spooky little corner of ONLINE BAR.</p>
+              <p className="ticket-theme-copy mt-5 max-w-xl text-sm leading-6 sm:text-base">Discover events worth staying up for on Apex Market. Ticketing is built by Online Bar in collaboration with Apex Market.</p>
             </div>
             <div className="ticket-theme-panel-muted w-fit rounded-2xl border p-4">
               <div className="flex items-center gap-3"><span className="ticket-theme-accent-soft rounded-xl border p-2.5"><Ticket size={20} /></span><div><p className="ticket-theme-text text-xl font-black">{result.ok ? result.events.length : '—'}</p><p className="ticket-theme-muted text-[9px] font-black uppercase tracking-[0.15em]">Events on sale</p></div></div>
@@ -65,8 +65,8 @@ export default async function TicketDiscoveryPage() {
         </section>
 
         <footer className="ticket-theme-muted flex flex-wrap items-center justify-between gap-3 border-t pt-5 text-[10px]" style={{ borderColor: 'var(--ticket-border)' }}>
-          <span>ONLINE BAR Ticketing · Your night. Your ticket. No tricks.</span>
-          <Link href="/" className="ticket-theme-accent font-bold transition hover:opacity-75">Back to Online Bar</Link>
+          <span>Apex Market Ticketing · Built by Online Bar in collaboration with Apex Market.</span>
+          <Link href="/" className="ticket-theme-accent font-bold transition hover:opacity-75">Apex Market home</Link>
         </footer>
       </div>
     </main>

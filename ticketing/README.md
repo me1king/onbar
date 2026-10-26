@@ -2,6 +2,8 @@
 
 The Ticketing control centre is an isolated Online Bar Admin module at `/lord/ticketing`. It uses the existing admin session for platform-owner/admin authorization and stores its records in dedicated `ticketing_*` Supabase tables. It does not read from or write to the drink-order, product inventory, merchant payout, or waitlist tables.
 
+Public-facing identity is **Apex Market**; the customer-facing website and ticketing experience are built by **Online Bar in collaboration with the Apex Market team**. Admin tooling and internal service identifiers may still use Online Bar names.
+
 ## Current phase
 
 - Admin can create private event drafts and ticket tiers with KES prices, capacity, purchase limits, sale windows, venue, dates, age limit, description, and cancellation policy.

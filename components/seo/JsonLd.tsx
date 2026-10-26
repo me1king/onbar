@@ -10,7 +10,8 @@ export default function JsonLd() {
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    "name": storeName,
+    "name": "Apex Market",
+    "description": "Apex Market is the customer-facing storefront. Its digital experience is built by Online Bar in collaboration with the Apex Market team.",
     "url": baseUrl,
     "logo": `${baseUrl}/favicon.svg`,
     "contactPoint": {
@@ -26,6 +27,11 @@ export default function JsonLd() {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
     "name": storeName,
+    "description": "Online Bar builds the Apex Market digital storefront in collaboration with the Apex Market team.",
+    "brand": {
+      "@type": "Brand",
+      "name": "Apex Market"
+    },
     "image": `${baseUrl}/favicon.svg`,
     "address": {
       "@type": "PostalAddress",

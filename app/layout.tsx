@@ -4,8 +4,8 @@ import type { Metadata, Viewport } from "next";
 import "@/app/globals.css";
 
 export const metadata: Metadata = {
-  title: 'Online Bar | Premium Drinks',
-  description: 'Premium spirits and snacks delivered instantly across Kenya.',
+  title: 'Apex Market | Built with Online Bar',
+  description: 'Apex Market is the storefront. Its digital experience is built by Online Bar in collaboration with the Apex Market team.',
   manifest: '/manifest.json',
   icons: {
     icon: '/favicon.svg',

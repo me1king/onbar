@@ -213,7 +213,8 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
     <main className="ticket-theme-page min-h-screen px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-3xl space-y-6">
         <header className="ticket-theme-hero rounded-3xl border p-6 shadow-xl shadow-slate-900/5 sm:p-9">
-          <p className="ticket-theme-accent text-[10px] font-black uppercase tracking-[0.2em]">ONLINE BAR ticket wallet</p>
+          <p className="ticket-theme-accent text-[10px] font-black uppercase tracking-[0.2em]">Apex Market ticket wallet</p>
+          <p className="ticket-theme-muted mt-1 text-[9px]">Built by Online Bar in collaboration with Apex Market</p>
           <h1 className="ticket-theme-text mt-2 text-3xl font-black sm:text-4xl">Your night starts here.</h1>
           <p className="ticket-theme-copy mt-3 text-sm leading-6">Keep each QR code private. Gate staff will scan it once at the event entrance.</p>
         </header>
@@ -303,7 +304,7 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
             {tickets.map((ticket, index) => (
               <article key={ticket.reference} className="ticket-theme-panel overflow-hidden rounded-3xl border shadow-lg shadow-slate-900/5">
                 <div className="ticket-theme-hero border-b p-5 sm:p-7">
-                  <p className="ticket-theme-accent text-[10px] font-black uppercase tracking-[0.2em]">Online Bar · Admit one · Ticket {index + 1} / {tickets.length}</p>
+                  <p className="ticket-theme-accent text-[10px] font-black uppercase tracking-[0.2em]">Apex Market · Online Bar · Admit one · Ticket {index + 1} / {tickets.length}</p>
                   <h3 className="ticket-theme-text mt-2 text-2xl font-black sm:text-3xl">{event.title}</h3>
                   <p className="ticket-theme-copy mt-2 text-xs">{formatDate(event.starts_at, event.timezone)}</p>
                 </div>

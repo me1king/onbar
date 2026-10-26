@@ -172,7 +172,7 @@ function createTicketPdf(input: {
   pdf.setTextColor(palette.accent);
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(9);
-  pdf.text('ONLINE BAR TICKETING', margin, headerY);
+  pdf.text('APEX MARKET · ONLINE BAR', margin, headerY);
   pdf.setTextColor(palette.foreground);
   pdf.setFontSize(20);
   const titleLines = pdf.splitTextToSize(input.event.title, textWidth);
@@ -232,7 +232,7 @@ function ticketHtml(input: {
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;border:1px solid ${palette.border};border-radius:18px;border-collapse:separate;background:${palette.panel};color:${palette.foreground};overflow:hidden">
       <tr>
         <td style="padding:24px 22px;vertical-align:middle">
-          <div style="color:${palette.accent};font:700 11px Arial,sans-serif;letter-spacing:2px;text-transform:uppercase">ONLINE BAR · ADMIT ONE · ${index + 1} / ${input.tickets.length}</div>
+          <div style="color:${palette.accent};font:700 11px Arial,sans-serif;letter-spacing:2px;text-transform:uppercase">APEX MARKET · ONLINE BAR · ADMIT ONE · ${index + 1} / ${input.tickets.length}</div>
           <div style="margin-top:10px;font:700 27px/1.12 Georgia,serif">${escapeHtml(input.event.title)}</div>
           <div style="margin-top:14px;color:${palette.muted};font:700 13px Arial,sans-serif">${escapeHtml(ticket.ticketName)}</div>
           <div style="margin-top:7px;color:${palette.foreground};font:14px Arial,sans-serif">${escapeHtml(ticket.attendeeName || input.order.buyer_name || 'Guest')}</div>
@@ -263,7 +263,8 @@ function ticketHtml(input: {
       <table role="presentation" width="680" cellpadding="0" cellspacing="0" style="width:100%;max-width:680px">
         <tr><td style="padding:12px 4px 22px">
           ${input.sampleOnly ? `<div style="margin-bottom:14px;border:2px solid #b91c1c;border-radius:10px;background:#fee2e2;padding:12px;color:#7f1d1d;font:700 14px Arial,sans-serif;text-align:center">SAMPLE PREVIEW · QR CODES ARE NOT VALID FOR ENTRY</div>` : ''}
-          <div style="color:${palette.accent};font:700 11px Arial,sans-serif;letter-spacing:3px">ONLINE BAR TICKETING</div>
+          <div style="color:${palette.accent};font:700 11px Arial,sans-serif;letter-spacing:3px">APEX MARKET · TICKETING BY ONLINE BAR</div>
+          <div style="margin-top:5px;color:${palette.muted};font:11px Arial,sans-serif">Built in collaboration with the Apex Market team</div>
           ${safeCoverImageUrl ? `<img src="${escapeHtml(safeCoverImageUrl)}" alt="${escapeHtml(input.event.title)} event banner" width="680" style="display:block;width:100%;max-height:240px;object-fit:cover;margin:0 0 16px;border-radius:12px">` : ''}
           <h1 style="margin:10px 0 7px;font:700 27px Georgia,serif">You’re in. Your ticket is ready.</h1>
           <p style="margin:0;color:${palette.muted};font:14px/1.6 Arial,sans-serif">Payment confirmed. Your printable tickets are attached. Save this email and present each ticket’s QR code at the entrance. Every ticket is valid for one scan.</p>
@@ -387,6 +388,8 @@ export async function generateTicketEmailPreview(theme: TicketThemeId) {
     html,
     attachments,
     text: [
+      'Apex Market tickets · built by Online Bar in collaboration with Apex Market.',
+      '',
       'You’re in. Your tickets for Midnight Society — Sample Event are ready.',
       '',
       `When: ${dateTime(event.starts_at, event.timezone)} – ${dateTime(event.ends_at, event.timezone)}`,
@@ -542,6 +545,8 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
       timeZone: event.timezone
     }).format(new Date(event.starts_at));
     const text = [
+      'Apex Market tickets · built by Online Bar in collaboration with Apex Market.',
+      '',
       `You’re in. Your ticket${tickets.length === 1 ? '' : 's'} for ${event.title} is ready.`,
       '',
       `Event: ${event.title}`,

@@ -71,7 +71,7 @@ export default function PublicLaunchScreen() {
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-300/20 bg-violet-400/10 text-violet-200">
           <Clock3 size={26} />
         </span>
-        <p className="mt-6 text-[10px] font-black uppercase tracking-[0.28em] text-violet-200">Apex Market · Launch countdown</p>
+        <p className="mt-6 text-[10px] font-black uppercase tracking-[0.28em] text-violet-200">Apex Market · Built by Online Bar</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">We’re opening soon</h1>
         <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
           This part of Apex Market is not open yet. Come back when the countdown ends. Ticketing is still open in the meantime.
@@ -102,6 +102,8 @@ export default function PublicLaunchScreen() {
         )}
 
         {error && <p role="alert" className="mt-4 text-xs text-rose-300">We could not refresh the countdown: {error}</p>}
+
+        <p className="mt-6 text-[10px] font-medium text-slate-500">Apex Market is the storefront; its digital experience is built by Online Bar in collaboration with the Apex Market team.</p>
 
         <Link href="/tickets" className="mt-7 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-black text-white transition hover:bg-violet-500">
           <Ticket size={16} /> Continue to ticketing

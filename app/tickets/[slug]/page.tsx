@@ -14,10 +14,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const result = await getPublicTicketEvent(slug);
   return {
-    title: result.ok && result.event ? `${result.event.title} | Halloween Tickets` : 'Event Tickets | ONLINE BAR',
+    title: result.ok && result.event ? `${result.event.title} | Apex Market Tickets` : 'Event Tickets | Apex Market',
     description: result.ok && result.event
-      ? `${result.event.title} tickets with ONLINE BAR Ticketing.`
-      : 'Explore official ONLINE BAR event tickets.'
+      ? `${result.event.title} tickets on Apex Market. Ticketing built by Online Bar in collaboration with the Apex Market team.`
+      : 'Explore verified event tickets on Apex Market, built by Online Bar in collaboration with the Apex Market team.'
   };
 }
 
