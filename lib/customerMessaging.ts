@@ -16,6 +16,7 @@ export interface CustomerNotificationRule {
   channels: CustomerNotificationChannel[];
   subject: string;
   message: string;
+  smsMessage: string;
 }
 
 export type CustomerNotificationConfig = Record<CustomerNotificationStatus, CustomerNotificationRule>;
@@ -25,31 +26,36 @@ export const DEFAULT_CUSTOMER_NOTIFICATION_CONFIG: CustomerNotificationConfig = 
     enabled: true,
     channels: ['email'],
     subject: 'Payment confirmed for order #{orderId}',
-    message: 'Hi {name}, we have received your payment for order #{orderId}. Your order is being prepared and will be dispatched soon.'
+    message: 'Hi {name}, we have received your payment for order #{orderId}. Your order is being prepared and will be dispatched soon.',
+    smsMessage: 'Hi {name}, we have received your payment for order #{orderId}. Your order is being prepared and will be dispatched soon.'
   },
   Dispatched: {
     enabled: true,
     channels: ['email'],
     subject: 'Your order #{orderId} is on the way',
-    message: 'Hi {name}, your order #{orderId} has been dispatched and is on the way. Track your order: {trackingUrl}'
+    message: 'Hi {name}, your order #{orderId} has been dispatched and is on the way. Track your order: {trackingUrl}',
+    smsMessage: 'Hi {name}, your order #{orderId} has been dispatched and is on the way. Track your order: {trackingUrl}'
   },
   'Picked Up': {
     enabled: true,
     channels: ['email'],
     subject: 'Your order #{orderId} has been collected',
-    message: 'Hi {name}, your order #{orderId} has been collected from the shop and is being prepared for delivery. Track your order: {trackingUrl}'
+    message: 'Hi {name}, your order #{orderId} has been collected from the shop and is being prepared for delivery. Track your order: {trackingUrl}',
+    smsMessage: 'Hi {name}, your order #{orderId} has been collected from the shop and is being prepared for delivery. Track your order: {trackingUrl}'
   },
   'Out for Delivery': {
     enabled: true,
     channels: ['email'],
     subject: 'Your order #{orderId} is out for delivery',
-    message: 'Hi {name}, your order #{orderId} is on its way to you now. Track its progress here: {trackingUrl}'
+    message: 'Hi {name}, your order #{orderId} is on its way to you now. Track its progress here: {trackingUrl}',
+    smsMessage: 'Hi {name}, your order #{orderId} is on its way to you now. Track its progress here: {trackingUrl}'
   },
   Delivered: {
     enabled: true,
     channels: ['email'],
     subject: 'Your order #{orderId} has been delivered',
-    message: 'Hi {name}, order #{orderId} has been delivered. We hope you enjoy your order!'
+    message: 'Hi {name}, order #{orderId} has been delivered. We hope you enjoy your order!',
+    smsMessage: 'Hi {name}, order #{orderId} has been delivered. We hope you enjoy your order!'
   }
 };
 
@@ -61,13 +67,15 @@ export function normalizeCustomerNotificationConfig(value: unknown): CustomerNot
   for (const status of CUSTOMER_NOTIFICATION_STATUSES) {
     const rule = supplied[status];
     if (!rule || typeof rule !== 'object') continue;
+    const message = typeof rule.message === 'string' ? rule.message : config[status].message;
     config[status] = {
       enabled: typeof rule.enabled === 'boolean' ? rule.enabled : config[status].enabled,
       channels: Array.isArray(rule.channels)
         ? CUSTOMER_NOTIFICATION_CHANNELS.filter(channel => rule.channels?.includes(channel))
         : config[status].channels,
       subject: typeof rule.subject === 'string' ? rule.subject : config[status].subject,
-      message: typeof rule.message === 'string' ? rule.message : config[status].message
+      message,
+      smsMessage: typeof rule.smsMessage === 'string' ? rule.smsMessage : message
     };
   }
   return config;

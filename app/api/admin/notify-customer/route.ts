@@ -11,7 +11,21 @@ import { getAdminSession, hasAdminPermission, isInternalRequest, isSameOriginReq
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
 
-type NotificationBody = { orderId?: unknown; status?: unknown };
+type NotificationBody = { orderId?: unknown; status?: unknown; retryChannel?: unknown };
+
+const SUPPORTED_TEMPLATE_VARIABLES = new Set([
+  'name',
+  'orderId',
+  'status',
+  'trackingUrl',
+  'customer_name',
+  'order_id',
+  'total',
+  'rider_name',
+  'rider_phone',
+  'eta',
+  'tracking_link'
+]);
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({
@@ -26,16 +40,33 @@ function escapeHtml(value: string) {
 function renderTemplate(
   template: string,
   name: string,
-  orderId: number,
+  order: {
+    id: number;
+    total_price: number | string;
+    rider_name: string | null;
+    rider_phone: string | null;
+    delivery_eta_minutes: number | null;
+  },
   trackingUrl: string,
   status: CustomerNotificationStatus
 ) {
-  return template.replace(/\{(name|orderId|status|trackingUrl)\}/g, (match, token: string) => ({
+  const amount = Number(order.total_price);
+  const variables: Record<string, string> = {
     name,
-    orderId: String(orderId),
+    orderId: String(order.id),
     status,
-    trackingUrl
-  }[token] ?? match));
+    trackingUrl,
+    customer_name: name,
+    order_id: String(order.id),
+    total: Number.isFinite(amount)
+      ? `KES ${amount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : '',
+    rider_name: order.rider_name || '',
+    rider_phone: order.rider_phone || '',
+    eta: order.delivery_eta_minutes == null ? '' : `${order.delivery_eta_minutes} mins`,
+    tracking_link: trackingUrl
+  };
+  return template.replace(/\{([a-zA-Z_]+)\}/g, (match, token: string) => variables[token] ?? match);
 }
 
 function toInternationalPhone(phone: string): string {
@@ -47,10 +78,13 @@ function toInternationalPhone(phone: string): string {
 
 async function sendEmail(to: string, subject: string, message: string, trackingUrl: string) {
   const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) throw new Error('Email is not configured (RESEND_API_KEY is missing).');
+  const from = process.env.RESEND_FROM_EMAIL?.trim();
+  if (!apiKey || !from || !/^(?:[^<>]+<[^<>@\s]+@[^<>@\s]+>|[^<>\s@]+@[^<>\s@]+)$/.test(from)) {
+    throw new Error('Email is not configured. Set RESEND_API_KEY and a verified RESEND_FROM_EMAIL.');
+  }
   const resend = new Resend(apiKey);
   const result = await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL?.trim() || 'Online Bar Nairobi <onboarding@resend.dev>',
+    from,
     to,
     subject,
     html: `<div style="font-family:sans-serif;padding:20px;color:#333"><p>${escapeHtml(message).replace(/\n/g, '<br/>')}</p><p><a href="${escapeHtml(trackingUrl)}">Track your order</a></p><hr/><p style="font-size:12px;color:#999">Online Bar Nairobi</p></div>`
@@ -76,7 +110,7 @@ async function sendWhatsApp(phone: string, message: string) {
     })
   });
   if (!response.ok) {
-    console.error('[CustomerNotification] WhatsApp provider rejected a notification:', await response.text());
+    console.error('[CustomerNotification] WhatsApp provider rejected a notification:', response.status);
     throw new Error('WhatsApp provider rejected the notification.');
   }
 }
@@ -100,7 +134,7 @@ async function sendSms(phone: string, message: string) {
     body: new URLSearchParams({ To: `+${recipient}`, From: from, Body: message })
   });
   if (!response.ok) {
-    console.error('[CustomerNotification] SMS provider rejected a notification:', await response.text());
+    console.error('[CustomerNotification] SMS provider rejected a notification:', response.status);
     throw new Error('SMS provider rejected the notification.');
   }
 }
@@ -178,13 +212,17 @@ export async function POST(request: Request) {
   if (internal && !['Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
     return NextResponse.json({ error: 'This delivery status cannot be sent as an internal notification.' }, { status: 403 });
   }
+  const retryChannel = body.retryChannel;
+  if (retryChannel !== undefined && !CUSTOMER_NOTIFICATION_CHANNELS.includes(retryChannel as CustomerNotificationChannel)) {
+    return NextResponse.json({ error: 'Choose a valid notification channel to retry.' }, { status: 400 });
+  }
 
   const database = createServerSupabaseClient();
   if (!database) return NextResponse.json({ error: 'Order verification is not configured.' }, { status: 503 });
 
   const { data: order, error: orderError } = await database
     .from('orders')
-    .select('id, customer_email, customer_name, customer_phone, status')
+    .select('id, customer_email, customer_name, customer_phone, status, total_price, rider_name, rider_phone, delivery_eta_minutes')
     .eq('id', orderId)
     .maybeSingle();
   if (orderError) {
@@ -214,14 +252,29 @@ export async function POST(request: Request) {
   const config = normalizeCustomerNotificationConfig(settingResult.data?.value);
   const rule = config[status as CustomerNotificationStatus];
   if (!rule.enabled) return NextResponse.json({ ok: true, sent: [], skipped: ['Notifications are disabled for this order status.'] });
+  const unsupportedVariables = [...`${rule.subject}\n${rule.message}\n${rule.smsMessage}`.matchAll(/\{([a-zA-Z_]+)\}/g)]
+    .map(match => match[1])
+    .filter(token => !SUPPORTED_TEMPLATE_VARIABLES.has(token));
+  if (unsupportedVariables.length) {
+    return NextResponse.json({
+      error: `Unsupported template variable(s): ${[...new Set(unsupportedVariables)].map(token => `{${token}}`).join(', ')}. Delivery PIN and M-Pesa receipt code are not available in this notification flow.`
+    }, { status: 422 });
+  }
 
-  const channels = preferenceResult.data?.channels
+  const allowedChannels = preferenceResult.data?.channels
     ? CUSTOMER_NOTIFICATION_CHANNELS.filter(channel => preferenceResult.data?.channels?.includes(channel))
     : rule.channels;
+  if (retryChannel && !allowedChannels.includes(retryChannel as CustomerNotificationChannel)) {
+    return NextResponse.json({ error: 'This channel is no longer enabled for the customer. Update preferences before retrying.' }, { status: 409 });
+  }
+  const channels = retryChannel
+    ? [retryChannel as CustomerNotificationChannel]
+    : allowedChannels;
   const trackingUrl = `${getPublicBaseUrl()}/track?id=${encodeURIComponent(String(orderId))}`;
   const name = order.customer_name || 'there';
-  const subject = renderTemplate(rule.subject, name, orderId, trackingUrl, status as CustomerNotificationStatus);
-  const message = renderTemplate(rule.message, name, orderId, trackingUrl, status as CustomerNotificationStatus);
+  const subject = renderTemplate(rule.subject, name, order, trackingUrl, status as CustomerNotificationStatus);
+  const message = renderTemplate(rule.message, name, order, trackingUrl, status as CustomerNotificationStatus);
+  const smsMessage = renderTemplate(rule.smsMessage || rule.message, name, order, trackingUrl, status as CustomerNotificationStatus);
   const results: { channel: CustomerNotificationChannel; status: string; error?: string }[] = [];
 
   for (const channel of channels) {
@@ -238,7 +291,7 @@ export async function POST(request: Request) {
       try {
         if (channel === 'email') await sendEmail(email, subject, message, trackingUrl);
         if (channel === 'whatsapp') await sendWhatsApp(phone, message);
-        if (channel === 'sms') await sendSms(phone, message);
+        if (channel === 'sms') await sendSms(phone, smsMessage);
         const { error } = await database.from('customer_notification_deliveries')
           .update({ delivery_status: 'sent', error_message: null, updated_at: new Date().toISOString() })
           .eq('id', claim.id);

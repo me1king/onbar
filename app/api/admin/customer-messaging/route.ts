@@ -25,23 +25,43 @@ export async function GET() {
   const access = await getAdminDatabase();
   if ('response' in access) return access.response;
 
-  const [settingResult, ordersResult, preferencesResult] = await Promise.all([
+  const [settingResult, ordersResult, preferencesResult, deliveryResult] = await Promise.all([
     access.database.from('settings').select('value').eq('key', 'customer_messaging').maybeSingle(),
     access.database.from('orders')
       .select('id, customer_name, customer_email, customer_phone')
       .order('id', { ascending: false })
       .limit(1000),
     access.database.from('customer_notification_preferences')
-      .select('channel_key, channels')
+      .select('channel_key, channels'),
+    access.database.from('customer_notification_deliveries')
+      .select('id,order_id,notification_status,channel,delivery_status,error_message,created_at,updated_at')
+      .order('created_at', { ascending: false })
+      .limit(100)
   ]);
 
-  if (settingResult.error || ordersResult.error || preferencesResult.error) {
-    const error = settingResult.error || ordersResult.error || preferencesResult.error;
+  if (settingResult.error || ordersResult.error || preferencesResult.error || deliveryResult.error) {
+    const error = settingResult.error || ordersResult.error || preferencesResult.error || deliveryResult.error;
     console.error('[CustomerMessaging] Could not load automation settings:', error);
     return NextResponse.json({ error: 'Could not load customer messaging settings. Apply the customer messaging migration and try again.' }, { status: 500 });
   }
 
+  const deliveryOrderIds = [...new Set((deliveryResult.data || []).map(item => item.order_id))];
+  const deliveryOrdersResult = deliveryOrderIds.length
+    ? await access.database.from('orders')
+      .select('id,customer_name,customer_email,customer_phone')
+      .in('id', deliveryOrderIds)
+    : { data: [], error: null };
+  if (deliveryOrdersResult.error) {
+    console.error('[CustomerMessaging] Could not resolve delivery log recipients:', deliveryOrdersResult.error);
+    return NextResponse.json({ error: 'Recent notification recipients could not be loaded.' }, { status: 500 });
+  }
+
   const preferences = new Map((preferencesResult.data || []).map(item => [item.channel_key, item.channels]));
+  const deliveryCustomers = new Map((deliveryOrdersResult.data || []).map(order => [order.id, {
+    name: order.customer_name || 'Customer',
+    email: order.customer_email || '',
+    phone: order.customer_phone || ''
+  }]));
   const seen = new Set<string>();
   const customers = (ordersResult.data || []).flatMap(order => {
     const email = (order.customer_email || '').trim();
@@ -61,7 +81,16 @@ export async function GET() {
 
   return NextResponse.json({
     config: normalizeCustomerNotificationConfig(settingResult.data?.value),
-    customers
+    customers,
+    providers: {
+      email: Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim()),
+      whatsapp: Boolean(process.env.WHATSAPP_TOKEN?.trim() && process.env.WHATSAPP_PHONE_ID?.trim()),
+      sms: Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim())
+    },
+    deliveries: (deliveryResult.data || []).map(delivery => ({
+      ...delivery,
+      customer: deliveryCustomers.get(delivery.order_id) || null
+    }))
   }, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
 }
 
@@ -94,7 +123,9 @@ export async function PUT(request: Request) {
         || value.subject.length > 180
         || typeof value.message !== 'string'
         || !value.message.trim()
-        || value.message.length > 2000;
+        || value.message.length > 2000
+        || (value.smsMessage !== undefined
+          && (typeof value.smsMessage !== 'string' || !value.smsMessage.trim() || value.smsMessage.length > 2000));
     })) {
     return NextResponse.json({ error: 'Notification settings are invalid.' }, { status: 400 });
   }

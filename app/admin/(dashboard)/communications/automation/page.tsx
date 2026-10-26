@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { getSmsSegments } from '@/lib/smsSegments';
 import {
   CUSTOMER_NOTIFICATION_CHANNELS,
   CUSTOMER_NOTIFICATION_STATUSES,
   DEFAULT_CUSTOMER_NOTIFICATION_CONFIG,
   type CustomerNotificationChannel,
-  type CustomerNotificationConfig
+  type CustomerNotificationConfig,
+  type CustomerNotificationStatus
 } from '@/lib/customerMessaging';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +25,19 @@ interface MessagingCustomer {
   latestOrderId: number;
   channels: CustomerNotificationChannel[] | null;
 }
+
+interface MessageDelivery {
+  id: number;
+  order_id: number;
+  notification_status: string;
+  channel: CustomerNotificationChannel;
+  delivery_status: 'sending' | 'sent' | 'failed';
+  error_message: string | null;
+  created_at: string;
+  customer?: { name: string; email: string; phone: string } | null;
+}
+
+type ProviderReadiness = Record<CustomerNotificationChannel, boolean>;
 
 const channelLabels: Record<CustomerNotificationChannel, string> = {
   email: 'Email',
@@ -41,14 +56,39 @@ function getDefaultChannels(config: CustomerNotificationConfig) {
   );
 }
 
+const sampleVariables: Record<string, string> = {
+  name: 'Amani',
+  orderId: '1042',
+  status: 'Out for Delivery',
+  trackingUrl: 'https://onlinebar.co.ke/track?id=1042',
+  customer_name: 'Amani',
+  order_id: '1042',
+  total: 'KES 2,450.00',
+  rider_name: 'Kiptoo',
+  rider_phone: '+254712345678',
+  tracking_link: 'https://onlinebar.co.ke/track?id=1042'
+};
+function renderSample(template: string) {
+  return template.replace(/\{([a-zA-Z_]+)\}/g, (match, key: string) => sampleVariables[key] ?? match);
+}
+
 export default function CustomerMessagingAutomationPage() {
   const [config, setConfig] = useState<CustomerNotificationConfig>(DEFAULT_CUSTOMER_NOTIFICATION_CONFIG);
   const [customers, setCustomers] = useState<MessagingCustomer[]>([]);
+  const [deliveries, setDeliveries] = useState<MessageDelivery[]>([]);
+  const [providers, setProviders] = useState<ProviderReadiness>({
+    email: false,
+    whatsapp: false,
+    sms: false
+  });
   const [draftChannels, setDraftChannels] = useState<Record<string, CustomerNotificationChannel[]>>({});
   const [search, setSearch] = useState('');
+  const [testPhone, setTestPhone] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingConfig, setSavingConfig] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState<string | null>(null);
+  const [sendingTest, setSendingTest] = useState<string | null>(null);
+  const [testNotice, setTestNotice] = useState<{ error: boolean; text: string } | null>(null);
   const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null);
 
   const load = async () => {
@@ -59,12 +99,16 @@ export default function CustomerMessagingAutomationPage() {
         error?: string;
         config?: CustomerNotificationConfig;
         customers?: MessagingCustomer[];
+        deliveries?: MessageDelivery[];
+        providers?: ProviderReadiness;
       };
       if (!response.ok) throw new Error(result.error || 'Could not load messaging settings.');
       const loadedConfig = result.config || DEFAULT_CUSTOMER_NOTIFICATION_CONFIG;
       const defaultChannels = getDefaultChannels(loadedConfig);
       setConfig(loadedConfig);
       setCustomers(result.customers || []);
+      setDeliveries(result.deliveries || []);
+      setProviders(result.providers || { email: false, whatsapp: false, sms: false });
       setDraftChannels(Object.fromEntries((result.customers || []).map(customer => [
         customer.key,
         customer.channels || defaultChannels
@@ -88,6 +132,16 @@ export default function CustomerMessagingAutomationPage() {
       || customer.phone.toLowerCase().includes(query)
     );
   }, [customers, search]);
+  const filteredDeliveries = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return deliveries;
+    return deliveries.filter(delivery =>
+      String(delivery.order_id).includes(query)
+      || delivery.customer?.name.toLowerCase().includes(query)
+      || delivery.customer?.email.toLowerCase().includes(query)
+      || delivery.customer?.phone.includes(query)
+    );
+  }, [deliveries, search]);
 
   const saveConfig = async () => {
     setSavingConfig(true);
@@ -109,6 +163,43 @@ export default function CustomerMessagingAutomationPage() {
       setNotice({ error: true, text: error instanceof Error ? error.message : 'Could not save message templates.' });
     } finally {
       setSavingConfig(false);
+    }
+  };
+
+  const sendTest = async (status: CustomerNotificationStatus, channel: CustomerNotificationChannel) => {
+    const key = `${status}:${channel}`;
+    setSendingTest(key);
+    setTestNotice(null);
+    try {
+      const rule = config[status];
+      const response = await fetch('/api/admin/customer-messaging/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel,
+          subject: renderSample(rule.subject),
+          message: renderSample(rule.message),
+          phone: testPhone
+        })
+      });
+      const result = await response.json() as { error?: string; destination?: string };
+      if (!response.ok) throw new Error(result.error || 'Test message could not be sent.');
+      setTestNotice({ error: false, text: `Test sent through ${channelLabels[channel]}${result.destination ? ` to ${result.destination}` : ''}.` });
+      const testDelivery: MessageDelivery = {
+        id: -Date.now(),
+        order_id: 0,
+        notification_status: `Test · ${status}`,
+        channel,
+        delivery_status: 'sent',
+        error_message: null,
+        created_at: new Date().toISOString(),
+        customer: { name: 'Admin test', email: channel === 'email' ? result.destination || '' : '', phone: channel !== 'email' ? result.destination || '' : '' }
+      };
+      setDeliveries(current => [testDelivery, ...current].slice(0, 100));
+    } catch (error) {
+      setTestNotice({ error: true, text: error instanceof Error ? error.message : 'Test message could not be sent.' });
+    } finally {
+      setSendingTest(null);
     }
   };
 
@@ -149,6 +240,31 @@ export default function CustomerMessagingAutomationPage() {
     });
   };
 
+  const retryDelivery = async (delivery: MessageDelivery) => {
+    const key = `${delivery.order_id}:${delivery.notification_status}:${delivery.channel}`;
+    setSendingTest(`retry:${key}`);
+    setTestNotice(null);
+    try {
+      const response = await fetch('/api/admin/notify-customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: delivery.order_id,
+          status: delivery.notification_status,
+          retryChannel: delivery.channel
+        })
+      });
+      const result = await response.json() as { error?: string; results?: Array<{ status: string; error?: string }> };
+      if (!response.ok) throw new Error(result.error || result.results?.find(item => item.error)?.error || 'Retry failed.');
+      setTestNotice({ error: false, text: `Retry requested for order #${delivery.order_id} via ${channelLabels[delivery.channel]}.` });
+      await load();
+    } catch (error) {
+      setTestNotice({ error: true, text: error instanceof Error ? error.message : 'Retry failed.' });
+    } finally {
+      setSendingTest(null);
+    }
+  };
+
   return (
     <div className="min-h-screen space-y-8 bg-slate-50 p-4 pb-40 text-left sm:p-8">
       <header className="flex flex-col justify-between gap-5 border-b border-slate-200 pb-8 sm:flex-row sm:items-end">
@@ -157,7 +273,7 @@ export default function CustomerMessagingAutomationPage() {
             <Send className="h-4 w-4" />
             <span className="text-[10px] font-black uppercase tracking-[0.25em]">Order communications</span>
           </div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter text-foreground">Message Automation</h1>
+          <h1 className="text-4xl font-black uppercase tracking-tighter text-foreground">Messaging Center</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-500">
             Set what customers receive after payment, dispatch and delivery, then choose each customer’s channels.
           </p>
@@ -174,12 +290,47 @@ export default function CustomerMessagingAutomationPage() {
         )}>{notice.text}</div>
       )}
 
+      {testNotice && (
+        <div role={testNotice.error ? 'alert' : 'status'} className={cn(
+          'rounded-xl border p-4 text-sm font-semibold',
+          testNotice.error ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+        )}>{testNotice.text}</div>
+      )}
+
+      <Card className="space-y-4 rounded-3xl border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <div>
+          <h2 className="text-xl font-black uppercase tracking-tight">Provider readiness and test destination</h2>
+          <p className="mt-1 text-sm text-slate-500">Only configuration presence is checked here. A provider may still reject the message or sender.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {CUSTOMER_NOTIFICATION_CHANNELS.map(channel => {
+            const Icon = channelIcons[channel];
+            return (
+              <div key={channel} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3">
+                <Icon className="h-5 w-5 text-amber-700" />
+                <div>
+                  <p className="text-sm font-bold">{channelLabels[channel]}</p>
+                  <p className={`text-xs font-semibold ${providers[channel] ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {providers[channel] ? 'Credentials present' : 'Credentials missing'}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <label className="block max-w-md text-xs font-bold text-slate-700">
+          Your phone for WhatsApp/SMS test messages
+          <Input value={testPhone} onChange={event => setTestPhone(event.target.value)} placeholder="+254712345678" className="mt-1.5" autoComplete="tel" />
+        </label>
+      </Card>
+
       <Card className="space-y-5 rounded-3xl border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <div>
           <h2 className="text-xl font-black uppercase tracking-tight">Order status messages</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Templates support <code>{'{name}'}</code>, <code>{'{orderId}'}</code>, <code>{'{status}'}</code>, and <code>{'{trackingUrl}'}</code>.
+            Available variables: <code>{'{customer_name}'}</code>, <code>{'{order_id}'}</code>, <code>{'{total}'}</code>, <code>{'{rider_name}'}</code>, <code>{'{rider_phone}'}</code>, <code>{'{status}'}</code>, and <code>{'{tracking_link}'}</code>. Older <code>{'{name}'}</code>, <code>{'{orderId}'}</code>, and <code>{'{trackingUrl}'}</code> tokens still work.
           </p>
+          <p className="mt-1 text-xs text-slate-500">Sample preview values: Amani · #1042 · KES 2,450 · rider Kiptoo · Out for Delivery. Delivery PIN and M-Pesa receipt code are not available in this order-notification flow yet.</p>
         </div>
         <div className="grid gap-4 xl:grid-cols-3">
           {CUSTOMER_NOTIFICATION_STATUSES.map(status => {
@@ -219,6 +370,15 @@ export default function CustomerMessagingAutomationPage() {
                   }))}
                   placeholder="Message customers receive"
                 />
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Live sample preview</p>
+                  {rule.channels.includes('email') && <p className="mt-2 text-xs font-semibold text-slate-700">Subject: {renderSample(rule.subject)}</p>}
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-800">{renderSample(rule.message)}</p>
+                  {rule.channels.includes('sms') && (() => {
+                    const count = getSmsSegments(renderSample(rule.smsMessage || rule.message));
+                    return <p className="mt-2 text-[10px] font-bold text-slate-500">{count.encoding} · {count.units} units · {count.segments} SMS segment{count.segments === 1 ? '' : 's'} (estimate)</p>;
+                  })()}
+                </div>
                 <fieldset className="space-y-2">
                   <legend className="text-[10px] font-black uppercase tracking-widest text-slate-500">Default channels</legend>
                   <div className="flex flex-wrap gap-3">
@@ -245,6 +405,27 @@ export default function CustomerMessagingAutomationPage() {
                     })}
                   </div>
                 </fieldset>
+                <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                  {CUSTOMER_NOTIFICATION_CHANNELS.map(channel => {
+                    const Icon = channelIcons[channel];
+                    const testKey = `${status}:${channel}`;
+                    return (
+                      <Button
+                        key={channel}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void sendTest(status, channel)}
+                        disabled={sendingTest !== null || !providers[channel] || (channel !== 'email' && !testPhone.trim())}
+                        className="rounded-lg"
+                        title={!providers[channel] ? `${channelLabels[channel]} provider credentials are missing` : undefined}
+                      >
+                        {sendingTest === testKey ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Icon className="mr-1 h-3.5 w-3.5" />}
+                        Test {channelLabels[channel]}
+                      </Button>
+                    );
+                  })}
+                </div>
               </section>
             );
           })}
@@ -258,6 +439,69 @@ export default function CustomerMessagingAutomationPage() {
             Save automation
           </Button>
         </div>
+      </Card>
+
+      <Card className="space-y-5 rounded-3xl border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-black uppercase tracking-tight">Recent delivery log</h2>
+            <p className="mt-1 text-sm text-slate-500">Latest 100 transactional order notifications, with recorded provider acceptance status.</p>
+          </div>
+          <Button variant="outline" onClick={() => void load()} disabled={loading} className="rounded-xl">
+            <RefreshCcw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} /> Refresh log
+          </Button>
+        </div>
+        {filteredDeliveries.length === 0 ? (
+          <p className="rounded-xl bg-slate-50 p-5 text-center text-sm text-slate-500">No notification deliveries have been recorded yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-xs">
+              <thead className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500">
+                <tr><th className="px-3 py-2">Time</th><th className="px-3 py-2">Customer / order</th><th className="px-3 py-2">Event</th><th className="px-3 py-2">Channel</th><th className="px-3 py-2">Status / detail</th><th className="px-3 py-2">Action</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredDeliveries.map(delivery => (
+                  <tr key={delivery.id}>
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-500">{new Date(delivery.created_at).toLocaleString('en-KE')}</td>
+                    <td className="px-3 py-3">
+                      <p className="font-bold text-slate-900">{delivery.customer?.name || 'Customer unavailable'}</p>
+                      <p className="text-slate-500">Order #{delivery.order_id}</p>
+                    </td>
+                    <td className="px-3 py-3 font-semibold text-slate-700">{delivery.notification_status}</td>
+                    <td className="px-3 py-3">{channelLabels[delivery.channel]}</td>
+                    <td className="max-w-xs px-3 py-3">
+                      <span className={cn(
+                        'rounded-full px-2 py-1 text-[10px] font-black uppercase',
+                        delivery.delivery_status === 'sent' ? 'bg-emerald-50 text-emerald-700'
+                          : delivery.delivery_status === 'failed' ? 'bg-rose-50 text-rose-700'
+                            : 'bg-amber-50 text-amber-700'
+                      )}>{delivery.delivery_status}</span>
+                      {delivery.error_message && <p className="mt-1 break-words text-[10px] leading-4 text-rose-700">{delivery.error_message}</p>}
+                    </td>
+                    <td className="px-3 py-3">
+                      {delivery.delivery_status === 'failed' && delivery.order_id > 0 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={sendingTest !== null}
+                          onClick={() => void retryDelivery(delivery)}
+                          className="rounded-lg"
+                        >
+                          {sendingTest === `retry:${delivery.order_id}:${delivery.notification_status}:${delivery.channel}`
+                            ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                            : <Send className="mr-1 h-3.5 w-3.5" />}
+                          Retry
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[11px] leading-5 text-slate-500">“Sent” means the provider accepted the request; delivery receipts, read state, provider IDs, message cost, and balance monitoring require provider callback support and are not currently recorded.</p>
       </Card>
 
       <Card className="space-y-5 rounded-3xl border-slate-200 bg-white p-5 shadow-sm sm:p-7">
