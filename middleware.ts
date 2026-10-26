@@ -7,6 +7,7 @@ import { isPublicSiteLocked, parsePublicLaunchGate } from '@/lib/publicLaunchGat
 const ticketingPublicPaths = [
   '/tickets',
   '/scanner',
+  '/launch-countdown',
   '/api/ticketing',
   '/api/payhero/ticketing',
   '/api/paystack/webhook',
@@ -83,10 +84,10 @@ export async function middleware(request: NextRequest) {
           { status: 503, headers: { 'Cache-Control': 'no-store' } }
         );
       }
-      const ticketingPage = request.nextUrl.clone();
-      ticketingPage.pathname = '/tickets';
-      ticketingPage.search = '';
-      return NextResponse.redirect(ticketingPage, 307);
+      const countdownPage = request.nextUrl.clone();
+      countdownPage.pathname = '/launch-countdown';
+      countdownPage.search = '';
+      return NextResponse.redirect(countdownPage, 307);
     }
   }
 
