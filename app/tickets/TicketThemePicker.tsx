@@ -85,7 +85,7 @@ export default function TicketThemePicker() {
           >
             <span aria-hidden="true" className={`h-3 w-3 rounded-full border border-black/10 ${theme.swatch}`} />
             <span className="hidden sm:inline">{theme.label}</span>
-            <span className="sm:hidden">{theme.id === 'official-white' ? 'White' : theme.id === 'royal-violet' ? 'Violet' : theme.id === 'emerald' ? 'Emerald' : 'Black'}</span>
+            <span className="sm:hidden">{theme.id === 'official-white' ? 'White' : theme.id === 'sapphire-blue' ? 'Blue' : theme.id === 'royal-violet' ? 'Violet' : theme.id === 'emerald' ? 'Emerald' : 'Black'}</span>
           </button>
         ))}
       </div>

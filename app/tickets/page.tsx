@@ -4,6 +4,7 @@ import { Ghost, ShieldCheck, Ticket } from 'lucide-react';
 import { getPublicTicketEvents } from '@/lib/ticketing/publicEvents.server';
 import TicketingBrand from '@/app/tickets/TicketingBrand';
 import TicketEventDiscovery from '@/app/tickets/TicketEventDiscovery';
+import PublicLaunchCountdown from '@/components/ticketing/PublicLaunchCountdown';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,8 @@ export default async function TicketDiscoveryPage() {
             </div>
           </div>
         </header>
+
+        <PublicLaunchCountdown />
 
         <section role="status" className="ticket-theme-accent-soft flex items-start gap-3 rounded-2xl border p-4">
           <ShieldCheck className="mt-0.5 shrink-0" size={18} />

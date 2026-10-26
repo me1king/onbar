@@ -143,6 +143,25 @@ html[data-ticket-theme='official-white'],
   --ticket-action-text: #ffffff;
 }
 
+html[data-ticket-theme='sapphire-blue'],
+.ticket-theme-scope[data-ticket-theme='sapphire-blue'] {
+  --ticket-page: #eff6ff;
+  --ticket-panel: #ffffff;
+  --ticket-panel-muted: #f8fafc;
+  --ticket-hero: linear-gradient(135deg, #dbeafe, #ffffff 58%, #eff6ff);
+  --ticket-text: #172554;
+  --ticket-copy: #475569;
+  --ticket-muted: #64748b;
+  --ticket-border: #bfdbfe;
+  --ticket-accent: #2563eb;
+  --ticket-accent-strong: #1d4ed8;
+  --ticket-accent-soft: #eff6ff;
+  --ticket-accent-border: #93c5fd;
+  --ticket-subtle: #f8fafc;
+  --ticket-shadow: rgb(23 37 84 / 8%);
+  --ticket-action-text: #ffffff;
+}
+
 html[data-ticket-theme='royal-violet'],
 .ticket-theme-scope[data-ticket-theme='royal-violet'] {
   --ticket-page: #f5f3ff;
@@ -198,6 +217,11 @@ html[data-ticket-theme='official-white'] .ticket-theme-header,
 html[data-ticket-theme='official-white'] .ticket-admin-theme,
 .ticket-theme-scope[data-ticket-theme='official-white'] .ticket-theme-page,
 .ticket-theme-scope[data-ticket-theme='official-white'] .ticket-theme-header,
+html[data-ticket-theme='sapphire-blue'] .ticket-theme-page,
+html[data-ticket-theme='sapphire-blue'] .ticket-theme-header,
+html[data-ticket-theme='sapphire-blue'] .ticket-admin-theme,
+.ticket-theme-scope[data-ticket-theme='sapphire-blue'] .ticket-theme-page,
+.ticket-theme-scope[data-ticket-theme='sapphire-blue'] .ticket-theme-header,
 html[data-ticket-theme='royal-violet'] .ticket-theme-page,
 html[data-ticket-theme='royal-violet'] .ticket-theme-header,
 html[data-ticket-theme='royal-violet'] .ticket-admin-theme,

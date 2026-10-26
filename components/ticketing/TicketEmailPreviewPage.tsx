@@ -38,7 +38,7 @@ export default async function TicketEmailPreviewPage({
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Ticket email appearance</p>
-              <p className="mt-1 text-xs text-slate-300">Preview the available ticket themes.</p>
+              <p className="mt-1 text-xs text-slate-300">              Choose a color to preview it here and in the sample email and PDF tickets.</p>
             </div>
             <nav aria-label="Email preview theme" className="flex flex-wrap gap-2">
               {ticketThemes.map(option => (

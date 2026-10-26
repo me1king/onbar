@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { LoaderCircle, Send } from 'lucide-react';
-import type { TicketThemeId } from '@/lib/ticketing/theme';
+import { ticketThemes, type TicketThemeId } from '@/lib/ticketing/theme';
 
 export default function TicketEmailPreviewActions({ theme }: { theme: TicketThemeId }) {
   const [recipient, setRecipient] = useState('');
@@ -36,8 +36,8 @@ export default function TicketEmailPreviewActions({ theme }: { theme: TicketThem
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-amber-200/15 bg-amber-100/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
       <div>
-        <p className="text-sm font-black text-white">Check the actual inbox rendering</p>
-        <p className="mt-1 text-xs leading-5 text-slate-300">Sends a sample email with invalid sample-only QR codes to one address you choose. Leave blank to use your admin email; it never contacts a buyer or creates a ticket.</p>
+        <p className="text-sm font-black text-white">Send {ticketThemes.find(option => option.id === theme)?.label} sample email</p>
+        <p className="mt-1 text-xs leading-5 text-slate-300">Choose a color above first. The email and attached sample PDF tickets use that color. QR codes are invalid and no real ticket is created.</p>
         {message && <p role={error ? 'alert' : 'status'} className={`mt-2 text-xs ${error ? 'text-rose-300' : 'text-emerald-300'}`}>{message}</p>}
       </div>
       <div className="flex w-full shrink-0 flex-col gap-2 sm:w-80">

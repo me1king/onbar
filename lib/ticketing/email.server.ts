@@ -14,6 +14,7 @@ type Database = NonNullable<ReturnType<typeof createServerSupabaseClient>>;
 const palettes = {
   midnight: { background: '#17121e', panel: '#28232e', foreground: '#fff7e6', muted: '#d4c7ae', accent: '#d6a83f', border: '#756443' },
   'official-white': { background: '#f8fafc', panel: '#ffffff', foreground: '#0f172a', muted: '#475569', accent: '#c2410c', border: '#cbd5e1' },
+  'sapphire-blue': { background: '#eff6ff', panel: '#ffffff', foreground: '#172554', muted: '#475569', accent: '#2563eb', border: '#bfdbfe' },
   'royal-violet': { background: '#f5f3ff', panel: '#ffffff', foreground: '#2e1065', muted: '#5b4b78', accent: '#6d28d9', border: '#c4b5fd' },
   emerald: { background: '#ecfdf5', panel: '#ffffff', foreground: '#064e3b', muted: '#3f6359', accent: '#047857', border: '#a7f3d0' }
 } as const;
@@ -142,6 +143,7 @@ function createCalendarAttachment(event: EmailEvent, order: EmailOrder) {
 }
 
 function createTicketPdf(input: {
+  theme: keyof typeof palettes;
   event: EmailEvent;
   order: EmailOrder;
   ticket: EmailTicket;
@@ -154,9 +156,10 @@ function createTicketPdf(input: {
   const pageWidth = pdf.internal.pageSize.getWidth();
   const margin = 14;
   const textWidth = pageWidth - margin * 2;
-  pdf.setFillColor(23, 18, 30);
+  const palette = palettes[input.theme];
+  pdf.setFillColor(palette.background);
   pdf.rect(0, 0, pageWidth, pdf.internal.pageSize.getHeight(), 'F');
-  pdf.setDrawColor(214, 168, 63);
+  pdf.setDrawColor(palette.accent);
   pdf.setLineWidth(0.6);
   pdf.roundedRect(7, 7, pageWidth - 14, pdf.internal.pageSize.getHeight() - 14, 4, 4, 'S');
   if (input.sampleOnly) {
@@ -166,17 +169,17 @@ function createTicketPdf(input: {
     pdf.text('SAMPLE ONLY · INVALID TICKET', pageWidth / 2, 28, { align: 'center', angle: -8 });
   }
   const headerY = input.sampleOnly ? 40 : 19;
-  pdf.setTextColor(214, 168, 63);
+  pdf.setTextColor(palette.accent);
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(9);
   pdf.text('ONLINE BAR TICKETING', margin, headerY);
-  pdf.setTextColor(255, 247, 230);
+  pdf.setTextColor(palette.foreground);
   pdf.setFontSize(20);
   const titleLines = pdf.splitTextToSize(input.event.title, textWidth);
   const titleY = headerY + 12;
   pdf.text(titleLines, margin, titleY);
   let cursorY = titleY + titleLines.length * 8;
-  pdf.setTextColor(212, 199, 174);
+  pdf.setTextColor(palette.muted);
   pdf.setFontSize(9);
   pdf.setFont('helvetica', 'normal');
   const details = [
@@ -196,11 +199,11 @@ function createTicketPdf(input: {
   const qrSize = 48;
   const qrY = Math.min(cursorY + 3, 126);
   pdf.addImage(input.qrDataUrl, 'PNG', (pageWidth - qrSize) / 2, qrY, qrSize, qrSize);
-  pdf.setTextColor(255, 255, 255);
+  pdf.setTextColor(palette.foreground);
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(11);
   pdf.text(input.ticket.reference, pageWidth / 2, qrY + qrSize + 8, { align: 'center' });
-  pdf.setTextColor(212, 199, 174);
+  pdf.setTextColor(palette.muted);
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(8);
   pdf.text(`Ticket ${input.ticketIndex + 1} of ${input.ticketCount} · Order ${input.order.reference}`, pageWidth / 2, qrY + qrSize + 14, { align: 'center' });
@@ -356,6 +359,7 @@ export async function generateTicketEmailPreview(theme: TicketThemeId) {
     ...ticketsWithQr.map((ticket, index) => ({
       filename: `ticket-${ticket.reference}.pdf`,
       content: createTicketPdf({
+        theme,
         event,
         order,
         ticket,
@@ -497,6 +501,7 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
     const pdfAttachments = tickets.map((ticket, index) => ({
       filename: `ticket-${ticket.reference}.pdf`,
       content: createTicketPdf({
+        theme,
         event,
         order: orderDetails,
         ticket,

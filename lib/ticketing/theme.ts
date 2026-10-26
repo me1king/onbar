@@ -1,6 +1,7 @@
 export const ticketThemes = [
   { id: 'midnight', label: 'Midnight black', swatch: 'bg-[#17121e]' },
   { id: 'official-white', label: 'Official white', swatch: 'bg-white' },
+  { id: 'sapphire-blue', label: 'Sapphire blue', swatch: 'bg-blue-600' },
   { id: 'royal-violet', label: 'Royal violet', swatch: 'bg-violet-600' },
   { id: 'emerald', label: 'Emerald', swatch: 'bg-emerald-600' }
 ] as const;
