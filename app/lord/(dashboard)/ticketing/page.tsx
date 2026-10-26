@@ -15,6 +15,7 @@ import {
   Fingerprint,
   Ghost,
   KeyRound,
+  Mail,
   MapPin,
   Plus,
   RefreshCw,
@@ -757,6 +758,7 @@ export default function TicketingPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/lord/ticketing/sales" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Wallet size={15} /> Ticket sales</Link>
+              <Link href="/lord/ticketing/email-preview" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Mail size={15} /> Email preview</Link>
               <Link href="/lord/ticketing/insights" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><BarChart3 size={15} /> Demand insights</Link>
               <TicketingTransferLink />
               <Link href="/lord/ticketing/staff" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 transition hover:bg-amber-100/10"><Users size={15} /> Gate staff</Link>
