@@ -9,6 +9,7 @@ type TestMessage = {
   subject?: unknown;
   message?: unknown;
   phone?: unknown;
+  email?: unknown;
 };
 
 function escapeHtml(value: string) {
@@ -54,19 +55,22 @@ export async function POST(request: Request) {
 
   try {
     if (channel === 'email') {
-      if (!session.email) return NextResponse.json({ error: 'Your admin account does not have an email address for the test.' }, { status: 409 });
+      const destination = typeof body.email === 'string' ? body.email.trim().toLowerCase() : session.email?.trim().toLowerCase();
+      if (!destination || destination.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destination)) {
+        return NextResponse.json({ error: 'Enter a valid test recipient email address.' }, { status: 400 });
+      }
       const config = getTransactionalEmailConfig();
       if (!config.configured) {
         return NextResponse.json({ error: 'Email is not configured. Set JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL in Vercel.' }, { status: 503 });
       }
       await sendTransactionalEmail({
         from: config.from,
-        to: session.email,
+        to: destination,
         subject: `[TEST] ${subject}`,
         text: message,
         html: `<div style="font-family:Arial,sans-serif;white-space:pre-wrap">${escapeHtml(message)}</div><hr><p style="color:#777;font-size:12px">Messaging Center test · no customer notification was sent.</p>`
       });
-      return NextResponse.json({ sent: true, channel, destination: session.email, provider: config.provider });
+      return NextResponse.json({ sent: true, channel, destination, provider: config.provider });
     }
 
     const rawPhone = typeof body.phone === 'string' ? body.phone.trim() : '';

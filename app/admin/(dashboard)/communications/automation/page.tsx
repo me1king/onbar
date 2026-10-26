@@ -85,6 +85,7 @@ export default function CustomerMessagingAutomationPage() {
   });
   const [draftChannels, setDraftChannels] = useState<Record<string, CustomerNotificationChannel[]>>({});
   const [search, setSearch] = useState('');
+  const [testEmail, setTestEmail] = useState('');
   const [testPhone, setTestPhone] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -181,6 +182,7 @@ export default function CustomerMessagingAutomationPage() {
           channel,
           subject: renderSample(rule.subject),
           message: renderSample(rule.message),
+          email: testEmail,
           phone: testPhone
         })
       });
@@ -195,7 +197,7 @@ export default function CustomerMessagingAutomationPage() {
         delivery_status: 'sent',
         error_message: null,
         created_at: new Date().toISOString(),
-        customer: { name: 'Admin test', email: channel === 'email' ? result.destination || '' : '', phone: channel !== 'email' ? result.destination || '' : '' }
+        customer: { name: 'Test recipient', email: channel === 'email' ? result.destination || '' : '', phone: channel !== 'email' ? result.destination || '' : '' }
       };
       setDeliveries(current => [testDelivery, ...current].slice(0, 100));
     } catch (error) {
@@ -320,10 +322,17 @@ export default function CustomerMessagingAutomationPage() {
             );
           })}
         </div>
-        <label className="block max-w-md text-xs font-bold text-slate-700">
-          Your phone for WhatsApp/SMS test messages
-          <Input value={testPhone} onChange={event => setTestPhone(event.target.value)} placeholder="+254712345678" className="mt-1.5" autoComplete="tel" />
-        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-xs font-bold text-slate-700">
+            Test email recipient (leave blank to use your admin email)
+            <Input value={testEmail} onChange={event => setTestEmail(event.target.value)} placeholder="name@example.com" className="mt-1.5" autoComplete="email" type="email" />
+          </label>
+          <label className="block text-xs font-bold text-slate-700">
+            Your phone for WhatsApp/SMS test messages
+            <Input value={testPhone} onChange={event => setTestPhone(event.target.value)} placeholder="+254712345678" className="mt-1.5" autoComplete="tel" />
+          </label>
+        </div>
+        <p className="text-xs text-slate-500">Test emails are sent only to the one address entered here and are marked [TEST]. No customer list or campaign audience is used.</p>
       </Card>
 
       <Card className="space-y-5 rounded-3xl border-slate-200 bg-white p-5 shadow-sm sm:p-7">

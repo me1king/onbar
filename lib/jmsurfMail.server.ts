@@ -47,6 +47,21 @@ export async function sendTransactionalEmail(email: TransactionalEmail) {
 
   if (jmsurfKey) {
     if (!jmsurfFrom) throw new Error('JMSURF_FROM_EMAIL is required when using JMSURF_MAIL_KEY.');
+    let html = email.html;
+    const attachments = (email.attachments || []).map(attachment => {
+      const content = Buffer.isBuffer(attachment.content)
+        ? attachment.content
+        : Buffer.from(attachment.content);
+      const base64 = content.toString('base64');
+      if (attachment.contentId) {
+        const contentType = attachment.contentType || 'application/octet-stream';
+        html = html.replaceAll(
+          `cid:${attachment.contentId}`,
+          `data:${contentType};base64,${base64}`
+        );
+      }
+      return { attachment, base64 };
+    });
     const response = await fetch('https://api.jmsurfmail.co.ke/api/v1/emails', {
       method: 'POST',
       headers: {
@@ -58,17 +73,17 @@ export async function sendTransactionalEmail(email: TransactionalEmail) {
         from,
         to: email.to,
         subject: email.subject,
-        html: email.html,
+        html,
         ...(email.text ? { text: email.text } : {}),
         ...(email.replyTo ? { reply_to: email.replyTo } : {}),
-        ...(email.attachments?.length ? {
-          attachments: email.attachments.map(attachment => ({
-            filename: attachment.filename,
-            content: Buffer.isBuffer(attachment.content)
-              ? attachment.content.toString('base64')
-              : Buffer.from(attachment.content).toString('base64'),
-            ...(attachment.contentType ? { content_type: attachment.contentType } : {})
-          }))
+        ...(attachments.some(({ attachment }) => !attachment.contentId) ? {
+          attachments: attachments
+            .filter(({ attachment }) => !attachment.contentId)
+            .map(({ attachment, base64 }) => ({
+              filename: attachment.filename,
+              content: base64,
+              ...(attachment.contentType ? { content_type: attachment.contentType } : {})
+            }))
         } : {})
       }),
       signal: AbortSignal.timeout(20_000)
