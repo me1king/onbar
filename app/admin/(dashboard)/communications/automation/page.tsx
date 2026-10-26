@@ -33,6 +33,8 @@ interface MessageDelivery {
   channel: CustomerNotificationChannel;
   delivery_status: 'sending' | 'sent' | 'failed';
   error_message: string | null;
+  provider_delivery_status?: string | null;
+  provider_updated_at?: string | null;
   created_at: string;
   customer?: { name: string; email: string; phone: string } | null;
 }
@@ -476,6 +478,12 @@ export default function CustomerMessagingAutomationPage() {
                           : delivery.delivery_status === 'failed' ? 'bg-rose-50 text-rose-700'
                             : 'bg-amber-50 text-amber-700'
                       )}>{delivery.delivery_status}</span>
+                      {delivery.provider_delivery_status && (
+                        <p className="mt-1 text-[10px] font-semibold text-slate-600">
+                          Provider: {delivery.provider_delivery_status.replace('email.', '')}
+                          {delivery.provider_updated_at ? ` · ${new Date(delivery.provider_updated_at).toLocaleString('en-KE')}` : ''}
+                        </p>
+                      )}
                       {delivery.error_message && <p className="mt-1 break-words text-[10px] leading-4 text-rose-700">{delivery.error_message}</p>}
                     </td>
                     <td className="px-3 py-3">

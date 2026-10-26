@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { Resend } from 'resend';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from "@/lib/utils";
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 /**
  * Ghost Worker 2.0: Advanced Recovery Engine
@@ -77,10 +75,9 @@ export async function POST(request: Request) {
                 .eq('id', cart.id);
 
             // 5. Email Trigger (If configured)
-            if (resend && cart.customer_email) {
+            if (getTransactionalEmailConfig().configured && cart.customer_email) {
                 try {
-                    await resend.emails.send({
-                        from: 'Online Bar <onboarding@resend.dev>',
+                    await sendTransactionalEmail({
                         to: cart.customer_email,
                         subject: "Your bag is expiring! ⏳",
                         html: `<div style="font-family:sans-serif;padding:20px;">
@@ -88,7 +85,8 @@ export async function POST(request: Request) {
                             <p>You left <b>${itemsList}</b> in your bag.</p>
                             <p>Finish your order in the next 6 hours to secure priority dispatch.</p>
                             <a href="${getPublicBaseUrl()}/cart" style="background:#111;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;">RETURN TO BAG</a>
-                        </div>`
+                        </div>`,
+                        text: `Hi ${cart.customer_name.split(' ')[0] || ownerName}, you left ${itemsList} in your bag. Finish your order in the next 6 hours: ${getPublicBaseUrl()}/cart`
                     });
                 } catch (emailError) {
                     console.error('[CartRecovery] Could not send recovery email:', emailError);

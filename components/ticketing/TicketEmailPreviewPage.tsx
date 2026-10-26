@@ -3,6 +3,7 @@ import { Mail } from 'lucide-react';
 import { generateTicketEmailPreview } from '@/lib/ticketing/email.server';
 import { isTicketThemeId, ticketThemes, type TicketThemeId } from '@/lib/ticketing/theme';
 import TicketEmailPreviewActions from '@/components/ticketing/TicketEmailPreviewActions';
+import { getTransactionalEmailConfig } from '@/lib/jmsurfMail.server';
 
 export default async function TicketEmailPreviewPage({
   basePath,
@@ -13,8 +14,8 @@ export default async function TicketEmailPreviewPage({
 }) {
   const theme: TicketThemeId = isTicketThemeId(requestedTheme) ? requestedTheme : 'midnight';
   const preview = await generateTicketEmailPreview(theme);
-  const sender = process.env.RESEND_FROM_EMAIL?.trim();
-  const resendConfigured = Boolean(process.env.RESEND_API_KEY?.trim());
+  const emailConfig = getTransactionalEmailConfig();
+  const sender = emailConfig.from;
 
   return (
     <main className="ticket-admin-theme min-h-screen bg-[#0d0a12] px-4 py-6 text-white sm:px-6 lg:px-8">
@@ -65,12 +66,12 @@ export default async function TicketEmailPreviewPage({
           </div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sender</p>
-            <p className="mt-1 break-all text-sm font-bold text-white">{sender || 'RESEND_FROM_EMAIL is not configured'}</p>
+            <p className="mt-1 break-all text-sm font-bold text-white">{sender || 'JMSURF_FROM_EMAIL is not configured'}</p>
           </div>
           <div className="sm:col-span-2">
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Resend API key</p>
-            <p className={`mt-1 text-sm font-bold ${resendConfigured ? 'text-emerald-300' : 'text-amber-200'}`}>
-              {resendConfigured ? 'Configured on this deployment' : 'Not configured on this deployment'}
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{emailConfig.provider || 'Email provider'} API key</p>
+            <p className={`mt-1 text-sm font-bold ${emailConfig.configured ? 'text-emerald-300' : 'text-amber-200'}`}>
+              {emailConfig.configured ? `${emailConfig.provider} credentials configured on this deployment` : 'Not configured on this deployment'}
             </p>
             <p className="mt-1 text-xs text-slate-400">This status only checks that an environment value exists. It does not validate the key, sender-domain verification, or delivery.</p>
           </div>

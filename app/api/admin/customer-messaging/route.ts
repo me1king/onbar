@@ -7,6 +7,7 @@ import {
 } from '@/lib/customerMessaging';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { getTransactionalEmailConfig } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function GET() {
     access.database.from('customer_notification_preferences')
       .select('channel_key, channels'),
     access.database.from('customer_notification_deliveries')
-      .select('id,order_id,notification_status,channel,delivery_status,error_message,created_at,updated_at')
+      .select('id,order_id,notification_status,channel,delivery_status,error_message,provider_delivery_status,provider_updated_at,created_at,updated_at')
       .order('created_at', { ascending: false })
       .limit(100)
   ]);
@@ -83,7 +84,7 @@ export async function GET() {
     config: normalizeCustomerNotificationConfig(settingResult.data?.value),
     customers,
     providers: {
-      email: Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim()),
+      email: getTransactionalEmailConfig().configured,
       whatsapp: Boolean(process.env.WHATSAPP_TOKEN?.trim() && process.env.WHATSAPP_PHONE_ID?.trim()),
       sms: Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim())
     },

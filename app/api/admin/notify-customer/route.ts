@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import {
   CUSTOMER_NOTIFICATION_CHANNELS,
   normalizeCustomerNotificationConfig,
@@ -10,6 +9,7 @@ import {
 import { getAdminSession, hasAdminPermission, isInternalRequest, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
+import { sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 type NotificationBody = { orderId?: unknown; status?: unknown; retryChannel?: unknown };
 
@@ -77,19 +77,13 @@ function toInternationalPhone(phone: string): string {
 }
 
 async function sendEmail(to: string, subject: string, message: string, trackingUrl: string) {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.RESEND_FROM_EMAIL?.trim();
-  if (!apiKey || !from || !/^(?:[^<>]+<[^<>@\s]+@[^<>@\s]+>|[^<>\s@]+@[^<>\s@]+)$/.test(from)) {
-    throw new Error('Email is not configured. Set RESEND_API_KEY and a verified RESEND_FROM_EMAIL.');
-  }
-  const resend = new Resend(apiKey);
-  const result = await resend.emails.send({
-    from,
+  const html = `<div style="font-family:sans-serif;padding:20px;color:#333"><p>${escapeHtml(message).replace(/\n/g, '<br/>')}</p><p><a href="${escapeHtml(trackingUrl)}">Track your order</a></p><hr/><p style="font-size:12px;color:#999">Online Bar Nairobi</p></div>`;
+  return sendTransactionalEmail({
     to,
     subject,
-    html: `<div style="font-family:sans-serif;padding:20px;color:#333"><p>${escapeHtml(message).replace(/\n/g, '<br/>')}</p><p><a href="${escapeHtml(trackingUrl)}">Track your order</a></p><hr/><p style="font-size:12px;color:#999">Online Bar Nairobi</p></div>`
+    html,
+    text: `${message}\n\nTrack your order: ${trackingUrl}\n\nOnline Bar Nairobi`
   });
-  if (result.error) throw result.error;
 }
 
 async function sendWhatsApp(phone: string, message: string) {
@@ -289,13 +283,29 @@ export async function POST(request: Request) {
         continue;
       }
       try {
-        if (channel === 'email') await sendEmail(email, subject, message, trackingUrl);
+        let providerMessageId: string | undefined;
+        if (channel === 'email') {
+          const sent = await sendEmail(email, subject, message, trackingUrl);
+          providerMessageId = sent.messageId;
+        }
         if (channel === 'whatsapp') await sendWhatsApp(phone, message);
         if (channel === 'sms') await sendSms(phone, smsMessage);
         const { error } = await database.from('customer_notification_deliveries')
-          .update({ delivery_status: 'sent', error_message: null, updated_at: new Date().toISOString() })
+          .update({
+            delivery_status: 'sent',
+            error_message: null,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', claim.id);
         if (error) throw error;
+        if (providerMessageId) {
+          const { error: providerIdError } = await database.from('customer_notification_deliveries')
+            .update({ provider_message_id: providerMessageId })
+            .eq('id', claim.id);
+          if (providerIdError) {
+            console.error('[CustomerNotification] Email was sent, but the provider message ID could not be saved:', providerIdError);
+          }
+        }
         results.push({ channel, status: 'sent' });
       } catch (sendError) {
         const detail = sendError instanceof Error ? sendError.message : 'Provider delivery failed.';

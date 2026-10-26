@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,18 +120,16 @@ export async function POST(request: Request) {
 
   let emailSent = false;
   let emailWarning: string | undefined;
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.RESEND_FROM_EMAIL?.trim();
+  const emailConfig = getTransactionalEmailConfig();
   try {
     const recipient = await getNotificationRecipient(database);
     if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
       emailWarning = 'The support ticket is saved in the admin panel, but the notification recipient is not configured.';
-    } else if (!apiKey || !from) {
+    } else if (!emailConfig.configured) {
       emailWarning = 'The support ticket is saved in the admin panel, but email alerts are not configured yet.';
     } else {
-      const resend = new Resend(apiKey);
-      const result = await resend.emails.send({
-        from,
+      await sendTransactionalEmail({
+        from: emailConfig.from,
         to: recipient,
         replyTo: email,
         subject: `New website enquiry: ${subject}`,
@@ -144,9 +142,10 @@ export async function POST(request: Request) {
           <p><b>Subject:</b> ${escapeHtml(subject)}</p>
           <div style="white-space:pre-wrap;background:#f5f7fa;border-radius:12px;padding:16px;margin:20px 0">${escapeHtml(message)}</div>
           <a href="${escapeHtml(getPublicBaseUrl())}/lord/support" style="display:inline-block;background:#f5a000;color:#101827;text-decoration:none;font-weight:bold;padding:12px 18px;border-radius:10px">Open support workspace</a>
-        </div>`
+        </div>`,
+        text: `Online Bar · New support enquiry\nTicket: ${ticket.id}\nTopic: ${category}\nFrom: ${name} <${email}>\nSubject: ${subject}\n\n${message}\n\nOpen support workspace: ${getPublicBaseUrl()}/lord/support`,
+        idempotencyKey: `support-ticket-${ticket.id}`
       });
-      if (result.error) throw result.error;
       emailSent = true;
     }
   } catch (error) {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,21 +55,18 @@ export async function POST(request: Request) {
   try {
     if (channel === 'email') {
       if (!session.email) return NextResponse.json({ error: 'Your admin account does not have an email address for the test.' }, { status: 409 });
-      const apiKey = process.env.RESEND_API_KEY?.trim();
-      const from = process.env.RESEND_FROM_EMAIL?.trim();
-      if (!apiKey || !from || !/^(?:[^<>]+<[^<>@\s]+@[^<>@\s]+>|[^<>\s@]+@[^<>\s@]+)$/.test(from)) {
-        return NextResponse.json({ error: 'Email is not configured. Set RESEND_API_KEY and a verified RESEND_FROM_EMAIL.' }, { status: 503 });
+      const config = getTransactionalEmailConfig();
+      if (!config.configured) {
+        return NextResponse.json({ error: 'Email is not configured. Set JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL in Vercel.' }, { status: 503 });
       }
-      const resend = new Resend(apiKey);
-      const result = await resend.emails.send({
-        from,
+      await sendTransactionalEmail({
+        from: config.from,
         to: session.email,
         subject: `[TEST] ${subject}`,
         text: message,
         html: `<div style="font-family:Arial,sans-serif;white-space:pre-wrap">${escapeHtml(message)}</div><hr><p style="color:#777;font-size:12px">Messaging Center test · no customer notification was sent.</p>`
       });
-      if (result.error) throw new Error(result.error.message);
-      return NextResponse.json({ sent: true, channel, destination: session.email });
+      return NextResponse.json({ sent: true, channel, destination: session.email, provider: config.provider });
     }
 
     const rawPhone = typeof body.phone === 'string' ? body.phone.trim() : '';

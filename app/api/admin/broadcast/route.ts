@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 import { verifySessionCookie } from "@/lib/adminAuth";
 import { cookies } from "next/headers";
 import { createMarketingUnsubscribeToken } from '@/lib/marketingUnsubscribe';
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 async function getAdminSession() {
     const cookieStore = await cookies();
@@ -260,9 +258,9 @@ export async function POST(request: Request) {
         }
 
         if (channel === 'email') {
-            const fromEmail = process.env.RESEND_FROM_EMAIL?.trim();
-            if (!resend || !fromEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)) {
-                return NextResponse.json({ error: "Email delivery requires RESEND_API_KEY and a verified RESEND_FROM_EMAIL on the server." }, { status: 503 });
+            const emailConfig = getTransactionalEmailConfig();
+            if (!emailConfig.configured || !emailConfig.from) {
+                return NextResponse.json({ error: "Email delivery requires JMSURF_MAIL_KEY and a verified JMSURF_FROM_EMAIL on the server." }, { status: 503 });
             }
 
             const { data: campaign, error: campaignError } = await adminDatabase
@@ -295,13 +293,16 @@ export async function POST(request: Request) {
             let deliveryAuditError: string | null = null;
             for (let offset = 0; offset < subscribers.length; offset += 50) {
                 const batch = subscribers.slice(offset, offset + 50);
-                const results = await Promise.all(batch.map(sub => {
+                const results = await Promise.all(batch.map(async (sub, index) => {
                     const unsubscribeUrl = `${origin}/newsletter/unsubscribe?token=${encodeURIComponent(createMarketingUnsubscribeToken(sub.email))}`;
-                    return resend.emails.send({
-                        from: `Online Bar Nairobi <${fromEmail}>`,
-                        to: sub.email,
-                        subject: subject || "Update from Online Bar Nairobi",
-                        html: `
+                    try {
+                        const result = await sendTransactionalEmail({
+                            from: emailConfig.from,
+                            to: sub.email,
+                            subject: subject || "Update from Online Bar Nairobi",
+                            text: `${message}\n\nYou received this because you subscribed to Online Bar Nairobi. Unsubscribe: ${unsubscribeUrl}`,
+                            idempotencyKey: `campaign-${campaign.id}-${offset + index}`,
+                            html: `
                             <div style="font-family: sans-serif; padding: 20px; color: #333;">
                                 <h2 style="color: #ff6b00;">Online Bar Nairobi Premium Update</h2>
                                 <p>${safeMessage}</p>
@@ -309,8 +310,15 @@ export async function POST(request: Request) {
                                 <p style="font-size: 12px; color: #999;">You received this because you subscribed to Online Bar Nairobi.</p>
                                 <p style="font-size: 12px;"><a href="${unsubscribeUrl}">Unsubscribe from marketing emails</a></p>
                             </div>
-                        `
-                    });
+                            `
+                        });
+                        return { error: null, messageId: result.messageId };
+                    } catch (error) {
+                        return {
+                            error: { message: error instanceof Error ? error.message : 'Email provider rejected the message.' },
+                            messageId: null
+                        };
+                    }
                 }));
                 const batchDelivered = results.filter(result => !result.error).length;
                 const batchFailed = results.filter(result => Boolean(result.error)).length;
@@ -330,6 +338,18 @@ export async function POST(request: Request) {
                     console.error('[AdminBroadcast] Email delivery audit failed:', deliveryError);
                     break;
                 }
+                const providerMessageUpdates = deliveryRows.flatMap((row, index) =>
+                    results[index].messageId
+                        ? [adminDatabase.from('message_campaign_deliveries')
+                            .update({ provider_message_id: results[index].messageId })
+                            .eq('campaign_id', campaign.id)
+                            .eq('recipient_email', row.recipient_email)
+                            .then(({ error }) => {
+                                if (error) console.error('[AdminBroadcast] Email sent but provider message ID could not be saved:', error);
+                            })]
+                        : []
+                );
+                await Promise.all(providerMessageUpdates);
             }
             if (deliveryAuditError && delivered + failed < subscribers.length) {
                 failed += subscribers.length - delivered - failed;

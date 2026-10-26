@@ -60,7 +60,11 @@ For the Online Bar Admin Ticketing module, apply
 `TICKETING_VENUE_LOCATION_MIGRATION.sql`, and finally
 `TICKETING_EMAIL_DELIVERY_MIGRATION.sql` followed by
 `TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql` and
-`PAYHERO_TICKETING_MIGRATION.sql`.
+`PAYHERO_TICKETING_MIGRATION.sql`. After the customer messaging and ticketing
+email delivery migrations (including `CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql`)
+are installed, run
+`JMSURF_EMAIL_WEBHOOK_MIGRATION.sql` to record signed JMSURF email events and
+link them to transactional message records.
 Wave I/II/III configuration, audited admin controls, transactional reservation
 gates, and the server-side availability query support public event listings.
 The publishing migration installs the owner-only event publish/pause RPC used

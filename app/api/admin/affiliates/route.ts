@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createHash, randomBytes } from 'node:crypto';
-import { Resend } from 'resend';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { getPublicBaseUrl } from '@/lib/utils';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -181,24 +181,23 @@ export async function POST(request: Request) {
 
   let emailSent = false;
   let emailError: string | undefined;
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (apiKey) {
+  const emailConfig = getTransactionalEmailConfig();
+  if (emailConfig.configured && emailConfig.from) {
     try {
-      const resend = new Resend(apiKey);
-      const response = await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL?.trim() || 'Online Bar Nairobi <onboarding@resend.dev>',
+      await sendTransactionalEmail({
+        from: emailConfig.from,
         to: email,
         subject: 'You’re invited to the Online Bar Affiliate Program',
-        html: `<div style="font-family:sans-serif;color:#17202a;line-height:1.6"><h1>You’re invited, ${escapeHtml(businessName)}</h1><p>Online Bar has invited you to join its affiliate program at a commission rate of ${commissionRate}%.</p><p>This invitation is for <strong>${escapeHtml(email)}</strong> and expires in 7 days. Sign in or create an account with this email address to accept.</p><p><a href="${escapeHtml(invitationUrl)}" style="display:inline-block;padding:12px 20px;background:#d91c1c;color:white;text-decoration:none;border-radius:8px">Accept your invitation</a></p><p>If you were not expecting this invitation, you can ignore this email.</p></div>`
+        html: `<div style="font-family:sans-serif;color:#17202a;line-height:1.6"><h1>You’re invited, ${escapeHtml(businessName)}</h1><p>Online Bar has invited you to join its affiliate program at a commission rate of ${commissionRate}%.</p><p>This invitation is for <strong>${escapeHtml(email)}</strong> and expires in 7 days. Sign in or create an account with this email address to accept.</p><p><a href="${escapeHtml(invitationUrl)}" style="display:inline-block;padding:12px 20px;background:#d91c1c;color:white;text-decoration:none;border-radius:8px">Accept your invitation</a></p><p>If you were not expecting this invitation, you can ignore this email.</p></div>`,
+        text: `You’re invited to join the Online Bar Affiliate Program at a commission rate of ${commissionRate}%. This invitation is for ${email} and expires in 7 days. Accept: ${invitationUrl}`
       });
-      if (response.error) throw response.error;
       emailSent = true;
     } catch (error) {
       console.error('[AdminAffiliates] Invitation created but email could not be sent:', error);
       emailError = 'Invitation was created, but the email could not be sent. Copy the invite link and send it manually.';
     }
   } else {
-    emailError = 'Invitation created. Configure RESEND_API_KEY to email invitations automatically; copy the invite link to share it manually.';
+    emailError = 'Invitation created. Configure JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL to email invitations automatically; copy the invite link to share it manually.';
   }
 
   return NextResponse.json({

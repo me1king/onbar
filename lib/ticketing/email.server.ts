@@ -1,13 +1,13 @@
 import 'server-only';
 
 import QRCode from 'qrcode';
-import { Resend } from 'resend';
 import { jsPDF } from 'jspdf';
 import { createHash } from 'crypto';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { decryptTicketCredential } from '@/lib/ticketing/credentials.server';
 import { defaultTicketTheme, isTicketThemeId } from '@/lib/ticketing/theme';
 import type { TicketThemeId } from '@/lib/ticketing/theme';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 type Database = NonNullable<ReturnType<typeof createServerSupabaseClient>>;
 
@@ -410,12 +410,11 @@ async function finishDelivery(database: Database, orderId: string, sent: boolean
 }
 
 export async function sendTicketOrderEmail(database: Database, orderId: string): Promise<'sent' | 'already_sent' | 'busy'> {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.RESEND_FROM_EMAIL?.trim();
-  if (!apiKey || !from || !/^(?:[^<>]+<[^<>@\s]+@[^<>@\s]+>|[^<>\s@]+@[^<>\s@]+)$/.test(from)) {
-    throw new Error('Ticket email delivery is not configured. Set RESEND_API_KEY and a verified RESEND_FROM_EMAIL.');
+  const emailConfig = getTransactionalEmailConfig();
+  if (!emailConfig.configured || !emailConfig.from
+    || !/^(?:[^<>]+<[^<>@\s]+@[^<>@\s]+>|[^<>\s@]+@[^<>\s@]+)$/.test(emailConfig.from)) {
+    throw new Error('Ticket email delivery is not configured. Set JMSURF_MAIL_KEY and a verified JMSURF_FROM_EMAIL.');
   }
-  const resend = new Resend(apiKey);
   const { data: claim, error: claimError } = await database.rpc('ticketing_claim_email_delivery', {
     p_order_id: orderId
   });
@@ -563,15 +562,21 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
       ...inlineQrAttachments,
       createCalendarAttachment(eventResult.data, orderDetails)
     ];
-    const result = await resend.emails.send({
-      from,
+    const sentEmail = await sendTransactionalEmail({
+      from: emailConfig.from,
       to: order.buyer_email,
       subject: `Your tickets for ${event.title.replace(/[\r\n]/g, ' ').trim()} – ${subjectDate}`,
       html,
       text,
-      attachments
-    }, { idempotencyKey: `ticket-order-${order.id}` });
-    if (result.error) throw new Error(result.error.message);
+      attachments,
+      idempotencyKey: `ticket-order-${order.id}`
+    });
+    if (sentEmail.messageId) {
+      const { error: messageIdError } = await database.from('ticketing_email_deliveries')
+        .update({ provider_message_id: sentEmail.messageId })
+        .eq('order_id', order.id);
+      if (messageIdError) console.error('[TicketingEmail] Could not link provider message ID to the order:', messageIdError);
+    }
     await finishDelivery(database, order.id, true);
     return 'sent';
   } catch (error) {

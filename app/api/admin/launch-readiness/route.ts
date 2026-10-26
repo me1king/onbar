@@ -39,7 +39,8 @@ function getConfigurationChecks() {
     {
       id: 'email-env',
       label: 'Transactional email credentials',
-      ready: configured(['RESEND_API_KEY', 'RESEND_FROM_EMAIL']),
+      ready: configured(['JMSURF_MAIL_KEY', 'JMSURF_FROM_EMAIL'])
+        || configured(['RESEND_API_KEY', 'RESEND_FROM_EMAIL']),
       detail: 'Configured credentials do not prove sender-domain authentication or delivery.',
       blocker: true
     },

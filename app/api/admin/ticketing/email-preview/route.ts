@@ -1,9 +1,8 @@
-import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { getAdminSession, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { generateTicketEmailPreview } from '@/lib/ticketing/email.server';
 import { isTicketThemeId } from '@/lib/ticketing/theme';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,29 +22,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'A valid email preview request is required.' }, { status: 400 });
   }
   const theme = isTicketThemeId(body.theme) ? body.theme : 'midnight';
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.RESEND_FROM_EMAIL?.trim();
-  if (!apiKey || !from || !/^(?:[^<>]+<[^<>@\s]+@[^<>@\s]+>|[^<>\s@]+@[^<>\s@]+)$/.test(from)) {
-    return NextResponse.json({ error: 'Configure RESEND_API_KEY and a verified RESEND_FROM_EMAIL on this deployment.' }, { status: 503 });
+  const config = getTransactionalEmailConfig();
+  if (!config.configured || !config.from) {
+    return NextResponse.json({ error: 'Configure JMSURF_MAIL_KEY and a verified JMSURF_FROM_EMAIL on this deployment.' }, { status: 503 });
   }
 
   try {
     const preview = await generateTicketEmailPreview(theme);
-    const resend = new Resend(apiKey);
-    const result = await resend.emails.send({
-      from,
+    await sendTransactionalEmail({
+      from: config.from,
       to: session.email,
       subject: 'Preview: Your tickets for Midnight Society — Sample Event – 19 Jun 2027',
       html: preview.html,
       text: preview.text,
       attachments: preview.attachments
-    }, { idempotencyKey: `ticket-email-preview-${randomUUID()}` });
-    if (result.error) throw new Error(result.error.message);
+    });
     return NextResponse.json({ status: 'sent', sentTo: session.email }, {
       headers: { 'Cache-Control': 'private, no-store, max-age=0' }
     });
   } catch (error) {
     console.error('[TicketingEmailPreview] Could not send admin preview:', error);
-    return NextResponse.json({ error: 'Sample email could not be sent. Check the Resend sender/domain configuration and deployment logs.' }, { status: 503 });
+    return NextResponse.json({
+      error: error instanceof Error
+        ? error.message
+        : 'Sample email could not be sent. Check JMSURF sender/domain configuration and deployment logs.'
+    }, { status: 503 });
   }
 }

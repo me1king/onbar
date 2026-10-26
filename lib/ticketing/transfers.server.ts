@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 type Database = ReturnType<typeof import('@/lib/serverSupabase').createServerSupabaseClient>;
 
@@ -30,6 +31,23 @@ export async function sendTransferredTicketAccess(database: NonNullable<Database
   if (!result?.created) {
     if (result?.rate_limited) throw new Error('Too many ticket access emails were requested. Please try again later.');
     throw new Error('No approved transferred ticket matches those details.');
+  }
+
+  const transactionalEmail = getTransactionalEmailConfig();
+  const configuredPublicUrl = process.env.TICKETING_PUBLIC_URL?.trim().replace(/\/$/, '');
+  if (transactionalEmail.provider === 'JMSURF Mail') {
+    if (!transactionalEmail.configured || !transactionalEmail.from || !configuredPublicUrl) {
+      throw new Error('Ticket transfer email is not configured. Set JMSURF_MAIL_KEY, JMSURF_FROM_EMAIL and TICKETING_PUBLIC_URL.');
+    }
+    const claimUrl = `${configuredPublicUrl}/tickets/claim?token=${encodeURIComponent(token)}`;
+    await sendTransactionalEmail({
+      from: transactionalEmail.from,
+      to: normalizedEmail,
+      subject: 'Your transferred Midnight Society KE ticket',
+      text: `The ticket transfer has been approved. Ticket reference: ${ticketReference}. Open this one-time link within 30 minutes to access your ticket: ${claimUrl}`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#211326"><h1>Your ticket transfer is approved</h1><p>Ticket reference: <strong>${ticketReference}</strong></p><p>Use this secure, one-time link within 30 minutes to open your transferred ticket.</p><p><a href="${claimUrl}">Open transferred ticket</a></p></div>`
+    });
+    return;
   }
 
   const from = process.env.RESEND_FROM_EMAIL?.trim();

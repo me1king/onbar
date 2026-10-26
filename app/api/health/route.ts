@@ -33,7 +33,11 @@ export async function GET() {
 
         // 3. Environment Context
         reports.environment = process.env.NODE_ENV;
-        reports.resend = process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim()
+        reports.email = (
+            process.env.JMSURF_MAIL_KEY?.trim() && process.env.JMSURF_FROM_EMAIL?.trim()
+        ) || (
+            process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim()
+        )
             ? 'Configured'
             : 'Not configured';
         reports.total_latency = `${Math.round(performance.now() - start)}ms`;

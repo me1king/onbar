@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { getAdminSession, hasAdminPermission, isInternalRequest, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 function escapeHtml(value: unknown) {
   return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -36,7 +34,10 @@ export async function POST(request: Request) {
   if (typeof body.type !== 'string' || !body.details || typeof body.details !== 'object') {
     return NextResponse.json({ error: 'A valid notification is required.' }, { status: 400 });
   }
-  if (!resend) return NextResponse.json({ error: 'Email is not configured.' }, { status: 503 });
+  const emailConfig = getTransactionalEmailConfig();
+  if (!emailConfig.configured || !emailConfig.from) {
+    return NextResponse.json({ error: 'Email is not configured.' }, { status: 503 });
+  }
 
   const database = createServerSupabaseClient();
   let adminEmail = process.env.ADMIN_EMAIL;
@@ -65,13 +66,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await resend.emails.send({
-      from: 'Online Bar Alerts <system@onlinebar.co.ke>',
+    await sendTransactionalEmail({
+      from: emailConfig.from,
       to: adminEmail,
       subject,
-      html
+      html,
+      text: subject
     });
-    if (result.error) throw result.error;
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[AdminNotification] Could not send notification:', error);
