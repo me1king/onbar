@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { Mail } from 'lucide-react';
-import { generateTicketEmailPreview } from '@/lib/ticketing/email.server';
+import { generateTicketEmailPreview, getTicketEmailSettings } from '@/lib/ticketing/email.server';
 import { isTicketThemeId, ticketThemes, type TicketThemeId } from '@/lib/ticketing/theme';
 import TicketEmailPreviewActions from '@/components/ticketing/TicketEmailPreviewActions';
 import { getTransactionalEmailConfig } from '@/lib/jmsurfMail.server';
+import { createServerSupabaseClient } from '@/lib/serverSupabase';
+import TicketEmailSettingsEditor from '@/components/ticketing/TicketEmailSettingsEditor';
 
 export default async function TicketEmailPreviewPage({
   basePath,
@@ -13,7 +15,8 @@ export default async function TicketEmailPreviewPage({
   requestedTheme?: string;
 }) {
   const theme: TicketThemeId = isTicketThemeId(requestedTheme) ? requestedTheme : 'midnight';
-  const preview = await generateTicketEmailPreview(theme);
+  const emailSettings = await getTicketEmailSettings(createServerSupabaseClient());
+  const preview = await generateTicketEmailPreview(theme, emailSettings);
   const emailConfig = getTransactionalEmailConfig();
   const sender = emailConfig.from;
 
@@ -38,7 +41,7 @@ export default async function TicketEmailPreviewPage({
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Ticket email appearance</p>
-              <p className="mt-1 text-xs text-slate-300">              Choose a color to preview it here and in the sample email and PDF tickets.</p>
+              <p className="mt-1 text-xs text-slate-300">Choose a color to preview it here and in the sample email and PDF tickets.</p>
             </div>
             <nav aria-label="Email preview theme" className="flex flex-wrap gap-2">
               {ticketThemes.map(option => (
@@ -62,7 +65,7 @@ export default async function TicketEmailPreviewPage({
         <section aria-label="Email delivery details" className="grid gap-3 rounded-2xl border border-white/10 bg-[#17121e] p-4 sm:grid-cols-2 sm:p-5">
           <div>
             <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Subject</p>
-            <p className="mt-1 text-sm font-bold text-white">Your tickets for Midnight Society — Sample Event – 19 Jun 2027</p>
+            <p className="mt-1 text-sm font-bold text-white">{preview.subject}</p>
           </div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sender</p>
@@ -76,6 +79,8 @@ export default async function TicketEmailPreviewPage({
             <p className="mt-1 text-xs text-slate-400">This status only checks that an environment value exists. It does not validate the key, sender-domain verification, or delivery.</p>
           </div>
         </section>
+
+        <TicketEmailSettingsEditor initialSettings={emailSettings} />
 
         <TicketEmailPreviewActions theme={theme} />
 
@@ -91,9 +96,9 @@ export default async function TicketEmailPreviewPage({
         <section aria-label="Email content checklist" className="rounded-2xl border border-white/10 bg-[#17121e] p-5 sm:p-6">
           <h2 className="text-sm font-black text-white">Included in real ticket emails</h2>
           <ul className="mt-3 grid gap-2 text-xs leading-5 text-slate-300 sm:grid-cols-2">
-            <li>• One QR per issued ticket, attendee name, ticket type, ticket reference, and ticket count</li>
-            <li>• Event date/time, door time, venue/address, map directions, entry and arrival guidance</li>
-            <li>• Order total, subtotal, fees, discount/promo when available, and payment provider</li>
+            <li>• One QR and ticket reference per issued ticket; ticket type and attendee name follow your settings</li>
+            <li>• Event time, venue/address, map directions, and arrival information follow your section settings</li>
+            <li>• Order total, subtotal, fees, discount/promo, and payment provider follow your section settings</li>
             <li>• A printable PDF ticket for each attendee and an .ics calendar attachment</li>
             <li>• Plain-text fallback and a reminder to check spam if the ticket email is missing</li>
             <li>• QR credentials are random, private, and checked against ticket status by the scanner</li>

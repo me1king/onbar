@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminSession, isSameOriginRequest } from '@/lib/adminAccess.server';
-import { generateTicketEmailPreview } from '@/lib/ticketing/email.server';
+import { createServerSupabaseClient } from '@/lib/serverSupabase';
+import { generateTicketEmailPreview, getTicketEmailSettings } from '@/lib/ticketing/email.server';
 import { isTicketThemeId } from '@/lib/ticketing/theme';
 import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
@@ -34,11 +35,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const preview = await generateTicketEmailPreview(theme);
+    const database = createServerSupabaseClient();
+    const emailSettings = await getTicketEmailSettings(database);
+    const preview = await generateTicketEmailPreview(theme, emailSettings);
     await sendTransactionalEmail({
       from: config.from,
       to: recipient,
-      subject: '[TEST] Preview: Your tickets for Midnight Society — Sample Event – 19 Jun 2027',
+      subject: `[TEST] ${preview.subject}`,
       html: preview.html,
       text: preview.text,
       attachments: preview.attachments

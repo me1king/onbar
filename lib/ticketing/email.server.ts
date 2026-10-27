@@ -7,6 +7,12 @@ import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { decryptTicketCredential } from '@/lib/ticketing/credentials.server';
 import { defaultTicketTheme, isTicketThemeId } from '@/lib/ticketing/theme';
 import type { TicketThemeId } from '@/lib/ticketing/theme';
+import {
+  DEFAULT_TICKET_EMAIL_SETTINGS,
+  normalizeTicketEmailSettings,
+  renderTicketEmailTemplate,
+  type TicketEmailSettings
+} from '@/lib/ticketing/emailSettings';
 import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 type Database = NonNullable<ReturnType<typeof createServerSupabaseClient>>;
@@ -42,7 +48,6 @@ type EmailEvent = {
   parking_guide: string;
   transport_guide: string;
   timezone: string;
-  age_limit: number | null;
   cancellation_policy: string;
   cover_image_url: string | null;
 };
@@ -108,6 +113,49 @@ function maskedPhone(phone: string | null) {
   if (!phone) return 'Not provided';
   const digits = phone.replace(/\D/g, '');
   return digits.length > 4 ? `${digits.slice(0, 2)}••••${digits.slice(-4)}` : '••••';
+}
+
+function formatCurrency(minor: number, currency: string) {
+  return new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: currency.trim(),
+    maximumFractionDigits: 2
+  }).format(minor / 100);
+}
+
+function getEmailTemplateVariables(input: {
+  event: EmailEvent;
+  order: EmailOrder;
+  ticketCount: number;
+  organizerName?: string;
+}) {
+  return {
+    event_title: input.event.title,
+    event_date: dateTime(input.event.starts_at, input.event.timezone),
+    buyer_name: input.order.buyer_name || 'Guest',
+    ticket_count: String(input.ticketCount),
+    order_reference: input.order.reference,
+    amount_paid: formatCurrency(input.order.total_minor, input.order.currency),
+    venue: [input.event.venue_name, input.event.city].filter(Boolean).join(', '),
+    organizer_name: input.organizerName || 'Event organizer'
+  };
+}
+
+export async function getTicketEmailSettings(database: Database | null) {
+  if (!database) return DEFAULT_TICKET_EMAIL_SETTINGS;
+  const { data, error } = await database.from('settings')
+    .select('value')
+    .eq('key', 'ticketing_email_settings')
+    .eq('is_published', true)
+    .maybeSingle();
+  if (error) throw new Error(`Ticket email settings could not be loaded: ${error.message}`);
+  const settings = data ? normalizeTicketEmailSettings(data.value) : DEFAULT_TICKET_EMAIL_SETTINGS;
+  if (!settings) throw new Error('Stored ticket email settings are invalid.');
+  return settings;
+}
+
+function renderEmailCopy(template: string, variables: Record<string, string>) {
+  return renderTicketEmailTemplate(template, variables);
 }
 
 function calendarText(value: string) {
@@ -189,7 +237,6 @@ function createTicketPdf(input: {
     ...(input.event.doors_open_at ? [`Doors: ${dateTime(input.event.doors_open_at, input.event.timezone)}`] : []),
     `Where: ${input.event.venue_name}, ${input.event.city}`,
     input.event.venue_address,
-    ...(input.event.age_limit !== null ? [`Age limit: ${input.event.age_limit}+`] : [])
   ].filter(Boolean);
   details.forEach(detail => {
     const lines = pdf.splitTextToSize(detail, textWidth);
@@ -225,23 +272,33 @@ function ticketHtml(input: {
   promotionCode?: string | null;
   paymentMethod?: string;
   sampleOnly?: boolean;
+  emailSettings: TicketEmailSettings;
 }) {
   const palette = palettes[input.theme];
+  const sections = input.emailSettings.sections;
+  const variables = getEmailTemplateVariables({
+    event: input.event,
+    order: input.order,
+    ticketCount: input.tickets.length,
+    organizerName: input.organizerName
+  });
+  const heading = renderEmailCopy(input.emailSettings.headingTemplate, variables);
+  const intro = renderEmailCopy(input.emailSettings.introTemplate, variables);
+  const closing = renderEmailCopy(input.emailSettings.closingTemplate, variables);
   const tickets = input.tickets.map((ticket, index) => {
     const qrId = `ob-ticket-qr-${index + 1}`;
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;border:1px solid ${palette.border};border-radius:18px;border-collapse:separate;background:${palette.panel};color:${palette.foreground};overflow:hidden">
       <tr>
         <td style="padding:24px 22px;vertical-align:middle">
-          <div style="color:${palette.accent};font:700 11px Arial,sans-serif;letter-spacing:2px;text-transform:uppercase">APEX MARKET · ONLINE BAR · ADMIT ONE · ${index + 1} / ${input.tickets.length}</div>
+          <div style="color:${palette.accent};font:700 11px Arial,sans-serif;letter-spacing:2px;text-transform:uppercase">${escapeHtml(input.emailSettings.brandTitle)} · ADMIT ONE · ${index + 1} / ${input.tickets.length}</div>
           <div style="margin-top:10px;font:700 27px/1.12 Georgia,serif">${escapeHtml(input.event.title)}</div>
-          <div style="margin-top:14px;color:${palette.muted};font:700 13px Arial,sans-serif">${escapeHtml(ticket.ticketName)}</div>
-          <div style="margin-top:7px;color:${palette.foreground};font:14px Arial,sans-serif">${escapeHtml(ticket.attendeeName || input.order.buyer_name || 'Guest')}</div>
+          ${sections.showTicketType ? `<div style="margin-top:14px;color:${palette.muted};font:700 13px Arial,sans-serif">${escapeHtml(ticket.ticketName)}</div>` : ''}
+          ${sections.showAttendeeName ? `<div style="margin-top:7px;color:${palette.foreground};font:14px Arial,sans-serif">${escapeHtml(ticket.attendeeName || input.order.buyer_name || 'Guest')}</div>` : ''}
           <div style="margin-top:15px;color:${palette.muted};font:12px/1.6 Arial,sans-serif">
-            <b style="color:${palette.foreground}">WHEN</b> &nbsp;${escapeHtml(dateTime(input.event.starts_at, input.event.timezone))}<br>
-            ${input.event.doors_open_at ? `<b style="color:${palette.foreground}">DOORS</b> &nbsp;${escapeHtml(dateTime(input.event.doors_open_at, input.event.timezone))}<br>` : ''}
-            <b style="color:${palette.foreground}">WHERE</b> &nbsp;${escapeHtml(input.event.venue_name)} · ${escapeHtml(input.event.city)}<br>
-            ${input.event.venue_address ? `${escapeHtml(input.event.venue_address)}<br>` : ''}
-            ${input.event.age_limit !== null ? `<b style="color:${palette.foreground}">AGE</b> &nbsp;${input.event.age_limit}+<br>` : ''}
+            ${sections.showEventTiming ? `<b style="color:${palette.foreground}">WHEN</b> &nbsp;${escapeHtml(dateTime(input.event.starts_at, input.event.timezone))}<br>` : ''}
+            ${sections.showDoors && input.event.doors_open_at ? `<b style="color:${palette.foreground}">DOORS</b> &nbsp;${escapeHtml(dateTime(input.event.doors_open_at, input.event.timezone))}<br>` : ''}
+            ${sections.showVenue ? `<b style="color:${palette.foreground}">WHERE</b> &nbsp;${escapeHtml(input.event.venue_name)} · ${escapeHtml(input.event.city)}<br>` : ''}
+            ${sections.showVenue && sections.showVenueAddress && input.event.venue_address ? `${escapeHtml(input.event.venue_address)}<br>` : ''}
             <b style="color:${palette.foreground}">TICKET</b> &nbsp;${escapeHtml(ticket.reference)}
           </div>
         </td>
@@ -254,7 +311,7 @@ function ticketHtml(input: {
     </table>`;
   }).join('');
   const mapUrl = getDirectionsUrl(input.event);
-  const safeCoverImageUrl = input.event.cover_image_url && /^https:\/\//i.test(input.event.cover_image_url)
+  const safeCoverImageUrl = sections.showEventCover && input.event.cover_image_url && /^https:\/\//i.test(input.event.cover_image_url)
     ? input.event.cover_image_url
     : '';
 
@@ -263,44 +320,47 @@ function ticketHtml(input: {
       <table role="presentation" width="680" cellpadding="0" cellspacing="0" style="width:100%;max-width:680px">
         <tr><td style="padding:12px 4px 22px">
           ${input.sampleOnly ? `<div style="margin-bottom:14px;border:2px solid #b91c1c;border-radius:10px;background:#fee2e2;padding:12px;color:#7f1d1d;font:700 14px Arial,sans-serif;text-align:center">SAMPLE PREVIEW · QR CODES ARE NOT VALID FOR ENTRY</div>` : ''}
-          <div style="color:${palette.accent};font:700 11px Arial,sans-serif;letter-spacing:3px">APEX MARKET · TICKETING BY ONLINE BAR</div>
-          <div style="margin-top:5px;color:${palette.muted};font:11px Arial,sans-serif">Built in collaboration with the Apex Market team</div>
+          <div style="color:${palette.accent};font:700 11px Arial,sans-serif;letter-spacing:3px">${escapeHtml(input.emailSettings.brandTitle)}</div>
+          <div style="margin-top:5px;color:${palette.muted};font:11px Arial,sans-serif">${escapeHtml(input.emailSettings.brandSubtitle)}</div>
           ${safeCoverImageUrl ? `<img src="${escapeHtml(safeCoverImageUrl)}" alt="${escapeHtml(input.event.title)} event banner" width="680" style="display:block;width:100%;max-height:240px;object-fit:cover;margin:0 0 16px;border-radius:12px">` : ''}
-          <h1 style="margin:10px 0 7px;font:700 27px Georgia,serif">You’re in. Your ticket is ready.</h1>
-          <p style="margin:0;color:${palette.muted};font:14px/1.6 Arial,sans-serif">Payment confirmed. Your printable tickets are attached. Save this email and present each ticket’s QR code at the entrance. Every ticket is valid for one scan.</p>
+          <h1 style="margin:10px 0 7px;font:700 27px Georgia,serif">${escapeHtml(heading)}</h1>
+          <p style="margin:0;color:${palette.muted};font:14px/1.6 Arial,sans-serif">${escapeHtml(intro).replace(/\r?\n/g, '<br>')}</p>
         </td></tr>
         <tr><td style="padding:0 5px 20px;color:${palette.muted};font:13px/1.7 Arial,sans-serif">
-          <b style="color:${palette.foreground}">WHEN</b> &nbsp;${escapeHtml(dateTime(input.event.starts_at, input.event.timezone))}${input.event.ends_at ? ` – ${escapeHtml(dateTime(input.event.ends_at, input.event.timezone))}` : ''}<br>
-          ${input.event.doors_open_at ? `<b style="color:${palette.foreground}">DOORS</b> &nbsp;${escapeHtml(dateTime(input.event.doors_open_at, input.event.timezone))}<br>` : ''}
-          <b style="color:${palette.foreground}">WHERE</b> &nbsp;${escapeHtml(input.event.venue_name)} · ${escapeHtml(input.event.city)}<br>
-          ${input.event.venue_address ? `${escapeHtml(input.event.venue_address)}<br>` : ''}
-          <a href="${escapeHtml(mapUrl)}" style="display:inline-block;margin-top:10px;border-radius:8px;background:${palette.accent};padding:10px 16px;color:${palette.background};font-weight:bold;text-decoration:none">Get directions</a>
+          ${sections.showEventTiming ? `<b style="color:${palette.foreground}">WHEN</b> &nbsp;${escapeHtml(dateTime(input.event.starts_at, input.event.timezone))}${input.event.ends_at ? ` – ${escapeHtml(dateTime(input.event.ends_at, input.event.timezone))}` : ''}<br>` : ''}
+          ${sections.showDoors && input.event.doors_open_at ? `<b style="color:${palette.foreground}">DOORS</b> &nbsp;${escapeHtml(dateTime(input.event.doors_open_at, input.event.timezone))}<br>` : ''}
+          ${sections.showVenue ? `<b style="color:${palette.foreground}">WHERE</b> &nbsp;${escapeHtml(input.event.venue_name)} · ${escapeHtml(input.event.city)}<br>` : ''}
+          ${sections.showVenue && sections.showVenueAddress && input.event.venue_address ? `${escapeHtml(input.event.venue_address)}<br>` : ''}
+          ${sections.showVenue && sections.showDirections ? `<a href="${escapeHtml(mapUrl)}" style="display:inline-block;margin-top:10px;border-radius:8px;background:${palette.accent};padding:10px 16px;color:${palette.background};font-weight:bold;text-decoration:none">Get directions</a>` : ''}
         </td></tr>
         <tr><td>${tickets}</td></tr>
-        <tr><td style="padding:4px 5px 18px;color:${palette.muted};font:12px/1.7 Arial,sans-serif">
+        ${sections.showFinancialSummary || sections.showBuyerContact || sections.showOrganizer || sections.showEventDescription || sections.showArrivalGuides || sections.showCancellationPolicy ? `<tr><td style="padding:4px 5px 18px;color:${palette.muted};font:12px/1.7 Arial,sans-serif">
+          ${sections.showFinancialSummary ? `
           Order <b style="color:${palette.foreground}">${escapeHtml(input.order.reference)}</b> · Paid ${escapeHtml(new Intl.NumberFormat('en-KE', { style: 'currency', currency: input.order.currency.trim(), maximumFractionDigits: 2 }).format(input.order.total_minor / 100))}<br>
           Subtotal ${escapeHtml(new Intl.NumberFormat('en-KE', { style: 'currency', currency: input.order.currency.trim(), maximumFractionDigits: 2 }).format(input.order.subtotal_minor / 100))} · Fees ${escapeHtml(new Intl.NumberFormat('en-KE', { style: 'currency', currency: input.order.currency.trim(), maximumFractionDigits: 2 }).format(input.order.fees_minor / 100))}${input.order.discount_minor > 0 ? ` · Discount −${escapeHtml(new Intl.NumberFormat('en-KE', { style: 'currency', currency: input.order.currency.trim(), maximumFractionDigits: 2 }).format(input.order.discount_minor / 100))}` : ''}<br>
           ${input.order.paid_at ? `Payment confirmed ${escapeHtml(dateTime(input.order.paid_at, input.event.timezone))}<br>` : ''}
-          ${escapeHtml(input.order.buyer_email)}${input.order.buyer_phone ? ` · ${escapeHtml(maskedPhone(input.order.buyer_phone))}` : ''}<br>
           ${input.paymentMethod ? `Payment: ${escapeHtml(input.paymentMethod)}<br>` : ''}
-          ${input.promotionCode ? `Promo: ${escapeHtml(input.promotionCode)}<br>` : ''}
-          ${input.organizerName ? `Organizer: ${escapeHtml(input.organizerName)}<br>` : ''}
-          ${input.event.description ? `<br>${escapeHtml(input.event.description)}<br>` : ''}
-          ${input.event.entrance_guide ? `<b style="color:${palette.foreground}">ENTRANCE</b> &nbsp;${escapeHtml(input.event.entrance_guide)}<br>` : ''}
-          ${input.event.parking_guide ? `<b style="color:${palette.foreground}">PARKING</b> &nbsp;${escapeHtml(input.event.parking_guide)}<br>` : ''}
-          ${input.event.transport_guide ? `<b style="color:${palette.foreground}">TRANSPORT</b> &nbsp;${escapeHtml(input.event.transport_guide)}<br>` : ''}
-          ${input.event.cancellation_policy ? `<br><b style="color:${palette.foreground}">CANCELLATION POLICY</b><br>${escapeHtml(input.event.cancellation_policy)}<br>` : ''}
+          ${input.promotionCode ? `Promo: ${escapeHtml(input.promotionCode)}<br>` : ''}` : ''}
+          ${sections.showBuyerContact ? `${escapeHtml(input.order.buyer_email)}${input.order.buyer_phone ? ` · ${escapeHtml(maskedPhone(input.order.buyer_phone))}` : ''}<br>` : ''}
+          ${sections.showOrganizer && input.organizerName ? `Organizer: ${escapeHtml(input.organizerName)}<br>` : ''}
+          ${sections.showEventDescription && input.event.description ? `<br>${escapeHtml(input.event.description)}<br>` : ''}
+          ${sections.showArrivalGuides && input.event.entrance_guide ? `<b style="color:${palette.foreground}">ENTRANCE</b> &nbsp;${escapeHtml(input.event.entrance_guide)}<br>` : ''}
+          ${sections.showArrivalGuides && input.event.parking_guide ? `<b style="color:${palette.foreground}">PARKING</b> &nbsp;${escapeHtml(input.event.parking_guide)}<br>` : ''}
+          ${sections.showArrivalGuides && input.event.transport_guide ? `<b style="color:${palette.foreground}">TRANSPORT</b> &nbsp;${escapeHtml(input.event.transport_guide)}<br>` : ''}
+          ${sections.showCancellationPolicy && input.event.cancellation_policy ? `<br><b style="color:${palette.foreground}">CANCELLATION POLICY</b><br>${escapeHtml(input.event.cancellation_policy)}<br>` : ''}
           <br>Tickets attached as PDF · Calendar event attached as .ics.<br>
-          ${input.event.age_limit !== null ? `Age limit ${input.event.age_limit}+ · Bring valid ID if required by the event organizer.<br>` : ''}
-          Keep your QR codes private. Event details in this ticket reflect the information available when it was sent.
-        </td></tr>
-        <tr><td style="border-top:1px solid ${palette.border};padding:15px 5px;color:${palette.muted};font:11px/1.6 Arial,sans-serif">Ticket issue confirmed by ONLINE BAR · This email contains your valid entry credentials. Do not forward the QR codes.</td></tr>
+          ${escapeHtml(closing).replace(/\r?\n/g, '<br>')}
+        </td></tr>` : `<tr><td style="padding:4px 5px 18px;color:${palette.muted};font:12px/1.7 Arial,sans-serif">${escapeHtml(closing).replace(/\r?\n/g, '<br>')}</td></tr>`}
+        <tr><td style="border-top:1px solid ${palette.border};padding:15px 5px;color:${palette.muted};font:11px/1.6 Arial,sans-serif">${escapeHtml(input.emailSettings.brandTitle)} · This email contains your valid entry credentials. Do not forward the QR codes.</td></tr>
       </table>
     </td></tr></table>
   </body></html>`;
 }
 
-export async function generateTicketEmailPreview(theme: TicketThemeId) {
+export async function generateTicketEmailPreview(
+  theme: TicketThemeId,
+  emailSettings: TicketEmailSettings = DEFAULT_TICKET_EMAIL_SETTINGS
+) {
   const tickets = [
     { reference: 'OB-PREVIEW-001', attendeeName: 'Jordan Sample', ticketName: 'Early Bird', credential: 'PREVIEW-ONLY-NOT-A-VALID-TICKET-001' },
     { reference: 'OB-PREVIEW-002', attendeeName: 'Taylor Sample', ticketName: 'General Admission', credential: 'PREVIEW-ONLY-NOT-A-VALID-TICKET-002' }
@@ -329,7 +389,6 @@ export async function generateTicketEmailPreview(theme: TicketThemeId) {
     parking_guide: 'Limited paid parking is available at the venue.',
     transport_guide: 'Ride-hailing drop-off is on the north side.',
     timezone: 'Africa/Nairobi',
-    age_limit: 18,
     cancellation_policy: 'Tickets are subject to the event organizer’s published cancellation policy.',
     cover_image_url: null
   };
@@ -354,7 +413,8 @@ export async function generateTicketEmailPreview(theme: TicketThemeId) {
     organizerName: 'ONLINE BAR',
     promotionCode: 'PREVIEW10',
     paymentMethod: 'M-Pesa',
-    sampleOnly: true
+    sampleOnly: true,
+    emailSettings
   });
   const attachments = [
     ...ticketsWithQr.map((ticket, index) => ({
@@ -387,21 +447,54 @@ export async function generateTicketEmailPreview(theme: TicketThemeId) {
   return {
     html,
     attachments,
+    subject: renderEmailCopy(emailSettings.subjectTemplate, getEmailTemplateVariables({
+      event,
+      order,
+      ticketCount: ticketsWithQr.length,
+      organizerName: 'ONLINE BAR'
+    })).replace(/[\r\n]/g, ' ').trim(),
     text: [
-      'Apex Market tickets · built by Online Bar in collaboration with Apex Market.',
+      renderEmailCopy(emailSettings.brandTitle, getEmailTemplateVariables({ event, order, ticketCount: ticketsWithQr.length, organizerName: 'ONLINE BAR' })),
+      renderEmailCopy(emailSettings.brandSubtitle, getEmailTemplateVariables({ event, order, ticketCount: ticketsWithQr.length, organizerName: 'ONLINE BAR' })),
       '',
-      'You’re in. Your tickets for Midnight Society — Sample Event are ready.',
+      renderEmailCopy(emailSettings.headingTemplate, getEmailTemplateVariables({ event, order, ticketCount: ticketsWithQr.length, organizerName: 'ONLINE BAR' })),
       '',
-      `When: ${dateTime(event.starts_at, event.timezone)} – ${dateTime(event.ends_at, event.timezone)}`,
-      `Doors: ${dateTime(event.doors_open_at || event.starts_at, event.timezone)}`,
-      `Where: ${event.venue_name}, ${event.venue_address}, ${event.city}`,
-      `Directions: ${getDirectionsUrl(event)}`,
+      renderEmailCopy(emailSettings.introTemplate, getEmailTemplateVariables({ event, order, ticketCount: ticketsWithQr.length, organizerName: 'ONLINE BAR' })),
       '',
-      ...ticketsWithQr.map((ticket, index) => `${index + 1}/${ticketsWithQr.length} ${ticket.ticketName} · ${ticket.attendeeName} · ${ticket.reference}`),
+      ...(emailSettings.sections.showEventTiming ? [`When: ${dateTime(event.starts_at, event.timezone)} – ${dateTime(event.ends_at, event.timezone)}`] : []),
+      ...(emailSettings.sections.showDoors ? [`Doors: ${dateTime(event.doors_open_at || event.starts_at, event.timezone)}`] : []),
+      ...(emailSettings.sections.showVenue ? [`Where: ${event.venue_name}${emailSettings.sections.showVenueAddress ? `, ${event.venue_address}` : ''}, ${event.city}`] : []),
+      ...(emailSettings.sections.showVenue && emailSettings.sections.showDirections ? [`Directions: ${getDirectionsUrl(event)}`] : []),
+      '',
+      ...ticketsWithQr.map((ticket, index) => [
+        `${index + 1}/${ticketsWithQr.length}`,
+        ...(emailSettings.sections.showTicketType ? [ticket.ticketName] : []),
+        ...(emailSettings.sections.showAttendeeName ? [ticket.attendeeName] : []),
+        ticket.reference
+      ].join(' · ')),
+      '',
+      ...(emailSettings.sections.showFinancialSummary ? [
+        `Order: ${order.reference}`,
+        `Total paid: ${formatCurrency(order.total_minor, order.currency)}`,
+        'Payment: M-Pesa'
+      ] : []),
+      ...(emailSettings.sections.showBuyerContact ? [order.buyer_email] : []),
+      ...(emailSettings.sections.showOrganizer ? ['Organizer: ONLINE BAR'] : []),
+      ...(emailSettings.sections.showEventDescription ? [event.description] : []),
+      ...(emailSettings.sections.showArrivalGuides ? [event.entrance_guide, event.parking_guide, event.transport_guide] : []),
+      ...(emailSettings.sections.showCancellationPolicy ? [`Cancellation policy: ${event.cancellation_policy}`] : []),
+      '',
+      renderEmailCopy(emailSettings.closingTemplate, getEmailTemplateVariables({ event, order, ticketCount: ticketsWithQr.length, organizerName: 'ONLINE BAR' })),
       '',
       'Sample-only PDF tickets and calendar file attached. QR codes are not valid for entry.'
     ].join('\n')
   };
+}
+
+export async function buildTicketEmailPreview(theme: TicketThemeId) {
+  const database = createServerSupabaseClient();
+  const emailSettings = await getTicketEmailSettings(database);
+  return generateTicketEmailPreview(theme, emailSettings);
 }
 
 async function finishDelivery(database: Database, orderId: string, sent: boolean, message?: string) {
@@ -438,9 +531,9 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
     if (orderError) throw orderError;
     if (!order || order.status !== 'paid') throw new Error('Paid ticket order could not be found.');
 
-    const [eventResult, itemsResult, themeResult, paymentResult] = await Promise.all([
+    const [eventResult, itemsResult, themeResult, paymentResult, emailSettings] = await Promise.all([
       database.from('ticketing_events')
-        .select('organizer_id,title,description,starts_at,ends_at,doors_open_at,venue_name,venue_address,venue_latitude,venue_longitude,entrance_guide,parking_guide,transport_guide,city,timezone,age_limit,cancellation_policy,cover_image_url')
+        .select('organizer_id,title,description,starts_at,ends_at,doors_open_at,venue_name,venue_address,venue_latitude,venue_longitude,entrance_guide,parking_guide,transport_guide,city,timezone,cancellation_policy,cover_image_url')
         .eq('id', order.event_id)
         .maybeSingle(),
       database.from('ticketing_order_items')
@@ -448,7 +541,8 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
         .eq('order_id', order.id),
       database.from('settings').select('value').eq('key', 'ticketing_theme').eq('is_published', true).maybeSingle(),
       database.from('ticketing_payment_attempts').select('provider').eq('order_id', order.id)
-        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+        .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      getTicketEmailSettings(database)
     ]);
     if (eventResult.error || itemsResult.error || themeResult.error || paymentResult.error) {
       throw eventResult.error || itemsResult.error || themeResult.error || paymentResult.error;
@@ -536,7 +630,8 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
         ? 'M-Pesa'
         : paymentResult.data?.provider === 'paystack'
           ? 'Paystack'
-          : paymentResult.data?.provider || undefined
+          : paymentResult.data?.provider || undefined,
+      emailSettings
     });
     const subjectDate = new Intl.DateTimeFormat('en-KE', {
       day: 'numeric',
@@ -544,27 +639,52 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
       year: 'numeric',
       timeZone: event.timezone
     }).format(new Date(event.starts_at));
+    const emailVariables = getEmailTemplateVariables({
+      event,
+      order: orderDetails,
+      ticketCount: tickets.length,
+      organizerName: organizerResult.data?.name || undefined
+    });
+    const emailSections = emailSettings.sections;
     const text = [
-      'Apex Market tickets · built by Online Bar in collaboration with Apex Market.',
+      renderEmailCopy(emailSettings.brandTitle, emailVariables),
+      renderEmailCopy(emailSettings.brandSubtitle, emailVariables),
       '',
-      `You’re in. Your ticket${tickets.length === 1 ? '' : 's'} for ${event.title} is ready.`,
+      renderEmailCopy(emailSettings.headingTemplate, emailVariables),
+      '',
+      renderEmailCopy(emailSettings.introTemplate, emailVariables),
       '',
       `Event: ${event.title}`,
-      `When: ${dateTime(event.starts_at, event.timezone)}${event.ends_at ? ` – ${dateTime(event.ends_at, event.timezone)}` : ''}`,
-      ...(event.doors_open_at ? [`Doors: ${dateTime(event.doors_open_at, event.timezone)}`] : []),
-      `Where: ${event.venue_name}, ${event.venue_address}, ${event.city}`,
-      `Directions: ${getDirectionsUrl(event)}`,
+      ...(emailSections.showEventTiming ? [`When: ${dateTime(event.starts_at, event.timezone)}${event.ends_at ? ` – ${dateTime(event.ends_at, event.timezone)}` : ''}`] : []),
+      ...(emailSections.showDoors && event.doors_open_at ? [`Doors: ${dateTime(event.doors_open_at, event.timezone)}`] : []),
+      ...(emailSections.showVenue ? [`Where: ${event.venue_name}${emailSections.showVenueAddress ? `, ${event.venue_address}` : ''}, ${event.city}`] : []),
+      ...(emailSections.showVenue && emailSections.showDirections ? [`Directions: ${getDirectionsUrl(event)}`] : []),
       '',
-      ...tickets.map((ticket, index) => `${index + 1}/${tickets.length} ${ticket.ticketName} · ${ticket.attendeeName || orderDetails.buyer_name || 'Guest'} · ${ticket.reference}`),
+      ...tickets.map((ticket, index) => [
+        `${index + 1}/${tickets.length}`,
+        ...(emailSections.showTicketType ? [ticket.ticketName] : []),
+        ...(emailSections.showAttendeeName ? [ticket.attendeeName || orderDetails.buyer_name || 'Guest'] : []),
+        ticket.reference
+      ].join(' · ')),
       '',
-      `Order: ${orderDetails.reference}`,
-      `Subtotal: ${new Intl.NumberFormat('en-KE', { style: 'currency', currency: orderDetails.currency.trim() }).format(orderDetails.subtotal_minor / 100)}`,
-      `Fees: ${new Intl.NumberFormat('en-KE', { style: 'currency', currency: orderDetails.currency.trim() }).format(orderDetails.fees_minor / 100)}`,
-      ...(orderDetails.discount_minor > 0 ? [`Discount: -${new Intl.NumberFormat('en-KE', { style: 'currency', currency: orderDetails.currency.trim() }).format(orderDetails.discount_minor / 100)}`] : []),
-      `Total paid: ${new Intl.NumberFormat('en-KE', { style: 'currency', currency: orderDetails.currency.trim() }).format(orderDetails.total_minor / 100)}`,
+      ...(emailSections.showFinancialSummary ? [
+        `Order: ${orderDetails.reference}`,
+        `Subtotal: ${formatCurrency(orderDetails.subtotal_minor, orderDetails.currency)}`,
+        `Fees: ${formatCurrency(orderDetails.fees_minor, orderDetails.currency)}`,
+        ...(orderDetails.discount_minor > 0 ? [`Discount: -${formatCurrency(orderDetails.discount_minor, orderDetails.currency)}`] : []),
+        `Total paid: ${formatCurrency(orderDetails.total_minor, orderDetails.currency)}`
+      ] : []),
+      ...(emailSections.showBuyerContact ? [orderDetails.buyer_email] : []),
+      ...(emailSections.showOrganizer && organizerResult.data?.name ? [`Organizer: ${organizerResult.data.name}`] : []),
+      ...(emailSections.showEventDescription && event.description ? [event.description] : []),
+      ...(emailSections.showArrivalGuides ? [
+        ...(event.entrance_guide ? [`Entrance: ${event.entrance_guide}`] : []),
+        ...(event.parking_guide ? [`Parking: ${event.parking_guide}`] : []),
+        ...(event.transport_guide ? [`Transport: ${event.transport_guide}`] : [])
+      ] : []),
+      ...(emailSections.showCancellationPolicy && event.cancellation_policy ? [`Cancellation policy: ${event.cancellation_policy}`] : []),
       '',
-      'Printable PDF tickets and an event calendar file are attached. Present each QR code at the entrance. One scan only; do not share your QR codes.',
-      'If you cannot find your ticket, check your spam folder or open your ticket wallet to resend it.'
+      renderEmailCopy(emailSettings.closingTemplate, emailVariables)
     ].join('\n');
     const pdfs = pdfAttachments;
     const attachments = [
@@ -575,7 +695,10 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
     const sentEmail = await sendTransactionalEmail({
       from: emailConfig.from,
       to: order.buyer_email,
-      subject: `Your tickets for ${event.title.replace(/[\r\n]/g, ' ').trim()} – ${subjectDate}`,
+      subject: renderEmailCopy(emailSettings.subjectTemplate, {
+        ...emailVariables,
+        event_date: subjectDate
+      }).replace(/[\r\n]/g, ' ').trim(),
       html,
       text,
       attachments,
