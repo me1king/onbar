@@ -10,7 +10,6 @@ import {
   AlertCircle,
   Loader2,
   Phone,
-  Users,
   BarChart3,
   Calendar,
   MessageSquare
@@ -28,8 +27,10 @@ export default function AdminBroadcastPage() {
     const [channel, setChannel] = React.useState<'email' | 'whatsapp' | 'in_app'>('in_app');
     const [audiences, setAudiences] = React.useState<{ id: string; name: string; estimated_reach: number }[]>([]);
     const [audience, setAudience] = React.useState('all');
+    const [emailAudience, setEmailAudience] = React.useState<'newsletter' | 'waitlist'>('newsletter');
     const [audiencesLoading, setAudiencesLoading] = React.useState(true);
     const [audiencesError, setAudiencesError] = React.useState<string | null>(null);
+    const [waitlistEmailCount, setWaitlistEmailCount] = React.useState(0);
     const schedule = 'now' as const;
     const [subject, setSubject] = React.useState('');
     const [message, setMessage] = React.useState('');
@@ -40,6 +41,7 @@ export default function AdminBroadcastPage() {
         { id: 'flash', label: 'Flash Sale', content: `ALERT: Premium Flash Sale active now! Get 20% OFF all premium vintages for the next 4 hours only. Secure yours: ${getPublicBaseUrl()}/shop` },
         { id: 'weekend', label: 'Weekend Drop', content: `Hello! Our Weekend Drop is live. Restocked premium selections are ready for chilled dispatch. Nairobi fast dispatch active until 6 PM. Shop: ${getPublicBaseUrl()}` },
         { id: 'loyalty', label: 'Reward Boost', content: `Sparkle your bar! ✨ VIP rewards just boosted. Complete your profile to unlock a KSh 500 voucher instantly. Link: ${getPublicBaseUrl()}/profile` },
+        { id: 'tickets', label: 'Soul Fest ticket invitation', content: `Hello! Soul Fest ticket and winner updates are now available from Apex Market. Check the latest event details and ticket availability here: https://www.apexmarket.co.ke/tickets\n\nWe hope to see you there!` },
     ];
 
     const applyTemplate = (content: string) => {
@@ -54,11 +56,13 @@ export default function AdminBroadcastPage() {
                 const data = await response.json() as {
                     audiences?: { id: string; name: string; estimated_reach: number }[];
                     newsletter_count?: number;
+                    waitlist_email_count?: number;
                     error?: string;
                 };
                 if (!response.ok) throw new Error(data.error || 'Unable to load opted-in audiences.');
                 setAudiences(data.audiences || []);
                 setNewsletterCount(Number(data.newsletter_count) || 0);
+                setWaitlistEmailCount(Number(data.waitlist_email_count) || 0);
             } catch (error) {
                 console.error('[AdminBroadcast] Audience load failed:', error);
                 setAudiencesError(error instanceof Error ? error.message : 'Unable to load opted-in audiences.');
@@ -82,7 +86,7 @@ export default function AdminBroadcastPage() {
             try {
                 const res = await fetch('/api/health');
                 const data = await res.json();
-                setResendActive(data.resend === 'Configured');
+                setResendActive(data.email === 'Configured');
             } catch {
                 setResendActive(false);
             }
@@ -98,7 +102,7 @@ export default function AdminBroadcastPage() {
     }, [campaignOrders]);
     const eligibleReach = channel === 'in_app'
         ? audiences.find(item => item.id === audience)?.estimated_reach ?? 0
-        : newsletterCount;
+        : emailAudience === 'waitlist' ? waitlistEmailCount : newsletterCount;
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -111,7 +115,14 @@ export default function AdminBroadcastPage() {
             const response = await fetch('/api/admin/broadcast', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel, subject, message, audience: channel === 'in_app' ? audience : 'all', schedule }),
+                body: JSON.stringify({
+                    channel,
+                    subject,
+                    message,
+                    audience: channel === 'in_app' ? audience : 'all',
+                    emailAudience: channel === 'email' ? emailAudience : undefined,
+                    schedule
+                }),
             });
 
             const data = await response.json();
@@ -121,7 +132,7 @@ export default function AdminBroadcastPage() {
                 type: 'success',
                 text: channel === 'in_app'
                     ? `Delivered to ${data.count} opted-in customers in their Onbar inbox.`
-                    : `Email campaign delivered to ${data.count} newsletter subscribers.`
+                    : `Email campaign delivered to ${data.count} ${emailAudience === 'waitlist' ? 'consented waitlist members' : 'newsletter subscribers'}.`
             });
             setMessage('');
             setSubject('');
@@ -185,9 +196,18 @@ export default function AdminBroadcastPage() {
                                         ))}
                                     </select>
                                 ) : (
-                                    <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-600">
-                                        <Users size={16} /> Opted-in newsletter subscribers only
-                                    </div>
+                                    <select
+                                        value={emailAudience}
+                                        onChange={event => {
+                                            if (event.target.value === 'newsletter' || event.target.value === 'waitlist') {
+                                                setEmailAudience(event.target.value);
+                                            }
+                                        }}
+                                        className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-foreground"
+                                    >
+                                        <option value="newsletter">Opted-in newsletter subscribers ({newsletterCount})</option>
+                                        <option value="waitlist">Waitlist members who opted in to email ({waitlistEmailCount})</option>
+                                    </select>
                                 )}
                                 {audiencesLoading && channel === 'in_app' && <p className="text-xs font-semibold text-slate-400">Loading consented audiences…</p>}
                                 {audiencesError && channel === 'in_app' && <p role="alert" className="text-xs font-semibold text-rose-600">{audiencesError}</p>}
@@ -227,7 +247,7 @@ export default function AdminBroadcastPage() {
                                 <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Write your announcement here..." rows={8} className="rounded-[2rem] bg-slate-50 border-slate-200 text-sm font-medium resize-none p-8 text-foreground" />
                             </div>
 
-                            <Button disabled={sending || !message.trim() || (channel === 'email' && (newsletterCount === 0 || resendActive === false)) || (channel === 'in_app' && (audiencesLoading || eligibleReach === 0 || Boolean(audiencesError))) || channel === 'whatsapp'} className="w-full h-20 rounded-[1.5rem] bg-primary text-white font-black uppercase text-sm tracking-[0.3em] shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                            <Button disabled={sending || !message.trim() || (channel === 'email' && (eligibleReach === 0 || resendActive === false || audiencesLoading || Boolean(audiencesError))) || (channel === 'in_app' && (audiencesLoading || eligibleReach === 0 || Boolean(audiencesError))) || channel === 'whatsapp'} className="w-full h-20 rounded-[1.5rem] bg-primary text-white font-black uppercase text-sm tracking-[0.3em] shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
                                 {sending ? <><Loader2 className="h-5 w-5 animate-spin mr-3" /> Engaging...</> : <><Send className="h-5 w-5 mr-3" /> {channel === 'in_app' ? 'Publish to Store' : 'Launch Campaign'}</>}
                             </Button>
                         </form>
@@ -235,7 +255,7 @@ export default function AdminBroadcastPage() {
                         {channel === 'email' && resendActive === false && (
                             <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center gap-3 text-rose-700 animate-in slide-in-from-top-2">
                                 <AlertCircle className="h-5 w-5 shrink-0" />
-                                <p className="text-[10px] font-black uppercase tracking-widest">Email service unavailable: configure RESEND_API_KEY and a verified RESEND_FROM_EMAIL.</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Email service unavailable: configure JMSURF_MAIL_KEY and a verified JMSURF_FROM_EMAIL, or RESEND_API_KEY and RESEND_FROM_EMAIL.</p>
                             </div>
                         )}
 

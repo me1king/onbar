@@ -32,13 +32,16 @@ export async function GET() {
     const [
         { data: segments, error: segmentError },
         { data: allReach, error: allReachError },
-        { count: newsletterCount, error: newsletterError }
+        { count: newsletterCount, error: newsletterError },
+        { count: waitlistEmailCount, error: waitlistEmailError }
     ] = await Promise.all([
         adminDatabase.from('audience_segments').select('id, name').order('name'),
         adminDatabase.rpc('count_crm_marketing_recipients', { p_audience_segment_id: null }),
-        adminDatabase.from('newsletter_subscribers').select('id', { count: 'exact', head: true }).eq('is_active', true)
+        adminDatabase.from('newsletter_subscribers').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        adminDatabase.from('market_waitlist').select('id', { count: 'exact', head: true })
+            .eq('email_updates_consent', true).neq('status', 'UNSUBSCRIBED').is('unsubscribed_at', null)
     ]);
-    const audienceLoadError = segmentError || allReachError || newsletterError;
+    const audienceLoadError = segmentError || allReachError || newsletterError || waitlistEmailError;
     if (audienceLoadError) {
         const error = audienceLoadError;
         console.error('[AdminBroadcast] Could not load consented audiences:', error);
@@ -66,7 +69,8 @@ export async function GET() {
             { id: 'all', name: 'All opted-in customers', estimated_reach: Number(allReach) },
             ...segmentAudiences
         ],
-        newsletter_count: newsletterCount || 0
+        newsletter_count: newsletterCount || 0,
+        waitlist_email_count: waitlistEmailCount || 0
     });
 }
 
@@ -83,12 +87,14 @@ export async function POST(request: Request) {
             subject?: unknown;
             message?: unknown;
             audience?: unknown;
+            emailAudience?: unknown;
             schedule?: unknown;
         };
         const channel = body.channel;
         const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
         const message = typeof body.message === 'string' ? body.message.trim() : '';
         const audience = typeof body.audience === 'string' ? body.audience : 'all';
+        const emailAudience = body.emailAudience === 'waitlist' ? 'waitlist' : 'newsletter';
 
         if (
             typeof channel !== 'string'
@@ -241,20 +247,40 @@ export async function POST(request: Request) {
         if (!adminDatabase) return NextResponse.json({ error: 'Marketing database access is not configured.' }, { status: 503 });
 
         const subscribers: { email: string }[] = [];
-        for (let offset = 0; ; offset += 500) {
-            const { data, error } = await adminDatabase
-                .from('newsletter_subscribers')
-                .select('email')
-                .eq('is_active', true)
-                .order('id')
-                .range(offset, offset + 499);
-            if (error) throw error;
-            subscribers.push(...(data || []));
-            if (!data || data.length < 500) break;
+        if (emailAudience === 'waitlist') {
+            for (let offset = 0; ; offset += 500) {
+                const { data, error } = await adminDatabase
+                    .from('market_waitlist')
+                    .select('email')
+                    .eq('email_updates_consent', true)
+                    .neq('status', 'UNSUBSCRIBED')
+                    .is('unsubscribed_at', null)
+                    .order('id')
+                    .range(offset, offset + 499);
+                if (error) throw error;
+                subscribers.push(...(data || []));
+                if (!data || data.length < 500) break;
+            }
+        } else {
+            for (let offset = 0; ; offset += 500) {
+                const { data, error } = await adminDatabase
+                    .from('newsletter_subscribers')
+                    .select('email')
+                    .eq('is_active', true)
+                    .order('id')
+                    .range(offset, offset + 499);
+                if (error) throw error;
+                subscribers.push(...(data || []));
+                if (!data || data.length < 500) break;
+            }
         }
 
         if (!subscribers.length) {
-            return NextResponse.json({ error: "No opted-in newsletter subscribers are available for this email campaign." }, { status: 409 });
+            return NextResponse.json({
+                error: emailAudience === 'waitlist'
+                    ? 'No waitlist members with active email-marketing consent are available.'
+                    : 'No opted-in newsletter subscribers are available for this email campaign.'
+            }, { status: 409 });
         }
 
         if (channel === 'email') {
@@ -299,15 +325,15 @@ export async function POST(request: Request) {
                         const result = await sendTransactionalEmail({
                             from: emailConfig.from,
                             to: sub.email,
-                            subject: subject || "Update from Online Bar Nairobi",
-                            text: `${message}\n\nYou received this because you subscribed to Online Bar Nairobi. Unsubscribe: ${unsubscribeUrl}`,
+                            subject: subject || (emailAudience === 'waitlist' ? 'Apex Market ticket update' : 'Update from Online Bar Nairobi'),
+                            text: `${message}\n\nYou received this because you opted in to ${emailAudience === 'waitlist' ? 'Apex Market waitlist email updates' : 'Online Bar Nairobi newsletter emails'}. Unsubscribe: ${unsubscribeUrl}`,
                             idempotencyKey: `campaign-${campaign.id}-${offset + index}`,
                             html: `
                             <div style="font-family: sans-serif; padding: 20px; color: #333;">
-                                <h2 style="color: #ff6b00;">Online Bar Nairobi Premium Update</h2>
+                                <h2 style="color: #ff6b00;">${emailAudience === 'waitlist' ? 'Apex Market Ticket Update' : 'Online Bar Nairobi Premium Update'}</h2>
                                 <p>${safeMessage}</p>
                                 <hr style="border: 1px solid #eee; margin: 20px 0;" />
-                                <p style="font-size: 12px; color: #999;">You received this because you subscribed to Online Bar Nairobi.</p>
+                                <p style="font-size: 12px; color: #999;">You received this because you opted in to ${emailAudience === 'waitlist' ? 'Apex Market waitlist email updates' : 'Online Bar Nairobi newsletter emails'}.</p>
                                 <p style="font-size: 12px;"><a href="${unsubscribeUrl}">Unsubscribe from marketing emails</a></p>
                             </div>
                             `

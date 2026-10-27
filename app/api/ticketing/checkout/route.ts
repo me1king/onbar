@@ -7,7 +7,10 @@ import {
   hashTicketAccessToken,
   createTicketCredentials
 } from '@/lib/ticketing/credentials.server';
-import { initializePaystackTicketCheckout } from '@/lib/ticketing/paystack.server';
+import {
+  assertPaystackTicketPaymentConfiguration,
+  initializePaystackTicketCheckout
+} from '@/lib/ticketing/paystack.server';
 import {
   assertPayHeroTicketPaymentConfiguration,
   initializePayHeroTicketCheckout
@@ -155,14 +158,23 @@ export async function POST(request: Request) {
     console.error('[TicketingCheckout] Checkout RPC returned an invalid response.');
     return NextResponse.json({ error: 'Checkout could not be verified.' }, { status: 503 });
   }
-  if (checkout.provider === 'paystack' && !process.env.PAYSTACK_SECRET_KEY?.trim()) {
-    const { error: releaseError } = await database.rpc('ticketing_fail_checkout', {
-      p_payment_reference: checkout.payment_reference
-    });
-    if (releaseError) {
-      console.error('[TicketingCheckout] Payment configuration is missing and the reservation could not be released:', releaseError);
+  if (checkout.provider === 'paystack') {
+    try {
+      assertPaystackTicketPaymentConfiguration();
+    } catch (configurationError) {
+      console.error('[TicketingCheckout] Paystack configuration is not production-ready:', configurationError);
+      const { error: releaseError } = await database.rpc('ticketing_fail_checkout', {
+        p_payment_reference: checkout.payment_reference
+      });
+      if (releaseError) {
+        console.error('[TicketingCheckout] Payment configuration is invalid and the reservation could not be released:', releaseError);
+      }
+      return NextResponse.json({
+        error: process.env.NODE_ENV === 'production'
+          ? 'Ticket payment is not available yet. The owner must configure matching live Paystack keys in the production checkout environment.'
+          : 'Ticketing payment processing is not configured.'
+      }, { status: 503 });
     }
-    return NextResponse.json({ error: 'Ticketing payment processing is not configured.' }, { status: 503 });
   }
 
   const { error: contactError } = await database.from('ticketing_orders').update({

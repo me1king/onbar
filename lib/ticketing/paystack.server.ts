@@ -10,6 +10,21 @@ export type VerifiedPaystackTransaction = {
   customer?: { email?: string };
 };
 
+export function getPaystackSecretKey() {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim();
+  if (!secretKey) throw new Error('Paystack server-side configuration is missing.');
+  return secretKey;
+}
+
+export function assertPaystackTicketPaymentConfiguration() {
+  const secretKey = getPaystackSecretKey();
+  if (process.env.NODE_ENV === 'production'
+      && (!secretKey.startsWith('sk_live_')
+        || !process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY?.trim().startsWith('pk_live_'))) {
+    throw new Error('Production ticket payments require a live Paystack public key.');
+  }
+}
+
 export async function initializePaystackTicketCheckout(input: {
   email: string;
   amountMinor: number;
@@ -17,8 +32,7 @@ export async function initializePaystackTicketCheckout(input: {
   callbackUrl: string;
   orderId: string;
 }) {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim();
-  if (!secretKey) throw new Error('Paystack server-side configuration is missing.');
+  const secretKey = getPaystackSecretKey();
 
   const response = await fetch(`${PAYSTACK_API}/transaction/initialize`, {
     method: 'POST',
@@ -56,8 +70,7 @@ export async function initializePaystackTicketCheckout(input: {
 }
 
 export async function verifyPaystackTicketTransaction(reference: string): Promise<VerifiedPaystackTransaction> {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim();
-  if (!secretKey) throw new Error('Paystack server-side configuration is missing.');
+  const secretKey = getPaystackSecretKey();
 
   const response = await fetch(
     `${PAYSTACK_API}/transaction/verify/${encodeURIComponent(reference)}`,

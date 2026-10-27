@@ -5,16 +5,25 @@ import { getPublicBaseUrl } from "@/lib/utils";
 import { recordVerifiedPaystackPayment } from "@/lib/paystackServer";
 import { createTicketCredentials } from "@/lib/ticketing/credentials.server";
 import { logTicketNotificationFailures, sendTicketOrderNotifications } from "@/lib/ticketing/notifications.server";
-import { verifyPaystackTicketTransaction } from "@/lib/ticketing/paystack.server";
-
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
+import {
+    getPaystackSecretKey,
+    verifyPaystackTicketTransaction
+} from "@/lib/ticketing/paystack.server";
 
 export async function POST(request: Request) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-    if (!PAYSTACK_SECRET_KEY || !supabaseUrl || !serviceRoleKey) {
+    let paystackSecretKey: string;
+    try {
+        paystackSecretKey = getPaystackSecretKey();
+    } catch (configurationError) {
+        console.error('[PaystackWebhook] Payment provider configuration is invalid:', configurationError);
         return NextResponse.json({ error: "Server-side payment processing is not configured" }, { status: 503 });
     }
+    if (!supabaseUrl || !serviceRoleKey) {
+        return NextResponse.json({ error: "Server-side payment processing is not configured" }, { status: 503 });
+    }
+    const PAYSTACK_SECRET_KEY = paystackSecretKey;
     const database = createClient(supabaseUrl, serviceRoleKey, {
         auth: { autoRefreshToken: false, persistSession: false }
     });
@@ -23,7 +32,7 @@ export async function POST(request: Request) {
         const signature = request.headers.get('x-paystack-signature');
 
         // 1. Verify Signature
-        const hash = createHmac('sha512', PAYSTACK_SECRET_KEY).update(body).digest('hex');
+        const hash = createHmac('sha512', paystackSecretKey).update(body).digest('hex');
 
         if (
             !signature

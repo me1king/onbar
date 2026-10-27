@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { recordVerifiedPaystackPayment } from '@/lib/paystackServer';
+import { getPaystackSecretKey } from '@/lib/ticketing/paystack.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,10 +17,16 @@ type PaystackVerification = {
 };
 
 export async function POST(request: Request) {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim();
+  let secretKey: string;
+  try {
+    secretKey = getPaystackSecretKey();
+  } catch (configurationError) {
+    console.error('[PaystackVerify] Payment provider configuration is invalid:', configurationError);
+    return NextResponse.json({ error: 'Server-side payment verification is not configured.' }, { status: 503 });
+  }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!secretKey || !url || !serviceKey) {
+  if (!url || !serviceKey) {
     return NextResponse.json({ error: 'Server-side payment verification is not configured.' }, { status: 503 });
   }
 

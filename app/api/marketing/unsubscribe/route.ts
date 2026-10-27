@@ -30,14 +30,27 @@ export async function POST(request: Request) {
     const database = createClient(url, serviceKey, {
         auth: { autoRefreshToken: false, persistSession: false }
     });
-    const { error } = await database
+    const { error: newsletterError } = await database
         .from('newsletter_subscribers')
         .update({ is_active: false, unsubscribed_at: new Date().toISOString() })
         .eq('email', email)
         .eq('is_active', true);
-    if (error) {
-        console.error('[NewsletterUnsubscribe] Could not update subscription:', error);
+    if (newsletterError) {
+        console.error('[NewsletterUnsubscribe] Could not update newsletter subscription:', newsletterError);
         return NextResponse.json({ error: 'Could not update this newsletter preference. Please try again.' }, { status: 500 });
+    }
+    const { error: waitlistError } = await database
+        .from('market_waitlist')
+        .update({
+            email_updates_consent: false,
+            unsubscribed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        })
+        .eq('email', email)
+        .eq('email_updates_consent', true);
+    if (waitlistError) {
+        console.error('[NewsletterUnsubscribe] Could not update waitlist email preference:', waitlistError);
+        return NextResponse.json({ error: 'Could not update this email preference. Please try again.' }, { status: 500 });
     }
     return NextResponse.json({ success: true });
 }
