@@ -62,13 +62,18 @@ For the Online Bar Admin Ticketing module, apply
 `TICKETING_EMAIL_DELIVERY_MIGRATION.sql`,
 `TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql`, and
 `PAYHERO_TICKETING_MIGRATION.sql`, then
-`TICKETING_PROMOTIONS_MIGRATION.sql`. The promotions migration adds transactional
-promo redemption handling and the promo-aware checkout RPC; normal checkouts
-without a promo code use the PayHero checkout RPC directly. After the customer
+`TICKETING_PROMOTIONS_MIGRATION.sql`. The commerce migration creates the
+Paystack-backed standard checkout; the promotions migration adds transactional
+promo redemption handling and a promo-aware checkout that also uses Paystack.
+`PAYHERO_TICKETING_MIGRATION.sql` remains for verifying and completing legacy
+PayHero payment attempts; new ticket checkouts do not require PayHero. After the customer
 messaging and ticketing email delivery migrations (including
 `CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql`) are installed, run
 `JMSURF_EMAIL_WEBHOOK_MIGRATION.sql` to record signed JMSURF email events and
 link them to transactional message records.
+For databases that already applied the earlier promotions migration, re-run
+`TICKETING_PROMOTIONS_MIGRATION.sql` after deploying the Paystack checkout
+change so its promo RPC stops converting new attempts to PayHero.
 Wave I/II/III configuration, audited admin controls, transactional reservation
 gates, and the server-side availability query support public event listings.
 The publishing migration installs the owner-only event publish/pause RPC used

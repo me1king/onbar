@@ -77,7 +77,6 @@ DECLARE
     v_redemptions INTEGER;
     v_discount BIGINT;
     v_total BIGINT;
-    v_attempt_updated INTEGER;
 BEGIN
     IF length(v_code) > 40 OR (v_code <> '' AND v_code !~ '^[A-Z0-9][A-Z0-9_-]{1,39}$') THEN
         RAISE EXCEPTION 'Enter a valid promo code.' USING ERRCODE = '22023';
@@ -143,7 +142,11 @@ BEGIN
         WHERE id = v_order.id;
         UPDATE public.ticketing_payment_attempts
         SET amount_minor = v_total,
-            provider = CASE WHEN v_total = 0 THEN 'complimentary' ELSE 'paystack' END,
+            provider = CASE
+                WHEN v_total = 0 THEN 'complimentary'
+                WHEN v_result ->> 'provider' = 'payhero' THEN 'payhero'
+                ELSE 'paystack'
+            END,
             updated_at = now()
         WHERE order_id = v_order.id AND status = 'pending';
 
@@ -159,26 +162,7 @@ BEGIN
     FROM public.ticketing_orders
     WHERE id = v_order.id;
 
-    IF v_result ->> 'payment_reference' = p_payment_reference
-       AND v_total > 0 THEN
-        IF v_total % 100 <> 0 THEN
-            RAISE EXCEPTION 'PayHero M-Pesa ticket payments must be a whole KES amount.'
-                USING ERRCODE = '22023';
-        END IF;
-
-        UPDATE public.ticketing_payment_attempts
-        SET amount_minor = v_total,
-            provider = 'payhero',
-            provider_payload = jsonb_build_object('provider', 'payhero'),
-            updated_at = now()
-        WHERE provider = 'paystack'
-          AND provider_reference = p_payment_reference
-          AND status = 'pending';
-        GET DIAGNOSTICS v_attempt_updated = ROW_COUNT;
-        IF v_attempt_updated > 0 THEN
-            v_result := jsonb_set(v_result, '{provider}', '"payhero"'::JSONB);
-        END IF;
-    ELSIF v_result ->> 'payment_reference' = p_payment_reference AND v_total = 0 THEN
+    IF v_result ->> 'payment_reference' = p_payment_reference AND v_total = 0 THEN
         v_result := jsonb_set(v_result, '{provider}', '"complimentary"'::JSONB);
     END IF;
 

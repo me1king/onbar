@@ -250,7 +250,7 @@ export default function TicketCheckoutButton({
               Cancel
             </button>
           </div>
-          <p className="ticket-theme-muted text-[9px] leading-4">Paid tickets use PayHero M-Pesa. Approve the prompt sent to your phone; tickets appear here after server verification.</p>
+          <p className="ticket-theme-muted text-[9px] leading-4">Paid tickets use Paystack checkout. Tickets appear here after server-side payment verification.</p>
         </form>
       )}
     </div>

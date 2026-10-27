@@ -248,7 +248,7 @@ export default function TicketingLivePage() {
 
         <aside className="rounded-2xl border border-orange-300/15 bg-orange-300/[0.04] p-4 text-xs leading-5 text-orange-50/70">
           <p className="font-black text-orange-100">Implemented flow · owner-controlled release</p>
-          <p className="mt-1">Ticket checkout, PayHero M-Pesa callbacks and server-side payment verification, ticket issuance, and the guest wallet are implemented. Customer checkout is available only for an approved event with an open ticket wave and valid production configuration. Gate scanning is implemented separately; apply its database migration, assign staff to the event, and issue a ticket before testing admission. These metrics report stored records and do not by themselves prove a payment or scan rehearsal. Web browsers cannot reliably detect QR screenshots; Android wallet screenshot protection requires a native wallet app.</p>
+          <p className="mt-1">Paystack ticket checkout and server-side payment verification, ticket issuance, and the guest wallet are implemented. Customer checkout is available only for an approved event with an open ticket wave and valid production configuration. Gate scanning is implemented separately; apply its database migration, assign staff to the event, and issue a ticket before testing admission. These metrics report stored records and do not by themselves prove a payment or scan rehearsal. Web browsers cannot reliably detect QR screenshots; Android wallet screenshot protection requires a native wallet app.</p>
         </aside>
       </div>
     </main>

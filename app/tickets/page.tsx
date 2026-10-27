@@ -43,7 +43,7 @@ export default async function TicketDiscoveryPage() {
 
         <section role="status" className="ticket-theme-accent-soft flex items-start gap-3 rounded-2xl border p-4">
           <ShieldCheck className="mt-0.5 shrink-0" size={18} />
-          <div><p className="ticket-theme-text text-sm font-black">Official tickets, verified before entry</p><p className="ticket-theme-copy mt-1 text-xs leading-5">Pay for tickets with M-Pesa through PayHero. Your tickets are issued only after payment confirmation is independently verified.</p></div>
+          <div><p className="ticket-theme-text text-sm font-black">Official tickets, verified before entry</p><p className="ticket-theme-copy mt-1 text-xs leading-5">Pay securely through Paystack. Your tickets are issued only after payment confirmation is independently verified.</p></div>
         </section>
 
         <section className="space-y-5">

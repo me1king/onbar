@@ -106,7 +106,7 @@ export async function POST(request: Request) {
   const paymentReference = `OBT-${randomBytes(16).toString('hex').toUpperCase()}`;
   const checkoutRpc = promotionCode
     ? 'ticketing_create_checkout_with_promotion'
-    : 'ticketing_create_payhero_checkout';
+    : 'ticketing_create_checkout';
   const { data, error } = await database.rpc(checkoutRpc, {
     p_event_id: eventId,
     p_ticket_type_id: ticketTypeId,
@@ -129,15 +129,15 @@ export async function POST(request: Request) {
     if (error.code === 'PGRST202') {
       const requiredMigration = promotionCode
         ? 'TICKETING_PROMOTIONS_MIGRATION.sql'
-        : 'PAYHERO_TICKETING_MIGRATION.sql';
+        : 'TICKETING_COMMERCE_MIGRATION.sql';
       return NextResponse.json({
         error: `Ticket checkout is temporarily unavailable. The ticketing database setup needs attention (${requiredMigration}). Please contact support.`
       }, { status: 503 });
     }
     if (error.code === '42883') {
       const requiredMigrations = promotionCode
-        ? 'TICKETING_COMMERCE_MIGRATION.sql, PAYHERO_TICKETING_MIGRATION.sql, and TICKETING_PROMOTIONS_MIGRATION.sql'
-        : 'TICKETING_COMMERCE_MIGRATION.sql and PAYHERO_TICKETING_MIGRATION.sql';
+        ? 'TICKETING_COMMERCE_MIGRATION.sql and TICKETING_PROMOTIONS_MIGRATION.sql'
+        : 'TICKETING_COMMERCE_MIGRATION.sql';
       return NextResponse.json({
         error: `Ticket checkout is temporarily unavailable. The ticketing database setup needs attention (${requiredMigrations}). Please contact support.`
       }, { status: 503 });
