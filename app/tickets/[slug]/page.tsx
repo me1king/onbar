@@ -57,7 +57,7 @@ export default async function TicketEventPage({ params }: PageProps) {
           <Ghost className="ticket-theme-accent mx-auto" size={30} />
           <h1 className="ticket-theme-text mt-4 text-2xl font-black">The event details are resting in the crypt</h1>
           <p className="ticket-theme-copy mt-2 text-sm">{result.message}</p>
-          <Link href="/tickets" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-orange-400 px-5 text-sm font-black text-[#170d18]">Back to events</Link>
+          <Link href="/tickets" className="ticket-theme-accent-strong mt-6 inline-flex min-h-11 items-center rounded-xl px-5 text-sm font-black">Back to events</Link>
         </div>
       </main>
       </>
@@ -78,13 +78,13 @@ export default async function TicketEventPage({ params }: PageProps) {
     <>
     <TicketingBrand />
     <main className="ticket-theme-page relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 sm:py-12">
-      <div aria-hidden="true" className="pointer-events-none absolute -left-36 top-24 h-96 w-96 rounded-full bg-orange-200/35 blur-[110px]" />
-      <div aria-hidden="true" className="pointer-events-none absolute -right-32 top-[34rem] h-96 w-96 rounded-full bg-violet-200/25 blur-[110px]" />
+      <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -left-36 top-24 h-96 w-96 rounded-full opacity-15 blur-[110px]" />
+      <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -right-32 top-[34rem] h-96 w-96 rounded-full opacity-10 blur-[110px]" />
       <div className="relative mx-auto max-w-6xl space-y-6">
         <Link href="/tickets" className="ticket-theme-accent inline-flex items-center gap-2 text-xs font-bold transition hover:opacity-75"><ArrowLeft size={14} /> All events</Link>
         <header className="ticket-theme-hero relative isolate overflow-hidden rounded-[2rem] border p-6 shadow-xl shadow-slate-900/5 sm:p-10 lg:p-14">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 -z-10 h-80 w-80 rounded-full bg-orange-100/80 blur-[90px]" />
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-72 w-72 rounded-full bg-violet-100/70 blur-[90px]" />
+          <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -right-16 -top-24 -z-10 h-80 w-80 rounded-full opacity-10 blur-[90px]" />
+          <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-72 w-72 rounded-full opacity-10 blur-[90px]" />
           <div className="relative max-w-4xl">
             <div className="ticket-theme-accent-soft inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em]"><Ghost size={14} /> Official Midnight Society KE event</div>
             <p className="ticket-theme-accent mt-7 text-[10px] font-black uppercase tracking-[0.2em]">{event.city} · After dark</p>
@@ -97,16 +97,16 @@ export default async function TicketEventPage({ params }: PageProps) {
               {event.age_limit !== null && <EventDetail icon={ShieldCheck} title="Age requirement" value={`${event.age_limit}+`} />}
             </div>
             <nav aria-label="Venue directions" className="mt-6 flex flex-wrap gap-2">
-              <a href={mapsUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
+              <a href={mapsUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel ticket-theme-hover-accent inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition">
                 <MapPin size={15} /> View on Google Maps
               </a>
-              <a href={directionsUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
+              <a href={directionsUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel ticket-theme-hover-accent inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition">
                 <Navigation size={15} /> Get directions
               </a>
-              <a href={transitUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
+              <a href={transitUrl} target="_blank" rel="noreferrer" className="ticket-theme-panel ticket-theme-hover-accent inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition">
                 <Navigation size={15} /> Find transport
               </a>
-              <a href="#arrival-guide" className="ticket-theme-panel inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
+              <a href="#arrival-guide" className="ticket-theme-panel ticket-theme-hover-accent inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition">
                 <MapPin size={15} /> Venue &amp; entry guide
               </a>
             </nav>
@@ -185,9 +185,9 @@ export default async function TicketEventPage({ params }: PageProps) {
             <section className="ticket-theme-panel rounded-3xl border p-5 sm:p-6">
               <h2 className="ticket-theme-text text-sm font-black">The real-ticket promise</h2>
               <ul className="ticket-theme-copy mt-3 space-y-3 text-xs leading-5">
-                <li className="flex gap-2"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-violet-700" />We will only issue a ticket after payment is verified server-side.</li>
-                <li className="flex gap-2"><Ticket size={15} className="mt-0.5 shrink-0 text-orange-700" />A screenshot or payment message is not proof of a valid ticket.</li>
-                <li className="flex gap-2"><MapPin size={15} className="mt-0.5 shrink-0 text-orange-700" />Venue: {event.venue_name}, {event.city}.</li>
+                <li className="flex gap-2"><ShieldCheck size={15} className="ticket-theme-accent mt-0.5 shrink-0" />We will only issue a ticket after payment is verified server-side.</li>
+                <li className="flex gap-2"><Ticket size={15} className="ticket-theme-accent mt-0.5 shrink-0" />A screenshot or payment message is not proof of a valid ticket.</li>
+                <li className="flex gap-2"><MapPin size={15} className="ticket-theme-accent mt-0.5 shrink-0" />Venue: {event.venue_name}, {event.city}.</li>
               </ul>
             </section>
             <section id="arrival-guide" className="ticket-theme-panel scroll-mt-6 rounded-3xl border p-5 sm:p-6">

@@ -77,11 +77,12 @@ export default function TicketThemePicker() {
             title={theme.label}
             onClick={() => selectTheme(theme.id)}
             disabled={!loaded || saving}
-            className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 disabled:cursor-not-allowed disabled:opacity-50 ${
-              selected === theme.id
-                ? 'border-orange-500 bg-orange-50 text-orange-900'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-slate-900'
-            }`}
+            className="ticket-theme-picker-option inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-[9px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            style={selected === theme.id ? {
+              borderColor: 'var(--ticket-accent)',
+              backgroundColor: 'var(--ticket-accent-soft)',
+              color: 'var(--ticket-accent)'
+            } : undefined}
           >
             <span aria-hidden="true" className={`h-3 w-3 rounded-full border border-black/10 ${theme.swatch}`} />
             <span className="hidden sm:inline">{theme.label}</span>
@@ -94,7 +95,7 @@ export default function TicketThemePicker() {
           type="button"
           onClick={() => void publishTheme()}
           disabled={!loaded || saving || selected === published}
-          className="inline-flex min-h-8 items-center rounded-lg bg-amber-300 px-3 text-[9px] font-black uppercase tracking-wider text-[#170d18] transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+          className="ticket-theme-accent-strong inline-flex min-h-8 items-center rounded-lg px-3 text-[9px] font-black uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? 'Publishing…' : selected === published ? 'Published to customers' : 'Publish to customer site'}
         </button>

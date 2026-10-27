@@ -99,7 +99,7 @@ function EventCard({ event, origin }: { event: PublicTicketEvent; origin: Coordi
   const distance = origin ? distanceInKm(origin, event) : null;
 
   return (
-    <article className="ticket-theme-panel group overflow-hidden rounded-3xl border shadow-lg shadow-slate-900/5 transition duration-300 hover:-translate-y-1 hover:border-orange-300 hover:shadow-orange-900/10">
+    <article className="ticket-theme-panel group overflow-hidden rounded-3xl border shadow-lg shadow-slate-900/5 transition duration-300 hover:-translate-y-1">
       <div
         className="ticket-theme-hero relative isolate min-h-56 overflow-hidden border-b bg-cover bg-center p-6"
         style={event.cover_image_url ? { backgroundImage: `linear-gradient(0deg, rgba(13,10,18,.82), rgba(13,10,18,.1)), url("${event.cover_image_url}")` } : undefined}
@@ -109,8 +109,7 @@ function EventCard({ event, origin }: { event: PublicTicketEvent; origin: Coordi
             {event.age_limit}+
           </span>
         )}
-        <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-14 -z-10 h-56 w-56 rounded-full bg-orange-200/45 blur-[70px]" />
-        <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 left-1/4 -z-10 h-48 w-48 rounded-full bg-violet-200/35 blur-[70px]" />
+        <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -right-10 -top-14 -z-10 h-56 w-56 rounded-full opacity-15 blur-[70px]" />
         <div className="absolute bottom-6 left-6 right-6">
           <p className="ticket-theme-accent text-[10px] font-black uppercase tracking-[0.18em]">{event.city}</p>
           <h3 className="ticket-theme-text mt-2 max-w-xl text-2xl font-black tracking-tight sm:text-3xl">{event.title}</h3>
@@ -137,7 +136,7 @@ function EventCard({ event, origin }: { event: PublicTicketEvent; origin: Coordi
             <p className="ticket-theme-muted text-[9px] font-black uppercase tracking-[0.15em]">{lowestPrice === null ? 'Next release' : 'Tickets from'}</p>
             <p className="ticket-theme-accent mt-1 text-lg font-black">{lowestPrice === null ? 'No wave open' : formatPrice(lowestPrice, event.ticket_types[0]?.currency || 'KES')}</p>
           </div>
-          <a href={`/tickets/${encodeURIComponent(event.slug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-400 px-4 text-xs font-black text-[#170d18] transition hover:bg-orange-300">
+          <a href={`/tickets/${encodeURIComponent(event.slug)}`} className="ticket-theme-accent-strong inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-black transition">
             Event &amp; tickets <span aria-hidden="true">→</span>
           </a>
         </div>
@@ -216,7 +215,7 @@ export default function TicketEventDiscovery({ events }: { events: PublicTicketE
     );
   }
 
-  const selectClass = 'ticket-theme-panel-muted min-h-11 w-full rounded-xl border px-3 text-sm outline-none focus:border-orange-400';
+  const selectClass = 'ticket-theme-input min-h-11 w-full rounded-xl border px-3 text-sm outline-none';
 
   return (
     <div className="space-y-5">
@@ -228,7 +227,7 @@ export default function TicketEventDiscovery({ events }: { events: PublicTicketE
             <input
               aria-label="Search events, venues, or cities"
               autoComplete="off"
-              className={`ticket-theme-panel-muted min-h-11 w-full rounded-xl border pl-10 pr-3 text-sm outline-none placeholder:text-slate-500 focus:border-orange-400`}
+              className={`ticket-theme-input min-h-11 w-full rounded-xl border pl-10 pr-3 text-sm outline-none placeholder:text-slate-500`}
               list="ticket-event-suggestions"
               onChange={event => setQuery(event.target.value)}
               placeholder="Artist, event, venue…"
@@ -259,7 +258,7 @@ export default function TicketEventDiscovery({ events }: { events: PublicTicketE
             <span className="ticket-theme-muted absolute left-3 top-1/2 -translate-y-1/2 text-xs">KES</span>
             <input
               aria-label="Maximum ticket price in KES"
-              className="ticket-theme-panel-muted min-h-11 w-full rounded-xl border pl-12 pr-3 text-sm outline-none placeholder:text-slate-500 focus:border-orange-400"
+              className="ticket-theme-input min-h-11 w-full rounded-xl border pl-12 pr-3 text-sm outline-none placeholder:text-slate-500"
               min="0"
               onChange={event => setMaximumPrice(event.target.value)}
               placeholder="Any price"
@@ -275,7 +274,7 @@ export default function TicketEventDiscovery({ events }: { events: PublicTicketE
           <label className="flex items-center gap-2 text-xs">
             <SlidersHorizontal size={14} className="ticket-theme-accent" />
             <span className="ticket-theme-muted">Sort by</span>
-            <select aria-label="Sort events" className="ticket-theme-panel-muted min-h-9 rounded-lg border px-2 text-xs outline-none focus:border-orange-400" onChange={event => setSort(event.target.value as SortOption)} value={sort}>
+            <select aria-label="Sort events" className="ticket-theme-input min-h-9 rounded-lg border px-2 text-xs outline-none" onChange={event => setSort(event.target.value as SortOption)} value={sort}>
               <option value="soonest">Soonest</option>
               <option value="price-low">Lowest price</option>
               <option value="price-high">Highest price</option>
@@ -285,7 +284,7 @@ export default function TicketEventDiscovery({ events }: { events: PublicTicketE
           <div className="flex items-center gap-3">
             {locationMessage && <p role="status" className="ticket-theme-muted text-xs">{locationMessage}</p>}
             {origin && <span className="ticket-theme-muted text-xs">Location used only on this device</span>}
-            <button type="button" aria-pressed={mapVisible} onClick={() => setMapVisible(value => !value)} className="ticket-theme-panel-muted inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold transition hover:border-orange-300">
+            <button type="button" aria-pressed={mapVisible} onClick={() => setMapVisible(value => !value)} className={`ticket-theme-panel-muted inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold transition ${mapVisible ? 'ticket-theme-accent-soft' : ''}`}>
               <MapPin size={14} /> {mapVisible ? 'List view' : 'Map view'}
             </button>
           </div>

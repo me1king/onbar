@@ -137,7 +137,7 @@ export default function TicketCheckoutButton({
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-orange-400 px-4 text-xs font-black text-[#170d18] transition hover:bg-orange-300"
+          className="ticket-theme-accent-strong inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-xs font-black transition"
         >
           <Ticket size={14} /> Buy tickets
         </button>
@@ -151,7 +151,7 @@ export default function TicketCheckoutButton({
               required
               value={name}
               onChange={event => { setName(event.target.value); keys.current = null; }}
-              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none"
             />
           </label>
           <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
@@ -166,7 +166,7 @@ export default function TicketCheckoutButton({
               required
               value={phone}
               onChange={event => { setPhone(event.target.value); keys.current = null; }}
-              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none"
             />
             <span className="ticket-theme-muted font-normal">Kenyan local numbers are converted to +254 automatically.</span>
           </label>
@@ -176,7 +176,7 @@ export default function TicketCheckoutButton({
               required
               checked={whatsappConsent}
               onChange={event => { setWhatsappConsent(event.target.checked); keys.current = null; }}
-              className="mt-0.5 accent-orange-500"
+              className="ticket-theme-checkbox mt-0.5"
             />
             <span>Send my ticket wallet link to this number by WhatsApp after payment is confirmed.</span>
           </label>
@@ -189,7 +189,7 @@ export default function TicketCheckoutButton({
               required
               value={email}
               onChange={event => { setEmail(event.target.value); keys.current = null; }}
-              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none"
             />
           </label>
           <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
@@ -203,7 +203,7 @@ export default function TicketCheckoutButton({
                 setPromoMessage('');
                 keys.current = null;
               }}
-              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none"
             >
               {Array.from({ length: maximum - minPerOrder + 1 }, (_, index) => minPerOrder + index).map(value => (
                 <option key={value} value={value}>{value}</option>
@@ -226,7 +226,7 @@ export default function TicketCheckoutButton({
                     setPromoMessage('');
                     keys.current = null;
                   }}
-                  className="ticket-theme-input min-h-10 min-w-0 flex-1 rounded-lg border px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  className="ticket-theme-input min-h-10 min-w-0 flex-1 rounded-lg border px-3 text-xs outline-none"
                   placeholder="Enter code"
                 />
                 <button type="button" disabled={promoBusy || !promoInput.trim()} onClick={() => void applyPromotion()} className="min-h-10 rounded-lg border border-slate-300 px-3 text-[10px] font-bold disabled:opacity-50">
@@ -242,7 +242,7 @@ export default function TicketCheckoutButton({
           </div>
           {error && <p role="alert" className="text-[10px] leading-4 text-rose-700">{error}</p>}
           <div className="flex gap-2">
-            <button type="submit" disabled={busy} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-orange-400 px-3 text-xs font-black text-[#170d18] disabled:opacity-60">
+            <button type="submit" disabled={busy} className="ticket-theme-accent-strong inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-black disabled:opacity-60">
               {busy ? <LoaderCircle size={14} className="animate-spin" /> : null}
               {busy ? 'Preparing…' : priceMinor + feeMinor === 0 ? 'Get free tickets' : 'Continue to payment'}
             </button>

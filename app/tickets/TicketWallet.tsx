@@ -63,7 +63,7 @@ function TicketQr({ credential, reference }: { credential: string; reference: st
   if (error) return <p role="alert" className="text-xs text-rose-700">The secure QR code could not be generated. Show support this ticket reference: {reference}</p>;
   return image
     ? <Image src={image} alt={`Secure entry QR code for ticket ${reference}`} width={224} height={224} unoptimized className="mx-auto h-56 w-56 rounded-xl bg-white p-2" />
-    : <div aria-label="Generating ticket QR code" className="mx-auto flex h-56 w-56 items-center justify-center rounded-xl bg-orange-50 text-orange-700"><LoaderCircle className="animate-spin" /></div>;
+    : <div aria-label="Generating ticket QR code" className="ticket-theme-accent-soft mx-auto flex h-56 w-56 items-center justify-center rounded-xl"><LoaderCircle className="animate-spin" /></div>;
 }
 
 function formatPrice(amount: number, currency: string) {
@@ -329,7 +329,7 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
           </>
         ) : null}
 
-        <Link href="/tickets" className="ticket-theme-panel inline-flex min-h-11 items-center rounded-xl border px-4 text-xs font-bold transition hover:border-orange-300">
+        <Link href="/tickets" className="ticket-theme-panel ticket-theme-hover-accent inline-flex min-h-11 items-center rounded-xl border px-4 text-xs font-bold transition">
           Browse more events
         </Link>
       </div>

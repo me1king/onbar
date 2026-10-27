@@ -28,6 +28,10 @@ function isTicketingOrAdminPath(pathname: string) {
     || pathname.startsWith('/supplier/');
 }
 
+function isPublicAssetPath(pathname: string) {
+  return /\.(?:avif|gif|jpe?g|png|svg|webp|ico|woff2?|ttf|otf|eot)$/i.test(pathname);
+}
+
 async function readPublicLaunchGate() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -69,7 +73,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(destination, 308);
   }
 
-  if (!isTicketingOrAdminPath(pathname)) {
+  if (!isTicketingOrAdminPath(pathname) && !isPublicAssetPath(pathname)) {
     let locked = false;
     try {
       locked = isPublicSiteLocked(await readPublicLaunchGate());

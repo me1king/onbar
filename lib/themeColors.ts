@@ -2,6 +2,12 @@ const CLASSIC_PRIMARY = '#F5A000';
 const CREAM_FOREGROUND = '#F9F4EC';
 const WHITE_FOREGROUND = '#FFFFFF';
 
+export const DEFAULT_THEME_COLORS: ThemeColors = {
+  primary: CLASSIC_PRIMARY,
+  secondary: '#0F172A',
+  accent: '#5B5BFF'
+};
+
 export const THEME_UPDATED_EVENT = 'onlinebar:theme-updated';
 
 export interface ThemeColors {

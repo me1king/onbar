@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { DEFAULT_THEME_COLORS } from '@/lib/themeColors';
 const CONCIERGE_CATEGORIES = new Set(['wine', 'spirits', 'beer', 'snacks', 'mixers', 'extras']);
 
 function normalizeConciergeCategories(value: unknown, fallback: string[]) {
@@ -238,9 +239,7 @@ export const DEFAULT_SETTINGS: StoreSettings = {
         dispatch_zones: ["CBD", "Westlands", "Kilimani", "Lavington", "Kileleshwa", "Karen", "Langata", "South C", "South B", "Embakasi", "Roysambu", "Kasarani", "Kahawa", "Githurai", "Zimmerman", "Utawala", "Syokimau", "Kitengela", "Rongai", "Ngong", "Kikuyu", "Thika Road", "Mombasa Road"]
     },
     theme_config: {
-        primary: "#D91C1C",
-        secondary: "#10231f",
-        accent: "#F9F4EC",
+        ...DEFAULT_THEME_COLORS,
         custom_css: ""
     },
     seo_config: {

@@ -14,7 +14,7 @@ type MappedEvent = PublicTicketEvent & { venue_latitude: number; venue_longitude
 
 const eventIcon = L.divIcon({
   className: '',
-  html: '<span style="display:block;width:22px;height:22px;border:4px solid white;border-radius:50%;background:#fb923c;box-shadow:0 2px 10px #11182780"></span>',
+  html: '<span class="ticket-theme-map-marker"></span>',
   iconSize: [22, 22],
   iconAnchor: [11, 11]
 });
@@ -52,7 +52,7 @@ export default function TicketEventMap({
                 <div className="space-y-2 p-1">
                   <p className="font-bold">{event.title}</p>
                   <p className="flex items-center gap-1 text-xs"><MapPin size={12} />{event.venue_name}, {event.city}</p>
-                  <Link className="text-xs font-bold text-orange-700" href={`/tickets/${encodeURIComponent(event.slug)}`}>View tickets</Link>
+                  <Link className="ticket-theme-accent text-xs font-bold" href={`/tickets/${encodeURIComponent(event.slug)}`}>View tickets</Link>
                 </div>
               </Popup>
             </Marker>

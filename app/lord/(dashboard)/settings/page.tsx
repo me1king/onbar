@@ -49,7 +49,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { applyThemeColors, normalizeThemeColors, THEME_UPDATED_EVENT } from '@/lib/themeColors';
+import { applyThemeColors, DEFAULT_THEME_COLORS, normalizeThemeColors, THEME_UPDATED_EVENT } from '@/lib/themeColors';
 import { isSpiritProductCategory, spiritCategoryPostgrestFilter } from '@/lib/productCategories';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
@@ -86,7 +86,7 @@ const DEFAULTS = {
         navigation: DEFAULT_CATALOG_NAVIGATION.map(item => ({ ...item }))
     },
     promotions: { flash_sale_text: 'Happy Hour: 20% OFF Select Spirits!', discount_percent: 20, is_active: true, flash_sale_end: '' },
-    theme_config: { primary: "#D91C1C", secondary: "#10231f", accent: "#F9F4EC", custom_css: "" },
+    theme_config: { ...DEFAULT_THEME_COLORS, custom_css: "" },
     seo_config: { title: "Online Bar | Premium Drinks", description: "Premium wine, spirits and snacks delivery in Nairobi.", keywords: "Wine delivery, Whiskey Nairobi, Late night snacks, Kenya Bar", og_image: "" },
     social_links: { instagram: "", tiktok: "", facebook: "", x: "", youtube: "", snapchat: "" },
     store_info: { name: "ONLINE BAR", hours: "24/7 Dispatch", google_maps: "", footer_copy: "© 2026 Online Bar™" },
@@ -122,7 +122,7 @@ const THEME_PRESETS = {
     classic: {
         label: 'Classic Online Bar',
         description: 'Restore the familiar yellow primary color with clean white surfaces.',
-        colors: { primary: '#F5A000', secondary: '#0F172A', accent: '#5B5BFF' }
+        colors: DEFAULT_THEME_COLORS
     },
     midnight: {
         label: 'Midnight Society',

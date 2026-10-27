@@ -20,12 +20,12 @@ export default async function TicketDiscoveryPage() {
     <>
     <TicketingBrand />
     <main className="ticket-theme-page relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 sm:py-12">
-      <div aria-hidden="true" className="pointer-events-none absolute -left-40 top-24 h-[28rem] w-[28rem] rounded-full bg-orange-200/35 blur-[120px]" />
-      <div aria-hidden="true" className="pointer-events-none absolute -right-40 top-[38rem] h-[28rem] w-[28rem] rounded-full bg-violet-200/25 blur-[120px]" />
+      <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -left-40 top-24 h-[28rem] w-[28rem] rounded-full opacity-15 blur-[120px]" />
+      <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -right-40 top-[38rem] h-[28rem] w-[28rem] rounded-full opacity-10 blur-[120px]" />
       <div className="relative mx-auto max-w-7xl space-y-8">
         <header className="ticket-theme-hero relative isolate overflow-hidden rounded-[2rem] border p-6 shadow-xl shadow-slate-900/5 sm:p-10 lg:p-14">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-28 -z-10 h-96 w-96 rounded-full bg-orange-100/80 blur-[100px]" />
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-80 w-80 rounded-full bg-violet-100/70 blur-[90px]" />
+          <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -right-20 -top-28 -z-10 h-96 w-96 rounded-full opacity-10 blur-[100px]" />
+          <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-80 w-80 rounded-full opacity-10 blur-[90px]" />
           <div className="relative grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
             <div className="max-w-3xl">
               <div className="ticket-theme-accent-soft inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.22em]"><Ghost size={14} /> Midnight Society KE · Official events</div>
