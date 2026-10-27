@@ -104,6 +104,13 @@ For an existing database, run `DEMAND_INTELLIGENCE_CONTACT_NAMES_MIGRATION.sql`
 after `DEMAND_INTELLIGENCE_MIGRATION.sql`. It adds the optional waitlist display
 name used when an authorized admin opens an area row; the dashboard only shows
 contacts who opted in to launch updates.
+
+## Waitlist invitation delivery counts
+
+Apply `WAITLIST_INVITATION_DELIVERIES_MIGRATION.sql` to record each waitlist
+invitation delivery (sent or failed) by campaign, member, and opted-in channel.
+The admin count reports successfully sent channel messages; it does not count
+recipients without channel consent or failed deliveries.
 The payment-currency fix adds the KES default required by the checkout RPC on
 projects where the original commerce migration is already installed.
 Payment verification and ticket issuance are implemented; complete the

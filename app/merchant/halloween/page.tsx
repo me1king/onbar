@@ -8,7 +8,8 @@ import {
   HALLOWEEN_LISTINGS_STORAGE_KEY,
   HALLOWEEN_LISTINGS_UPDATED_EVENT,
   HalloweenMerchantListing,
-  parseHalloweenMerchantListings
+  parseHalloweenMerchantListings,
+  seededMerchantShowcase
 } from '@/lib/halloweenCatalog';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -70,7 +71,9 @@ export default function MerchantHalloweenPage() {
   useEffect(() => {
     const loadListings = () => {
       try {
-        setListings(parseHalloweenMerchantListings(localStorage.getItem(HALLOWEEN_LISTINGS_STORAGE_KEY)));
+        const stored = parseHalloweenMerchantListings(localStorage.getItem(HALLOWEEN_LISTINGS_STORAGE_KEY));
+        const merged = [...seededMerchantShowcase, ...stored];
+        setListings(merged);
       } catch (cause) {
         console.error('[HalloweenMerchant] Could not restore costume listings:', cause);
         setError('Saved listings could not be read in this browser. Export or clear the invalid browser data before continuing.');
@@ -132,8 +135,9 @@ export default function MerchantHalloweenPage() {
 
     const next = [nextListing, ...listings];
     try {
+      const saved = [...seededMerchantShowcase, ...next];
       localStorage.setItem(HALLOWEEN_LISTINGS_STORAGE_KEY, JSON.stringify(next));
-      setListings(next);
+      setListings(saved);
       window.dispatchEvent(new Event(HALLOWEEN_LISTINGS_UPDATED_EVENT));
     } catch (cause) {
       console.error('[HalloweenMerchant] Could not save costume listing:', cause);

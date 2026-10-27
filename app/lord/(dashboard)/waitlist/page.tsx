@@ -53,6 +53,7 @@ interface WaitlistContact {
   source: string;
   status: WaitlistStatus;
   created_at: string;
+  unsubscribed_at: string | null;
 }
 interface WaitlistStats {
   total: number;
@@ -103,6 +104,8 @@ interface WaitlistDemandCell {
 interface WaitlistResponse {
   contacts: WaitlistContact[];
   stats: WaitlistStats;
+  invitationsSent?: number | null;
+  invitationTrackingSetupRequired?: boolean;
   demandLocations?: WaitlistDemandCell[];
   preciseLocationOptIns?: number;
   demandLocationSetupRequired?: boolean;
@@ -602,7 +605,7 @@ export default function WaitlistPage() {
 
   const updateStatus = async (contact: WaitlistContact, nextStatus: WaitlistStatus) => {
     if (contact.status === 'WAITLIST' && nextStatus === 'INVITED') {
-      setError('To send the invitation, open Halloween invitations and press the send button.');
+      setError('To send the invitation, use Invite beside that person or open Halloween invitations for a bulk send.');
       return;
     }
     setSavingId(contact.id);
@@ -1146,7 +1149,7 @@ export default function WaitlistPage() {
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-end sm:justify-between">
-          <div><h2 className="text-lg font-black uppercase tracking-tight text-slate-950">Waitlist signups</h2><p className="mt-1 text-xs text-slate-500">Review contact consent before contacting anyone. Signup does not count as permission for unselected channels.</p></div>
+          <div><h2 className="text-lg font-black uppercase tracking-tight text-slate-950">Waitlist signups</h2><p className="mt-1 text-xs text-slate-500">Invites use each person’s opted-in email, SMS and/or WhatsApp channels only. Email opt-out never blocks a separately opted-in SMS or WhatsApp invite.</p><p className="mt-1 text-xs font-bold text-orange-900">{data?.invitationTrackingSetupRequired ? 'Invite tracking is not set up yet. Apply WAITLIST_INVITATION_DELIVERIES_MIGRATION.sql.' : `Tracked invitation messages sent: ${data?.invitationsSent ?? '—'}`}</p></div>
           <div className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_180px_210px]">
             <label className="relative"><span className="sr-only">Search waitlist</span><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="Search name, area, contact" className="min-h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm" /></label>
             <select aria-label="Filter by signup status" value={status} onChange={event => { setStatus(event.target.value); setPage(0); }} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm">
@@ -1179,14 +1182,17 @@ export default function WaitlistPage() {
                   <td className="max-w-[160px] px-3 py-4 text-slate-600"><p>{contact.source || 'direct'}</p>{contact.campaign && <p className="mt-1">Campaign: {contact.campaign}</p>}{contact.referred_by_code && <p className="mt-1">Referred: {contact.referred_by_code}</p>}{contact.referral_code && <p className="mt-1">Invite: {contact.referral_code}</p>}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>
                   <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value} disabled={value === 'INVITED' && contact.status === 'WAITLIST'}>{label}</option>)}</select></td>
-                  <td className="px-3 py-4">{contact.email_updates_consent && contact.status !== 'UNSUBSCRIBED'
+                  <td className="px-3 py-4">{contact.status !== 'UNSUBSCRIBED' && (contact.email_updates_consent || contact.sms_consent || contact.whatsapp_consent)
                     ? <WaitlistContactInviteButton
                       contactId={contact.id}
                       contactName={contact.full_name}
                       contactEmail={contact.email}
+                      hasEmailConsent={contact.email_updates_consent && !contact.unsubscribed_at}
+                      hasSmsConsent={contact.sms_consent}
+                      hasWhatsappConsent={contact.whatsapp_consent}
                       onSent={() => void load()}
                     />
-                    : <span className="text-[10px] text-slate-400">Not eligible</span>}</td>
+                    : <span className="text-[10px] text-slate-400">No active channel opt-in</span>}</td>
                 </tr>
               ))}</tbody>
             </table></div>}

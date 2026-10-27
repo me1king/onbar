@@ -12,6 +12,9 @@ interface WaitlistContactInviteButtonProps {
   contactId: string;
   contactName: string | null;
   contactEmail: string;
+  hasEmailConsent: boolean;
+  hasSmsConsent: boolean;
+  hasWhatsappConsent: boolean;
   onSent: () => void;
 }
 
@@ -46,6 +49,9 @@ export default function WaitlistContactInviteButton({
   contactId,
   contactName,
   contactEmail,
+  hasEmailConsent,
+  hasSmsConsent,
+  hasWhatsappConsent,
   onSent
 }: WaitlistContactInviteButtonProps) {
   const [sending, setSending] = useState(false);
@@ -67,7 +73,12 @@ export default function WaitlistContactInviteButton({
     }
 
     const recipient = contactName?.trim() || contactEmail;
-    if (!window.confirm(`Send this invitation only to ${recipient} (${contactEmail})?`)) return;
+    const channels = [
+      hasEmailConsent ? 'email' : '',
+      hasSmsConsent ? 'SMS' : '',
+      hasWhatsappConsent ? 'WhatsApp' : ''
+    ].filter(Boolean).join(', ');
+    if (!window.confirm(`Send this invitation only to ${recipient} via their opted-in channel${channels.includes(',') ? 's' : ''}: ${channels}?`)) return;
 
     setSending(true);
     try {
@@ -80,9 +91,22 @@ export default function WaitlistContactInviteButton({
           ...draft
         })
       });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'The invitation could not be sent.');
-      setNotice({ type: 'success', message: 'Invitation sent.' });
+      const result = await response.json() as {
+        error?: string;
+        sentChannels?: string[];
+        failedChannels?: string[];
+        trackingFailedChannels?: string[];
+      };
+      if (!response.ok && response.status !== 207) throw new Error(result.error || 'The invitation could not be sent.');
+      const details = [
+        result.sentChannels?.length ? `Sent by ${result.sentChannels.join(', ')}.` : '',
+        result.failedChannels?.length ? `Could not send by ${result.failedChannels.join(', ')}.` : '',
+        result.trackingFailedChannels?.length ? `Delivery count could not be saved for ${result.trackingFailedChannels.join(', ')}.` : ''
+      ].filter(Boolean).join(' ');
+      setNotice({
+        type: result.failedChannels?.length || result.trackingFailedChannels?.length ? 'error' : 'success',
+        message: details || 'Invitation sent.'
+      });
       onSent();
     } catch (error) {
       console.error(`[WaitlistInvitation] Could not invite signup ${contactId}:`, error);
@@ -105,6 +129,17 @@ export default function WaitlistContactInviteButton({
       >
         <Send size={12} /> {sending ? 'Sending…' : 'Invite'}
       </button>
+      {!notice && hasEmailConsent && !hasSmsConsent && !hasWhatsappConsent && (
+        <p className="max-w-40 text-[10px] text-slate-400">Email opt-in only</p>
+      )}
+      {!notice && !hasEmailConsent && (hasSmsConsent || hasWhatsappConsent) && (
+        <p className="max-w-40 text-[10px] text-slate-500">
+          Via {[
+            hasSmsConsent ? 'SMS' : '',
+            hasWhatsappConsent ? 'WhatsApp' : ''
+          ].filter(Boolean).join(' / ')}
+        </p>
+      )}
       {notice && (
         <p role={notice.type === 'error' ? 'alert' : 'status'} className={`max-w-40 text-[10px] ${notice.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`}>
           {notice.message}

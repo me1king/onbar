@@ -76,10 +76,8 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
     try {
       const saved = localStorage.getItem(LOCATION_KEY);
       if (saved) setLocation(JSON.parse(saved) as SavedLocation);
-      if (!localStorage.getItem(DECISION_KEY)) setIsOpen(true);
     } catch (error) {
       console.error('[LocationOnboarding] Could not restore the saved area preference:', error);
-      setIsOpen(true);
     } finally {
       setReady(true);
     }

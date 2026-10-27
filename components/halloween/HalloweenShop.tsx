@@ -7,9 +7,8 @@ import {
   HALLOWEEN_LISTINGS_STORAGE_KEY,
   HALLOWEEN_LISTINGS_UPDATED_EVENT,
   HalloweenMerchantListing,
-  HalloweenProduct,
   HalloweenTheme,
-  halloweenCatalog,
+  getVisibleHalloweenProducts,
   halloweenCategories,
   parseHalloweenMerchantListings
 } from '@/lib/halloweenCatalog';
@@ -18,7 +17,9 @@ import { HalloweenFitQuiz } from '@/components/halloween/HalloweenFitQuiz';
 import { HalloweenPhotoTryOn } from '@/components/halloween/HalloweenPhotoTryOn';
 import { ArrowRight, Sparkles, Tag, Wand2, Shirt, Camera } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isAllowed } from '@/lib/consentService';
+import { OB_OS } from '@/lib/onlineBarOS';
 
 const themePalettes: Record<Exclude<HalloweenTheme, 'All'>, [string, string, string]> = {
   Witch: ['#2f1b52', '#8b5cf6', '#f5d0fe'],
@@ -29,33 +30,6 @@ const themePalettes: Record<Exclude<HalloweenTheme, 'All'>, [string, string, str
   Classic: ['#f8fafc', '#cbd5e1', '#e2e8f0']
 };
 
-function getListingTheme(category: string): Exclude<HalloweenTheme, 'All'> {
-  for (const theme of halloweenCategories) {
-    if (theme !== 'All' && theme.toLowerCase() === category.trim().toLowerCase()) return theme;
-  }
-  return 'Classic';
-}
-
-function toStorefrontProduct(listing: HalloweenMerchantListing): HalloweenProduct {
-  const theme = getListingTheme(listing.category);
-  return {
-    id: listing.id,
-    name: listing.name,
-    category: listing.category,
-    theme,
-    price: listing.price,
-    description: listing.description,
-    accent: themePalettes[theme][1],
-    palette: themePalettes[theme],
-    sizes: [listing.size],
-    fitNote: 'Check the merchant listing for sizing details.',
-    badges: ['Merchant listing'],
-    tryOnLabel: `${theme} fit`,
-    image: listing.image || undefined,
-    stock: listing.stock
-  };
-}
-
 export function HalloweenShop() {
   const { addToCart } = useCart();
   const [activeTheme, setActiveTheme] = useState<HalloweenTheme>('All');
@@ -64,6 +38,25 @@ export function HalloweenShop() {
   const [showPhotoTryOn, setShowPhotoTryOn] = useState(false);
   const [merchantListings, setMerchantListings] = useState<HalloweenMerchantListing[]>([]);
   const [selectedSizes, setSelectedSizes] = useState<Record<number, string>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
+  const lastTrackedSearch = useRef('');
+  const seenProductViews = useRef(new Set<number>());
+  const productGridRef = useRef<HTMLDivElement>(null);
+
+  const trackHalloween = useCallback((eventName: Parameters<typeof OB_OS.track>[0], details: Record<string, unknown>) => {
+    if (!isAllowed('analytics')) return;
+    void OB_OS.track(eventName, {
+      details: { surface: 'halloween-shop', analytics_consent: true, ...details }
+    });
+  }, []);
+
+  useEffect(() => {
+    const syncAnalyticsConsent = () => setAnalyticsEnabled(isAllowed('analytics'));
+    syncAnalyticsConsent();
+    window.addEventListener('ob-consent-updated', syncAnalyticsConsent);
+    return () => window.removeEventListener('ob-consent-updated', syncAnalyticsConsent);
+  }, []);
 
   useEffect(() => {
     const loadListings = () => {
@@ -82,14 +75,63 @@ export function HalloweenShop() {
     };
   }, []);
 
-  const allProducts = useMemo(() => [
-    ...halloweenCatalog,
-    ...merchantListings.filter(listing => listing.stock > 0).map(toStorefrontProduct)
-  ], [merchantListings]);
-  const filteredProducts = useMemo(() => activeTheme === 'All'
-    ? allProducts
-    : allProducts.filter(item => item.theme === activeTheme), [activeTheme, allProducts]);
+  const allProducts = useMemo(() => getVisibleHalloweenProducts(merchantListings), [merchantListings]);
+  const filteredProducts = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+    return allProducts.filter((item) => {
+      const matchesTheme = activeTheme === 'All' || item.theme === activeTheme;
+      const matchesQuery = !normalizedQuery || [item.name, item.category, item.description]
+        .some(value => value.toLocaleLowerCase().includes(normalizedQuery));
+      return matchesTheme && matchesQuery;
+    });
+  }, [activeTheme, allProducts, searchQuery]);
   const selectedProduct = allProducts.find(item => item.id === selectedProductId) ?? null;
+
+  useEffect(() => {
+    const query = searchQuery.trim().replace(/\s+/g, ' ').slice(0, 80);
+    if (query.length < 2 || query.includes('@') || /^[+0-9() .-]{7,}$/.test(query)) {
+      lastTrackedSearch.current = '';
+      return;
+    }
+    const searchKey = `${query.toLocaleLowerCase()}|${activeTheme}`;
+    if (lastTrackedSearch.current === searchKey) return;
+    const timeout = window.setTimeout(() => {
+      if (!isAllowed('analytics')) return;
+      lastTrackedSearch.current = searchKey;
+      trackHalloween('HALLOWEEN_SEARCH', {
+        query,
+        theme: activeTheme,
+        results_count: filteredProducts.length
+      });
+      if (filteredProducts.length === 0) {
+        trackHalloween('HALLOWEEN_ZERO_RESULTS', { query, theme: activeTheme });
+      }
+    }, 700);
+    return () => window.clearTimeout(timeout);
+  }, [activeTheme, analyticsEnabled, filteredProducts.length, searchQuery, trackHalloween]);
+
+  useEffect(() => {
+    const grid = productGridRef.current;
+    if (!grid || !('IntersectionObserver' in window) || !isAllowed('analytics')) return;
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const productId = Number((entry.target as HTMLElement).dataset.halloweenProductId);
+        if (!Number.isSafeInteger(productId) || seenProductViews.current.has(productId)) continue;
+        const product = allProducts.find(item => item.id === productId);
+        if (!product) continue;
+        seenProductViews.current.add(productId);
+        trackHalloween('HALLOWEEN_PRODUCT_VIEW', {
+          product_id: product.id,
+          product_name: product.name,
+          category: product.category
+        });
+        observer.unobserve(entry.target);
+      }
+    }, { threshold: 0.5 });
+    grid.querySelectorAll<HTMLElement>('[data-halloween-product-id]').forEach(card => observer.observe(card));
+    return () => observer.disconnect();
+  }, [allProducts, analyticsEnabled, filteredProducts, trackHalloween]);
 
   return (
     <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -125,7 +167,10 @@ export function HalloweenShop() {
             <button
               key={theme}
               type="button"
-              onClick={() => setActiveTheme(theme)}
+              onClick={() => {
+                setActiveTheme(theme);
+                if (theme !== activeTheme) trackHalloween('HALLOWEEN_FILTER', { filter_type: 'theme', value: theme });
+              }}
               className={`rounded-full border px-4 py-2 text-[9px] font-black uppercase tracking-[0.24em] transition ${
                 activeTheme === theme
                   ? 'border-violet-300 bg-violet-400 text-slate-950 shadow-lg shadow-violet-500/20'
@@ -137,13 +182,24 @@ export function HalloweenShop() {
           ))}
         </div>
 
+        <label className="mt-5 block max-w-xl">
+          <span className="sr-only">Search Halloween costumes</span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={event => setSearchQuery(event.target.value)}
+            placeholder="Search costumes, styles, and descriptions"
+            className="min-h-12 w-full rounded-2xl border border-white/15 bg-white/10 px-4 text-sm text-white outline-none placeholder:text-violet-200/60 focus:border-violet-300 focus:ring-2 focus:ring-violet-300/30"
+          />
+        </label>
+
         <div className="mt-7 grid gap-3 md:grid-cols-3">
-          <button onClick={() => setShowFitQuiz(true)} className="rounded-[1.5rem] border border-violet-400/30 bg-white/5 p-4 text-left text-white hover:bg-white/10">
+          <button onClick={() => { trackHalloween('HALLOWEEN_FIT_QUIZ_OPEN', {}); setShowFitQuiz(true); }} className="rounded-[1.5rem] border border-violet-400/30 bg-white/5 p-4 text-left text-white hover:bg-white/10">
             <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.24em] text-violet-300"><Shirt size={12} /> Size guide</div>
             <div className="mt-3 text-xl font-black uppercase tracking-tighter">Find your fit</div>
           </button>
 
-          <button onClick={() => setShowPhotoTryOn(true)} className="rounded-[1.5rem] border border-violet-400/30 bg-white/5 p-4 text-left text-white hover:bg-white/10">
+          <button onClick={() => { trackHalloween('HALLOWEEN_PHOTO_PREVIEW_OPEN', {}); setShowPhotoTryOn(true); }} className="rounded-[1.5rem] border border-violet-400/30 bg-white/5 p-4 text-left text-white hover:bg-white/10">
             <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.24em] text-violet-300"><Camera size={12} /> Photo try-on</div>
             <div className="mt-3 text-xl font-black uppercase tracking-tighter">Upload your selfie</div>
           </button>
@@ -159,9 +215,17 @@ export function HalloweenShop() {
         Halloween listings and cart actions are currently a storefront preview. Merchant uploads stay in this browser; listings, inventory, paid checkout, and fulfilment are not connected to a shared marketplace backend yet.
       </div>
 
-      <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      {filteredProducts.length === 0 && (
+        <div className="mt-8 rounded-2xl border border-violet-200 bg-white p-8 text-center">
+          <h2 className="text-lg font-black text-slate-950">No costumes match that search yet.</h2>
+          <p className="mt-2 text-sm text-slate-600">Try another style, or clear the search to see all available costumes.</p>
+          <button type="button" onClick={() => { setSearchQuery(''); setActiveTheme('All'); }} className="mt-4 rounded-full bg-slate-950 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white">Clear search and filters</button>
+        </div>
+      )}
+
+      <div ref={productGridRef} className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {filteredProducts.map((product) => (
-          <article key={product.id} className="group overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+          <article key={product.id} data-halloween-product-id={product.id} className="group overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
             <div className="relative h-72 overflow-hidden bg-gradient-to-br" style={{ backgroundImage: `linear-gradient(135deg, ${product.palette[0]}, ${product.palette[1]}, ${product.palette[2]})` }}>
             {product.image && <Image src={product.image} alt={product.name} fill sizes="(max-width: 768px) 100vw, 33vw" unoptimized className="object-cover transition duration-500 group-hover:scale-105" />}
             {product.image && <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-slate-950/15" />}
@@ -209,7 +273,15 @@ export function HalloweenShop() {
                     key={size}
                     type="button"
                     aria-pressed={(selectedSizes[product.id] ?? product.sizes[0]) === size}
-                    onClick={() => setSelectedSizes(current => ({ ...current, [product.id]: size }))}
+                    onClick={() => {
+                      setSelectedSizes(current => ({ ...current, [product.id]: size }));
+                      trackHalloween('HALLOWEEN_FILTER', {
+                        filter_type: 'size',
+                        value: size,
+                        product_id: product.id,
+                        product_name: product.name
+                      });
+                    }}
                     className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] ${
                       (selectedSizes[product.id] ?? product.sizes[0]) === size
                         ? 'border-violet-500 bg-violet-100 text-violet-900'
@@ -223,6 +295,14 @@ export function HalloweenShop() {
                 <Button
                   className="flex-1 rounded-2xl bg-slate-950 text-white hover:bg-slate-800 font-black uppercase tracking-[0.22em] text-[9px]"
                   onClick={() => {
+                    const size = selectedSizes[product.id] ?? product.sizes[0];
+                    trackHalloween('HALLOWEEN_ADD_TO_CART', {
+                      product_id: product.id,
+                      product_name: product.name,
+                      category: product.category,
+                      size,
+                      amount: product.price
+                    });
                     addToCart({
                       id: product.id,
                       name: product.name,
@@ -231,7 +311,7 @@ export function HalloweenShop() {
                       image: product.image ?? '',
                       quantity: 1,
                       category: product.category,
-                      size: selectedSizes[product.id] ?? product.sizes[0]
+                      size
                     });
                   }}
                 >
@@ -240,7 +320,14 @@ export function HalloweenShop() {
                 <Button
                   variant="outline"
                   className="rounded-2xl border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 font-black uppercase tracking-[0.2em] text-[9px]"
-                  onClick={() => setSelectedProductId(product.id)}
+                  onClick={() => {
+                    trackHalloween('HALLOWEEN_TRYON_OPEN', {
+                      product_id: product.id,
+                      product_name: product.name,
+                      category: product.category
+                    });
+                    setSelectedProductId(product.id);
+                  }}
                 >
                   <Wand2 size={14} className="mr-2" /> Try it on
                 </Button>

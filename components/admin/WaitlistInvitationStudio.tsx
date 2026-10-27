@@ -25,7 +25,7 @@ export default function WaitlistInvitationStudio() {
   const previewTicketUrl = 'https://www.apexmarket.co.ke/tickets';
   const previewMessage = `${message
     .replaceAll('{{name}}', 'Alex')
-    .replaceAll('{{tickets_link}}', previewTicketUrl)}${message.includes('{{tickets_link}}') || message.includes(previewTicketUrl) ? '' : `\n\nGet your tickets: ${previewTicketUrl}`}`;
+    .replaceAll('{{tickets_link}}', previewTicketUrl)}${message.includes('{{tickets_link}}') || message.includes(previewTicketUrl) ? '' : `\n\nGet your tickets: ${previewTicketUrl}`}\n\nWe’re sending this through Gmail for now while we finish setting up SMS and WhatsApp. Thanks for your patience.`;
 
   useEffect(() => {
     try {
@@ -60,7 +60,7 @@ export default function WaitlistInvitationStudio() {
   async function sendInvitations(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!ready || sending) return;
-    if (!window.confirm('Send this email to all New waitlist members who have active email consent? Each successfully emailed member will be marked Invited.')) return;
+    if (!window.confirm('Send the invitation to all New waitlist members with active consent for email, SMS and/or WhatsApp? Each person will only be contacted through channels they opted into.')) return;
 
     setSending(true);
     setResult(null);
@@ -74,16 +74,16 @@ export default function WaitlistInvitationStudio() {
           message
         })
       });
-      const data = await response.json() as { invited?: number; failed?: number; eligible?: number; error?: string };
+      const data = await response.json() as { invited?: number; sent?: number; failed?: number; trackingFailed?: number; eligible?: number; error?: string };
       if (!response.ok && response.status !== 207) {
         throw new Error(data.error || 'The invitation campaign could not be sent.');
       }
 
       setResult({
-        type: data.failed ? 'error' : 'success',
+        type: data.failed || data.trackingFailed ? 'error' : 'success',
         message: data.failed
-          ? `Sent ${data.invited || 0} of ${data.eligible || 0} invitations. ${data.failed} email${data.failed === 1 ? '' : 's'} failed; those members remain New.`
-          : `Invitation sent to ${data.invited || 0} email-consented waitlist member${data.invited === 1 ? '' : 's'}.`
+          ? `Invited ${data.invited || 0} of ${data.eligible || 0} people (${data.sent || 0} messages sent across opted-in channels). ${data.failed} channel deliveries failed.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}`
+          : `Invited ${data.invited || 0} people with active channel consent; ${data.sent || 0} messages sent across email, SMS and WhatsApp.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}`
       });
     } catch (error) {
       console.error('[WaitlistInvitationStudio] Could not send invitation campaign:', error);
@@ -116,7 +116,7 @@ export default function WaitlistInvitationStudio() {
           </Link>
           <p className="mt-5 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-orange-800"><Mail size={14} /> Waitlist communications</p>
           <h1 className="mt-2 text-3xl font-black uppercase tracking-tight text-slate-950">Halloween invitation studio 🎃</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Save your personalized invitation here, then use Invite beside a person in the waitlist directory to send it only to them. The bulk option below remains available for all eligible New members. Unsubscribed and non-consenting addresses are excluded.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Save your personalized invitation here, then use Invite beside a person in the waitlist directory to send it only to them. Each person is contacted through email, SMS and/or WhatsApp only when they opted into that channel. Bulk send reaches all eligible New members with at least one active channel consent.</p>
         </div>
       </header>
 
@@ -169,7 +169,7 @@ export default function WaitlistInvitationStudio() {
             <h2 className="mt-2 break-words text-lg font-black text-white">{subject || 'Your subject will appear here'}</h2>
           </div>
           <div className="space-y-4 p-5">
-            <p className="text-[10px] font-semibold text-slate-500">To: One selected member, or all eligible New members when using bulk send</p>
+            <p className="text-[10px] font-semibold text-slate-500">To: One selected member or all eligible New members, using their opted-in channels</p>
             <div className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
               {previewMessage.split(previewTicketUrl).map((part, index) => (
                 <Fragment key={index}>
@@ -180,7 +180,7 @@ export default function WaitlistInvitationStudio() {
             </div>
           </div>
           <div className="border-t border-slate-100 px-5 py-3 text-[10px] leading-5 text-slate-500">
-            The ticket link is clickable in the email and opens Apex Market tickets. Every email includes a marketing opt-out link. No email is sent until you tap Invite or press the bulk send button and confirm.
+            The ticket link opens Apex Market tickets. Emails include a marketing opt-out link. SMS and WhatsApp use their respective configured providers; WhatsApp requires an approved template. No invitation is sent until you tap Invite or confirm bulk send.
           </div>
         </aside>
       </div>

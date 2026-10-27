@@ -1,14 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { Card } from '@/components/ui/card';
 import {
     Download,
     X,
-    Smartphone,
-    Zap
+    Smartphone
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 interface BeforeInstallPromptEvent extends Event {
     readonly platforms: Array<string>;
@@ -25,22 +22,17 @@ export default function InstallAppWidget() {
     const [isInstalled, setIsInstalled] = React.useState(false);
 
     React.useEffect(() => {
-        // 1. Check if already installed
-        if (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches) {
+        if (window.matchMedia('(display-mode: standalone)').matches) {
             setIsInstalled(true);
             return;
         }
 
-        // 2. Listen for beforeinstallprompt
         const handler = (e: Event) => {
             e.preventDefault();
             setDeferredPrompt(e as BeforeInstallPromptEvent);
 
-            // Check if user dismissed it recently
             const dismissed = localStorage.getItem('ob_install_prompt_dismissed');
-            if (!dismissed) {
-                setTimeout(() => setIsVisible(true), 10000); // Show after 10s
-            }
+            if (!dismissed) setIsVisible(true);
         };
 
         window.addEventListener('beforeinstallprompt', handler);
@@ -49,17 +41,13 @@ export default function InstallAppWidget() {
 
     const handleInstall = async () => {
         if (!deferredPrompt) return;
-        deferredPrompt.prompt();
+        await deferredPrompt.prompt();
         const { outcome } = await deferredPrompt.userChoice;
         if (outcome === 'accepted') {
             setIsInstalled(true);
             setIsVisible(false);
         }
         setDeferredPrompt(null);
-    };
-
-    const handleInstallClick = () => {
-        handleInstall();
     };
 
     const handleDismiss = () => {
@@ -70,46 +58,24 @@ export default function InstallAppWidget() {
     if (isInstalled || !isVisible) return null;
 
     return (
-        <div className="fixed bottom-24 left-6 right-6 lg:left-10 lg:right-auto lg:w-96 z-[150] animate-in slide-in-from-left-10 duration-700">
-            <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-2xl relative overflow-hidden group text-left">
-                <div className="relative z-10 space-y-6">
-                    <header className="flex justify-between items-start">
-                        <div className="flex items-center gap-4">
-                            <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
-                                <Smartphone size={24} />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none font-serif">Online Bar App</h3>
-                                <p className="text-[9px] font-black text-primary uppercase tracking-widest mt-1">Mobile Access Protocol</p>
-                            </div>
-                        </div>
-                        <button onClick={handleDismiss} className="text-slate-300 hover:text-rose-500 transition-colors">
-                            <X size={20} />
-                        </button>
-                    </header>
-
-                    <p className="text-sm font-medium italic text-slate-500 leading-relaxed">
-                        &quot;Download and install the Online Bar App to your device! The interactive Command & Widget Hub comes built right in for full real-time control, live orders, and instant rewards.&quot;
-                    </p>
-
-                    <div className="flex flex-col gap-3">
-                        <Button
-                            onClick={handleInstallClick}
-                            className="w-full h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3"
-                        >
-                            <Download size={16} /> Install Web App
-                        </Button>
-                        <div className="flex items-center justify-center gap-4 py-2 opacity-30">
-                            <div className="h-px flex-1 bg-slate-200" />
-                            <span className="text-[7px] font-black uppercase tracking-widest text-slate-400">PWA Node + Home Widget</span>
-                            <div className="h-px flex-1 bg-slate-200" />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Background Decor */}
-                <Zap className="absolute -bottom-6 -right-6 h-32 w-32 text-primary/5 rotate-12 -z-0" />
-            </Card>
+        <div className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] right-3 z-[150] flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 p-1.5 shadow-lg backdrop-blur sm:bottom-6 sm:right-6">
+            <button
+                type="button"
+                onClick={() => void handleInstall()}
+                className="inline-flex min-h-10 items-center gap-2 rounded-full px-3 text-xs font-bold text-slate-700 hover:bg-slate-100"
+            >
+                <Smartphone size={15} className="text-primary" />
+                <Download size={14} />
+                Install app
+            </button>
+            <button
+                type="button"
+                onClick={handleDismiss}
+                aria-label="Hide install app option"
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            >
+                <X size={14} />
+            </button>
         </div>
     );
 }
