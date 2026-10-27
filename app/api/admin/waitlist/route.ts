@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
+import { createMarketingUnsubscribeToken } from '@/lib/marketingUnsubscribe';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -319,6 +321,72 @@ function getDatabase() {
     : null;
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character] || character);
+}
+
+function renderHalloweenInvitation(message: string, name: string, ticketUrl: string) {
+  const personalizedMessage = message
+    .replaceAll('{{name}}', name || 'there')
+    .replaceAll('{{tickets_link}}', ticketUrl)
+    .replace(/\bADD DATE\b|\bADD TIME\b|ADD PRIVATE VENUE DETAILS/gi, '');
+  const cleanedMessage = personalizedMessage.trim();
+  return cleanedMessage.includes(ticketUrl)
+    ? cleanedMessage
+    : `${cleanedMessage}\n\nGet your tickets: ${ticketUrl}`;
+}
+
+async function sendHalloweenInvitation(input: {
+  database: NonNullable<ReturnType<typeof getDatabase>>;
+  member: { id: string; full_name: string | null; email: string; status: string };
+  subject: string;
+  message: string;
+  origin: string;
+  campaignId: string;
+}) {
+  const config = getTransactionalEmailConfig();
+  if (!config.configured || !config.from) {
+    throw new Error('Email delivery is not configured. Set up a verified sender before inviting waitlist members.');
+  }
+
+  const ticketUrl = `${input.origin}/tickets`;
+  const personalizedMessage = renderHalloweenInvitation(input.message, input.member.full_name || '', ticketUrl);
+  const unsubscribeUrl = `${input.origin}/newsletter/unsubscribe?token=${encodeURIComponent(createMarketingUnsubscribeToken(input.member.email))}`;
+  const htmlMessage = escapeHtml(personalizedMessage)
+    .replace(/\r?\n/g, '<br>')
+    .replaceAll(escapeHtml(ticketUrl), `<a href="${escapeHtml(ticketUrl)}">Get your Apex Market tickets</a>`);
+  const emailResult = await sendTransactionalEmail({
+    from: config.from,
+    to: input.member.email,
+    subject: input.subject,
+    text: `${personalizedMessage}\n\nYou received this because you opted in to Apex Market waitlist email updates. Unsubscribe: ${unsubscribeUrl}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#262626"><h1 style="color:#7c2d12">🎃 Halloween Private House Party</h1><p>${htmlMessage}</p><hr style="border:0;border-top:1px solid #eee;margin:24px 0"><p style="font-size:12px;color:#777">You received this because you opted in to Apex Market waitlist email updates.</p><p style="font-size:12px"><a href="${unsubscribeUrl}">Unsubscribe from marketing emails</a></p></div>`,
+    idempotencyKey: `waitlist-invite-${input.campaignId}-${input.member.id}`
+  });
+
+  if (input.member.status === 'WAITLIST') {
+    const updatedAt = new Date().toISOString();
+    const { error: updateError } = await input.database
+      .from('market_waitlist')
+      .update({ status: 'INVITED', notified_at: updatedAt, updated_at: updatedAt })
+      .eq('id', input.member.id)
+      .eq('status', 'WAITLIST')
+      .eq('email_updates_consent', true)
+      .is('unsubscribed_at', null);
+    if (updateError) {
+      console.error('[AdminWaitlist] Halloween invitation sent but status could not be updated:', updateError);
+    }
+  }
+
+  return emailResult;
+}
+
 function missingMigration(error: { code?: string; message?: string }) {
   return error.code === '42703' || error.code === 'PGRST204' || error.code === 'PGRST202'
     || /get_waitlist_intelligence|full_name|service_area_status|reward_path|market_waitlist/i.test(error.message || '');
@@ -402,7 +470,7 @@ export async function PATCH(request: Request) {
   }
   const { response } = await authorize();
   if (response) return response;
-  let body: { id?: unknown; status?: unknown };
+  let body: { id?: unknown; status?: unknown; invitationSubject?: unknown; invitationMessage?: unknown };
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -414,6 +482,12 @@ export async function PATCH(request: Request) {
   }
   const database = getDatabase();
   if (!database) return NextResponse.json({ error: 'Waitlist database access is not configured.' }, { status: 503 });
+  if (body.status === 'INVITED') {
+    return NextResponse.json({
+      error: 'Status changes do not send invitations. Use the Waitlist Invitations page and press the send button.'
+    }, { status: 409 });
+  }
+
   const updatedAt = new Date().toISOString();
   const updates: { status: string; updated_at: string; notified_at?: string; unsubscribed_at?: string | null } = {
     status: body.status,
@@ -432,4 +506,80 @@ export async function PATCH(request: Request) {
   }
   if (!data) return NextResponse.json({ error: 'That waitlist signup was not found.' }, { status: 404 });
   return NextResponse.json({ contact: data }, { headers: { 'Cache-Control': 'no-store' } });
+}
+
+export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+  }
+  const { response } = await authorize();
+  if (response) return response;
+
+  let body: { action?: unknown; subject?: unknown; message?: unknown };
+  try {
+    body = await request.json() as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'A valid invitation campaign is required.' }, { status: 400 });
+  }
+  const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (body.action !== 'send_halloween_invitations' || !subject || subject.length > 200 || !message || message.length > 5000) {
+    return NextResponse.json({ error: 'Enter an invitation subject and message under 5,000 characters.' }, { status: 400 });
+  }
+
+  const database = getDatabase();
+  if (!database) return NextResponse.json({ error: 'Waitlist database access is not configured.' }, { status: 503 });
+  const emailConfig = getTransactionalEmailConfig();
+  if (!emailConfig.configured || !emailConfig.from) {
+    return NextResponse.json({ error: 'Email delivery is not configured. Set up a verified sender before inviting waitlist members.' }, { status: 503 });
+  }
+
+  const members: Array<{ id: string; full_name: string | null; email: string; status: string }> = [];
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await database.from('market_waitlist')
+      .select('id,full_name,email,status')
+      .neq('status', 'UNSUBSCRIBED')
+      .eq('email_updates_consent', true)
+      .is('unsubscribed_at', null)
+      .order('id')
+      .range(offset, offset + 499);
+    if (error) {
+      console.error('[AdminWaitlist] Could not load eligible Halloween invitees:', error);
+      return NextResponse.json({ error: 'Eligible waitlist members could not be loaded.' }, { status: 503 });
+    }
+    members.push(...(data || []));
+    if (!data || data.length < 500) break;
+  }
+  if (!members.length) {
+    return NextResponse.json({ error: 'There are no waitlist members with active email consent to invite.' }, { status: 409 });
+  }
+
+  const campaignId = crypto.randomUUID();
+  let invited = 0;
+  let failed = 0;
+  for (let offset = 0; offset < members.length; offset += 20) {
+    const batch = members.slice(offset, offset + 20);
+    const results = await Promise.all(batch.map(async member => {
+      try {
+        await sendHalloweenInvitation({
+          database,
+          member,
+          subject,
+          message,
+          origin: new URL(request.url).origin,
+          campaignId
+        });
+        return true;
+      } catch (invitationError) {
+        console.error(`[AdminWaitlist] Halloween invitation failed for signup ${member.id}:`, invitationError);
+        return false;
+      }
+    }));
+    invited += results.filter(Boolean).length;
+    failed += results.filter(result => !result).length;
+  }
+  return NextResponse.json({ invited, failed, eligible: members.length }, {
+    status: failed ? 207 : 200,
+    headers: { 'Cache-Control': 'no-store' }
+  });
 }

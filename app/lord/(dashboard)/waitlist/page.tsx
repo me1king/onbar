@@ -600,6 +600,10 @@ export default function WaitlistPage() {
   };
 
   const updateStatus = async (contact: WaitlistContact, nextStatus: WaitlistStatus) => {
+    if (contact.status === 'WAITLIST' && nextStatus === 'INVITED') {
+      setError('To send the invitation, open Halloween invitations and press the send button.');
+      return;
+    }
     setSavingId(contact.id);
     setError('');
     try {
@@ -637,6 +641,7 @@ export default function WaitlistPage() {
           <p className="mt-2 max-w-2xl text-sm text-slate-600">Signups from the standalone early-access site and storefront waitlist. Area demand helps us prepare coverage for the planned same-day, late-night treats delivery system. Exact GPS coordinates are never stored.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Link href="/lord/waitlist/invitations" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-orange-800 px-4 text-sm font-bold text-white hover:bg-orange-900"><Mail size={15} /> Halloween invitations</Link>
           {canManageMarket && <Link href="/lord/market" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-violet-800 hover:bg-violet-50"><Store size={15} /> Manage Halloween shop</Link>}
           {canManageSite && <>
             <a href="#waitlist-fit-studio-items" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-primary/30 bg-white px-4 text-sm font-bold text-primary hover:bg-primary/5"><ImageIcon size={15} /> Upload wig, belt or item photos</a>
@@ -1172,7 +1177,7 @@ export default function WaitlistPage() {
                   <td className="px-3 py-4"><b className="mb-1 block text-slate-800">{ageGroups.find(group => group.id === contact.age_group)?.label ? `Age ${ageGroups.find(group => group.id === contact.age_group)?.label}` : 'Age group not provided'}</b>{contact.age_confirmed ? <span className="inline-flex items-center gap-1 font-bold text-emerald-700"><Check size={13} /> 18+ confirmed</span> : <span className="font-bold text-amber-700">Not recorded</span>}<p className="mt-1 text-slate-500">{date(contact.age_confirmed_at)}</p></td>
                   <td className="max-w-[160px] px-3 py-4 text-slate-600"><p>{contact.source || 'direct'}</p>{contact.campaign && <p className="mt-1">Campaign: {contact.campaign}</p>}{contact.referred_by_code && <p className="mt-1">Referred: {contact.referred_by_code}</p>}{contact.referral_code && <p className="mt-1">Invite: {contact.referral_code}</p>}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>
-                  <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
+                  <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value} disabled={value === 'INVITED' && contact.status === 'WAITLIST'}>{label}</option>)}</select></td>
                 </tr>
               ))}</tbody>
             </table></div>}

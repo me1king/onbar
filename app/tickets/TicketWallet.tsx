@@ -31,7 +31,7 @@ type Wallet = {
     age_limit: number | null;
   };
   tickets?: WalletTicket[];
-  emailDelivery?: 'pending' | 'sending' | 'sent' | 'unknown';
+  emailDelivery?: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown';
   whatsappDelivery?: 'pending' | 'sending' | 'sent' | 'unknown';
   error?: string;
 };
@@ -206,6 +206,8 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
 
   const event = wallet?.event;
   const tickets = wallet?.tickets;
+  const isPaymentFailed = wallet?.status === 'payment_failed';
+  const isHalloweenEvent = /halloween/i.test(event?.title || '');
 
   return (
     <>
@@ -229,7 +231,7 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
         {error && !waiting && (
           <section role="alert" className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
             <AlertCircle className="mt-0.5 shrink-0 text-rose-700" size={18} />
-            <div><p className="text-sm font-black text-slate-900">{wallet?.status === 'pending_payment' ? 'Payment is not confirmed yet' : wallet?.status === 'payment_failed' ? 'Payment was not completed' : 'We could not open your ticket wallet'}</p><p className="mt-1 text-xs leading-5 text-slate-700">{error}</p>
+            <div><p className="text-sm font-black text-slate-900">{isPaymentFailed ? 'Payment failed 😞' : wallet?.status === 'pending_payment' ? 'Payment is not confirmed yet' : ['expired', 'cancelled'].includes(wallet?.status || '') ? 'Payment was not completed' : 'We could not open your ticket wallet'}</p><p className="mt-1 text-xs leading-5 text-slate-700">{error}</p>
               {wallet?.orderReference && <p className="mt-2 text-xs font-bold text-slate-900">Order reference: {wallet.orderReference}</p>}
             </div>
           </section>
@@ -237,6 +239,36 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
 
         {wallet?.status === 'paid' && event && wallet.order && tickets?.length ? (
           <>
+            <section role="status" className={`flex items-start gap-3 rounded-2xl border p-4 ${wallet.emailDelivery === 'sent' ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+              <Mail className={`mt-0.5 shrink-0 ${wallet.emailDelivery === 'sent' ? 'text-emerald-700' : 'text-amber-700'}`} size={18} />
+              <div>
+                <p className="text-sm font-black text-slate-900">Payment successful! 🎉</p>
+                <p className="mt-1 text-xs leading-5 text-slate-700">
+                  {wallet.emailDelivery === 'sent'
+                    ? 'Check your Gmail inbox (and spam or junk folder) for your ticket email with your QR code and event details.'
+                    : wallet.emailDelivery === 'failed'
+                      ? 'Your tickets are ready below, but the email has not been sent yet. Use “Send ticket email” below to try again.'
+                      : 'Your tickets are ready below. We are preparing your ticket email—check your Gmail inbox (and spam or junk folder) shortly.'}
+                </p>
+              </div>
+            </section>
+
+            {isHalloweenEvent && (
+              <section className="overflow-hidden rounded-3xl border border-orange-200 bg-slate-950 p-3 shadow-xl shadow-orange-950/10 sm:p-5">
+                <Image
+                  src="/images/halloween-private-house-party-ticket.png"
+                  alt="Halloween private house party invitation"
+                  width={724}
+                  height={683}
+                  priority
+                  className="h-auto w-full rounded-2xl"
+                />
+                <p className="px-2 pb-1 pt-3 text-center text-xs font-semibold leading-5 text-orange-50">
+                  Your issued QR ticket below is your valid entry pass. Show its QR code at the door.
+                </p>
+              </section>
+            )}
+
             <section className="ticket-theme-panel rounded-3xl border p-5 shadow-lg shadow-slate-900/5 sm:p-7">
               <div className="flex items-start gap-3">
                 <span className="rounded-xl bg-emerald-50 p-2 text-emerald-700"><ShieldCheck size={20} /></span>
@@ -258,12 +290,14 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
                 <Mail className="ticket-theme-accent shrink-0" size={18} />
                 <div>
                   <p className="ticket-theme-text text-sm font-bold">
-                    {wallet.emailDelivery === 'sent' ? 'Ticket email sent' : 'Ticket email not confirmed'}
+                    {wallet.emailDelivery === 'sent' ? 'Ticket email sent' : wallet.emailDelivery === 'failed' ? 'Ticket email needs retry' : 'Ticket email is being prepared'}
                   </p>
                   <p className="ticket-theme-copy mt-1 text-xs">
                     {wallet.emailDelivery === 'sent'
-                      ? 'Your ticket QR codes were sent to the checkout email.'
-                      : 'Send a copy of your tickets to the checkout email address.'}
+                      ? 'Your ticket QR codes were sent to the checkout email. Check your inbox and spam or junk folder.'
+                      : wallet.emailDelivery === 'failed'
+                        ? 'Payment succeeded, but email delivery failed. Tap below to retry sending your tickets.'
+                        : 'We are preparing a copy of your tickets for the checkout email address.'}
                   </p>
                 </div>
               </div>

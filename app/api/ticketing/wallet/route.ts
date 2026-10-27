@@ -61,8 +61,10 @@ export async function POST(request: Request) {
       orderReference: order.reference,
       message: order.status === 'reconciliation_required'
         ? 'Payment needs manual review. Contact ONLINE BAR support and quote this order reference.'
-        : ['payment_failed', 'expired', 'cancelled'].includes(order.status)
-          ? 'Payment was not completed and no tickets were issued. Return to the event page to start a fresh checkout if you still want tickets.'
+        : order.status === 'payment_failed'
+          ? 'Payment failed 😞 It may have been declined or there may not be enough funds. No tickets were issued. Return to the event page to start a fresh checkout if you still want tickets.'
+          : ['expired', 'cancelled'].includes(order.status)
+            ? 'Payment was not completed and no tickets were issued. Return to the event page to start a fresh checkout if you still want tickets.'
         : paymentAttempt?.provider === 'payhero'
           ? paymentAttempt.provider_payload?.payhero_reference
             ? 'Check your phone for the M-Pesa prompt and approve it to complete your ticket payment. Keep this page open; do not start a second payment.'

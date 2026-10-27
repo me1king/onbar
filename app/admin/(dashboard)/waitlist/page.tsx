@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, RefreshCw, Save, Search, Store, Upload, Users } from 'lucide-react';
+import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, RefreshCw, Save, Search, Send, Store, Upload, Users } from 'lucide-react';
 import { useAdmin } from '@/context/AdminContext';
 import WaitlistFitStudioPanel from '@/components/admin/WaitlistFitStudioPanel';
 import WaitlistLaunchCountdownPreview from '@/components/admin/WaitlistLaunchCountdownPreview';
@@ -230,6 +230,12 @@ export default function WaitlistPage() {
   const [page, setPage] = useState(0);
   const [referralCreditPage, setReferralCreditPage] = useState(0);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [invitationSubject, setInvitationSubject] = useState('You’re invited: Apex Halloween Private House Party 🎃');
+  const [invitationMessage, setInvitationMessage] = useState(
+    'Hi {{name}},\n\nYou’re invited to the biggest Halloween private house party! 🎃\n\nGet your ticket here: {{tickets_link}}\n\nWe hope to see you there!'
+  );
+  const [sendingInvitations, setSendingInvitations] = useState(false);
+  const [invitationNotice, setInvitationNotice] = useState('');
   const [siteContent, setSiteContent] = useState<WaitlistSiteContent | null>(null);
   const [loadingSiteContent, setLoadingSiteContent] = useState(false);
   const [publicSiteCheckAvailable, setPublicSiteCheckAvailable] = useState<boolean | null>(null);
@@ -333,6 +339,7 @@ export default function WaitlistPage() {
   );
   const locationHeatMaximum = Math.max(1, ...(siteAnalytics?.locations || []).map(location => location.signups));
   const genrePickMaximum = Math.max(1, ...(siteAnalytics?.genre_picks || []).map(genre => genre.visitors));
+  const invitationReady = Boolean(invitationSubject.trim() && invitationMessage.trim());
   const topTrackByAge = useMemo(() => {
     const leaders = new Map<string, WaitlistSiteAnalytics['music'][number]>();
     for (const track of siteAnalytics?.music || []) {
@@ -534,22 +541,63 @@ export default function WaitlistPage() {
   };
 
   const updateStatus = async (contact: WaitlistContact, nextStatus: WaitlistStatus) => {
+    if (contact.status === 'WAITLIST' && nextStatus === 'INVITED') {
+      setError('To send the invitation, open Halloween invitations and press the send button.');
+      return;
+    }
     setSavingId(contact.id);
     setError('');
+    setInvitationNotice('');
     try {
       const response = await fetch('/api/admin/waitlist', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: contact.id, status: nextStatus })
+        body: JSON.stringify({
+          id: contact.id,
+          status: nextStatus,
+        })
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || 'Signup status could not be updated.');
+      if (contact.status === 'WAITLIST' && nextStatus === 'INVITED') {
+        setInvitationNotice(`Halloween invitation sent to ${contact.email}.`);
+      }
       await load();
     } catch (cause) {
       console.error('[AdminWaitlist] Could not update signup:', cause);
       setError(cause instanceof Error ? cause.message : 'Signup status could not be updated.');
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const sendHalloweenInvitations = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!window.confirm('Send this invitation to every New waitlist member with active email consent? Each successfully emailed member will be marked Invited.')) return;
+    setSendingInvitations(true);
+    setError('');
+    setInvitationNotice('');
+    try {
+      const response = await fetch('/api/admin/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_halloween_invitations',
+          subject: invitationSubject,
+          message: invitationMessage
+        })
+      });
+      const result = await response.json() as { invited?: number; failed?: number; error?: string };
+      if (!response.ok && response.status !== 207) throw new Error(result.error || 'Halloween invitations could not be sent.');
+      setInvitationNotice(
+        `Sent ${result.invited || 0} invitation${result.invited === 1 ? '' : 's'}${result.failed ? `; ${result.failed} failed and remain New` : ''}.`
+      );
+      await load();
+    } catch (cause) {
+      console.error('[AdminWaitlist] Could not send Halloween invitations:', cause);
+      setError(cause instanceof Error ? cause.message : 'Halloween invitations could not be sent.');
+    } finally {
+      setSendingInvitations(false);
     }
   };
 
@@ -571,6 +619,7 @@ export default function WaitlistPage() {
           <p className="mt-2 max-w-2xl text-sm text-slate-600">Signups from the standalone early-access site and storefront waitlist. Area demand helps us prepare coverage for the planned same-day, late-night treats delivery system. Exact GPS coordinates are never stored.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Link href="/lord/waitlist/invitations" className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-orange-800 px-4 text-sm font-bold text-white hover:bg-orange-900"><Mail size={15} /> Halloween invitations</Link>
           {canManageMarket && <Link href="/lord/market" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-violet-800 hover:bg-violet-50"><Store size={15} /> Manage Halloween shop</Link>}
           {canManageSite && <>
             <a href="#waitlist-fit-studio-items" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-primary/30 bg-white px-4 text-sm font-bold text-primary hover:bg-primary/5"><ImageIcon size={15} /> Upload wig, belt or item photos</a>
@@ -1060,6 +1109,48 @@ export default function WaitlistPage() {
         </ul>
       </section>
 
+      <section className="rounded-2xl border border-orange-200 bg-orange-50/60 p-5 shadow-sm sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="rounded-xl bg-orange-100 p-2 text-orange-800"><Mail size={18} /></span>
+          <div>
+            <h2 className="text-lg font-black text-slate-950">Halloween invitation studio 🎃</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-600">Edit the email here. Messages are sent only when you press the send button and confirm. The button emails every waitlist member with active email consent; unsubscribed and non-consenting addresses are excluded. Changing a status alone never sends an email.</p>
+          </div>
+        </div>
+        <form onSubmit={sendHalloweenInvitations} className="mt-5 grid gap-3">
+          <label className="grid gap-1 text-xs font-bold text-slate-700">
+            Email subject
+            <input
+              required
+              maxLength={200}
+              value={invitationSubject}
+              onChange={event => setInvitationSubject(event.target.value)}
+              className="min-h-10 rounded-lg border border-orange-200 bg-white px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-bold text-slate-700">
+            Invitation message
+            <textarea
+              required
+              maxLength={5000}
+              rows={9}
+              value={invitationMessage}
+              onChange={event => setInvitationMessage(event.target.value)}
+              className="rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm leading-6"
+            />
+          </label>
+          <p className="text-[11px] leading-5 text-slate-600">Personalization tokens: <code>{'{{name}}'}</code> and <code>{'{{tickets_link}}'}</code>. If you omit the link token, the Apex Market ticket link is added automatically. Event date, time, and venue are optional.</p>
+          {invitationNotice && <p role="status" className="text-xs font-bold text-emerald-800">{invitationNotice}</p>}
+          {error && <p role="alert" className="text-xs font-semibold text-rose-700">{error}</p>}
+          <div>
+            <button type="submit" disabled={sendingInvitations || !invitationReady} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-orange-700 px-4 text-xs font-black text-white hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-50">
+              {sendingInvitations ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+              {sendingInvitations ? 'Sending invitations…' : 'Send to all new, email-consented members'}
+            </button>
+          </div>
+        </form>
+      </section>
+
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-end sm:justify-between">
           <div><h2 className="text-lg font-black uppercase tracking-tight text-slate-950">Waitlist signups</h2><p className="mt-1 text-xs text-slate-500">Review contact consent before contacting anyone. Signup does not count as permission for unselected channels.</p></div>
@@ -1094,7 +1185,7 @@ export default function WaitlistPage() {
                   <td className="px-3 py-4"><b className="mb-1 block text-slate-800">{ageGroups.find(group => group.id === contact.age_group)?.label ? `Age ${ageGroups.find(group => group.id === contact.age_group)?.label}` : 'Age group not provided'}</b>{contact.age_confirmed ? <span className="inline-flex items-center gap-1 font-bold text-emerald-700"><Check size={13} /> 18+ confirmed</span> : <span className="font-bold text-amber-700">Not recorded</span>}<p className="mt-1 text-slate-500">{date(contact.age_confirmed_at)}</p></td>
                   <td className="max-w-[160px] px-3 py-4 text-slate-600"><p>{contact.source || 'direct'}</p>{contact.campaign && <p className="mt-1">Campaign: {contact.campaign}</p>}{contact.referred_by_code && <p className="mt-1">Referred: {contact.referred_by_code}</p>}{contact.referral_code && <p className="mt-1">Invite: {contact.referral_code}</p>}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>
-                  <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td>
+                  <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value} disabled={value === 'INVITED' && contact.status === 'WAITLIST'}>{label}</option>)}</select></td>
                 </tr>
               ))}</tbody>
             </table></div>}

@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   Users,
   MessageSquare,
+  Mail,
   MessageCircle,
   LogOut,
   Menu,
@@ -187,6 +188,7 @@ export default function AdminLayoutClient({
     { group: 'PATRONS', items: [
       { name: 'Directory', href: '/lord/customers', icon: Users, permission: 'can_manage_communications' },
       { name: 'Early Access Waitlist', href: '/lord/waitlist', icon: UserRoundPlus, permission: 'can_manage_communications' },
+      { name: 'Waitlist Invitations', href: '/lord/waitlist/invitations', icon: Mail, permission: 'can_manage_communications' },
       { name: 'WhatsApp Command', href: '/lord/communications/whatsapp', icon: MessageCircle, permission: 'can_manage_communications' },
       { name: 'Message Command', href: '/lord/communications/command', icon: MessageSquare, permission: 'can_manage_communications' },
       { name: 'Message Automation', href: '/lord/communications/automation', icon: MessageCircle, permission: 'can_manage_communications' },
@@ -234,7 +236,7 @@ export default function AdminLayoutClient({
           if (!role) return false;
           if (isOwner) return true;
           if ('minRole' in item && item.minRole === 'viewer') return true;
-          if (item.href === '/lord/waitlist'
+          if ((item.href === '/lord/waitlist' || item.href === '/lord/waitlist/invitations')
             && (permissions.can_manage_communications || permissions.can_manage_customer_care)) return true;
           if (item.permission && permissions && permissions[item.permission as keyof Permissions]) return true;
           if ('minRole' in item && item.minRole === 'admin') return isAdmin;
@@ -245,6 +247,7 @@ export default function AdminLayoutClient({
 
   const isActive = (href: string) => {
     if (href === '/lord') return pathname === '/lord';
+    if (href === '/lord/waitlist') return pathname === href;
     if (href === '/lord/upload?category=extras') {
       return pathname === '/lord/upload' && searchParams.get('category') === 'extras';
     }
