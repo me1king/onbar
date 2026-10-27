@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TicketThemePicker from '@/app/tickets/TicketThemePicker';
 import TicketPromotionManager from '@/app/admin/(dashboard)/ticketing/TicketPromotionManager';
+import TicketEventDetailsForm from '@/components/ticketing/TicketEventDetailsForm';
 import {
   ArrowUpRight,
   BadgeCheck,
@@ -57,6 +58,9 @@ type TicketEvent = {
   city: string;
   venue_latitude: number | null;
   venue_longitude: number | null;
+  cover_image_url: string | null;
+  doors_open_at: string | null;
+  cancellation_policy: string;
   entrance_guide: string;
   parking_guide: string;
   transport_guide: string;
@@ -539,7 +543,9 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
   const [eventStatusSaving, setEventStatusSaving] = useState(false);
   const [editingServiceFee, setEditingServiceFee] = useState(false);
   const [editingVenue, setEditingVenue] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
   const allocated = event.ticket_types.reduce((total, tier) => total + tier.capacity, 0);
+  const canEditDetails = ['draft', 'scheduled'].includes(event.status) || (event.status === 'on_sale' && canPublish);
 
   async function setWaveStatus(tier: TicketType, status: 'active' | 'paused') {
     setWaveSavingId(tier.id);
@@ -631,6 +637,11 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
             <p className="text-xs text-slate-300">Map pin: <strong className="text-white">{event.venue_latitude !== null && event.venue_longitude !== null ? `${event.venue_latitude}, ${event.venue_longitude}` : 'Not set'}</strong></p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canEditDetails && (
+              <button type="button" onClick={() => setEditingDetails(value => !value)} className="min-h-9 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
+                {editingDetails ? 'Close event details' : 'Edit event details'}
+              </button>
+            )}
             <button type="button" onClick={() => setEditingVenue(value => !value)} className="min-h-9 rounded-lg border border-orange-200/20 px-3 text-xs font-bold text-orange-100 hover:bg-orange-100/5">
               {editingVenue ? 'Close venue controls' : 'Edit venue & map pin'}
             </button>
@@ -641,6 +652,7 @@ function EventCard({ event, canPublish, onRefresh }: { event: TicketEvent; canPu
             )}
           </div>
         </div>
+        {editingDetails && <TicketEventDetailsForm event={event} onCancel={() => setEditingDetails(false)} onSaved={() => { setEditingDetails(false); onRefresh(); }} />}
         {editingVenue && <VenueLocationForm event={event} onCancel={() => setEditingVenue(false)} onSaved={() => { setEditingVenue(false); onRefresh(); }} />}
         {editingServiceFee && <ServiceFeeForm event={event} onCancel={() => setEditingServiceFee(false)} onSaved={() => { setEditingServiceFee(false); onRefresh(); }} />}
         <div className="flex flex-wrap items-center justify-between gap-3">

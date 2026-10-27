@@ -82,6 +82,14 @@ export default async function TicketEventPage({ params }: PageProps) {
       <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -right-32 top-[34rem] h-96 w-96 rounded-full opacity-10 blur-[110px]" />
       <div className="relative mx-auto max-w-6xl space-y-6">
         <Link href="/tickets" className="ticket-theme-accent inline-flex items-center gap-2 text-xs font-bold transition hover:opacity-75"><ArrowLeft size={14} /> All events</Link>
+        {event.cover_image_url && (
+          <div
+            role="img"
+            aria-label={`${event.title} event cover`}
+            className="ticket-theme-panel h-56 overflow-hidden rounded-[2rem] border bg-cover bg-center shadow-xl shadow-slate-900/5 sm:h-80"
+            style={{ backgroundImage: `url(${JSON.stringify(event.cover_image_url)})` }}
+          />
+        )}
         <header className="ticket-theme-hero relative isolate overflow-hidden rounded-[2rem] border p-6 shadow-xl shadow-slate-900/5 sm:p-10 lg:p-14">
           <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -right-16 -top-24 -z-10 h-80 w-80 rounded-full opacity-10 blur-[90px]" />
           <div aria-hidden="true" className="ticket-theme-glow pointer-events-none absolute -bottom-28 right-1/3 -z-10 h-72 w-72 rounded-full opacity-10 blur-[90px]" />

@@ -57,12 +57,16 @@ For the Online Bar Admin Ticketing module, apply
 `TICKETING_PAYMENT_CURRENCY_FIX_MIGRATION.sql`,
 `TICKETING_SALES_REPORT_MIGRATION.sql`,
 `TICKETING_EVENT_PUBLISHING_MIGRATION.sql`,
-`TICKETING_VENUE_LOCATION_MIGRATION.sql`, and finally
-`TICKETING_EMAIL_DELIVERY_MIGRATION.sql` followed by
-`TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql` and
-`PAYHERO_TICKETING_MIGRATION.sql`. After the customer messaging and ticketing
-email delivery migrations (including `CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql`)
-are installed, run
+`TICKETING_VENUE_LOCATION_MIGRATION.sql`,
+`TICKETING_EVENT_DETAILS_MIGRATION.sql`,
+`TICKETING_EMAIL_DELIVERY_MIGRATION.sql`,
+`TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql`, and
+`PAYHERO_TICKETING_MIGRATION.sql`, then
+`TICKETING_PROMOTIONS_MIGRATION.sql`. The promotions migration adds transactional
+promo redemption handling and the promo-aware checkout RPC; normal checkouts
+without a promo code use the PayHero checkout RPC directly. After the customer
+messaging and ticketing email delivery migrations (including
+`CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql`) are installed, run
 `JMSURF_EMAIL_WEBHOOK_MIGRATION.sql` to record signed JMSURF email events and
 link them to transactional message records.
 Wave I/II/III configuration, audited admin controls, transactional reservation
@@ -76,6 +80,10 @@ or writes those fields. The email-delivery migration installs a service-role-onl
 delivery ledger and lease-based claim/finish functions so payment callbacks and
 the buyer's protected wallet can retry failed ticket emails without issuing
 duplicate messages.
+The event-details migration adds audited editing for event names, descriptions,
+times, doors-open time, age limit, event capacity, cancellation policy, and
+HTTPS cover-image URLs. Only the platform owner can edit a live listing; event
+capacity cannot be reduced below its active ticket allocation.
 The WhatsApp-delivery migration adds buyer phone and encrypted wallet-token
 storage plus a private delivery ledger and claim/finish functions for retryable
 WhatsApp template messages. Successfully delivered wallet links have their

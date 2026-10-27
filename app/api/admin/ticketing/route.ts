@@ -248,6 +248,70 @@ export async function POST(request: Request) {
     return NextResponse.json({ event: data });
   }
 
+  if (body.action === 'update_event_details') {
+    const eventId = typeof body.eventId === 'string' ? body.eventId : '';
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const startsAt = parseDate(body.startsAt);
+    const endsAt = parseDate(body.endsAt);
+    const doorsOpenAt = body.doorsOpenAt ? parseDate(body.doorsOpenAt) : null;
+    const capacity = body.capacity === '' || body.capacity === null || body.capacity === undefined
+      ? null : Number(body.capacity);
+    const ageLimit = body.ageLimit === '' || body.ageLimit === null || body.ageLimit === undefined
+      ? null : Number(body.ageLimit);
+    const cancellationPolicy = typeof body.cancellationPolicy === 'string' ? body.cancellationPolicy.trim() : '';
+    const rawCoverImageUrl = typeof body.coverImageUrl === 'string' ? body.coverImageUrl.trim() : '';
+    let coverImageUrl: string | null = null;
+    if (rawCoverImageUrl) {
+      try {
+        const parsedUrl = new URL(rawCoverImageUrl);
+        if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) {
+          throw new Error('invalid cover image URL');
+        }
+        coverImageUrl = parsedUrl.toString();
+      } catch {
+        return NextResponse.json({ error: 'The cover image must be a valid HTTPS URL.' }, { status: 400 });
+      }
+    }
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)
+      || title.length < 3 || title.length > 160 || !startsAt || !endsAt
+      || new Date(endsAt) <= new Date(startsAt)
+      || (body.doorsOpenAt && (!doorsOpenAt || new Date(doorsOpenAt) > new Date(startsAt)))
+      || (capacity !== null && (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 1_000_000))
+      || (ageLimit !== null && (!Number.isSafeInteger(ageLimit) || ageLimit < 0 || ageLimit > 120))
+      || description.length > 10_000 || cancellationPolicy.length > 5_000
+      || rawCoverImageUrl.length > 2_048) {
+      return NextResponse.json({ error: 'Enter valid event details, a valid event date range, and optional capacity, age and HTTPS image values.' }, { status: 400 });
+    }
+
+    const { data, error } = await database.rpc('ticketing_update_event_details', {
+      p_event_id: eventId,
+      p_title: title,
+      p_description: description,
+      p_starts_at: startsAt,
+      p_ends_at: endsAt,
+      p_doors_open_at: doorsOpenAt,
+      p_age_limit: ageLimit,
+      p_capacity: capacity,
+      p_cancellation_policy: cancellationPolicy,
+      p_cover_image_url: coverImageUrl,
+      p_actor_email: session.email || '',
+      p_allow_on_sale: session.role.toLowerCase() === 'owner'
+    });
+    if (error || !data) {
+      if (error?.code === 'P0001') return NextResponse.json({ error: error.message }, { status: 409 });
+      if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event was not found.' }, { status: 404 });
+      if (error?.code === '22023') return NextResponse.json({ error: error.message }, { status: 400 });
+      if (error?.code === '42501') return NextResponse.json({ error: error.message }, { status: 403 });
+      console.error('[TicketingAdmin] Could not update event details:', error);
+      return NextResponse.json({
+        error: 'Event details could not be saved. Apply supabase/TICKETING_EVENT_DETAILS_MIGRATION.sql and retry.'
+      }, { status: 503 });
+    }
+    return NextResponse.json({ event: data });
+  }
+
   if (body.action === 'create_event') {
     const title = typeof body.title === 'string' ? body.title.trim() : '';
     const venueName = typeof body.venueName === 'string' ? body.venueName.trim() : '';

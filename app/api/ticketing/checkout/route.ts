@@ -104,7 +104,10 @@ export async function POST(request: Request) {
   }
 
   const paymentReference = `OBT-${randomBytes(16).toString('hex').toUpperCase()}`;
-  const { data, error } = await database.rpc('ticketing_create_checkout_with_promotion', {
+  const checkoutRpc = promotionCode
+    ? 'ticketing_create_checkout_with_promotion'
+    : 'ticketing_create_payhero_checkout';
+  const { data, error } = await database.rpc(checkoutRpc, {
     p_event_id: eventId,
     p_ticket_type_id: ticketTypeId,
     p_quantity: quantity,
@@ -113,7 +116,7 @@ export async function POST(request: Request) {
     p_idempotency_key: idempotencyKey,
     p_access_token_hash: hashTicketAccessToken(accessToken),
     p_payment_reference: paymentReference,
-    p_promotion_code: promotionCode || null
+    ...(promotionCode ? { p_promotion_code: promotionCode } : {})
   });
 
   if (error) {
@@ -123,8 +126,24 @@ export async function POST(request: Request) {
     const mapped = mapCheckoutError(error.code, error.message);
     if (mapped) return NextResponse.json({ error: mapped.message }, { status: mapped.status });
     console.error('[TicketingCheckout] Could not create checkout:', error);
+    if (error.code === 'PGRST202') {
+      const requiredMigration = promotionCode
+        ? 'TICKETING_PROMOTIONS_MIGRATION.sql'
+        : 'PAYHERO_TICKETING_MIGRATION.sql';
+      return NextResponse.json({
+        error: `Ticket checkout is temporarily unavailable. The ticketing database setup needs attention (${requiredMigration}). Please contact support.`
+      }, { status: 503 });
+    }
+    if (error.code === '42883') {
+      const requiredMigrations = promotionCode
+        ? 'TICKETING_COMMERCE_MIGRATION.sql, PAYHERO_TICKETING_MIGRATION.sql, and TICKETING_PROMOTIONS_MIGRATION.sql'
+        : 'TICKETING_COMMERCE_MIGRATION.sql and PAYHERO_TICKETING_MIGRATION.sql';
+      return NextResponse.json({
+        error: `Ticket checkout is temporarily unavailable. The ticketing database setup needs attention (${requiredMigrations}). Please contact support.`
+      }, { status: 503 });
+    }
     return NextResponse.json({
-      error: 'Checkout could not be prepared. Confirm the Ticketing commerce and promotions migrations are installed.'
+      error: 'Checkout could not be prepared. Please contact support and quote the event and time of your attempt.'
     }, { status: 503 });
   }
 
