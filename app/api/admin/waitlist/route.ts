@@ -515,7 +515,7 @@ export async function POST(request: Request) {
   const { response } = await authorize();
   if (response) return response;
 
-  let body: { action?: unknown; subject?: unknown; message?: unknown };
+  let body: { action?: unknown; id?: unknown; subject?: unknown; message?: unknown };
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -523,7 +523,8 @@ export async function POST(request: Request) {
   }
   const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
   const message = typeof body.message === 'string' ? body.message.trim() : '';
-  if (body.action !== 'send_halloween_invitations' || !subject || subject.length > 200 || !message || message.length > 5000) {
+  if ((body.action !== 'send_halloween_invitations' && body.action !== 'send_halloween_invitation')
+    || !subject || subject.length > 200 || !message || message.length > 5000) {
     return NextResponse.json({ error: 'Enter an invitation subject and message under 5,000 characters.' }, { status: 400 });
   }
 
@@ -534,11 +535,44 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Email delivery is not configured. Set up a verified sender before inviting waitlist members.' }, { status: 503 });
   }
 
+  if (body.action === 'send_halloween_invitation') {
+    if (typeof body.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.id)) {
+      return NextResponse.json({ error: 'Choose a valid waitlist member to invite.' }, { status: 400 });
+    }
+    const { data: member, error } = await database.from('market_waitlist')
+      .select('id,full_name,email,status,email_updates_consent,unsubscribed_at')
+      .eq('id', body.id)
+      .maybeSingle();
+    if (error) {
+      console.error('[AdminWaitlist] Could not load the selected Halloween invitee:', error);
+      return NextResponse.json({ error: 'The selected waitlist member could not be loaded.' }, { status: 503 });
+    }
+    if (!member) return NextResponse.json({ error: 'That waitlist member was not found.' }, { status: 404 });
+    if (!member.email_updates_consent || member.unsubscribed_at || member.status === 'UNSUBSCRIBED') {
+      return NextResponse.json({ error: 'This member is not currently opted in to email updates, so no invitation was sent.' }, { status: 409 });
+    }
+
+    try {
+      await sendHalloweenInvitation({
+        database,
+        member,
+        subject,
+        message,
+        origin: new URL(request.url).origin,
+        campaignId: crypto.randomUUID()
+      });
+    } catch (invitationError) {
+      console.error(`[AdminWaitlist] Halloween invitation failed for signup ${member.id}:`, invitationError);
+      return NextResponse.json({ error: 'The invitation email could not be sent. Check the email provider configuration and try again.' }, { status: 503 });
+    }
+    return NextResponse.json({ invited: 1 }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   const members: Array<{ id: string; full_name: string | null; email: string; status: string }> = [];
   for (let offset = 0; ; offset += 500) {
     const { data, error } = await database.from('market_waitlist')
       .select('id,full_name,email,status')
-      .neq('status', 'UNSUBSCRIBED')
+      .eq('status', 'WAITLIST')
       .eq('email_updates_consent', true)
       .is('unsubscribed_at', null)
       .order('id')

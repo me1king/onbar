@@ -7,6 +7,7 @@ import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, 
 import { useAdmin } from '@/context/AdminContext';
 import WaitlistFitStudioPanel from '@/components/admin/WaitlistFitStudioPanel';
 import WaitlistLaunchCountdownPreview from '@/components/admin/WaitlistLaunchCountdownPreview';
+import WaitlistContactInviteButton from '@/components/admin/WaitlistContactInviteButton';
 
 type WaitlistStatus = 'WAITLIST' | 'INVITED' | 'NOTIFIED' | 'CONVERTED' | 'UNSUBSCRIBED';
 type RewardPath = 'wine' | 'adventure' | 'music';
@@ -1168,7 +1169,7 @@ export default function WaitlistPage() {
         {loading && !data ? <p className="p-10 text-center text-sm text-slate-500">Loading signups…</p>
           : !data?.contacts.length ? <p className="p-10 text-center text-sm text-slate-500">No signups match these filters.</p>
             : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-xs">
-              <thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500"><tr>{['Person & area','Consent','Interests & frequency','Experience interest','Age group & check','Attribution','Joined','Status'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
+              <thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500"><tr>{['Person & area','Consent','Interests & frequency','Experience interest','Age group & check','Attribution','Joined','Status','Invite'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
               <tbody className="divide-y divide-slate-100">{data.contacts.map(contact => (
                 <tr key={contact.id} className="align-top">
                   <td className="max-w-[220px] px-3 py-4">
@@ -1186,6 +1187,14 @@ export default function WaitlistPage() {
                   <td className="max-w-[160px] px-3 py-4 text-slate-600"><p>{contact.source || 'direct'}</p>{contact.campaign && <p className="mt-1">Campaign: {contact.campaign}</p>}{contact.referred_by_code && <p className="mt-1">Referred: {contact.referred_by_code}</p>}{contact.referral_code && <p className="mt-1">Invite: {contact.referral_code}</p>}</td>
                   <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>
                   <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value} disabled={value === 'INVITED' && contact.status === 'WAITLIST'}>{label}</option>)}</select></td>
+                  <td className="px-3 py-4">{contact.email_updates_consent && contact.status !== 'UNSUBSCRIBED'
+                    ? <WaitlistContactInviteButton
+                      contactId={contact.id}
+                      contactName={contact.full_name}
+                      contactEmail={contact.email}
+                      onSent={() => void load()}
+                    />
+                    : <span className="text-[10px] text-slate-400">Not eligible</span>}</td>
                 </tr>
               ))}</tbody>
             </table></div>}

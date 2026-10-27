@@ -1,25 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ArrowLeft, CheckCircle2, LoaderCircle, Mail, Send } from 'lucide-react';
 import { useAdmin } from '@/context/AdminContext';
-
-const initialSubject = 'You’re invited: Halloween Private House Party 🎃';
-const initialMessage = [
-  'Hi {{name}},',
-  '',
-  'You’re invited to our Halloween Private House Party! 🎃',
-  '',
-  'Get your ticket here: {{tickets_link}}',
-  '',
-  'We hope to see you there!'
-].join('\n');
+import {
+  DEFAULT_WAITLIST_INVITATION_MESSAGE,
+  DEFAULT_WAITLIST_INVITATION_SUBJECT,
+  WAITLIST_INVITATION_DRAFT_STORAGE_KEY
+} from '@/lib/waitlistInvitationDraft';
 
 export default function WaitlistInvitationStudio() {
   const { role, permissions } = useAdmin();
-  const [subject, setSubject] = useState(initialSubject);
-  const [message, setMessage] = useState(initialMessage);
+  const [subject, setSubject] = useState(DEFAULT_WAITLIST_INVITATION_SUBJECT);
+  const [message, setMessage] = useState(DEFAULT_WAITLIST_INVITATION_MESSAGE);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -28,10 +22,14 @@ export default function WaitlistInvitationStudio() {
     || permissions.can_manage_communications === true
     || permissions.can_manage_customer_care === true;
   const ready = Boolean(subject.trim() && message.trim());
+  const previewTicketUrl = 'https://www.apexmarket.co.ke/tickets';
+  const previewMessage = `${message
+    .replaceAll('{{name}}', 'Alex')
+    .replaceAll('{{tickets_link}}', previewTicketUrl)}${message.includes('{{tickets_link}}') || message.includes(previewTicketUrl) ? '' : `\n\nGet your tickets: ${previewTicketUrl}`}`;
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem('waitlist-halloween-invitation-draft');
+      const saved = window.localStorage.getItem(WAITLIST_INVITATION_DRAFT_STORAGE_KEY);
       if (saved) {
         const draft: unknown = JSON.parse(saved);
         if (typeof draft === 'object' && draft !== null
@@ -53,7 +51,7 @@ export default function WaitlistInvitationStudio() {
   useEffect(() => {
     if (!draftLoaded) return;
     try {
-      window.localStorage.setItem('waitlist-halloween-invitation-draft', JSON.stringify({ subject, message }));
+      window.localStorage.setItem(WAITLIST_INVITATION_DRAFT_STORAGE_KEY, JSON.stringify({ subject, message }));
     } catch (error) {
       console.error('[WaitlistInvitationStudio] Could not save the invitation draft:', error);
     }
@@ -118,7 +116,7 @@ export default function WaitlistInvitationStudio() {
           </Link>
           <p className="mt-5 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-orange-800"><Mail size={14} /> Waitlist communications</p>
           <h1 className="mt-2 text-3xl font-black uppercase tracking-tight text-slate-950">Halloween invitation studio 🎃</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Write and preview the invitation before sending it to every waitlist member who has active email consent. Unsubscribed and non-consenting addresses are excluded. New members are marked Invited after their email is successfully accepted for delivery.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Save your personalized invitation here, then use Invite beside a person in the waitlist directory to send it only to them. The bulk option below remains available for all eligible New members. Unsubscribed and non-consenting addresses are excluded.</p>
         </div>
       </header>
 
@@ -171,15 +169,18 @@ export default function WaitlistInvitationStudio() {
             <h2 className="mt-2 break-words text-lg font-black text-white">{subject || 'Your subject will appear here'}</h2>
           </div>
           <div className="space-y-4 p-5">
-            <p className="text-[10px] font-semibold text-slate-500">To: All waitlist members who opted in to email updates</p>
+            <p className="text-[10px] font-semibold text-slate-500">To: One selected member, or all eligible New members when using bulk send</p>
             <div className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-              {`${message
-                .replaceAll('{{name}}', 'Alex')
-                .replaceAll('{{tickets_link}}', 'https://www.apexmarket.co.ke/tickets')}${message.includes('{{tickets_link}}') || message.includes('https://www.apexmarket.co.ke/tickets') ? '' : '\n\nGet your tickets: https://www.apexmarket.co.ke/tickets'}`}
+              {previewMessage.split(previewTicketUrl).map((part, index) => (
+                <Fragment key={index}>
+                  {index > 0 && <a href={previewTicketUrl} target="_blank" rel="noreferrer" className="break-all font-semibold text-blue-700 underline">{previewTicketUrl}</a>}
+                  {part}
+                </Fragment>
+              ))}
             </div>
           </div>
           <div className="border-t border-slate-100 px-5 py-3 text-[10px] leading-5 text-slate-500">
-            The email includes Apex Market’s marketing opt-out link. No email is sent until you press the send button and confirm.
+            The ticket link is clickable in the email and opens Apex Market tickets. Every email includes a marketing opt-out link. No email is sent until you tap Invite or press the bulk send button and confirm.
           </div>
         </aside>
       </div>

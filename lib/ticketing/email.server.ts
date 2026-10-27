@@ -525,7 +525,7 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
 
   try {
     const { data: order, error: orderError } = await database.from('ticketing_orders')
-      .select('id,reference,status,total_minor,subtotal_minor,fees_minor,discount_minor,currency,buyer_email,buyer_name,buyer_phone,paid_at,created_at,event_id,promotion_id')
+      .select('id,reference,status,total_minor,subtotal_minor,fees_minor,discount_minor,currency,buyer_email,buyer_name,buyer_phone,buyer_email_theme,paid_at,created_at,event_id,promotion_id')
       .eq('id', orderId)
       .maybeSingle();
     if (orderError) throw orderError;
@@ -583,7 +583,9 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
     const configuredTheme = themeResult.data?.value && typeof themeResult.data.value === 'object'
       ? (themeResult.data.value as { theme?: unknown }).theme
       : null;
-    const theme = isTicketThemeId(configuredTheme) ? configuredTheme : defaultTicketTheme;
+    const theme = isTicketThemeId(order.buyer_email_theme)
+      ? order.buyer_email_theme
+      : isTicketThemeId(configuredTheme) ? configuredTheme : defaultTicketTheme;
     const orderDetails: EmailOrder = {
       ...order,
       buyer_name: order.buyer_name || '',

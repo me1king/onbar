@@ -263,6 +263,14 @@ export default function AdminSettingsPage() {
                 });
             }
 
+        } catch (err) {
+            console.error(err);
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not load settings or homepage products.' });
+        } finally {
+            setLoading(false);
+        }
+
+        try {
             if (!supabase) throw new Error('Product database access is not configured.');
             const { data: productData, error: productsError } = await supabase
                 .from('products')
@@ -271,12 +279,14 @@ export default function AdminSettingsPage() {
                 .order('name');
             if (productsError) throw productsError;
             setHomepageProducts(productData || []);
-
         } catch (err) {
-            console.error(err);
-            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not load settings or homepage products.' });
-        } finally {
-            setLoading(false);
+            console.error('[AdminSettings] Could not load homepage products:', err);
+            setMessage({
+                type: 'error',
+                text: err instanceof Error
+                    ? `Settings are open, but homepage products could not be loaded: ${err.message}`
+                    : 'Settings are open, but homepage products could not be loaded.'
+            });
         }
     };
 

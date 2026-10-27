@@ -60,7 +60,8 @@ For the Online Bar Admin Ticketing module, apply
 `TICKETING_VENUE_LOCATION_MIGRATION.sql`,
 `TICKETING_EVENT_DETAILS_MIGRATION.sql`,
 `TICKETING_EMAIL_DELIVERY_MIGRATION.sql`,
-`TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql`, and
+`TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql`,
+`TICKETING_BUYER_EMAIL_THEME_MIGRATION.sql`, and
 `PAYHERO_TICKETING_MIGRATION.sql`, then
 `TICKETING_PROMOTIONS_MIGRATION.sql`. The commerce migration creates the
 Paystack-backed standard checkout; the promotions migration adds transactional
@@ -93,7 +94,9 @@ The WhatsApp-delivery migration adds buyer phone and encrypted wallet-token
 storage plus a private delivery ledger and claim/finish functions for retryable
 WhatsApp template messages. Successfully delivered wallet links have their
 encrypted token copy removed. Configure the approved Meta template and
-server-only WhatsApp credentials before enabling customer purchases.
+server-only WhatsApp credentials before enabling customer purchases. The buyer
+email-theme migration stores each checkout's chosen ticket email color on its
+order so the automatic ticket email and attached PDF use the buyer's selection.
 
 ## Demand Intelligence area contacts
 

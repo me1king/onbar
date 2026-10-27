@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { LoaderCircle, Ticket } from 'lucide-react';
+import { defaultTicketTheme, ticketThemes, type TicketThemeId } from '@/lib/ticketing/theme';
 
 type Props = {
   eventId: string;
@@ -44,6 +45,7 @@ export default function TicketCheckoutButton({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [emailTheme, setEmailTheme] = useState<TicketThemeId>(defaultTicketTheme);
   const [whatsappConsent, setWhatsappConsent] = useState(false);
   const [promoInput, setPromoInput] = useState('');
   const [promotionCode, setPromotionCode] = useState('');
@@ -72,6 +74,7 @@ export default function TicketCheckoutButton({
           name,
           email,
           phone,
+          emailTheme,
           whatsappConsent,
           idempotencyKey: keys.current.idempotencyKey,
           accessToken: keys.current.accessToken
@@ -192,6 +195,29 @@ export default function TicketCheckoutButton({
               className="ticket-theme-input min-h-10 rounded-lg border px-3 text-xs outline-none"
             />
           </label>
+          <fieldset className="grid gap-2">
+            <legend className="ticket-theme-copy text-[10px] font-bold">Ticket email color</legend>
+            <p className="ticket-theme-muted text-[9px] leading-4">Choose how your ticket email and attached PDF tickets look.</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {ticketThemes.map(theme => (
+                <label key={theme.id} className={`flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border px-2 text-[9px] font-bold transition focus-within:ring-2 focus-within:ring-[var(--ticket-accent)] ${emailTheme === theme.id ? 'ticket-theme-accent-soft border-[var(--ticket-accent)]' : 'border-slate-200'}`}>
+                  <input
+                    type="radio"
+                    name={`ticket-email-theme-${eventId}-${ticketTypeId}`}
+                    value={theme.id}
+                    checked={emailTheme === theme.id}
+                    onChange={() => {
+                      setEmailTheme(theme.id);
+                      keys.current = null;
+                    }}
+                    className="sr-only"
+                  />
+                  <span className={`h-3.5 w-3.5 shrink-0 rounded-full border border-slate-400 ${theme.swatch}`} aria-hidden="true" />
+                  <span>{theme.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <label className="ticket-theme-copy grid gap-1 text-[10px] font-bold">
             Quantity
             <select

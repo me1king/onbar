@@ -18,6 +18,7 @@ import {
 import { encryptTicketWalletToken } from '@/lib/ticketing/whatsapp.server';
 import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
 import { logTicketNotificationFailures, sendTicketOrderNotifications } from '@/lib/ticketing/notifications.server';
+import { defaultTicketTheme, isTicketThemeId } from '@/lib/ticketing/theme';
 import { getPublicBaseUrl } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +79,10 @@ export async function POST(request: Request) {
   const buyerEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const buyerName = typeof body.name === 'string' ? body.name.trim() : '';
   const buyerPhone = typeof body.phone === 'string' ? normalizeTicketPhoneNumber(body.phone) : null;
+  if (body.emailTheme !== undefined && !isTicketThemeId(body.emailTheme)) {
+    return NextResponse.json({ error: 'Choose one of the available ticket email colors.' }, { status: 400 });
+  }
+  const buyerEmailTheme = isTicketThemeId(body.emailTheme) ? body.emailTheme : defaultTicketTheme;
   const promotionCode = typeof body.promotionCode === 'string' ? body.promotionCode.trim().toUpperCase() : '';
   const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
   const accessToken = typeof body.accessToken === 'string' ? body.accessToken : '';
@@ -179,12 +184,15 @@ export async function POST(request: Request) {
 
   const { error: contactError } = await database.from('ticketing_orders').update({
     buyer_phone: buyerPhone,
-    access_token_ciphertext: encryptTicketWalletToken(accessToken)
+    access_token_ciphertext: encryptTicketWalletToken(accessToken),
+    ...(checkout.status === 'paid' ? {} : { buyer_email_theme: buyerEmailTheme })
   }).eq('id', checkout.order_id).eq('access_token_hash', hashTicketAccessToken(accessToken));
   if (contactError) {
-    console.error('[TicketingCheckout] Could not save ticket-message contact details:', contactError);
+    console.error('[TicketingCheckout] Could not save ticket checkout preferences:', contactError);
     return NextResponse.json({
-      error: 'Checkout was prepared but secure ticket-message details could not be saved. Retry this checkout.'
+      error: contactError.code === '42703' || contactError.code === 'PGRST204'
+        ? 'Ticket checkout needs the latest email-color preference database migration. Please contact support while this setup is completed.'
+        : 'Checkout was prepared but secure ticket delivery preferences could not be saved. Retry this checkout.'
     }, { status: 503 });
   }
 
