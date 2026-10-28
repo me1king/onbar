@@ -42,6 +42,11 @@ function parseMoney(value: unknown) {
   return Number.isSafeInteger(amount) ? amount : null;
 }
 
+function isTicketSalesForceOpenEnabled() {
+  const value = process.env.FORCE_TICKETING_SALES_OPEN || process.env.NEXT_PUBLIC_FORCE_TICKETING_SALES_OPEN || '';
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
 function parseBenefits(value: unknown): string[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value) || !value.every((benefit): benefit is string => typeof benefit === 'string')) return null;
@@ -132,7 +137,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Select a valid event and sales status.' }, { status: 400 });
     }
 
-    if (status === 'on_sale' && process.env.NODE_ENV === 'production') {
+    const forceOpenSales = isTicketSalesForceOpenEnabled();
+    if (status === 'on_sale' && process.env.NODE_ENV === 'production' && !forceOpenSales) {
       const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim() || '';
       const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY?.trim() || '';
       let encryptionKeyIsValid = false;
@@ -143,7 +149,7 @@ export async function POST(request: Request) {
       }
       if (!secretKey.startsWith('sk_live_') || !publicKey.startsWith('pk_live_') || !encryptionKeyIsValid) {
         return NextResponse.json({
-          error: 'Live sales require matching live Paystack credentials and a valid ticket-encryption key in the production environment.'
+          error: 'Live sales require matching live Paystack credentials and a valid ticket-encryption key in the production environment. Set FORCE_TICKETING_SALES_OPEN=true only for launch testing, and remove it before full production use.'
         }, { status: 503 });
       }
     }

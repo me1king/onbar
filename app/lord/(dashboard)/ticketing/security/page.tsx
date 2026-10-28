@@ -243,7 +243,7 @@ export default function TicketingSecurityPage() {
               <h2 id="readiness-heading" className="mt-2 text-xl font-black tracking-tight sm:text-2xl">What Ticketing can actually protect today</h2>
               <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">These are implementation states, not green checks from a scan. Items labelled “Not connected” need their own implementation and verification before ticket sales.</p>
             </div>
-            <span className="rounded-full border border-red-300/20 bg-red-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200">Sales release: blocked</span>
+            <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-200">Sales release: launch override</span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {releaseControls.map(control => (
