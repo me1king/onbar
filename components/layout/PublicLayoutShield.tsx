@@ -18,7 +18,6 @@ const LiveTicker = dynamic(() => import('./LiveTicker'), { ssr: false });
 const AbandonedCartBar = dynamic(() => import('./AbandonedCartBar'), { ssr: false });
 const SupportBubble = dynamic(() => import('./SupportBubble'), { ssr: false });
 const ExitIntentPopup = dynamic(() => import('./ExitIntentPopup'), { ssr: false });
-const SignInTrigger = dynamic(() => import('./SignInTrigger'), { ssr: false });
 const CompareBar = dynamic(() => import('../product/CompareBar'), { ssr: false });
 const AIConcierge = dynamic(() => import('../home/AIConcierge'), { ssr: false });
 const ThemeSynchronizer = dynamic(() => import('./ThemeSynchronizer'), { ssr: false });
@@ -207,7 +206,6 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
             <CompareBar />
             <SupportBubble suppressLauncher={suppressFloatingLaunchers} />
             <AIConcierge suppressLauncher={suppressFloatingLaunchers} />
-            <SignInTrigger />
         </>
     );
 }

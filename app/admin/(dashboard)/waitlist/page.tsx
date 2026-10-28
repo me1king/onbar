@@ -1178,10 +1178,13 @@ export default function WaitlistPage() {
           : !data?.contacts.length ? <p className="p-10 text-center text-sm text-slate-500">No signups match these filters.</p>
             : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-xs">
               <thead className="bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500"><tr>{['Person & area','Consent','Interests & frequency','Experience interest','Age group & check','Attribution','Joined','Status','Invite'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
-              <tbody className="divide-y divide-slate-100">{data.contacts.map(contact => (
+              <tbody className="divide-y divide-slate-100">{data.contacts.map((contact, index) => (
                 <tr key={contact.id} className="align-top">
                   <td className="max-w-[220px] px-3 py-4">
-                    <b className="block text-slate-950">{contact.full_name || 'Name not provided'}</b>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex min-w-8 justify-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">#{index + 1}</span>
+                      <b className="block text-slate-950">{contact.full_name || 'Name not provided'}</b>
+                    </div>
                     <a href={`mailto:${encodeURIComponent(contact.email)}`} className="mt-1 block break-all text-primary hover:underline">{contact.email}</a>
                     {contact.phone && <a href={`tel:${encodeURIComponent(contact.phone)}`} className="mt-1 block text-slate-600 hover:underline">{contact.phone}</a>}
                     <span className="mt-2 block font-semibold text-slate-700">{contact.city} · {contact.area}</span>
