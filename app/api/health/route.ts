@@ -9,27 +9,38 @@ export async function GET() {
     const start = performance.now();
     const reports: Record<string, unknown> = {};
     let isHealthy = true;
+    const warnings: string[] = [];
 
     try {
         // 1. Database Pulse
         if (!supabase) throw new Error("Supabase Client Not Configured");
         const dbStart = performance.now();
         const { error: dbError } = await supabase.from('settings').select('key').limit(1);
+        const dbLatency = Math.round(performance.now() - dbStart);
+        const dbStatus = dbError ? 'ERROR' : dbLatency > 1500 ? 'SLOW' : 'OK';
         reports.database = {
-            status: dbError ? 'ERROR' : 'OK',
-            latency: `${Math.round(performance.now() - dbStart)}ms`,
+            status: dbStatus,
+            latency: `${dbLatency}ms`,
             error: dbError?.message
         };
-        if (dbError) isHealthy = false;
+        if (dbError || dbLatency > 1500) {
+            isHealthy = false;
+            if (dbLatency > 1500) warnings.push(`Supabase DB is slow: ${dbLatency}ms latency`);
+        }
 
         // 2. Storage Pulse
         const storageStart = performance.now();
         const { error: stError } = await supabase.storage.listBuckets();
+        const storageLatency = Math.round(performance.now() - storageStart);
+        const storageStatus = stError ? 'ERROR' : storageLatency > 1500 ? 'SLOW' : 'OK';
         reports.storage = {
-            status: stError ? 'ERROR' : 'OK',
-            latency: `${Math.round(performance.now() - storageStart)}ms`
+            status: storageStatus,
+            latency: `${storageLatency}ms`
         };
-        if (stError) isHealthy = false;
+        if (stError || storageLatency > 1500) {
+            isHealthy = false;
+            if (storageLatency > 1500) warnings.push(`Supabase storage is slow: ${storageLatency}ms latency`);
+        }
 
         // 3. Environment Context
         reports.environment = process.env.NODE_ENV;
@@ -41,6 +52,7 @@ export async function GET() {
             ? 'Configured'
             : 'Not configured';
         reports.total_latency = `${Math.round(performance.now() - start)}ms`;
+        if (warnings.length) reports.warnings = warnings;
 
         return NextResponse.json(
             { status: isHealthy ? 'HEALTHY' : 'DEGRADED', ...reports },

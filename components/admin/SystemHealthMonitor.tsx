@@ -11,6 +11,7 @@ interface HealthReport {
     total_latency: string;
     database?: { status: string; latency: string; error?: string };
     storage?: { status: string; latency: string };
+    warnings?: string[];
     error?: string;
 }
 
@@ -45,11 +46,17 @@ export default function SystemHealthMonitor() {
     if (loading && !health) return <div className="h-48 bg-slate-50 rounded-[3rem] animate-pulse" />;
 
     const nodes = [
-        { id: 'api', label: 'Primary API', icon: Globe, status: health?.status === 'HEALTHY' ? 'OK' : 'DEGRADED', latency: health?.total_latency },
-        { id: 'db', label: 'Database Node', icon: Database, status: health?.database?.status || 'ERROR', latency: health?.database?.latency },
-        { id: 'storage', label: 'Asset Storage', icon: HardDrive, status: health?.storage?.status || 'ERROR', latency: health?.storage?.latency },
+        { id: 'api', label: 'Primary API', icon: Globe, status: health?.status === 'HEALTHY' ? 'OK' : health?.status === 'DOWN' ? 'ERROR' : 'SLOW', latency: health?.total_latency },
+        { id: 'db', label: 'Database Node', icon: Database, status: health?.database?.status === 'OK' ? 'OK' : health?.database?.status === 'SLOW' ? 'SLOW' : 'ERROR', latency: health?.database?.latency },
+        { id: 'storage', label: 'Asset Storage', icon: HardDrive, status: health?.storage?.status === 'OK' ? 'OK' : health?.storage?.status === 'SLOW' ? 'SLOW' : 'ERROR', latency: health?.storage?.latency },
         { id: 'network', label: 'Uplink Latency', icon: Activity, status: 'OK', latency: health?.total_latency || '---' }
     ];
+
+    const statusTone = (value: string | undefined) => {
+        if (value === 'OK') return 'bg-emerald-50 text-emerald-600';
+        if (value === 'SLOW') return 'bg-amber-50 text-amber-700';
+        return 'bg-rose-50 text-rose-600';
+    };
 
     return (
         <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-10 text-left relative overflow-hidden group">
@@ -69,11 +76,17 @@ export default function SystemHealthMonitor() {
                 <div className="flex items-center gap-2 px-3 py-1 bg-slate-50 border border-slate-100 rounded-full text-[9px] font-black uppercase text-slate-500">
                     <div className={cn(
                         "h-1.5 w-1.5 rounded-full animate-pulse",
-                        health?.status === 'HEALTHY' ? "bg-emerald-500" : "bg-rose-500"
+                        health?.status === 'HEALTHY' ? "bg-emerald-500" : health?.status === 'DEGRADED' ? "bg-amber-500" : "bg-rose-500"
                     )} />
                     {health?.status || 'OFFLINE'}
                 </div>
             </div>
+
+            {health?.warnings && health.warnings.length > 0 && (
+                <div className="relative z-10 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-amber-900">
+                    {health.warnings.join(' • ')}
+                </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4 relative z-10">
                 {nodes.map((node) => (
@@ -84,7 +97,7 @@ export default function SystemHealthMonitor() {
                             </div>
                             <span className={cn(
                                 "text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded",
-                                node.status === 'OK' ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+                                statusTone(node.status)
                             )}>
                                 {node.status}
                             </span>
