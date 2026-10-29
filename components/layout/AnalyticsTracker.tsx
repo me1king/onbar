@@ -26,7 +26,7 @@ export default function AnalyticsTracker() {
         if (!supabase) return;
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_IN' && session) {
+            if (event === 'SIGNED_IN' && session && isAllowed('analytics')) {
                 const activeSessId = OB_OS.getSessionId();
                 const anonId = localStorage.getItem('ob_anonymous_id');
 
@@ -44,9 +44,7 @@ export default function AnalyticsTracker() {
                 }
 
                 // 3. Track Event
-                if (isAllowed('analytics')) {
-                    OB_OS.track('USER_LOGIN', { userId: session.user.id });
-                }
+                OB_OS.track('USER_LOGIN', { userId: session.user.id });
             }
         });
 
@@ -183,7 +181,18 @@ export default function AnalyticsTracker() {
             }
         }
 
+        const handleConsentUpdate = () => {
+            if (!isAllowed('analytics')) return;
+            startTimeRef.current = Date.now();
+            scrollMilestonesRef.current = new Set();
+            activeTimeRef.current = 0;
+            lastInteractionRef.current = Date.now();
+            void handleTracking();
+        };
+        window.addEventListener('ob-consent-updated', handleConsentUpdate);
+
         return () => {
+            window.removeEventListener('ob-consent-updated', handleConsentUpdate);
             const dwellTime = Date.now() - startTimeRef.current;
             if (isAllowed('analytics') && dwellTime > 1000) {
                 OB_OS.track('TIME_ON_PAGE', {

@@ -14,6 +14,7 @@ import {
   Megaphone,
   RefreshCw,
   Repeat2,
+  Search,
   Users,
   type LucideIcon
 } from 'lucide-react';
@@ -40,6 +41,16 @@ interface CustomerIntelligenceResponse {
   current: PeriodMetrics;
   previous: { revenue: number; orders: number; customers: number };
   referralAttribution: { description: string; orders: number; revenue: number };
+  searchInsights: {
+    available: boolean;
+    windowDays: number;
+    consentedSearches: number;
+    zeroResultSearches: number;
+    topSearches: Array<{ term: string; count: number }>;
+    zeroResultTerms: Array<{ term: string; count: number }>;
+    truncated: boolean;
+    reason?: string;
+  };
   dataReadiness: {
     cac: 'unavailable';
     cacReason: string;
@@ -164,6 +175,63 @@ export default function CustomerIntelligencePage() {
             </div>
 
             <div className="grid gap-5 lg:grid-cols-2">
+              <Card className="rounded-3xl border-slate-100 bg-white p-6 shadow-sm lg:col-span-2 sm:p-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-primary">
+                      <Search size={14} /> Customer taste audit
+                    </p>
+                    <h2 className="mt-2 text-lg font-black text-slate-900">What customers are searching for</h2>
+                    <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
+                      Aggregated search terms from the last {data.searchInsights.windowDays} days where analytics consent was granted. Personal identifiers are excluded, and terms appear only after three searches.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:min-w-64">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Recorded searches</p>
+                      <p className="mt-2 text-2xl font-black text-slate-900">{data.searchInsights.available ? data.searchInsights.consentedSearches.toLocaleString() : '—'}</p>
+                    </div>
+                    <div className="rounded-2xl bg-amber-50 p-4">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-amber-800">Zero-result searches</p>
+                      <p className="mt-2 text-2xl font-black text-amber-950">{data.searchInsights.available ? data.searchInsights.zeroResultSearches.toLocaleString() : '—'}</p>
+                    </div>
+                  </div>
+                </div>
+                {!data.searchInsights.available ? (
+                  <p role="status" className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    {data.searchInsights.reason || 'Search insight data is currently unavailable.'}
+                  </p>
+                ) : (
+                  <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                    {[
+                      { title: 'Most-searched terms', items: data.searchInsights.topSearches },
+                      { title: 'Catalog gaps · no results', items: data.searchInsights.zeroResultTerms }
+                    ].map(group => (
+                      <div key={group.title} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 sm:p-5">
+                        <h3 className="text-xs font-black uppercase tracking-[0.15em] text-slate-700">{group.title}</h3>
+                        {group.items.length ? (
+                          <ol className="mt-4 space-y-2">
+                            {group.items.map((item, index) => (
+                              <li key={`${group.title}-${item.term}`} className="flex items-center justify-between gap-4 rounded-xl bg-white px-3 py-2.5 text-sm">
+                                <span className="min-w-0 truncate font-medium text-slate-800">
+                                  <span className="mr-2 text-xs font-bold text-slate-400">{index + 1}.</span>{item.term}
+                                </span>
+                                <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-600">{item.count.toLocaleString()}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <p className="mt-4 text-sm text-slate-500">No consented search terms recorded in this period.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {data.searchInsights.available && data.searchInsights.truncated && (
+                  <p className="mt-4 text-xs text-amber-800">The audit reached its 10,000-event processing limit; counts may be incomplete.</p>
+                )}
+              </Card>
+
               <Card className="rounded-3xl border-slate-100 bg-white p-6 shadow-sm sm:p-8">
                 <div className="flex items-start gap-4">
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-800"><Info size={20} /></span>

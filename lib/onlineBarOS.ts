@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient';
 import { emitEvent, SystemEventType } from './engines/eventEngine';
 import { generateCorrelationId, generateRequestId } from './utils/correlation';
 import { v4 as uuidv4 } from 'uuid';
+import { isAllowed } from './consentService';
 
 /**
  * ONLINE BAR OS: THE MASTER CONTROLLER
@@ -143,23 +144,18 @@ class OnlineBarOS {
         if (typeof window === 'undefined' || this.isInitialized) return;
 
         try {
-            this.sessionId = localStorage.getItem('ob_session_active_id');
-            if (!this.sessionId) {
-                this.sessionId = uuidv4();
-                localStorage.setItem('ob_session_active_id', this.sessionId);
+            if (isAllowed('analytics')) {
+                this.initializeAnalyticsIdentity();
+                this.restoreQueuedEvents();
+            } else {
+                this.eventQueue = [];
+                localStorage.removeItem(this.eventQueueStorageKey);
             }
-
-            let anonId = localStorage.getItem('ob_anonymous_id');
-            if (!anonId) {
-                anonId = `anon-${uuidv4().substring(0, 8)}`;
-                localStorage.setItem('ob_anonymous_id', anonId);
-            }
-
-            this.restoreQueuedEvents();
 
             // High-fidelity Batch Flusher (15s)
             this.flushInterval = setInterval(() => this.flushQueue(), 15000);
             window.addEventListener('pagehide', this.flushQueueOnPageHide);
+            window.addEventListener('ob-consent-updated', this.handleConsentUpdate);
             document.addEventListener('visibilitychange', this.flushQueueOnHidden);
 
             // 💓 [HEARTBEAT_NODE] High-fidelity Presence (30s)
@@ -210,6 +206,11 @@ class OnlineBarOS {
     }
 
     private async flushQueue() {
+        if (!isAllowed('analytics')) {
+            this.eventQueue = [];
+            this.persistQueuedEvents();
+            return;
+        }
         if (this.eventQueue.length === 0 || !supabase || this.isFlushingQueue) return;
 
         const batch = [...this.eventQueue];
@@ -221,7 +222,7 @@ class OnlineBarOS {
             const { error } = await supabase.rpc('log_event_batch', { p_events: batch });
             if (error) {
                 this.consecutiveFailures++;
-                this.eventQueue = [...batch, ...this.eventQueue];
+                this.eventQueue = isAllowed('analytics') ? [...batch, ...this.eventQueue] : [];
                 this.persistQueuedEvents();
 
                 if (this.consecutiveFailures >= 5) {
@@ -233,7 +234,7 @@ class OnlineBarOS {
                 this.persistQueuedEvents();
             }
         } catch (error) {
-            this.eventQueue = [...batch, ...this.eventQueue];
+            this.eventQueue = isAllowed('analytics') ? [...batch, ...this.eventQueue] : [];
             this.persistQueuedEvents();
             console.warn('[OB_OS] Could not upload queued analytics events:', error);
         } finally {
@@ -246,6 +247,41 @@ class OnlineBarOS {
     };
 
     private flushQueueOnPageHide = () => {
+        void this.flushQueue();
+    };
+
+    private initializeAnalyticsIdentity() {
+        this.sessionId = localStorage.getItem('ob_session_active_id');
+        if (!this.sessionId) {
+            this.sessionId = uuidv4();
+            localStorage.setItem('ob_session_active_id', this.sessionId);
+        }
+
+        if (!localStorage.getItem('ob_anonymous_id')) {
+            localStorage.setItem('ob_anonymous_id', `anon-${uuidv4().substring(0, 8)}`);
+        }
+    }
+
+    private handleConsentUpdate = () => {
+        if (!isAllowed('analytics')) {
+            this.eventQueue = [];
+            this.persistQueuedEvents();
+            this.sessionId = null;
+            try {
+                localStorage.removeItem('ob_session_active_id');
+            } catch (error) {
+                console.warn('[OB_OS] Could not clear the analytics session identifier:', error);
+            }
+            return;
+        }
+        try {
+            this.initializeAnalyticsIdentity();
+            this.restoreQueuedEvents();
+        } catch (error) {
+            console.warn('[OB_OS] Could not initialize consented analytics:', error);
+            return;
+        }
+        this.track('SESSION_START');
         void this.flushQueue();
     };
 
@@ -283,6 +319,7 @@ class OnlineBarOS {
     }
 
     public trackHeatmapClick(details: Record<string, unknown>) {
+        if (!isAllowed('analytics')) return;
         this.queueBehaviorEvent('UI_INTERACTION', details);
         if (this.eventQueue.length >= 10 && supabase) void this.flushQueue();
     }
@@ -307,6 +344,7 @@ class OnlineBarOS {
      */
     public async track(eventType: OSEventType, payload: OSEventPayload = {}) {
         if (!supabase) return;
+        if (!isAllowed('analytics') && !this.isSystemEvent(eventType)) return;
 
         try {
             if (eventType !== 'HEARTBEAT' && eventType !== 'SESSION_START') {
@@ -342,7 +380,7 @@ class OnlineBarOS {
             }
 
             // 2.5 Update Taste DNA on Discovery
-            if (payload.userId && payload.productId) {
+            if (payload.userId && payload.productId && isAllowed('personalization')) {
                 if (eventType === 'PRODUCT_VIEW') {
                     this.evolveTasteDNA(payload.userId, payload.productId, 2).catch(() => {});
                 } else if (eventType === 'ADD_TO_CART') {

@@ -32,7 +32,9 @@ interface WidgetNode {
 const DEFAULT_HOME_WIDGETS: WidgetNode[] = [
     { id: 'default-home-hero', widget_key: 'HERO_WIDGET', rank: 1, config: {} },
     { id: 'default-home-catalog', widget_key: 'TRENDING_WIDGET', rank: 2, config: {} },
+    { id: 'default-home-personalized', widget_key: 'PERSONALIZED_WIDGET', rank: 3, config: {} },
 ];
+const DEFAULT_HOME_EXTENSION_WIDGETS = [DEFAULT_HOME_WIDGETS[2]];
 const EMPTY_WIDGETS: WidgetNode[] = [];
 
 export default function WidgetRegistry({
@@ -42,7 +44,9 @@ export default function WidgetRegistry({
     pageRoute?: string;
     coreWidgetsRendered?: boolean;
 }) {
-    const defaultWidgets = pageRoute === '/' && !coreWidgetsRendered ? DEFAULT_HOME_WIDGETS : EMPTY_WIDGETS;
+    const defaultWidgets = pageRoute !== '/'
+        ? EMPTY_WIDGETS
+        : coreWidgetsRendered ? DEFAULT_HOME_EXTENSION_WIDGETS : DEFAULT_HOME_WIDGETS;
     const [widgets, setWidgets] = React.useState<WidgetNode[]>(
         defaultWidgets
     );

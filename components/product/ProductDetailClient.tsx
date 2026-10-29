@@ -38,6 +38,7 @@ import { productKnowledgeEngine, ProductDossier, SensoryDNA } from '@/lib/engine
 import { supabase } from '@/lib/supabaseClient';
 import { Product } from '@/types/product';
 import { getStoredVariantPrices, getVariantPrice } from '@/lib/productPricing';
+import { isAllowed } from '@/lib/consentService';
 
 import ReviewSection from '@/components/product/ReviewSection';
 import BundleUpsell from './BundleUpsell';
@@ -177,23 +178,26 @@ export default function ProductDetailClient({
             }
 
             const { data: { session } } = await supabase.auth.getSession();
-            let anonymousId = localStorage.getItem('ob_anonymous_id');
-            if (!anonymousId) {
-                anonymousId = `anon-${uuidv4().substring(0, 8)}`;
-                localStorage.setItem('ob_anonymous_id', anonymousId);
+            if (isAllowed('analytics')) {
+                let anonymousId = localStorage.getItem('ob_anonymous_id');
+                if (!anonymousId) {
+                    anonymousId = `anon-${uuidv4().substring(0, 8)}`;
+                    localStorage.setItem('ob_anonymous_id', anonymousId);
+                }
+                await OB_OS.track('PRODUCT_VIEW', {
+                    userId: session?.user?.id,
+                    anonymousId,
+                    productId: product.id,
+                    details: { name: product.name, price: product.price, category: product.category }
+                });
             }
-
-            await OB_OS.track('PRODUCT_VIEW', {
-                userId: session?.user?.id,
-                anonymousId,
-                productId: product.id,
-                details: { name: product.name, price: product.price, category: product.category }
-            });
 
             if (session) {
                 const { data: profile } = await supabase.from('profiles').select('referral_code').eq('id', session.user.id).single();
                 if (profile) setReferralCode(profile.referral_code);
-                await supabase.from('browsing_history').insert([{ user_id: session.user.id, product_id: product.id }]);
+                if (isAllowed('personalization')) {
+                    await supabase.from('browsing_history').insert([{ user_id: session.user.id, product_id: product.id }]);
+                }
             }
 
             if (product.bought_together_ids && product.bought_together_ids.length > 0) {
