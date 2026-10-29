@@ -73,6 +73,26 @@ export default function MerchantDashboardPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [workingOfferId, setWorkingOfferId] = useState<string | null>(null);
+  const [catalogItems, setCatalogItems] = useState([
+    { id: 'tusker-500', name: 'Tusker Lager 500ml', category: 'Beer', vendorPrice: 300, customerPrice: 340, stock: 12, selected: true, reachable: true, eta: 22 },
+    { id: 'smirnoff-750', name: 'Smirnoff Vodka 750ml', category: 'Spirits', vendorPrice: 560, customerPrice: 620, stock: 8, selected: true, reachable: true, eta: 28 },
+    { id: 'coke-500', name: 'Coca-Cola 500ml', category: 'Mixer', vendorPrice: 120, customerPrice: 150, stock: 18, selected: true, reachable: true, eta: 18 },
+    { id: 'guinness-500', name: 'Guinness 500ml', category: 'Beer', vendorPrice: 330, customerPrice: 370, stock: 5, selected: false, reachable: false, eta: 44 },
+    { id: 'jack-750', name: 'Jack Daniels 750ml', category: 'Spirits', vendorPrice: 930, customerPrice: 980, stock: 4, selected: false, reachable: false, eta: 48 },
+  ]);
+  const [catalogFilter, setCatalogFilter] = useState<'All' | 'Beer' | 'Spirits' | 'Mixer'>('All');
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [routingProfile, setRoutingProfile] = useState({
+    isOpen: true,
+    busyMode: false,
+    maxConcurrentOrders: 8,
+    maxRadiusKm: 5,
+    serviceHours: '12:00 - 23:30',
+    routingMode: 'smart',
+    acceptsAlcohol: true,
+    autoReroute: true,
+    staffAlerts: true
+  });
 
   const loadOffers = useCallback(async (token: string) => {
     const response = await fetch('/api/market/merchant-offers', {
@@ -93,6 +113,25 @@ export default function MerchantDashboardPage() {
     if (!response.ok) throw new Error(result.error || 'Could not load your shop.');
     setProducts(result.products || []);
   }, []);
+
+  useEffect(() => {
+    try {
+      const savedProfile = window.localStorage.getItem('merchant-routing-profile');
+      if (savedProfile) {
+        setRoutingProfile((current) => ({ ...current, ...JSON.parse(savedProfile) }));
+      }
+    } catch {
+      // ignore local storage persistence issues in restricted browsers
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('merchant-routing-profile', JSON.stringify(routingProfile));
+    } catch {
+      // ignore local storage persistence issues in restricted browsers
+    }
+  }, [routingProfile]);
 
   useEffect(() => {
     let active = true;
@@ -310,6 +349,200 @@ export default function MerchantDashboardPage() {
                 <span>{inventorySummary.outOfStock} published {inventorySummary.outOfStock === 1 ? 'listing has' : 'listings have'} no sellable stock. Update stock or archive the listing.</span>
               </div>
             )}
+
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="mm-eyebrow">Vendor routing controls</div>
+                  <h2 className="text-xl font-semibold">Operational coverage & dispatch</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRoutingProfile((current) => ({ ...current, isOpen: !current.isOpen }))}
+                  className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${routingProfile.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}
+                >
+                  {routingProfile.isOpen ? 'Open for delivery' : 'Paused'}
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <label className="space-y-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Max concurrent orders
+                  <input
+                    type="number"
+                    min={1}
+                    max={25}
+                    value={routingProfile.maxConcurrentOrders}
+                    onChange={(event) => setRoutingProfile((current) => ({ ...current, maxConcurrentOrders: Number(event.target.value) || 1 }))}
+                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                  />
+                </label>
+
+                <label className="space-y-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Delivery radius (km)
+                  <input
+                    type="number"
+                    min={1}
+                    max={15}
+                    value={routingProfile.maxRadiusKm}
+                    onChange={(event) => setRoutingProfile((current) => ({ ...current, maxRadiusKm: Number(event.target.value) || 1 }))}
+                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                  />
+                </label>
+
+                <label className="space-y-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Operating hours
+                  <input
+                    type="text"
+                    value={routingProfile.serviceHours}
+                    onChange={(event) => setRoutingProfile((current) => ({ ...current, serviceHours: event.target.value }))}
+                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                  />
+                </label>
+
+                <label className="space-y-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  Routing mode
+                  <select
+                    value={routingProfile.routingMode}
+                    onChange={(event) => setRoutingProfile((current) => ({ ...current, routingMode: event.target.value }))}
+                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                  >
+                    <option value="nearest">Nearest</option>
+                    <option value="smart">Smart</option>
+                    <option value="broadcast">Broadcast</option>
+                    <option value="round_robin">Round robin</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {[
+                  { key: 'busyMode', label: 'Busy mode', description: 'Adds prep-time buffer for high-volume periods' },
+                  { key: 'acceptsAlcohol', label: 'Alcohol licence valid', description: 'Required before alcohol orders can route in' },
+                  { key: 'autoReroute', label: 'Auto reroute', description: 'If the shop misses a dispatch, another vendor can take over' },
+                  { key: 'staffAlerts', label: 'Staff alerts', description: 'Loud push + WhatsApp fallback for missed orders' }
+                ].map((setting) => (
+                  <button
+                    type="button"
+                    key={setting.key}
+                    onClick={() => setRoutingProfile((current) => ({ ...current, [setting.key]: !current[setting.key as keyof typeof current] }))}
+                    className={`rounded-2xl border p-4 text-left transition ${routingProfile[setting.key as keyof typeof routingProfile] ? 'border-primary/20 bg-primary/5' : 'border-slate-200 bg-slate-50'}`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-black">{setting.label}</p>
+                        <p className="mt-1 text-[11px] leading-5 text-slate-500">{setting.description}</p>
+                      </div>
+                      <span className={`h-6 w-11 rounded-full relative ${routingProfile[setting.key as keyof typeof routingProfile] ? 'bg-primary' : 'bg-slate-200'}`}>
+                        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${routingProfile[setting.key as keyof typeof routingProfile] ? 'left-6' : 'left-1'}`} />
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-[#0d1630] p-5 shadow-sm text-white">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Merchant stock</div>
+                  <h2 className="mt-2 text-xl font-semibold text-white">Merchant stock and prices</h2>
+                </div>
+                <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-200">
+                  {catalogItems.filter(item => item.selected && item.reachable).length} visible to customers
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {(['All', 'Beer', 'Spirits', 'Mixer'] as const).map((pill) => (
+                    <button
+                      key={pill}
+                      type="button"
+                      onClick={() => setCatalogFilter(pill)}
+                      className={`rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${catalogFilter === pill ? 'bg-white text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}
+                    >
+                      {pill}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={catalogSearch}
+                  onChange={(event) => setCatalogSearch(event.target.value)}
+                  placeholder="Search stock..."
+                  className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-slate-400 lg:max-w-xs"
+                />
+              </div>
+
+              <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                {catalogItems
+                  .filter((item) => (catalogFilter === 'All' || item.category === catalogFilter) && item.name.toLowerCase().includes(catalogSearch.toLowerCase()))
+                  .map((item) => (
+                  <div key={item.id} className={`relative overflow-hidden rounded-[1.5rem] border ${item.selected ? 'border-emerald-400/70' : 'border-white/10'} bg-[#1b2747]`}>
+                    <button
+                      type="button"
+                      onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, selected: !entry.selected } : entry))}
+                      className="relative block w-full text-left"
+                    >
+                      <div className={`flex min-h-[180px] items-center justify-center text-6xl ${item.selected ? 'bg-[#d8c3b7]' : item.category === 'Spirits' ? 'bg-[#cfe5ef]' : item.category === 'Beer' ? 'bg-[#d9c09d]' : 'bg-[#e6c7d8]'}`}>
+                        <span aria-hidden="true">{item.category === 'Beer' ? '🍺' : item.category === 'Spirits' ? '🍸' : '🥤'}</span>
+                      </div>
+                      {item.selected && (
+                        <span className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-lg text-white shadow-lg shadow-emerald-500/30">✓</span>
+                      )}
+                    </button>
+
+                    <div className="space-y-3 p-4">
+                      <div className="min-h-[48px]">
+                        <p className="text-lg font-black text-white">{item.name}</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">{item.category}</p>
+                      </div>
+
+                      {item.selected ? (
+                        <>
+                          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                            <button type="button" onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, vendorPrice: Math.max(0, entry.vendorPrice - 10) } : entry))} className="h-9 w-9 rounded-lg bg-slate-700 text-lg font-black text-white">−</button>
+                            <div className="text-center">
+                              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Your price</div>
+                              <div className="text-2xl font-black text-white">KSh {item.vendorPrice}</div>
+                            </div>
+                            <button type="button" onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, vendorPrice: entry.vendorPrice + 10 } : entry))} className="h-9 w-9 rounded-lg bg-slate-700 text-lg font-black text-white">+</button>
+                          </div>
+
+                          <div className="text-[11px] text-slate-300">Typical nearby: <span className="font-bold text-slate-100">KES {Math.max(200, item.customerPrice - 30)}–{item.customerPrice + 20}</span></div>
+                          <div className="rounded-xl bg-emerald-500/15 px-3 py-2 text-sm font-black text-emerald-200">You receive KES {item.vendorPrice} each</div>
+
+                          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                            <button type="button" onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, stock: Math.max(0, entry.stock - 1) } : entry))} className="h-9 w-9 rounded-lg bg-slate-700 text-lg font-black text-white">−</button>
+                            <div className="text-center">
+                              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Stock</div>
+                              <div className="text-2xl font-black text-white">{item.stock}</div>
+                            </div>
+                            <button type="button" onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, stock: entry.stock + 1 } : entry))} className="h-9 w-9 rounded-lg bg-slate-700 text-lg font-black text-white">+</button>
+                          </div>
+
+                          {item.stock === 0 && (
+                            <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-2 py-2 text-[11px] font-bold text-amber-100">Out of stock: hidden from customers</div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-white/15 bg-white/5 px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Tap the photo to sell this</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#101b35] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Selected items</div>
+                  <div className="mt-1 text-sm text-slate-200">{catalogItems.filter(item => item.selected).length} items listed</div>
+                  <div className="text-[11px] text-slate-400">{catalogItems.filter(item => item.selected && item.stock > 0).length} in stock and visible to customers</div>
+                </div>
+                <button type="button" onClick={() => {}} className="h-12 rounded-2xl bg-emerald-400 px-6 text-sm font-black text-slate-900 shadow-lg shadow-emerald-500/30">Save my stock</button>
+              </div>
+            </div>
+
             <form id="merchant-listing-form" className="mm-form" onSubmit={submitProduct}>
               <div className="mm-form-wide flex flex-wrap items-center justify-between gap-3">
                 <div>

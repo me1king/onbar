@@ -331,14 +331,42 @@ export async function POST(request: Request) {
             const data = event.data;
             const reference = data.reference;
 
-            await database
+            const { data: failedOrders, error: failureUpdateError } = await database
                 .from('orders')
                 .update({
                     status: 'Payment Failed',
                     note: `Payment failed: ${data.gateway_response || 'Unknown Error'}`
                 })
                 .eq('checkout_request_id', reference)
-                .eq('status', 'Pending');
+                .eq('status', 'Pending')
+                .select('id');
+            if (failureUpdateError) {
+                console.error('[PaystackWebhook] Could not update failed payment order:', failureUpdateError);
+                return NextResponse.json({ error: 'Payment failure status could not be saved.' }, { status: 500 });
+            }
+            const notificationSecret = process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
+            if (notificationSecret) {
+                for (const failedOrder of failedOrders || []) {
+                    try {
+                        const notificationResponse = await fetch(new URL('/api/admin/notify-customer', getPublicBaseUrl()), {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${notificationSecret}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ orderId: failedOrder.id, status: 'Payment Failed' }),
+                            cache: 'no-store'
+                        });
+                        if (!notificationResponse.ok) {
+                            console.error('[PaystackWebhook] Payment failed, but the customer notification was rejected:', notificationResponse.status);
+                        }
+                    } catch (notificationError) {
+                        console.error('[PaystackWebhook] Payment failed, but the customer notification could not be sent:', notificationError);
+                    }
+                }
+            } else if (failedOrders?.length) {
+                console.error('[PaystackWebhook] Payment failed, but INTERNAL_API_SECRET is not configured for customer notifications.');
+            }
         }
 
         return NextResponse.json({ received: true }, { status: 200 });

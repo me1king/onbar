@@ -17,11 +17,13 @@ import TaxControlCenter from '@/components/admin/finance/TaxControlCenter';
 import InventoryValuation from '@/components/admin/finance/InventoryValuation';
 import ReconciliationEngine from '@/components/admin/finance/ReconciliationEngine';
 import { AdminFinanceData, FinancialLedgerEntry } from '@/lib/adminFinanceTypes';
+import type { LaunchOpsSummary } from '@/lib/launchOperations';
 
 export default function AdminFinancePage() {
     const [loading, setLoading] = React.useState(true);
     const [ledger, setLedger] = React.useState<FinancialLedgerEntry[]>([]);
     const [financeData, setFinanceData] = React.useState<AdminFinanceData | null>(null);
+    const [launchOpsSummary, setLaunchOpsSummary] = React.useState<LaunchOpsSummary | null>(null);
     const [currency, setCurrency] = React.useState<'KES' | 'USD'>('KES');
     const exchangeRate = 129.5;
     const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -54,9 +56,21 @@ export default function AdminFinancePage() {
         }
     }, []);
 
+    const fetchLaunchOps = React.useCallback(async () => {
+        try {
+            const response = await fetch('/api/admin/launch-ops', { cache: 'no-store' });
+            const result = await response.json() as LaunchOpsSummary & { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Launch ops data could not be loaded.');
+            setLaunchOpsSummary(result);
+        } catch (err) {
+            console.error('Launch Ops sync failed:', err);
+        }
+    }, []);
+
     React.useEffect(() => {
-        fetchLedger();
-    }, [fetchLedger]);
+        void fetchLedger();
+        void fetchLaunchOps();
+    }, [fetchLedger, fetchLaunchOps]);
 
     const stats = React.useMemo(() => {
         const revenue = ledger.filter(l => l.entry_type === 'REVENUE').reduce((s, l) => s + Number(l.amount), 0);
@@ -145,6 +159,71 @@ export default function AdminFinancePage() {
                     </Card>
                 ))}
             </div>
+
+            {launchOpsSummary && (
+                <div className="grid lg:grid-cols-[1.4fr_0.8fr] gap-8">
+                    <Card className="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+                        <div className="flex items-center justify-between gap-3 pb-6">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Launch ops</p>
+                                <h2 className="mt-2 text-2xl font-black uppercase tracking-tighter text-foreground">Delivery command board</h2>
+                            </div>
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-amber-700">
+                                {launchOpsSummary.activeSupportIssues} active issues
+                            </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-emerald-700">Net profit</p>
+                                <p className="mt-3 text-2xl font-black text-emerald-700">{formatVal(convert(launchOpsSummary.totalNetProfit))}</p>
+                            </div>
+                            <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4">
+                                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-sky-700">Break-even</p>
+                                <p className="mt-3 text-2xl font-black text-sky-700">{launchOpsSummary.breakEvenOrdersPerDay}/day</p>
+                            </div>
+                            <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4">
+                                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-rose-700">Refund exposure</p>
+                                <p className="mt-3 text-2xl font-black text-rose-700">{formatVal(convert(launchOpsSummary.refundExposure))}</p>
+                            </div>
+                            <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+                                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-violet-700">Support queue</p>
+                                <p className="mt-3 text-2xl font-black text-violet-700">{launchOpsSummary.activeSupportIssues}</p>
+                            </div>
+                        </div>
+                        <div className="mt-6 space-y-3">
+                            {launchOpsSummary.issues.map((issue) => (
+                                <div key={issue.id} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">{issue.id}</span>
+                                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.18em] text-slate-600">{issue.type}</span>
+                                        </div>
+                                        <p className="mt-1 text-sm font-semibold text-slate-700">{issue.customer} · {issue.note}</p>
+                                    </div>
+                                    <span className={cn(
+                                        'rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.2em]',
+                                        issue.severity === 'high' ? 'bg-rose-100 text-rose-700' :
+                                        issue.severity === 'medium' ? 'bg-amber-100 text-amber-700' :
+                                        'bg-slate-200 text-slate-700'
+                                    )}>{issue.severity}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+
+                    <Card className="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Launch gaps</p>
+                        <h3 className="mt-2 text-xl font-black uppercase tracking-tighter text-foreground">Still to harden</h3>
+                        <ul className="mt-6 space-y-4 text-sm text-slate-700">
+                            <li className="rounded-2xl border border-rose-100 bg-rose-50 p-3">Money controls: real ledger, M-Pesa reconciliation, promo caps.</li>
+                            <li className="rounded-2xl border border-amber-100 bg-amber-50 p-3">Support flow: wrong item, late delivery, warm beer, credit automation.</li>
+                            <li className="rounded-2xl border border-sky-100 bg-sky-50 p-3">Fraud basics: risk scoring, duplicate receipt checks, OTP throttling.</li>
+                            <li className="rounded-2xl border border-violet-100 bg-violet-50 p-3">Reliability: staging, backups, load tests, monitoring, feature flags.</li>
+                            <li className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">Compliance: legal docs, consent logs, rider/merchant onboarding.</li>
+                        </ul>
+                    </Card>
+                </div>
+            )}
 
             {/* FINANCE OS MODULES */}
             <div className="grid lg:grid-cols-2 gap-8">

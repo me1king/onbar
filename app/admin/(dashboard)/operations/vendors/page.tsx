@@ -40,8 +40,37 @@ export default function MultiVendorHub() {
     const { email: adminEmail } = useAdmin();
     const [vendors, setVendors] = React.useState<Vendor[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [pricingSummary, setPricingSummary] = React.useState<{
+        customerPrice: number;
+        vendorProfit: number;
+        marginPercent: number;
+        visibility: { nearCustomer: boolean; maxDistanceKm: number; reason: string };
+        riders: Array<{ id: string; name: string; dispatchScore: number; payoutEstimate: number }>;
+    } | null>(null);
     const [isOnboarding, setIsOnboarding] = React.useState(false);
     const [message, setMessage] = React.useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [routingMode, setRoutingMode] = React.useState<'nearest' | 'smart' | 'broadcast' | 'round_robin' | 'exclusive'>('smart');
+    const [zoneCoverage] = React.useState([
+        { name: 'Westlands', vendors: 4, status: 'Open', demand: 'High' },
+        { name: 'Kilimani', vendors: 3, status: 'Balanced', demand: 'Medium' },
+        { name: 'Roysambu', vendors: 2, status: 'Busy', demand: 'High' },
+        { name: 'CBD', vendors: 5, status: 'Open', demand: 'Very high' }
+    ]);
+    const [markupProfile, setMarkupProfile] = React.useState({
+        type: 'percent',
+        value: 12,
+        minMargin: 40,
+        roundTo: 10,
+        maxPrice: 850,
+        zone: 'Westlands'
+    });
+    const [assumedSalesPerDay, setAssumedSalesPerDay] = React.useState(18);
+    const [zonePrices] = React.useState([
+        { zone: 'Westlands', beer: 340, spirit: 620, mixer: 230 },
+        { zone: 'Kilimani', beer: 360, spirit: 640, mixer: 250 },
+        { zone: 'Roysambu', beer: 330, spirit: 600, mixer: 220 },
+        { zone: 'CBD', beer: 350, spirit: 630, mixer: 240 }
+    ]);
 
     // Form State
     const [newVendor, setNewVendor] = React.useState({ name: '', email: '' });
@@ -65,6 +94,23 @@ export default function MultiVendorHub() {
     React.useEffect(() => {
         fetchVendors();
     }, [fetchVendors]);
+
+    React.useEffect(() => {
+        let active = true;
+        void fetch('/api/admin/vendor-pricing')
+            .then(async (response) => {
+                if (!response.ok) return;
+                const payload = await response.json();
+                if (active) setPricingSummary(payload);
+            })
+            .catch(() => {
+                // Pricing API is optional for the local prototype build.
+            });
+
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const handleDeleteVendor = async (id: string, name: string) => {
         if (!supabase || !adminEmail) return;
@@ -124,6 +170,264 @@ export default function MultiVendorHub() {
                     </Button>
                 </div>
             </header>
+
+            <Card className="p-6 sm:p-8 rounded-[2rem] border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-xl">
+                <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-300">Zone routing control room</p>
+                        <h2 className="mt-3 text-2xl font-black uppercase tracking-tighter">Vendor area allocation</h2>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {['nearest', 'smart', 'broadcast', 'round_robin', 'exclusive'].map(mode => (
+                            <button
+                                key={mode}
+                                onClick={() => setRoutingMode(mode as typeof routingMode)}
+                                className={cn(
+                                    'rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] transition',
+                                    routingMode === mode ? 'border-amber-300 bg-amber-300 text-slate-900' : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
+                                )}
+                            >
+                                {mode}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 lg:grid-cols-4">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Live mode</p>
+                        <p className="mt-3 text-2xl font-black capitalize">{routingMode}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Delivery fee</p>
+                        <p className="mt-3 text-2xl font-black">KSh 250</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Min order</p>
+                        <p className="mt-3 text-2xl font-black">KSh 1,500</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Fallback</p>
+                        <p className="mt-3 text-2xl font-black">Ops queue</p>
+                    </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Coverage map</p>
+                        <div className="mt-4 space-y-3">
+                            {zoneCoverage.map(zone => (
+                                <div key={zone.name} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm">
+                                    <div>
+                                        <p className="font-black">{zone.name}</p>
+                                        <p className="text-[10px] text-slate-300">{zone.vendors} vendors · {zone.demand} demand</p>
+                                    </div>
+                                    <span className={cn(
+                                        'rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em]',
+                                        zone.status === 'Open' ? 'bg-emerald-500/15 text-emerald-200' :
+                                        zone.status === 'Balanced' ? 'bg-amber-500/15 text-amber-200' : 'bg-rose-500/15 text-rose-200'
+                                    )}>{zone.status}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Routing safeguards</p>
+                        <ul className="mt-4 space-y-3 text-sm text-slate-200">
+                            <li>• 90 second timeout before reroute</li>
+                            <li>• Alcohol licence check before order acceptance</li>
+                            <li>• Live stock validation before assignment</li>
+                            <li>• Manual admin reassignment with audit trail</li>
+                            <li>• Zone pause and whole-platform override</li>
+                        </ul>
+                    </div>
+                </div>
+            </Card>
+
+            <Card className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-primary">Markup manager</p>
+                        <h3 className="mt-2 text-2xl font-black uppercase tracking-tighter text-slate-900">Catalog pricing and reach logic</h3>
+                    </div>
+                    <div className="rounded-full bg-amber-50 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-amber-700">Margin floor active</div>
+                </div>
+
+                <div className="mt-6 grid gap-4 lg:grid-cols-5">
+                    <label className="space-y-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Rule type
+                        <select
+                            value={markupProfile.type}
+                            onChange={(event) => setMarkupProfile((current) => ({ ...current, type: event.target.value }))}
+                            className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                        >
+                            <option value="percent">Percent</option>
+                            <option value="fixed">Fixed</option>
+                            <option value="tiered">Tiered</option>
+                        </select>
+                    </label>
+                    <label className="space-y-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Markup value
+                        <input
+                            type="number"
+                            value={markupProfile.value}
+                            onChange={(event) => setMarkupProfile((current) => ({ ...current, value: Number(event.target.value) || 0 }))}
+                            className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                        />
+                    </label>
+                    <label className="space-y-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Min margin
+                        <input
+                            type="number"
+                            value={markupProfile.minMargin}
+                            onChange={(event) => setMarkupProfile((current) => ({ ...current, minMargin: Number(event.target.value) || 0 }))}
+                            className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                        />
+                    </label>
+                    <label className="space-y-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Round to
+                        <input
+                            type="number"
+                            value={markupProfile.roundTo}
+                            onChange={(event) => setMarkupProfile((current) => ({ ...current, roundTo: Number(event.target.value) || 10 }))}
+                            className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                        />
+                    </label>
+                    <label className="space-y-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                        Zone
+                        <select
+                            value={markupProfile.zone}
+                            onChange={(event) => setMarkupProfile((current) => ({ ...current, zone: event.target.value }))}
+                            className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-primary"
+                        >
+                            {zoneCoverage.map(zone => (
+                                <option key={zone.name} value={zone.name}>{zone.name}</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+
+                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
+                    <table className="w-full text-left">
+                        <thead className="bg-slate-50">
+                            <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">
+                                <th className="px-4 py-3">Zone</th>
+                                <th className="px-4 py-3">Beer</th>
+                                <th className="px-4 py-3">Spirits</th>
+                                <th className="px-4 py-3">Mixer</th>
+                                <th className="px-4 py-3">Reach</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {zonePrices.map(zone => (
+                                <tr key={zone.zone} className="text-sm font-semibold text-slate-800">
+                                    <td className="px-4 py-3">{zone.zone}</td>
+                                    <td className="px-4 py-3">KSh {zone.beer}</td>
+                                    <td className="px-4 py-3">KSh {zone.spirit}</td>
+                                    <td className="px-4 py-3">KSh {zone.mixer}</td>
+                                    <td className="px-4 py-3">{zone.zone === markupProfile.zone ? 'Within reach' : 'Nearby fallback'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+
+            <Card className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-primary">Profit dashboard</p>
+                        <h3 className="mt-2 text-2xl font-black uppercase tracking-tighter text-slate-900">Projected daily sales and profit</h3>
+                    </div>
+                    <label className="flex items-center gap-3 rounded-full bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">
+                        Assumed sales / item / day
+                        <input
+                            type="number"
+                            min={1}
+                            max={200}
+                            value={assumedSalesPerDay}
+                            onChange={(event) => setAssumedSalesPerDay(Number(event.target.value) || 1)}
+                            className="h-10 w-20 rounded-xl border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-900 outline-none focus:border-primary"
+                        />
+                    </label>
+                </div>
+
+                <div className="mt-6 grid gap-4 lg:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Customer price</p>
+                        <p className="mt-3 text-3xl font-black text-slate-900">KSh {Math.ceil((zonePrices[0].spirit * (1 + markupProfile.value / 100)) / markupProfile.roundTo) * markupProfile.roundTo}</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Your profit / item</p>
+                        <p className="mt-3 text-3xl font-black text-emerald-700">KSh {Math.max(markupProfile.minMargin, Math.round((zonePrices[0].spirit * markupProfile.value / 100) - 20))}</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Projected daily profit</p>
+                        <p className="mt-3 text-3xl font-black text-slate-900">KSh {(Math.max(markupProfile.minMargin, Math.round((zonePrices[0].spirit * markupProfile.value / 100) - 20)) * assumedSalesPerDay).toLocaleString('en-KE')}</p>
+                    </div>
+                </div>
+
+                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
+                    <div className="grid gap-4 bg-slate-50 px-4 py-3 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 md:grid-cols-5">
+                        <span>Item</span>
+                        <span>Vendor</span>
+                        <span>Customer</span>
+                        <span>Margin</span>
+                        <span>Floor</span>
+                    </div>
+                    {[
+                        { name: 'Tusker Lager', vendor: 300, customer: 340, margin: 40, floor: 'OK' },
+                        { name: 'Smirnoff Vodka', vendor: 560, customer: 620, margin: 60, floor: 'OK' },
+                        { name: 'Coke 500ml', vendor: 120, customer: 150, margin: 30, floor: 'Low' }
+                    ].map((item) => (
+                        <div key={item.name} className="grid gap-4 border-t border-slate-200 px-4 py-3 text-sm text-slate-800 md:grid-cols-5">
+                            <span>{item.name}</span>
+                            <span>KSh {item.vendor}</span>
+                            <span>KSh {item.customer}</span>
+                            <span className={item.margin >= markupProfile.minMargin ? 'text-emerald-700' : 'text-red-600'}>KSh {item.margin}</span>
+                            <span className={item.margin >= markupProfile.minMargin ? 'text-emerald-700' : 'text-red-600'}>{item.margin >= markupProfile.minMargin ? 'Pass' : 'Below floor'}</span>
+                        </div>
+                    ))}
+                </div>
+            </Card>
+
+            <Card className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-primary">Backend pricing + rider rules</p>
+                        <h3 className="mt-2 text-2xl font-black uppercase tracking-tighter text-slate-900">Live fare simulator</h3>
+                    </div>
+                    <div className="rounded-full bg-emerald-50 px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-700">Ready for DB wiring</div>
+                </div>
+
+                {pricingSummary ? (
+                    <div className="mt-6 grid gap-4 lg:grid-cols-4">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Customer price</p>
+                            <p className="mt-3 text-3xl font-black text-slate-900">KSh {pricingSummary.customerPrice}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Vendor profit</p>
+                            <p className="mt-3 text-3xl font-black text-emerald-700">KSh {pricingSummary.vendorProfit}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Visibility</p>
+                            <p className="mt-3 text-xl font-black text-slate-900">{pricingSummary.visibility.nearCustomer ? 'Visible' : 'Hidden'}</p>
+                            <p className="mt-1 text-xs text-slate-500">{pricingSummary.visibility.reason}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Top rider</p>
+                            <p className="mt-3 text-xl font-black text-slate-900">{pricingSummary.riders[0]?.name ?? 'N/A'}</p>
+                            <p className="mt-1 text-xs text-slate-500">Score {pricingSummary.riders[0]?.dispatchScore ?? 0}</p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                        Loading backend fare simulator…
+                    </div>
+                )}
+            </Card>
 
             {isOnboarding && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/10 backdrop-blur-md p-4">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Loader2, Mail, MessageCircle, MessageSquareText, RefreshCcw, Save, Search, Send } from 'lucide-react';
+import { Bell, Check, Loader2, Mail, MessageCircle, MessageSquareText, RefreshCcw, Save, Search, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -44,12 +44,14 @@ type ProviderReadiness = Record<CustomerNotificationChannel, boolean>;
 const channelLabels: Record<CustomerNotificationChannel, string> = {
   email: 'Email',
   whatsapp: 'WhatsApp',
-  sms: 'SMS'
+  sms: 'SMS',
+  push: 'Web Push'
 };
-const channelIcons = {
+const channelIcons: Record<CustomerNotificationChannel, typeof Bell> = {
   email: Mail,
   whatsapp: MessageCircle,
-  sms: MessageSquareText
+  sms: MessageSquareText,
+  push: Bell
 };
 
 function getDefaultChannels(config: CustomerNotificationConfig) {
@@ -81,7 +83,8 @@ export default function CustomerMessagingAutomationPage() {
   const [providers, setProviders] = useState<ProviderReadiness>({
     email: false,
     whatsapp: false,
-    sms: false
+    sms: false,
+    push: false
   });
   const [draftChannels, setDraftChannels] = useState<Record<string, CustomerNotificationChannel[]>>({});
   const [search, setSearch] = useState('');
@@ -111,7 +114,7 @@ export default function CustomerMessagingAutomationPage() {
       setConfig(loadedConfig);
       setCustomers(result.customers || []);
       setDeliveries(result.deliveries || []);
-      setProviders(result.providers || { email: false, whatsapp: false, sms: false });
+      setProviders(result.providers || { email: false, whatsapp: false, sms: false, push: false });
       setDraftChannels(Object.fromEntries((result.customers || []).map(customer => [
         customer.key,
         customer.channels || defaultChannels
@@ -170,6 +173,10 @@ export default function CustomerMessagingAutomationPage() {
   };
 
   const sendTest = async (status: CustomerNotificationStatus, channel: CustomerNotificationChannel) => {
+    if (channel === 'push') {
+      setTestNotice({ error: true, text: 'Enable delivery push alerts from your signed-in customer profile to test this device.' });
+      return;
+    }
     const key = `${status}:${channel}`;
     setSendingTest(key);
     setTestNotice(null);
@@ -304,9 +311,9 @@ export default function CustomerMessagingAutomationPage() {
       <Card className="space-y-4 rounded-3xl border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <div>
           <h2 className="text-xl font-black uppercase tracking-tight">Provider readiness and test destination</h2>
-          <p className="mt-1 text-sm text-slate-500">Only configuration presence is checked here. A provider may still reject the message or sender.</p>
+          <p className="mt-1 text-sm text-slate-500">Push alerts require the customer to opt in on their own device. Provider configuration alone does not subscribe customers.</p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {CUSTOMER_NOTIFICATION_CHANNELS.map(channel => {
             const Icon = channelIcons[channel];
             return (
@@ -427,9 +434,9 @@ export default function CustomerMessagingAutomationPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => void sendTest(status, channel)}
-                        disabled={sendingTest !== null || !providers[channel] || (channel !== 'email' && !testPhone.trim())}
+                        disabled={sendingTest !== null || !providers[channel] || channel === 'push' || (channel !== 'email' && !testPhone.trim())}
                         className="rounded-lg"
-                        title={!providers[channel] ? `${channelLabels[channel]} provider credentials are missing` : undefined}
+                        title={channel === 'push' ? 'Enable push alerts from your customer profile to test this device' : !providers[channel] ? `${channelLabels[channel]} provider credentials are missing` : undefined}
                       >
                         {sendingTest === testKey ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Icon className="mr-1 h-3.5 w-3.5" />}
                         Test {channelLabels[channel]}

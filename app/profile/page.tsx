@@ -74,6 +74,8 @@ import AchievementBadges from '@/components/profile/AchievementBadges';
 import SecurityDashboard from '@/components/profile/SecurityDashboard';
 import TasteDNA from '@/components/profile/TasteDNA';
 import MarketingPreferences from '@/components/profile/MarketingPreferences';
+import DeliveryPushPreferences from '@/components/profile/DeliveryPushPreferences';
+import DeliveryChannelPreferences from '@/components/profile/DeliveryChannelPreferences';
 
 const LocationPicker = dynamic(() => import('@/components/profile/LocationPicker'), {
     ssr: false,
@@ -988,6 +990,8 @@ export default function ProfilePage() {
             </div>
         </div>
 
+        <DeliveryChannelPreferences />
+        <DeliveryPushPreferences />
         <MarketingPreferences />
 
         {/* 2. REWARD CENTER & MISSIONS */}

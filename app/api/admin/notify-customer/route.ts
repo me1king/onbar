@@ -10,6 +10,7 @@ import { getAdminSession, hasAdminPermission, isInternalRequest, isSameOriginReq
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
 import { sendTransactionalEmail } from '@/lib/jmsurfMail.server';
+import { isWebPushConfigured, sendWebPush } from '@/lib/webPush.server';
 
 type NotificationBody = { orderId?: unknown; status?: unknown; retryChannel?: unknown };
 
@@ -62,7 +63,7 @@ function renderTemplate(
       ? `KES ${amount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : '',
     rider_name: order.rider_name || '',
-    rider_phone: order.rider_phone || '',
+    rider_phone: maskPhone(order.rider_phone || ''),
     eta: order.delivery_eta_minutes == null ? '' : `${order.delivery_eta_minutes} mins`,
     tracking_link: trackingUrl
   };
@@ -74,6 +75,11 @@ function toInternationalPhone(phone: string): string {
   if (digits.startsWith('0')) return `254${digits.slice(1)}`;
   if (digits.startsWith('254')) return digits;
   return digits;
+}
+
+function maskPhone(phone: string): string {
+  const digits = toInternationalPhone(phone);
+  return digits.length >= 4 ? `****${digits.slice(-4)}` : '';
 }
 
 async function sendEmail(to: string, subject: string, message: string, trackingUrl: string) {
@@ -131,6 +137,8 @@ async function sendSms(phone: string, message: string) {
     console.error('[CustomerNotification] SMS provider rejected a notification:', response.status);
     throw new Error('SMS provider rejected the notification.');
   }
+  const result = await response.json() as { sid?: string };
+  return result.sid;
 }
 
 async function claimDelivery(
@@ -200,10 +208,10 @@ export async function POST(request: Request) {
   const orderId = Number(body.orderId);
   const status = body.status;
   if (!Number.isSafeInteger(orderId) || orderId < 1
-    || !['Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
+    || !['Pending', 'Payment Failed', 'Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
     return NextResponse.json({ error: 'A valid order and notification status are required.' }, { status: 400 });
   }
-  if (internal && !['Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
+  if (internal && !['Pending', 'Payment Failed', 'Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
     return NextResponse.json({ error: 'This delivery status cannot be sent as an internal notification.' }, { status: 403 });
   }
   const retryChannel = body.retryChannel;
@@ -216,7 +224,7 @@ export async function POST(request: Request) {
 
   const { data: order, error: orderError } = await database
     .from('orders')
-    .select('id, customer_email, customer_name, customer_phone, status, total_price, rider_name, rider_phone, delivery_eta_minutes')
+    .select('id, user_id, customer_email, customer_name, customer_phone, status, total_price, rider_name, rider_phone, delivery_eta_minutes, notification_sms_opt_in, notification_whatsapp_opt_in')
     .eq('id', orderId)
     .maybeSingle();
   if (orderError) {
@@ -255,9 +263,13 @@ export async function POST(request: Request) {
     }, { status: 422 });
   }
 
-  const allowedChannels = preferenceResult.data?.channels
-    ? CUSTOMER_NOTIFICATION_CHANNELS.filter(channel => preferenceResult.data?.channels?.includes(channel))
-    : rule.channels;
+  const allowedChannels = rule.channels.filter(channel => {
+    if (channel === 'push') return true;
+    if (preferenceResult.data?.channels) return preferenceResult.data.channels.includes(channel);
+    if (channel === 'sms') return order.notification_sms_opt_in === true;
+    if (channel === 'whatsapp') return order.notification_whatsapp_opt_in === true;
+    return true;
+  });
   if (retryChannel && !allowedChannels.includes(retryChannel as CustomerNotificationChannel)) {
     return NextResponse.json({ error: 'This channel is no longer enabled for the customer. Update preferences before retrying.' }, { status: 409 });
   }
@@ -272,11 +284,39 @@ export async function POST(request: Request) {
   const results: { channel: CustomerNotificationChannel; status: string; error?: string }[] = [];
 
   for (const channel of channels) {
+    if (channel === 'push' && (!order.user_id || !isWebPushConfigured())) {
+      results.push({
+        channel,
+        status: 'skipped',
+        error: !order.user_id
+          ? 'This order is not linked to a signed-in customer account.'
+          : 'Web Push is not configured on the server.'
+      });
+      continue;
+    }
     if ((channel === 'email' && !email) || (channel !== 'email' && !phone)) {
+      if (channel === 'push') {
+        results.push({ channel, status: 'skipped', error: 'No customer push destination is available.' });
+        continue;
+      }
       results.push({ channel, status: 'skipped', error: channel === 'email' ? 'No customer email is available.' : 'No customer phone is available.' });
       continue;
     }
     try {
+      let pushSubscriptions: Array<{ endpoint: string; p256dh: string; auth: string }> = [];
+      if (channel === 'push') {
+        const { data, error } = await database
+          .from('customer_push_subscriptions')
+          .select('endpoint, p256dh, auth')
+          .eq('user_id', order.user_id);
+        if (error) throw error;
+        pushSubscriptions = data || [];
+        if (!pushSubscriptions.length) {
+          results.push({ channel, status: 'skipped', error: 'The customer has not enabled push alerts on a device.' });
+          continue;
+        }
+      }
+
       const claim = await claimDelivery(database, orderId, status as CustomerNotificationStatus, channel);
       if (!claim.claimed) {
         results.push({ channel, status: 'already_sent_or_in_progress' });
@@ -289,11 +329,53 @@ export async function POST(request: Request) {
           providerMessageId = sent.messageId;
         }
         if (channel === 'whatsapp') await sendWhatsApp(phone, message);
-        if (channel === 'sms') await sendSms(phone, smsMessage);
+        if (channel === 'sms') providerMessageId = await sendSms(phone, smsMessage);
+        let pushFailures = 0;
+        if (channel === 'push') {
+          const pushMessage: Record<CustomerNotificationStatus, string> = {
+            Pending: 'We received your order. Payment may still be pending.',
+            'Payment Failed': 'Payment was not confirmed. Check your account to retry.',
+            Paid: 'Payment confirmed. We are preparing your order.',
+            Dispatched: 'A rider has been assigned to your order.',
+            'Picked Up': 'Your order has been picked up.',
+            'Out for Delivery': 'Your order is on its way.',
+            Delivered: 'Your order has been delivered.'
+          };
+          const outcomes = await Promise.allSettled(pushSubscriptions.map(subscription => sendWebPush(
+            { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
+            {
+              title: 'Order update',
+              body: pushMessage[status as CustomerNotificationStatus],
+              url: `/track?id=${encodeURIComponent(String(orderId))}`,
+              tag: `order-${orderId}`
+            }
+          )));
+          const expiredEndpoints = pushSubscriptions
+            .filter((_, index) => {
+              const outcome = outcomes[index];
+              return outcome.status === 'rejected'
+                && typeof outcome.reason === 'object'
+                && outcome.reason !== null
+                && 'statusCode' in outcome.reason
+                && [404, 410].includes(Number(outcome.reason.statusCode));
+            })
+            .map(subscription => subscription.endpoint);
+          if (expiredEndpoints.length) {
+            const { error: cleanupError } = await database
+              .from('customer_push_subscriptions')
+              .delete()
+              .in('endpoint', expiredEndpoints);
+            if (cleanupError) console.error('[CustomerNotification] Could not remove expired push endpoints:', cleanupError);
+          }
+          pushFailures = outcomes.filter(outcome => outcome.status === 'rejected').length;
+          if (pushFailures === outcomes.length) throw new Error('Push provider rejected delivery to every subscribed device.');
+        }
         const { error } = await database.from('customer_notification_deliveries')
           .update({
             delivery_status: 'sent',
-            error_message: null,
+            error_message: pushFailures
+              ? `Push was accepted by some devices but failed for ${pushFailures} device(s).`
+              : null,
             updated_at: new Date().toISOString()
           })
           .eq('id', claim.id);

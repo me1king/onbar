@@ -5,10 +5,10 @@ import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Search, Package, Truck, CheckCircle, Clock, AlertCircle, MapPin, Navigation, ShieldCheck, MessageSquare, Cookie, Zap, ArrowRight, Loader2 } from 'lucide-react';
+import { Search, Package, Truck, CheckCircle, Clock, AlertCircle, Navigation, ShieldCheck, MessageSquare, Cookie, Zap, ArrowRight, Loader2, Phone, MessageCircle } from 'lucide-react';
 import { formatPrice, cn, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useSettings } from '@/lib/useSettings';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
@@ -27,21 +27,21 @@ interface OrderDetails {
 }
 
 interface QuickSnack {
-    id: number;
-    name: string;
-    price: number;
-    image_url: string;
-    category: string;
+  id: number;
+  name: string;
+  price: number;
+  image_url: string;
+  category: string;
 }
 
 const STEPS = [
-    { id: 'Pending', label: 'Order Received', icon: Clock, detail: 'Securing your beverages in our cellar...' },
-    { id: 'Paid', label: 'Payment Verified', icon: ShieldCheck, detail: 'M-Pesa sync complete. Funds verified.' },
-    { id: 'Processing', label: 'Chill Check', icon: Package, detail: 'Temperature and quality inspection in progress.' },
-    { id: 'Dispatched', label: 'Rider Assigned', icon: Truck, detail: 'Your rider has been assigned.' },
-    { id: 'Picked Up', label: 'Picked Up', icon: Package, detail: 'Your order has been collected from the vendor.' },
-    { id: 'Out for Delivery', label: 'On the Way', icon: Truck, detail: 'Your rider is heading to your delivery location.' },
-    { id: 'Delivered', label: 'Handed Over', icon: CheckCircle, detail: 'Beverages secured. Welcome to the Bar Club.' },
+  { id: 'Pending', label: 'Order Received', icon: Clock, detail: 'Securing your beverages in our cellar...' },
+  { id: 'Paid', label: 'Payment Verified', icon: ShieldCheck, detail: 'M-Pesa sync complete. Funds verified.' },
+  { id: 'Processing', label: 'Chill Check', icon: Package, detail: 'Temperature and quality inspection in progress.' },
+  { id: 'Dispatched', label: 'Rider Assigned', icon: Truck, detail: 'Your rider has been assigned.' },
+  { id: 'Picked Up', label: 'Picked Up', icon: Package, detail: 'Your order has been collected from the vendor.' },
+  { id: 'Out for Delivery', label: 'On the Way', icon: Truck, detail: 'Your rider is heading to your delivery location.' },
+  { id: 'Delivered', label: 'Handed Over', icon: CheckCircle, detail: 'Beverages secured. Welcome to the Bar Club.' },
 ];
 
 function TrackingContent() {
@@ -52,25 +52,24 @@ function TrackingContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snacks, setSnacks] = useState<QuickSnack[]>([]);
+  const [simulatedProgress, setSimulatedProgress] = useState(0);
 
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { settings } = useSettings();
   const { addToCart } = useCart();
 
-  // Load Quick Snacks
   useEffect(() => {
-      async function fetchSnacks() {
-          if (!supabase) return;
-          const { data } = await supabase
-            .from('products')
-            .select('id, name, price, image_url, category')
-            .eq('is_snack', true)
-            .gt('stock', 0)
-            .limit(3);
-          if (data) setSnacks(data);
-      }
-      fetchSnacks();
+    async function fetchSnacks() {
+      if (!supabase) return;
+      const { data } = await supabase
+        .from('products')
+        .select('id, name, price, image_url, category')
+        .eq('is_snack', true)
+        .gt('stock', 0)
+        .limit(3);
+      if (data) setSnacks(data as QuickSnack[]);
+    }
+    void fetchSnacks();
   }, []);
 
   const fetchOrder = useCallback(async (id: string, phone: string) => {
@@ -82,20 +81,15 @@ function TrackingContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: id.trim(), phone: phone.trim() }),
-        cache: 'no-store'
+        cache: 'no-store',
       });
-      const result = await response.json() as {
-        order?: OrderDetails;
-        token?: string;
-        error?: string;
-      };
+      const result = await response.json() as { order?: OrderDetails; token?: string; error?: string };
       if (!response.ok || !result.order || !result.token) {
         throw new Error(result.error || 'Order or contact details did not match.');
       }
       setOrder(result.order);
       setTrackingToken(result.token);
     } catch (err) {
-      console.error('Track Error:', err);
       setError(err instanceof Error ? err.message : 'Order tracking could not be loaded.');
       setOrder(null);
       setTrackingToken('');
@@ -110,7 +104,7 @@ function TrackingContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
-        cache: 'no-store'
+        cache: 'no-store',
       });
       const result = await response.json() as { order?: OrderDetails; error?: string };
       if (!response.ok || !result.order) {
@@ -127,7 +121,6 @@ function TrackingContent() {
     }
   }, []);
 
-  // Deep links prefill the order ID; a signed-in customer can verify with their profile phone.
   useEffect(() => {
     const urlId = searchParams?.get('id');
 
@@ -145,426 +138,462 @@ function TrackingContent() {
         if (urlId) void fetchOrder(urlId, profile.phone_number);
       }
     }
+
     void initialLoad();
   }, [searchParams, fetchOrder]);
 
-  // Refresh only the explicitly verified order; never subscribe to unrestricted order-row payloads.
   useEffect(() => {
     if (!trackingToken) return;
     const interval = window.setInterval(() => void refreshTracking(trackingToken), 30_000);
     return () => window.clearInterval(interval);
   }, [trackingToken, refreshTracking]);
 
+  useEffect(() => {
+    if (!order || !['Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(order.status)) {
+      setSimulatedProgress(0);
+      return;
+    }
+
+    if (order.status === 'Delivered') {
+      setSimulatedProgress(1);
+      return;
+    }
+
+    const start = Date.now();
+    let rafId = 0;
+    const tick = () => {
+      const elapsed = (Date.now() - start) / 1000;
+      const progress = Math.min(0.97, Math.max(0, elapsed / 70));
+      setSimulatedProgress(progress);
+      if (elapsed < 70 && order.status !== 'Delivered') {
+        rafId = window.requestAnimationFrame(tick);
+      }
+    };
+    rafId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [order]);
+
   const getStatusIndex = (status: string) => {
-    const idx = STEPS.findIndex(s => s.id.toLowerCase() === status.toLowerCase());
+    const idx = STEPS.findIndex((step) => step.id.toLowerCase() === status.toLowerCase());
     return idx === -1 ? 0 : idx;
   };
 
   const currentIndex = order ? getStatusIndex(order.status) : -1;
+  const liveEtaSeconds = Math.max(0, Math.ceil((1 - simulatedProgress) * 70));
+  const liveEtaLabel = order?.status === 'Delivered' ? 'Delivered' : `${Math.floor(liveEtaSeconds / 60)}:${String(liveEtaSeconds % 60).padStart(2, '0')}`;
 
   const handleWhatsAppDispatch = () => {
-      if (!order) return;
-      const message = `Hello Online Bar! I am tracking Order #${order.id} and it says it's Out for Delivery. What is the ETA?`;
-      window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
+    if (!order) return;
+    const message = `Hello Online Bar! I am tracking Order #${order.id} and it says it's Out for Delivery. What is the ETA?`;
+    window.open(`https://wa.me/${settings.contact.whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   return (
-    <div className="min-h-screen bg-white py-16 px-4 sm:px-6 lg:px-8 text-left">
-      <div className="max-w-4xl mx-auto pt-10">
-
+    <div className="min-h-screen bg-white px-4 py-16 text-left sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-4xl pt-10">
         <div className="mb-12">
-            <h1 className="text-5xl font-black tracking-tighter text-foreground uppercase mb-4">Track Delivery</h1>
-            <p className="text-slate-500 font-medium text-lg italic">Real-time visibility into your beverage dispatch.</p>
+          <h1 className="mb-4 text-5xl font-black uppercase tracking-tighter text-foreground">Track Delivery</h1>
+          <p className="text-lg font-medium italic text-slate-500">Real-time visibility into your beverage dispatch.</p>
         </div>
 
-        <Card className="rounded-[3rem] border border-slate-100 shadow-2xl shadow-slate-200/50 mb-12 overflow-hidden bg-white">
-            <CardContent className="p-8 sm:p-14 bg-slate-50/30">
-                <form onSubmit={(e) => { e.preventDefault(); void fetchOrder(orderId, customerPhone); }} className="space-y-6">
-                    <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
-                        <div className="relative flex-1">
-                            <Input
-                                value={orderId}
-                                onChange={(e) => setOrderId(e.target.value)}
-                                inputMode="numeric"
-                                autoComplete="off"
-                                placeholder="Order number"
-                                aria-label="Order number"
-                                className="h-16 rounded-2xl border-slate-200 bg-white pl-14 text-base font-black shadow-inner focus:ring-primary focus:border-primary"
-                            />
-                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
-                        </div>
-                        <Input
-                            value={customerPhone}
-                            onChange={(e) => setCustomerPhone(e.target.value)}
-                            type="tel"
-                            autoComplete="tel"
-                            placeholder="Phone used at checkout"
-                            aria-label="Phone number used at checkout"
-                            className="h-16 rounded-2xl border-slate-200 bg-white px-5 text-base font-bold shadow-inner focus:ring-primary focus:border-primary"
-                        />
-                        <Button type="submit" disabled={loading || !orderId.trim() || !customerPhone.trim()} className="h-16 px-8 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-95 shrink-0">
-                            {loading ? <Loader2 className="animate-spin" /> : 'Locate Order'}
-                        </Button>
-                    </div>
-                    <p className="text-xs font-medium text-slate-500">For your privacy, confirm both the order number and the phone number used at checkout.</p>
-                    {error && (
-                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center gap-3 animate-in slide-in-from-top-2">
-                            <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
-                            <p className="text-rose-600 text-[10px] font-black uppercase tracking-widest leading-relaxed">
-                                {error}
-                            </p>
-                        </div>
-                    )}
-                </form>
-            </CardContent>
+        <Card className="mb-12 overflow-hidden rounded-[3rem] border border-slate-100 bg-white shadow-2xl shadow-slate-200/50">
+          <CardContent className="bg-slate-50/30 p-8 sm:p-14">
+            <form onSubmit={(event) => { event.preventDefault(); void fetchOrder(orderId, customerPhone); }} className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+                <div className="relative flex-1">
+                  <Input
+                    value={orderId}
+                    onChange={(event) => setOrderId(event.target.value)}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="Order number"
+                    aria-label="Order number"
+                    className="h-16 rounded-2xl border-slate-200 bg-white pl-14 text-base font-black shadow-inner focus:border-primary focus:ring-primary"
+                  />
+                  <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300" />
+                </div>
+                <Input
+                  value={customerPhone}
+                  onChange={(event) => setCustomerPhone(event.target.value)}
+                  type="tel"
+                  autoComplete="tel"
+                  placeholder="Phone used at checkout"
+                  aria-label="Phone number used at checkout"
+                  className="h-16 rounded-2xl border-slate-200 bg-white px-5 text-base font-bold shadow-inner focus:border-primary focus:ring-primary"
+                />
+                <Button type="submit" disabled={loading || !orderId.trim() || !customerPhone.trim()} className="h-16 shrink-0 rounded-2xl bg-primary px-8 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] active:scale-95">
+                  {loading ? <Loader2 className="animate-spin" /> : 'Locate Order'}
+                </Button>
+              </div>
+              <p className="text-xs font-medium text-slate-500">For your privacy, confirm both the order number and the phone number used at checkout.</p>
+              {error && (
+                <div className="flex items-center justify-center gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4">
+                  <AlertCircle className="h-5 w-5 shrink-0 text-rose-500" />
+                  <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed text-rose-600">{error}</p>
+                </div>
+              )}
+            </form>
+          </CardContent>
         </Card>
 
-        {/* MUNCHIE NODE: QUICK SNACK INTEGRATION */}
         {!order && snacks.length > 0 && (
-            <section className="mb-20 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
-                <div className="flex items-center justify-between px-4">
-                    <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Cookie size={20} /></div>
-                        <div>
-                            <h3 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none">Munchie Node</h3>
-                            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mt-1">Forgot the bites? Fuel your mission.</p>
-                        </div>
-                    </div>
-                    <Link href="/shop/snacks" className="group flex items-center gap-2 text-[9px] font-black uppercase text-slate-400 hover:text-primary transition-colors">
-                        All Snacks <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                    </Link>
+          <section className="mb-20 space-y-8">
+            <div className="flex items-center justify-between px-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm"><Cookie size={20} /></div>
+                <div>
+                  <h3 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none">Munchie Node</h3>
+                  <p className="mt-1 text-[9px] font-black uppercase tracking-widest text-slate-400">Forgot the bites? Fuel your mission.</p>
                 </div>
+              </div>
+              <Link href="/shop/snacks" className="group flex items-center gap-2 text-[9px] font-black uppercase text-slate-400 transition-colors hover:text-primary">
+                All Snacks <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+              </Link>
+            </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {snacks.map((s) => (
-                        <Card key={s.id} className="p-4 rounded-[2rem] bg-white border border-slate-100 shadow-sm hover:shadow-xl transition-all group/item overflow-hidden relative">
-                            <div className="flex items-center gap-4 relative z-10">
-                                <div className="h-16 w-16 rounded-2xl bg-slate-50 relative overflow-hidden shrink-0 border border-slate-50">
-                                    <Image src={normalizeImage(s.image_url)} alt={s.name} fill className="object-contain p-2 group-hover/item:scale-110 transition-transform" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-[10px] font-black text-foreground uppercase truncate tracking-tight">{s.name}</p>
-                                    <p className="text-xs font-black text-primary mt-0.5">{formatPrice(s.price)}</p>
-                                    <Button
-                                        onClick={() => addToCart({
-                                            id: s.id,
-                                            name: s.name,
-                                            price: s.price,
-                                            base_price: s.price,
-                                            quantity: 1,
-                                            category: s.category,
-                                            image: normalizeImage(s.image_url)
-                                        })}
-                                        className="h-8 px-4 rounded-lg bg-primary text-white font-black uppercase text-[8px] tracking-widest mt-2 shadow-lg shadow-primary/10 active:scale-90 transition-all"
-                                    >
-                                        Add to Bag
-                                    </Button>
-                                </div>
-                            </div>
-                            <Zap className="absolute -bottom-4 -left-4 h-12 w-12 text-primary/5 rotate-45 -z-0" />
-                        </Card>
-                    ))}
-                </div>
-            </section>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {snacks.map((snack) => (
+                <Card key={snack.id} className="group/item relative overflow-hidden rounded-[2rem] border border-slate-100 bg-white p-4 shadow-sm transition-all hover:shadow-xl">
+                  <div className="relative z-10 flex items-center gap-4">
+                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-slate-50 bg-slate-50">
+                      <Image src={normalizeImage(snack.image_url)} alt={snack.name} fill className="object-contain p-2 transition-transform group-hover/item:scale-110" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[10px] font-black uppercase tracking-tight text-foreground">{snack.name}</p>
+                      <p className="mt-0.5 text-xs font-black text-primary">{formatPrice(snack.price)}</p>
+                      <Button
+                        onClick={() => addToCart({ id: snack.id, name: snack.name, price: snack.price, base_price: snack.price, quantity: 1, category: snack.category, image: normalizeImage(snack.image_url) })}
+                        className="mt-2 h-8 rounded-lg bg-primary px-4 text-[8px] font-black uppercase tracking-widest text-white shadow-lg shadow-primary/10 transition-all active:scale-90"
+                      >
+                        Add to Bag
+                      </Button>
+                    </div>
+                  </div>
+                  <Zap className="-bottom-4 -left-4 absolute h-12 w-12 -rotate-45 text-primary/5" />
+                </Card>
+              ))}
+            </div>
+          </section>
         )}
 
         {order ? (
-            <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
-                <div className="bg-white rounded-[3.5rem] border border-slate-100 shadow-2xl overflow-hidden mb-12">
-                    <div className="p-8 sm:p-12 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-                        <div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary mb-2 block">Real-time Pipeline Active</span>
-                            <h2 className="text-4xl font-black text-foreground uppercase tracking-tighter">Order #{order.id}</h2>
+          <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+            <div className="mb-12 overflow-hidden rounded-[3.5rem] border border-slate-100 bg-white shadow-2xl">
+              <div className="flex flex-col items-start justify-between gap-6 border-b border-slate-50 p-8 sm:flex-row sm:items-center sm:p-12">
+                <div>
+                  <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.3em] text-primary">Real-time Pipeline Active</span>
+                  <h2 className="text-4xl font-black uppercase tracking-tighter text-foreground">Order #{order.id}</h2>
+                </div>
+                <div className={`rounded-2xl px-6 py-3 text-[11px] font-black uppercase tracking-widest shadow-lg ${order.status === 'Delivered' ? 'bg-emerald-500 text-white' : order.status === 'Dispatched' ? 'bg-primary text-white shadow-primary/20' : 'bg-amber-500 text-white'}`}>
+                  {order.status}
+                </div>
+              </div>
+
+              <div className="p-8 sm:p-12">
+                <div className="relative mb-12 sm:mb-20">
+                  <div className="absolute left-0 right-0 top-6 hidden h-1.5 rounded-full bg-slate-100 sm:block">
+                    <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{ width: `${(currentIndex / (STEPS.length - 1)) * 100}%` }} />
+                  </div>
+                  <div className="sm:hidden absolute bottom-0 left-6 top-0 w-1 rounded-full bg-slate-100">
+                    <div className="h-full w-full origin-top bg-primary transition-all duration-1000 ease-out" style={{ height: `${(currentIndex / (STEPS.length - 1)) * 100}%` }} />
+                  </div>
+
+                  <div className="relative flex flex-col gap-8 sm:flex-row sm:justify-between sm:gap-0">
+                    {STEPS.map((step, idx) => (
+                      <div key={step.id} className="flex items-center gap-6 sm:flex-col sm:gap-0">
+                        <div className={cn('z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-4 bg-white transition-all duration-700 sm:h-14 sm:w-14', currentIndex >= idx ? 'border-primary text-primary shadow-xl scale-110' : 'border-slate-100 text-slate-200')}>
+                          <step.icon className={cn('h-5 w-5 sm:h-6 sm:w-6', currentIndex === idx && 'animate-pulse')} />
                         </div>
-                        <div className={`px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg ${
-                            order.status === 'Delivered' ? 'bg-emerald-500 text-white' :
-                            order.status === 'Dispatched' ? 'bg-primary text-white shadow-primary/20' :
-                            'bg-amber-500 text-white'
-                        }`}>
-                            {order.status}
+                        <div className="text-left sm:text-center">
+                          <p className={cn('sm:mt-5 text-[10px] font-black uppercase tracking-widest sm:max-w-[80px]', currentIndex >= idx ? 'text-foreground' : 'text-slate-300')}>
+                            {step.label}
+                          </p>
+                          {currentIndex === idx && (
+                            <p className="mt-1 text-[8px] font-bold uppercase tracking-tighter text-primary sm:mt-2 sm:max-w-[100px]">
+                              {step.detail}
+                            </p>
+                          )}
                         </div>
-                    </div>
-
-                    <div className="p-8 sm:p-12">
-                        {/* High-End Progress Visual */}
-                        <div className="relative mb-12 sm:mb-20">
-                            {/* Desktop Horizontal Line */}
-                            <div className="hidden sm:block absolute top-6 left-0 right-0 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-primary transition-all duration-1000 ease-out"
-                                    style={{ width: `${(currentIndex / (STEPS.length - 1)) * 100}%` }}
-                                ></div>
-                            </div>
-
-                            {/* Mobile Vertical Line */}
-                            <div className="sm:hidden absolute left-6 top-0 bottom-0 w-1 bg-slate-100 rounded-full overflow-hidden">
-                                <div
-                                    className="w-full bg-primary transition-all duration-1000 ease-out origin-top"
-                                    style={{ height: `${(currentIndex / (STEPS.length - 1)) * 100}%` }}
-                                ></div>
-                            </div>
-
-                            <div className="relative flex flex-col sm:flex-row justify-between gap-8 sm:gap-0">
-                                {STEPS.map((step, idx) => (
-                                    <div key={step.id} className="flex sm:flex-col items-center gap-6 sm:gap-0">
-                                        <div className={cn(
-                                            "h-12 w-12 sm:h-14 sm:w-14 rounded-2xl flex items-center justify-center border-4 transition-all duration-700 z-10 shrink-0",
-                                            currentIndex >= idx
-                                                ? "bg-white border-primary text-primary shadow-xl scale-110"
-                                                : "bg-white border-slate-100 text-slate-200"
-                                        )}>
-                                            <step.icon className={cn("h-5 w-5 sm:h-6 sm:w-6", currentIndex === idx && "animate-pulse")} />
-                                        </div>
-                                        <div className="sm:text-center text-left">
-                                            <p className={cn(
-                                                "sm:mt-5 text-[10px] font-black uppercase tracking-widest sm:max-w-[80px]",
-                                                currentIndex >= idx ? "text-foreground" : "text-slate-300"
-                                            )}>
-                                                {step.label}
-                                            </p>
-                                            {currentIndex === idx && (
-                                                <p className="mt-1 sm:mt-2 text-[8px] font-bold text-primary uppercase tracking-tighter sm:max-w-[100px] animate-in fade-in duration-1000">
-                                                    {step.detail}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 pt-8 border-t border-slate-50">
-                            <div className="space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Recipient</p>
-                                <p className="font-bold text-foreground uppercase text-xs">{order.customer_name}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Payment</p>
-                                <p className="font-bold text-foreground uppercase text-xs">{order.payment_method}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Total Paid</p>
-                                <p className="font-black text-foreground text-lg">{formatPrice(order.total_price)}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Est. Arrival</p>
-                                <p className="font-bold text-emerald-600 uppercase text-xs">
-                                    {order.status === 'Delivered'
-                                        ? 'Arrived'
-                                        : order.delivery_eta_minutes != null
-                                            ? `${order.delivery_eta_minutes} min`
-                                            : 'ETA not available yet'}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Contextual Action: WhatsApp Dispatch */}
-                        {['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status) && (
-                            <div className="mt-12 p-8 bg-indigo-50 rounded-3xl border border-indigo-100 flex flex-col md:flex-row items-center justify-between gap-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="h-12 w-12 rounded-2xl bg-white flex items-center justify-center text-indigo-600 shadow-sm"><Truck className="h-6 w-6" /></div>
-                                    <div>
-                                        <p className="font-black text-foreground uppercase text-sm tracking-tight">
-                                            {order.rider_name ? `Runner ${order.rider_name} is moving!` : 'Your delivery is moving!'}
-                                        </p>
-                                        <p className="text-indigo-600 text-[10px] font-bold uppercase">
-                                            {order.status === 'Out for Delivery' ? 'Your order is on its way to the delivery address.' : 'Your order is being prepared for the journey.'}
-                                        </p>
-                                    </div>
-                                </div>
-                                <Button
-                                    onClick={handleWhatsAppDispatch}
-                                    className="h-12 px-8 rounded-xl bg-primary hover:bg-primary/90 text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20"
-                                >
-                                    <MessageSquare className="h-4 w-4 mr-2" /> Message Dispatch
-                                </Button>
-                            </div>
-                        )}
-
-                        {order.status === 'Out for Delivery' && (
-                            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-5">
-                                {order.rider_location ? (
-                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                        <div className="flex items-start gap-3">
-                                            <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                                            <div>
-                                                <p className="text-xs font-black uppercase tracking-wide text-foreground">Live rider position</p>
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Updated {new Date(order.rider_location.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Position is approximate for privacy.
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <a
-                                            href={`https://www.google.com/maps/search/?api=1&query=${order.rider_location.latitude},${order.rider_location.longitude}`}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:border-primary/30 hover:text-primary"
-                                        >
-                                            <MapPin className="h-4 w-4" /> View approximate location
-                                        </a>
-                                    </div>
-                                ) : (
-                                    <p className="text-xs font-semibold text-slate-500">
-                                        {order.rider_location_message || 'Live rider location will appear here when a fresh GPS update is available.'}
-                                    </p>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Digital Warranty Card */}
-                        {order.status === 'Delivered' && (
-                            <div className="mt-12 p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 text-foreground relative overflow-hidden shadow-xl animate-in zoom-in-95 duration-700">
-                                <div className="relative z-10">
-                                    <div className="flex items-center justify-between mb-8">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 rounded-2xl bg-primary/20 flex items-center justify-center text-primary shadow-lg shadow-primary/10">
-                                                <ShieldCheck className="h-6 w-6" />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-xl font-black uppercase tracking-tighter leading-none">Bar Quality Guarantee</h3>
-                                                <p className="text-[9px] font-black text-primary uppercase tracking-[0.2em] mt-1.5">Genuine Product Verified</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Serial Key</p>
-                                            <p className="text-[10px] font-black text-foreground uppercase">OB-{order.id}-{new Date(order.created_at).getTime().toString().slice(-4)}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-6">
-                                        <div className="p-5 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
-                                            <p className="text-sm font-bold text-emerald-600 uppercase flex items-center gap-2">
-                                                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                Authenticity Verified
-                                            </p>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="p-5 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Delivered On</p>
-                                                <p className="text-sm font-bold text-foreground uppercase">
-                                                    {new Date(order.created_at).toLocaleDateString()}
-                                                </p>
-                                            </div>
-                                            <div className="p-5 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Coverage</p>
-                                                <p className="text-sm font-bold text-foreground uppercase">Full Refund/Exchange</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <p className="mt-8 text-[10px] text-slate-400 font-medium italic leading-relaxed">
-                                        &quot;Genuine spirits guarantee. If your selection is not up to our standard, our team will replace it instantly within 24 hours.&quot;
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                {/* MUNCHIE NODE: RE-SYNC FOR ACTIVE TRACKING */}
-                {snacks.length > 0 && (
-                    <section className="mb-12 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                        <div className="flex items-center gap-3 px-4">
-                            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Cookie size={16} /></div>
-                            <h3 className="text-lg font-black uppercase tracking-tighter text-foreground leading-none">Add Munchies to your dispatch?</h3>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            {snacks.map((s) => (
-                                <Card key={s.id} className="p-4 rounded-3xl bg-slate-50 border border-slate-100 shadow-inner group/mini hover:bg-white hover:shadow-xl transition-all">
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-12 w-12 rounded-xl bg-white relative overflow-hidden shrink-0 shadow-sm">
-                                            <Image src={normalizeImage(s.image_url)} alt={s.name} fill className="object-contain p-2" />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-[9px] font-black text-foreground uppercase truncate">{s.name}</p>
-                                            <Button
-                                                onClick={() => {
-                                                    addToCart({
-                                                        id: s.id,
-                                                        name: s.name,
-                                                        price: s.price,
-                                                        base_price: s.price,
-                                                        quantity: 1,
-                                                        category: s.category,
-                                                        image: normalizeImage(s.image_url)
-                                                    });
-                                                    router.push('/cart');
-                                                }}
-                                                variant="link"
-                                                className="h-auto p-0 text-primary font-black uppercase text-[8px] tracking-widest mt-1 hover:no-underline"
-                                            >
-                                                Add + Order &rarr;
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    </section>
+                <div className="grid grid-cols-1 gap-10 border-t border-slate-50 pt-8 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Recipient</p>
+                    <p className="text-xs font-bold uppercase text-foreground">{order.customer_name}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Payment</p>
+                    <p className="text-xs font-bold uppercase text-foreground">{order.payment_method}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Total Paid</p>
+                    <p className="text-lg font-black text-foreground">{formatPrice(order.total_price)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Est. Arrival</p>
+                    <p className="text-xs font-bold uppercase text-emerald-600">
+                      {order.status === 'Delivered' ? 'Arrived' : order.delivery_eta_minutes != null ? `${order.delivery_eta_minutes} min` : 'ETA not available yet'}
+                    </p>
+                  </div>
+                </div>
+
+                {['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status) && (
+                  <div className="mt-12 flex flex-col items-center justify-between gap-6 rounded-3xl border border-indigo-100 bg-indigo-50 p-8 md:flex-row">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-indigo-600 shadow-sm"><Truck className="h-6 w-6" /></div>
+                      <div>
+                        <p className="text-sm font-black uppercase tracking-tight text-foreground">
+                          {order.rider_name ? `Runner ${order.rider_name} is moving!` : 'Your delivery is moving!'}
+                        </p>
+                        <p className="text-[10px] font-bold uppercase text-indigo-600">
+                          {order.status === 'Out for Delivery' ? 'Your order is on its way to the delivery address.' : 'Your order is being prepared for the journey.'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button onClick={handleWhatsAppDispatch} className="h-12 rounded-xl bg-primary px-8 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-primary/20 hover:bg-primary/90">
+                      <MessageSquare className="mr-2 h-4 w-4" /> Message Dispatch
+                    </Button>
+                  </div>
                 )}
 
-                <div className="text-center space-y-6">
-                    <p className="text-slate-400 text-sm font-medium italic">Online Bar guarantees genuine products and chilled dispatch.</p>
-                    <div className="flex justify-center gap-4">
-                        <Link href="/">
-                            <Button variant="ghost" className="rounded-xl h-12 px-6 font-black uppercase text-[9px] tracking-widest text-slate-400 hover:text-foreground">
-                                ← Store Home
-                            </Button>
-                        </Link>
-                        <Link href="/contact">
-                            <Button variant="outline" className="rounded-xl h-12 px-8 font-black uppercase text-[9px] tracking-widest border-slate-200 hover:bg-slate-50">
-                                Customer Support
-                            </Button>
-                        </Link>
-                    </div>
-                </div>
-            </div>
-        ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {[
-                    { icon: MapPin, text: 'Nairobi Fast Dispatch', color: 'primary' },
-                    { icon: ShieldCheck, text: 'Verified Authenticity', color: 'emerald-500' },
-                    { icon: Clock, text: 'Live Status Updates', color: 'indigo-500', live: true }
-                ].map((feature, i) => (
-                    <div
-                        key={i}
-                        className="group p-8 rounded-3xl border border-slate-100 bg-white text-center space-y-4 hover:shadow-2xl hover:shadow-slate-200 hover:-translate-y-2 hover:border-primary/20 transition-all duration-500 cursor-default relative overflow-hidden"
-                    >
-                        <div className={cn(
-                            "h-14 w-14 mx-auto rounded-2xl flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:rotate-3",
-                            feature.color === 'primary' ? 'bg-primary/10 text-primary' :
-                            feature.color === 'emerald-500' ? 'bg-emerald-50 text-emerald-500' :
-                            'bg-indigo-50 text-indigo-500'
-                        )}>
-                            <feature.icon className="h-7 w-7" />
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-foreground group-hover:text-primary transition-colors">{feature.text}</p>
-                            {feature.live && (
-                                <div className="flex items-center justify-center gap-1.5 pt-1">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                    <span className="text-[8px] font-black uppercase text-emerald-600 tracking-tighter">Live Monitor</span>
-                                </div>
-                            )}
-                        </div>
-                        {/* Subtle background glow on hover */}
-                        <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-slate-50 rounded-full blur-3xl group-hover:bg-primary/5 transition-all duration-700"></div>
-                    </div>
-                ))}
-            </div>
-        )}
+                {order.status === 'Out for Delivery' && (
+                  <div className="mt-4 rounded-[2rem] border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_24px_60px_-30px_rgba(15,23,42,0.9)]">
+                    <div className="relative mb-5 h-[280px] overflow-hidden rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_20%_20%,rgba(45,212,191,0.25),transparent_22%),linear-gradient(135deg,#0b1323_0%,#11233d_35%,#162a3f_100%)]">
+                      <div className="absolute inset-0 opacity-30" aria-hidden="true">
+                        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:38px_38px]" />
+                      </div>
+                      <div className="absolute inset-y-0 left-[18%] w-1 bg-white/5" />
+                      <div className="absolute inset-x-0 top-[26%] h-1 bg-white/5" />
 
+                      <svg viewBox="0 0 320 280" className="absolute inset-0 h-full w-full" aria-label="Simulated rider route">
+                        <path d="M18 200 L90 200 L120 165 L180 165 L210 120 L260 120 L290 90" fill="none" stroke="rgba(45,212,191,0.9)" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 12px rgba(45,212,191,0.9))' }} />
+                        <path d="M18 200 L90 200 L120 165 L180 165 L210 120 L260 120 L290 90" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+
+                      <div className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white bg-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.8)] transition-all duration-500" style={{ left: `${18 + simulatedProgress * 72}%`, top: `${58 - simulatedProgress * 34}%` }} />
+                      <div className="absolute left-[62%] top-[48%] rounded-full border border-emerald-300/50 bg-emerald-400/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-200">Rider moving</div>
+                    </div>
+
+                    <div className="flex flex-col gap-4 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Arriving</p>
+                        <p className="mt-2 text-3xl font-black uppercase tracking-tighter text-white">{liveEtaLabel}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm transition hover:scale-105" aria-label="Call rider"><Phone className="h-4 w-4" /></button>
+                        <button className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-white shadow-sm transition hover:scale-105" aria-label="Chat with rider"><MessageCircle className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-sm font-black text-slate-900">BK</div>
+                          <div>
+                            <p className="text-base font-black uppercase tracking-tight text-white">Brian K. · 4.9 ★</p>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">Honda CB · KMGB 214X</p>
+                          </div>
+                        </div>
+                        <div className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-emerald-200">On route</div>
+                      </div>
+
+                      <div className="mt-4 flex flex-col gap-3">
+                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
+                          <span>PIN</span>
+                          <span>{simulatedProgress > 0.72 ? 'Visible now' : 'Hidden until close'}</span>
+                        </div>
+                        <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-center text-4xl font-black tracking-[0.35em] text-emerald-300">
+                          {simulatedProgress > 0.72 ? '4827' : '••••'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-start gap-3">
+                          <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-wide text-foreground">Live rider position</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {order.rider_location
+                                ? `Updated ${new Date(order.rider_location.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Position is approximate for privacy.`
+                                : 'Location is temporarily unavailable; the route is in fallback mode.'}
+                            </p>
+                          </div>
+                        </div>
+                        {order.rider_location && (
+                          <a href={`https://www.google.com/maps/search/?api=1&query=${order.rider_location.latitude},${order.rider_location.longitude}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-primary hover:text-primary/80">
+                            Open map <ArrowRight className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {order.status === 'Delivered' && (
+                  <div className="mt-4 rounded-[2rem] border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_24px_60px_-30px_rgba(15,23,42,0.9)]">
+                    <div className="mb-5 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Delivery</p>
+                        <h3 className="mt-2 text-3xl font-black uppercase tracking-tighter text-white">Delivered</h3>
+                      </div>
+                      <div className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.2em] text-emerald-200">Thanks for ordering</div>
+                    </div>
+                    <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
+                        <span>Order confirmed</span>
+                        <span>Shop prepared</span>
+                      </div>
+                      <div className="mt-4 flex items-center gap-3 text-sm text-slate-200">
+                        <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                        This order is complete and safely dropped off.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {order.status !== 'Out for Delivery' && order.status !== 'Delivered' && (
+                  <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-5">
+                    <div className="flex items-start gap-3">
+                      <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wide text-foreground">Dispatcher updates</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {order.rider_name ? `${order.rider_name} is on the way and will update when they are close.` : 'A rider is being assigned and will update location as soon as they are moving.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {order.status === 'Out for Delivery' && (
+                  <div className="mt-8 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Order status</p>
+                      <p className="mt-2 text-lg font-black uppercase tracking-tight text-foreground">{order.status}</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">ETA</p>
+                      <p className="mt-2 text-lg font-black uppercase tracking-tight text-primary">{liveEtaLabel}</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Address share</p>
+                      <p className="mt-2 text-sm font-black uppercase tracking-tight text-foreground">Masked until rider arrives</p>
+                    </div>
+                  </div>
+                )}
+
+                {order.status === 'Out for Delivery' && (
+                  <div className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Rider card</p>
+                        <h3 className="mt-2 text-xl font-black uppercase tracking-tighter text-foreground">Your rider</h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-primary hover:text-primary" aria-label="Call rider"><Phone className="h-4 w-4" /></button>
+                        <button className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-primary hover:text-primary" aria-label="Chat with rider"><MessageSquare className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-lg font-black text-slate-900">BK</div>
+                      <div>
+                        <p className="text-xl font-black uppercase tracking-tight text-foreground">Brian K. · 4.9 ★</p>
+                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Honda CB · KMGB 214X</p>
+                        <p className="mt-2 text-xs font-medium text-slate-600">Dispatching from the merchant. He will confirm a quick ID check when you receive the order.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {order.status === 'Delivered' && (
+                  <div className="mt-12 rounded-[2.5rem] border border-slate-100 bg-slate-50 p-8 text-foreground shadow-xl">
+                    <div className="relative z-10">
+                      <div className="mb-8 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/20 text-primary shadow-lg shadow-primary/10"><ShieldCheck className="h-6 w-6" /></div>
+                          <div>
+                            <h3 className="text-xl font-black uppercase tracking-tighter leading-none">Bar Quality Guarantee</h3>
+                            <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-primary">Genuine Product Verified</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Serial Key</p>
+                          <p className="text-[10px] font-black uppercase text-foreground">OB-{order.id}-{new Date(order.created_at).getTime().toString().slice(-4)}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                          <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">Status</p>
+                          <p className="flex items-center gap-2 text-sm font-bold uppercase text-emerald-600">
+                            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                            Authenticity Verified
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                            <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">Delivered On</p>
+                            <p className="text-sm font-bold uppercase text-foreground">{new Date(order.created_at).toLocaleDateString()}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                            <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">Coverage</p>
+                            <p className="text-sm font-bold uppercase text-foreground">Full Refund/Exchange</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="mt-8 text-[10px] font-medium italic leading-relaxed text-slate-400">&quot;Genuine spirits guarantee. If your selection is not up to our standard, our team will replace it instantly within 24 hours.&quot;</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {snacks.length > 0 && (
+              <section className="mb-12 space-y-6">
+                <div className="flex items-center gap-3 px-4">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-sm"><Cookie size={16} /></div>
+                  <h3 className="text-lg font-black uppercase tracking-tighter text-foreground leading-none">Add Munchies to your dispatch?</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  {snacks.map((snack) => (
+                    <Card key={snack.id} className="rounded-[2rem] border border-slate-100 bg-white p-4 shadow-sm">
+                      <div className="flex items-center gap-4">
+                        <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-slate-50 bg-slate-50">
+                          <Image src={normalizeImage(snack.image_url)} alt={snack.name} fill className="object-contain p-2" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[10px] font-black uppercase tracking-tight text-foreground">{snack.name}</p>
+                          <p className="mt-1 text-xs font-black text-primary">{formatPrice(snack.price)}</p>
+                          <Button onClick={() => addToCart({ id: snack.id, name: snack.name, price: snack.price, base_price: snack.price, quantity: 1, category: snack.category, image: normalizeImage(snack.image_url) })} className="mt-2 h-8 rounded-lg bg-primary px-4 text-[8px] font-black uppercase tracking-widest text-white shadow-lg shadow-primary/10 active:scale-90">
+                            Add to Bag
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-export default function OrderTrackingPage() {
-    return (
-        <Suspense fallback={<div className="p-24 text-center font-black uppercase text-slate-400 animate-pulse">Syncing Tracking Data...</div>}>
-            <TrackingContent />
-        </Suspense>
-    );
+export default function TrackPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white p-8 text-center text-sm font-black uppercase tracking-[0.2em] text-slate-500">Loading tracking...</div>}>
+      <TrackingContent />
+    </Suspense>
+  );
 }

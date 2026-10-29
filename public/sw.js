@@ -56,6 +56,50 @@ self.addEventListener('fetch', (event) => {
   })());
 });
 
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    const parsed = event.data ? event.data.json() : {};
+    payload = parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    console.error('[OB_OS] Invalid push payload:', error);
+  }
+
+  const title = typeof payload.title === 'string' ? payload.title : 'Order update';
+  const body = typeof payload.body === 'string' ? payload.body : 'There is an update to your delivery.';
+  const url = typeof payload.url === 'string' ? payload.url : '/profile';
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag: typeof payload.tag === 'string' ? payload.tag : 'onlinebar-order',
+    renotify: false,
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
+    data: { url }
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const requestedUrl = event.notification.data?.url;
+  let targetUrl = new URL('/profile', self.location.origin);
+  if (typeof requestedUrl === 'string') {
+    try {
+      const parsed = new URL(requestedUrl, self.location.origin);
+      if (parsed.origin === self.location.origin) targetUrl = parsed;
+    } catch (error) {
+      console.error('[OB_OS] Invalid notification destination:', error);
+    }
+  }
+
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    const existing = windowClients.find((client) => new URL(client.url).origin === self.location.origin);
+    if (existing) {
+      return existing.navigate(targetUrl.href).then(() => existing.focus());
+    }
+    return clients.openWindow(targetUrl.href);
+  }));
+});
+
 /**
  * 🛰️ WIDGET ORCHESTRATION
  * Handling home screen node events for Android/Windows terminals.

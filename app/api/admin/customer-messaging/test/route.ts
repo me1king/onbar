@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'A valid test message is required.' }, { status: 400 });
   }
   if (!['email', 'whatsapp', 'sms'].includes(String(body.channel))) {
-    return NextResponse.json({ error: 'Choose email, WhatsApp, or SMS for the test.' }, { status: 400 });
+    return NextResponse.json({ error: 'Choose email, WhatsApp, or SMS for a test. Push alerts can be tested from the signed-in customer profile.' }, { status: 400 });
   }
   const channel = body.channel as 'email' | 'whatsapp' | 'sms';
   const subject = typeof body.subject === 'string' ? body.subject.trim() : '';

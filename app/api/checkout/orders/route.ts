@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { findDeliveryArea, parseDeliveryAreas } from '@/lib/deliveryAreas';
 import { getStoredVariantPrices } from '@/lib/productPricing';
+import { getPublicBaseUrl } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -533,6 +534,28 @@ export async function POST(request: Request) {
             : 'Loyalty points could not be reserved. Please try again.'
         }, { status: pointsChanged ? 409 : 503 });
       }
+    }
+
+    const notificationSecret = process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
+    if (notificationSecret) {
+      try {
+        const notificationResponse = await fetch(new URL('/api/admin/notify-customer', getPublicBaseUrl()), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${notificationSecret}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ orderId: order.id, status: 'Pending' }),
+          cache: 'no-store'
+        });
+        if (!notificationResponse.ok) {
+          console.error('[CheckoutOrder] Order was created, but its placed notification failed:', notificationResponse.status);
+        }
+      } catch (notificationError) {
+        console.error('[CheckoutOrder] Order was created, but its placed notification could not be sent:', notificationError);
+      }
+    } else {
+      console.error('[CheckoutOrder] Order was created, but INTERNAL_API_SECRET is not configured for placed notifications.');
     }
 
     return NextResponse.json({

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Loader2, Mail, MessageCircle, MessageSquareText, RefreshCcw, Save, Search, Send } from 'lucide-react';
+import { Bell, Check, Loader2, Mail, MessageCircle, MessageSquareText, RefreshCcw, Save, Search, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,12 +27,14 @@ interface MessagingCustomer {
 const channelLabels: Record<CustomerNotificationChannel, string> = {
   email: 'Email',
   whatsapp: 'WhatsApp',
-  sms: 'SMS'
+  sms: 'SMS',
+  push: 'Web Push'
 };
-const channelIcons = {
+const channelIcons: Record<CustomerNotificationChannel, typeof Bell> = {
   email: Mail,
   whatsapp: MessageCircle,
-  sms: MessageSquareText
+  sms: MessageSquareText,
+  push: Bell
 };
 
 function getDefaultChannels(config: CustomerNotificationConfig) {
@@ -251,7 +253,7 @@ export default function CustomerMessagingAutomationPage() {
         </div>
         <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-2xl text-xs text-slate-500">
-            Email uses Resend. WhatsApp uses Meta Cloud API. SMS uses Twilio. Add the provider credentials on the server before enabling a channel.
+            Email uses Resend, WhatsApp uses Meta Cloud API, SMS uses Twilio, and Web Push uses VAPID. Push only reaches signed-in customers who opt in on their device.
           </p>
           <Button onClick={() => void saveConfig()} disabled={savingConfig || loading} className="rounded-xl font-bold">
             {savingConfig ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
