@@ -65,6 +65,12 @@ function isSettingUpdate(value: unknown): value is SettingUpdate {
       && theme.custom_css.length <= 20000;
   }
 
+  if (update.key === 'features' && update.value.analytics_provider !== undefined) {
+    return update.value.analytics_provider === 'app'
+      || update.value.analytics_provider === 'vercel'
+      || update.value.analytics_provider === 'both';
+  }
+
   return true;
 }
 

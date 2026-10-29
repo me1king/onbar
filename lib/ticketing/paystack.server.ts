@@ -47,7 +47,10 @@ export async function initializePaystackTicketCheckout(input: {
       reference: input.reference,
       callback_url: input.callbackUrl,
       channels: ['card', 'mobile_money'],
-      metadata: { ticketing_order_id: input.orderId }
+      metadata: {
+        ticketing_order_id: input.orderId,
+        cancel_action: input.callbackUrl
+      }
     }),
     cache: 'no-store',
     signal: AbortSignal.timeout(15000)

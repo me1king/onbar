@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, ShieldAlert, RefreshCcw } from 'lucide-react';
 import { OB_OS } from '@/lib/onlineBarOS';
 import { Button } from '@/components/ui/button';
+import { setAnalyticsProvider } from '@/lib/analyticsProvider';
 
 /**
  * ROOT STABILITY GUARD
@@ -16,11 +17,29 @@ export default function RootStabilityGuard({ children }: { children: React.React
 
     useEffect(() => {
         // 1. Initialize OS Engine (Safe Mode)
-        try {
-            OB_OS.init();
-        } catch (e) {
-            console.error("[ONLINE_BAR] Initialization failure:", e);
-        }
+        void fetch('/api/settings', { cache: 'no-store' })
+            .then(async response => {
+                if (!response.ok) throw new Error('Public analytics settings could not be loaded.');
+                return await response.json() as {
+                    settings?: Array<{ key: string; value: Record<string, unknown> }>;
+                };
+            })
+            .then(result => {
+                const features = result.settings?.find(setting => setting.key === 'features')?.value;
+                if (features?.analytics_provider !== undefined) {
+                    setAnalyticsProvider(features.analytics_provider);
+                }
+            })
+            .catch(error => {
+                console.warn('[ONLINE_BAR] Analytics source could not be loaded; using the last saved browser setting:', error);
+            })
+            .finally(() => {
+                try {
+                    OB_OS.init();
+                } catch (error) {
+                    console.error('[ONLINE_BAR] Initialization failure:', error);
+                }
+            });
 
         // 2. Set Hydration Milestone
         setIsMounted(true);

@@ -52,6 +52,8 @@ import { cn } from '@/lib/utils';
 import { applyThemeColors, DEFAULT_THEME_COLORS, normalizeThemeColors, THEME_UPDATED_EVENT } from '@/lib/themeColors';
 import { isSpiritProductCategory, spiritCategoryPostgrestFilter } from '@/lib/productCategories';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import { setAnalyticsProvider } from '@/lib/analyticsProvider';
+import ConnectionDiagnostics from '@/components/admin/ConnectionDiagnostics';
 
 const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAreaManager'), { ssr: false });
 
@@ -174,11 +176,18 @@ export default function AdminSettingsPage() {
         google_maps_api_key: ''
     });
     const [onboarding, setOnboarding] = useState(DEFAULTS.onboarding_config);
-    const [features, setFeatures] = useState({
+    const [features, setFeatures] = useState<{
+        ai_concierge_enabled: boolean;
+        dynamic_pricing_enabled: boolean;
+        gamification_enabled: boolean;
+        fraud_shield_enabled: boolean;
+        analytics_provider: 'app' | 'vercel' | 'both';
+    }>({
         ai_concierge_enabled: true,
         dynamic_pricing_enabled: true,
         gamification_enabled: true,
-        fraud_shield_enabled: true
+        fraud_shield_enabled: true,
+        analytics_provider: 'app'
     });
 
     const [expandedIntegration, setExpandedIntegration] = useState<string | null>(null);
@@ -265,7 +274,13 @@ export default function AdminSettingsPage() {
                             : DEFAULTS.ai_config.recommendation_limit
                     } as typeof DEFAULTS.ai_config);
                     if (item.key === 'onboarding_config') setOnboarding(item.value as typeof DEFAULTS.onboarding_config);
-                    if (item.key === 'features') setFeatures(item.value as typeof features);
+                    if (item.key === 'features') setFeatures({
+                        ...features,
+                        ...item.value,
+                        analytics_provider: item.value.analytics_provider === 'vercel' || item.value.analytics_provider === 'both'
+                            ? item.value.analytics_provider
+                            : 'app'
+                    } as typeof features);
                 });
             }
 
@@ -404,6 +419,9 @@ export default function AdminSettingsPage() {
             }
 
             await saveSettings([{ key, value: finalValue, is_published: publish }]);
+            if (key === 'features') {
+                setAnalyticsProvider((finalValue as typeof features).analytics_provider);
+            }
 
             await logAuditAction(email, 'UPDATE_SETTINGS', { key, published: publish });
             setMessage({
@@ -1736,6 +1754,7 @@ export default function AdminSettingsPage() {
                     {/* INTEGRATIONS & PAYMENT GATEWAYS TAB */}
                     {activeTab === 'integrations' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
+                            <ConnectionDiagnostics />
 
                             {/* 1. PAYMENT GATEWAYS HUB (PAYSTACK & M-PESA DARAJA) */}
                             <Card className="p-8 sm:p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-8 text-left">
@@ -2025,6 +2044,47 @@ export default function AdminSettingsPage() {
                                             </button>
                                         </div>
                                     ))}
+                                </div>
+                            </Card>
+                            <Card className="rounded-[3rem] border border-slate-100 p-10 bg-white shadow-sm space-y-6 text-left">
+                                <div>
+                                    <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3">
+                                        <Activity className="h-5 w-5 text-primary" /> Analytics collection
+                                    </h2>
+                                    <p className="mt-2 text-sm text-slate-500">
+                                        Choose which analytics systems collect visitor activity. Visitor analytics consent is required for either option.
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label htmlFor="analytics-provider" className="text-[10px] font-black uppercase text-muted-foreground">
+                                        Analytics source
+                                    </label>
+                                    <select
+                                        id="analytics-provider"
+                                        value={features.analytics_provider}
+                                        onChange={event => setFeatures({
+                                            ...features,
+                                            analytics_provider: event.target.value as typeof features.analytics_provider
+                                        })}
+                                        className="h-14 w-full rounded-2xl border border-border bg-secondary px-4 font-bold text-foreground"
+                                    >
+                                        <option value="app">Built-in app analytics</option>
+                                        <option value="vercel">Vercel Analytics</option>
+                                        <option value="both">Both systems</option>
+                                    </select>
+                                    <p className="text-xs leading-relaxed text-slate-500">
+                                        Built-in analytics appear in the app’s Analytics dashboard. Vercel Analytics data is viewed in your Vercel project dashboard.
+                                        {' '}
+                                        <a
+                                            href="https://vercel.com/dashboard"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="font-bold text-primary underline underline-offset-2"
+                                        >
+                                            Open Vercel dashboard
+                                        </a>
+                                        . Make sure Web Analytics is enabled for this Vercel project.
+                                    </p>
                                 </div>
                             </Card>
                         </div>

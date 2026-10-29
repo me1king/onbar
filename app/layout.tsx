@@ -21,7 +21,7 @@ export const viewport: Viewport = {
 
 import PublicLayoutShield from "@/components/layout/PublicLayoutShield";
 import JsonLd from "@/components/seo/JsonLd";
-import AnalyticsTracker from "@/components/layout/AnalyticsTracker";
+import AnalyticsSwitcher from "@/components/layout/AnalyticsSwitcher";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import InstallAppWidget from "@/components/layout/InstallAppWidget";
 import ExperienceNotificationHost from "@/components/layout/ExperienceNotificationHost";
@@ -49,7 +49,7 @@ export default function RootLayout({
                         </PublicLayoutShield>
 
                         <Suspense fallback={null}>
-                            <AnalyticsTracker />
+                            <AnalyticsSwitcher />
                         </Suspense>
 
                         <PostHogSessionReplay appName="Online Bar" />

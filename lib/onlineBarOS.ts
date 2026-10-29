@@ -3,6 +3,7 @@ import { emitEvent, SystemEventType } from './engines/eventEngine';
 import { generateCorrelationId, generateRequestId } from './utils/correlation';
 import { v4 as uuidv4 } from 'uuid';
 import { isAllowed } from './consentService';
+import { isBuiltInAnalyticsEnabled, PROVIDER_UPDATED_EVENT } from './analyticsProvider';
 
 /**
  * ONLINE BAR OS: THE MASTER CONTROLLER
@@ -144,7 +145,7 @@ class OnlineBarOS {
         if (typeof window === 'undefined' || this.isInitialized) return;
 
         try {
-            if (isAllowed('analytics')) {
+            if (isAllowed('analytics') && isBuiltInAnalyticsEnabled()) {
                 this.initializeAnalyticsIdentity();
                 this.restoreQueuedEvents();
             } else {
@@ -156,6 +157,7 @@ class OnlineBarOS {
             this.flushInterval = setInterval(() => this.flushQueue(), 15000);
             window.addEventListener('pagehide', this.flushQueueOnPageHide);
             window.addEventListener('ob-consent-updated', this.handleConsentUpdate);
+            window.addEventListener(PROVIDER_UPDATED_EVENT, this.handleAnalyticsProviderUpdate);
             document.addEventListener('visibilitychange', this.flushQueueOnHidden);
 
             // 💓 [HEARTBEAT_NODE] High-fidelity Presence (30s)
@@ -206,7 +208,7 @@ class OnlineBarOS {
     }
 
     private async flushQueue() {
-        if (!isAllowed('analytics')) {
+        if (!isAllowed('analytics') || !isBuiltInAnalyticsEnabled()) {
             this.eventQueue = [];
             this.persistQueuedEvents();
             return;
@@ -222,7 +224,7 @@ class OnlineBarOS {
             const { error } = await supabase.rpc('log_event_batch', { p_events: batch });
             if (error) {
                 this.consecutiveFailures++;
-                this.eventQueue = isAllowed('analytics') ? [...batch, ...this.eventQueue] : [];
+                this.eventQueue = isAllowed('analytics') && isBuiltInAnalyticsEnabled() ? [...batch, ...this.eventQueue] : [];
                 this.persistQueuedEvents();
 
                 if (this.consecutiveFailures >= 5) {
@@ -234,7 +236,7 @@ class OnlineBarOS {
                 this.persistQueuedEvents();
             }
         } catch (error) {
-            this.eventQueue = isAllowed('analytics') ? [...batch, ...this.eventQueue] : [];
+            this.eventQueue = isAllowed('analytics') && isBuiltInAnalyticsEnabled() ? [...batch, ...this.eventQueue] : [];
             this.persistQueuedEvents();
             console.warn('[OB_OS] Could not upload queued analytics events:', error);
         } finally {
@@ -263,7 +265,7 @@ class OnlineBarOS {
     }
 
     private handleConsentUpdate = () => {
-        if (!isAllowed('analytics')) {
+        if (!isAllowed('analytics') || !isBuiltInAnalyticsEnabled()) {
             this.eventQueue = [];
             this.persistQueuedEvents();
             this.sessionId = null;
@@ -279,6 +281,30 @@ class OnlineBarOS {
             this.restoreQueuedEvents();
         } catch (error) {
             console.warn('[OB_OS] Could not initialize consented analytics:', error);
+            return;
+        }
+        this.track('SESSION_START');
+        void this.flushQueue();
+    };
+
+    private handleAnalyticsProviderUpdate = () => {
+        if (!isBuiltInAnalyticsEnabled()) {
+            this.eventQueue = [];
+            this.persistQueuedEvents();
+            this.sessionId = null;
+            try {
+                localStorage.removeItem('ob_session_active_id');
+            } catch (error) {
+                console.warn('[OB_OS] Could not clear the analytics session identifier:', error);
+            }
+            return;
+        }
+        if (!isAllowed('analytics')) return;
+        try {
+            this.initializeAnalyticsIdentity();
+            this.restoreQueuedEvents();
+        } catch (error) {
+            console.warn('[OB_OS] Could not initialize app analytics:', error);
             return;
         }
         this.track('SESSION_START');
@@ -319,7 +345,7 @@ class OnlineBarOS {
     }
 
     public trackHeatmapClick(details: Record<string, unknown>) {
-        if (!isAllowed('analytics')) return;
+        if (!isAllowed('analytics') || !isBuiltInAnalyticsEnabled()) return;
         this.queueBehaviorEvent('UI_INTERACTION', details);
         if (this.eventQueue.length >= 10 && supabase) void this.flushQueue();
     }
@@ -344,7 +370,9 @@ class OnlineBarOS {
      */
     public async track(eventType: OSEventType, payload: OSEventPayload = {}) {
         if (!supabase) return;
-        if (!isAllowed('analytics') && !this.isSystemEvent(eventType)) return;
+        const isSystemEvent = this.isSystemEvent(eventType);
+        const shouldRecordAnalytics = isAllowed('analytics') && isBuiltInAnalyticsEnabled();
+        if (!shouldRecordAnalytics && !isSystemEvent) return;
 
         try {
             if (eventType !== 'HEARTBEAT' && eventType !== 'SESSION_START') {
@@ -367,9 +395,11 @@ class OnlineBarOS {
             }
 
             // 2. Emit System Event (Logic + Automation)
-            if (this.isSystemEvent(eventType)) {
+            if (isSystemEvent) {
                 await emitEvent(eventType as SystemEventType, payload, { corrId, reqId, sessId });
             }
+
+            if (!shouldRecordAnalytics) return;
 
             // 2. Log to Behavioral Analytics
             await this.logAnalytics(eventType, { ...payload, sessionId: sessId }, { corrId, reqId });
@@ -618,7 +648,7 @@ class OnlineBarOS {
      * Captures high-resolution performance signals.
      */
     public async trackPerformance(type: 'API_LATENCY' | 'RENDER_TIME' | 'ERROR', duration?: number, msg?: string) {
-        if (!supabase) return;
+        if (!supabase || !isAllowed('analytics') || !isBuiltInAnalyticsEnabled()) return;
 
         try {
             await supabase.from('performance_telemetry').insert([{

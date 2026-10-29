@@ -7,6 +7,7 @@ import { Cookie, ArrowRight, Utensils } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 
 interface Product {
   id: number;
@@ -21,53 +22,65 @@ interface Product {
 export default function AllProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let active = true;
     async function loadInventory() {
       setLoading(true);
+      setLoadError(null);
 
       if (!supabase) {
+        if (active) {
           setProducts([]);
+          setLoadError('The product catalogue is not configured. Please contact support.');
           setLoading(false);
-          return;
+        }
+        return;
       }
 
       try {
         const { data, error } = await supabase
           .from('products')
           .select('*')
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .abortSignal(AbortSignal.timeout(10_000));
 
         if (error) {
-          console.warn('Unable to load products from Supabase:', error.message);
-          // Fallback handled below
+          throw error;
         }
 
-        if (data && data.length > 0) {
-          setProducts((data as Product[]).filter(isStorefrontProductVisible));
-        } else {
-          setProducts([]);
+        if (active) {
+          setProducts((data || []).filter(isStorefrontProductVisible) as Product[]);
+          setLoadError(null);
         }
       } catch (err) {
-        console.error('Fetch error:', err);
-        setProducts([]);
+        console.error('[Shop] Product catalogue request failed:', err);
+        if (active) {
+          setProducts([]);
+          setLoadError(
+            err instanceof Error && err.name === 'TimeoutError'
+              ? 'The catalogue request timed out after 10 seconds. Check the database connection and try again.'
+              : 'The catalogue could not be loaded. Check the database connection and try again.'
+          );
+        }
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
-    loadInventory();
+    void loadInventory();
 
-    if (!supabase) return;
-    const channel = supabase
-      .channel('realtime_storefront_shop')
+    const channel = supabase?.channel('realtime_storefront_shop')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
-        loadInventory();
+        void loadInventory();
       })
       .subscribe();
     return () => {
-      if (supabase) void supabase.removeChannel(channel);
+      active = false;
+      if (supabase && channel) void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [retryCount]);
 
   if (loading) {
     return (
@@ -81,6 +94,17 @@ export default function AllProductsPage() {
   return (
     <div className="min-h-screen bg-white py-16 px-4 sm:px-6 lg:px-8 text-left">
       <div className="mx-auto max-w-screen-2xl">
+        {loadError && (
+          <div role="alert" className="mb-8 flex flex-col gap-4 rounded-2xl border border-rose-200 bg-rose-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 text-rose-900">
+              <AlertCircle size={20} className="mt-0.5 shrink-0" />
+              <p className="text-sm font-semibold">{loadError}</p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => setRetryCount(count => count + 1)} className="shrink-0 rounded-xl border-rose-300 bg-white text-rose-800">
+              <RefreshCw size={15} className="mr-2" /> Try again
+            </Button>
+          </div>
+        )}
         <header className="mb-16 border-b border-slate-100 pb-10 flex flex-col md:flex-row justify-between items-end gap-6">
           <div>
             <h1 className="text-5xl font-black tracking-tighter text-foreground uppercase">The Bar Menu</h1>
@@ -122,7 +146,7 @@ export default function AllProductsPage() {
             </div>
         </section>
 
-        {products.length === 0 ? (
+        {products.length === 0 && !loadError ? (
           <div className="text-center py-32 bg-slate-50 rounded-[3rem] border border-slate-100 shadow-inner">
             <p className="text-slate-400 font-black uppercase tracking-[0.2em]">The cellar is currently empty.</p>
           </div>

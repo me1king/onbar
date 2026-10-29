@@ -144,6 +144,7 @@ export interface StoreSettings {
         dynamic_pricing_enabled: boolean;
         gamification_enabled: boolean;
         fraud_shield_enabled: boolean;
+        analytics_provider: 'app' | 'vercel' | 'both';
     };
     ai_config?: {
         build_setup_limit: number;
@@ -278,7 +279,8 @@ export const DEFAULT_SETTINGS: StoreSettings = {
         ai_concierge_enabled: true,
         dynamic_pricing_enabled: true,
         gamification_enabled: true,
-        fraud_shield_enabled: true
+        fraud_shield_enabled: true,
+        analytics_provider: 'app'
     },
     ai_config: {
         build_setup_limit: 5000,
@@ -325,7 +327,13 @@ export function useSettings() {
                         if (item.key === 'seo_config') newSettings.seo_config = { ...newSettings.seo_config, ...item.value };
                         if (item.key === 'social_links') newSettings.social_links = { ...newSettings.social_links, ...item.value };
                         if (item.key === 'store_info') newSettings.store_info = { ...newSettings.store_info, ...item.value };
-                        if (item.key === 'features') newSettings.features = { ...newSettings.features, ...item.value };
+                        if (item.key === 'features') newSettings.features = {
+                            ...newSettings.features,
+                            ...item.value,
+                            analytics_provider: item.value.analytics_provider === 'vercel' || item.value.analytics_provider === 'both'
+                                ? item.value.analytics_provider
+                                : 'app'
+                        };
                         if (item.key === 'ai_config') {
                             newSettings.ai_config = {
                                 ...DEFAULT_SETTINGS.ai_config!,

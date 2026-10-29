@@ -239,8 +239,16 @@ export default function AdminAnalyticsPage() {
                 </div>
                 <div className="flex gap-2">
                     <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm text-[9px] font-black uppercase text-slate-500">
-                        All-time totals
+                        Built-in · all-time totals
                     </div>
+                    <a
+                        href="https://vercel.com/dashboard"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-[9px] font-black uppercase tracking-widest text-slate-700 shadow-sm hover:bg-slate-50"
+                    >
+                        Open Vercel Analytics ↗
+                    </a>
                     <Button
                         onClick={handleDownloadReport}
                         variant="outline"

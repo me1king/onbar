@@ -39,12 +39,6 @@ export async function runAutonomousPricingSync() {
             else if (stock >= 20) {
                 nextPrice = Math.max(min, currentPrice * 0.95);
             }
-            // 3. EQUILIBRIUM: Random micro-fluctuation to test price elasticity
-            else {
-                const flux = (Math.random() * 0.02) - 0.01; // +/- 1%
-                nextPrice = Math.min(max, Math.max(min, currentPrice * (1 + flux)));
-            }
-
             if (Math.round(nextPrice) !== Math.round(currentPrice)) {
                 await supabase
                     .from('products')

@@ -8,8 +8,7 @@ import {
   HALLOWEEN_LISTINGS_STORAGE_KEY,
   HALLOWEEN_LISTINGS_UPDATED_EVENT,
   HalloweenMerchantListing,
-  parseHalloweenMerchantListings,
-  seededMerchantShowcase
+  parseHalloweenMerchantListings
 } from '@/lib/halloweenCatalog';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -60,8 +59,8 @@ export default function MerchantHalloweenPage() {
     name: '',
     category: 'Witch',
     size: 'M',
-    price: '3200',
-    stock: '10',
+    price: '',
+    stock: '',
     description: ''
   });
   const [image, setImage] = useState<string | null>(null);
@@ -72,8 +71,7 @@ export default function MerchantHalloweenPage() {
     const loadListings = () => {
       try {
         const stored = parseHalloweenMerchantListings(localStorage.getItem(HALLOWEEN_LISTINGS_STORAGE_KEY));
-        const merged = [...seededMerchantShowcase, ...stored];
-        setListings(merged);
+        setListings(stored);
       } catch (cause) {
         console.error('[HalloweenMerchant] Could not restore costume listings:', cause);
         setError('Saved listings could not be read in this browser. Export or clear the invalid browser data before continuing.');
@@ -135,18 +133,17 @@ export default function MerchantHalloweenPage() {
 
     const next = [nextListing, ...listings];
     try {
-      const saved = [...seededMerchantShowcase, ...next];
       localStorage.setItem(HALLOWEEN_LISTINGS_STORAGE_KEY, JSON.stringify(next));
-      setListings(saved);
+      setListings(next);
       window.dispatchEvent(new Event(HALLOWEEN_LISTINGS_UPDATED_EVENT));
     } catch (cause) {
       console.error('[HalloweenMerchant] Could not save costume listing:', cause);
       setError('This browser could not save the listing. Remove older listings or use a smaller product photo.');
       return;
     }
-    setForm({ name: '', category: 'Witch', size: 'M', price: '3200', stock: '10', description: '' });
+    setForm({ name: '', category: 'Witch', size: 'M', price: '', stock: '', description: '' });
     setImage(null);
-    setNotice('Listing published to the Halloween shop in this browser.');
+    setNotice('Preview listing saved in this browser only. It is not published to the live marketplace.');
   };
 
   return (

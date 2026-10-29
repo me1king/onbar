@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { useCart } from '@/context/CartContext';
 import {
   HALLOWEEN_LISTINGS_STORAGE_KEY,
   HALLOWEEN_LISTINGS_UPDATED_EVENT,
@@ -15,23 +14,13 @@ import {
 import { HalloweenTryOnStudio } from '@/components/tryon/HalloweenTryOnStudio';
 import { HalloweenFitQuiz } from '@/components/halloween/HalloweenFitQuiz';
 import { HalloweenPhotoTryOn } from '@/components/halloween/HalloweenPhotoTryOn';
-import { ArrowRight, Sparkles, Tag, Wand2, Shirt, Camera } from 'lucide-react';
+import { ArrowRight, Sparkles, Wand2, Shirt, Camera } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isAllowed } from '@/lib/consentService';
 import { OB_OS } from '@/lib/onlineBarOS';
 
-const themePalettes: Record<Exclude<HalloweenTheme, 'All'>, [string, string, string]> = {
-  Witch: ['#2f1b52', '#8b5cf6', '#f5d0fe'],
-  Vampire: ['#1f2937', '#dc2626', '#fca5a5'],
-  Space: ['#0f172a', '#38bdf8', '#dbeafe'],
-  Masquerade: ['#1f2937', '#fbbf24', '#fef3c7'],
-  Hero: ['#111827', '#f97316', '#fef2f2'],
-  Classic: ['#f8fafc', '#cbd5e1', '#e2e8f0']
-};
-
 export function HalloweenShop() {
-  const { addToCart } = useCart();
   const [activeTheme, setActiveTheme] = useState<HalloweenTheme>('All');
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [showFitQuiz, setShowFitQuiz] = useState(false);
@@ -145,7 +134,7 @@ export function HalloweenShop() {
               Costume store <span className="text-violet-300">for the season</span>
             </h1>
             <p className="mt-4 max-w-xl text-base text-violet-100/80 sm:text-lg">
-              Browse costume drops, view real merchant-uploaded product photos, and preview each look in the 3D studio.
+              Explore locally saved costume previews and try the fit tools. No live marketplace inventory is connected yet.
             </p>
           </div>
 
@@ -156,9 +145,6 @@ export function HalloweenShop() {
             <Link href="/merchant/halloween" className="inline-flex items-center gap-2 rounded-full border border-violet-300 bg-violet-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-violet-100 transition hover:bg-violet-500/20">
               Merchant portal
             </Link>
-            <span className="inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-violet-200">
-              <Tag size={12} /> 7-day countdown
-            </span>
           </div>
         </div>
 
@@ -204,10 +190,10 @@ export function HalloweenShop() {
             <div className="mt-3 text-xl font-black uppercase tracking-tighter">Upload your selfie</div>
           </button>
 
-          <Link href="/checkout" className="rounded-[1.5rem] border border-violet-400/30 bg-violet-500/10 p-4 text-left text-white hover:bg-violet-500/20">
-          <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.24em] text-violet-200"><ArrowRight size={12} /> Shopping cart</div>
-          <div className="mt-3 text-xl font-black uppercase tracking-tighter">Review your cart</div>
-          </Link>
+          <div className="rounded-[1.5rem] border border-violet-400/30 bg-violet-500/10 p-4 text-left text-white">
+            <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.24em] text-violet-200"><ArrowRight size={12} /> Marketplace status</div>
+            <div className="mt-3 text-xl font-black uppercase tracking-tighter">Preview only</div>
+          </div>
         </div>
       </div>
 
@@ -217,8 +203,14 @@ export function HalloweenShop() {
 
       {filteredProducts.length === 0 && (
         <div className="mt-8 rounded-2xl border border-violet-200 bg-white p-8 text-center">
-          <h2 className="text-lg font-black text-slate-950">No costumes match that search yet.</h2>
-          <p className="mt-2 text-sm text-slate-600">Try another style, or clear the search to see all available costumes.</p>
+          <h2 className="text-lg font-black text-slate-950">
+            {allProducts.length === 0 ? 'No preview listings saved in this browser.' : 'No costumes match that search.'}
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            {allProducts.length === 0
+              ? 'Live costume inventory is not connected yet. Listings entered in the merchant portal are local previews only.'
+              : 'Try another style, or clear the search to see the preview listings saved in this browser.'}
+          </p>
           <button type="button" onClick={() => { setSearchQuery(''); setActiveTheme('All'); }} className="mt-4 rounded-full bg-slate-950 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white">Clear search and filters</button>
         </div>
       )}
@@ -256,9 +248,6 @@ export function HalloweenShop() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-2xl font-black tracking-tighter text-slate-900">KSh {product.price.toLocaleString()}</span>
-                    {product.oldPrice && (
-                      <span className="text-sm font-semibold text-slate-400 line-through">KSh {product.oldPrice.toLocaleString()}</span>
-                    )}
                   </div>
                   <p className="mt-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-600">Fit note: {product.fitNote}</p>
                 </div>
@@ -293,29 +282,10 @@ export function HalloweenShop() {
 
               <div className="flex gap-3">
                 <Button
-                  className="flex-1 rounded-2xl bg-slate-950 text-white hover:bg-slate-800 font-black uppercase tracking-[0.22em] text-[9px]"
-                  onClick={() => {
-                    const size = selectedSizes[product.id] ?? product.sizes[0];
-                    trackHalloween('HALLOWEEN_ADD_TO_CART', {
-                      product_id: product.id,
-                      product_name: product.name,
-                      category: product.category,
-                      size,
-                      amount: product.price
-                    });
-                    addToCart({
-                      id: product.id,
-                      name: product.name,
-                      price: product.price,
-                      base_price: product.price,
-                      image: product.image ?? '',
-                      quantity: 1,
-                      category: product.category,
-                      size
-                    });
-                  }}
+                  className="flex-1 rounded-2xl bg-slate-200 text-slate-600 font-black uppercase tracking-[0.22em] text-[9px]"
+                  disabled
                 >
-                  Add to cart
+                  Preview only
                 </Button>
                 <Button
                   variant="outline"
