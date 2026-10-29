@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSettings, type StoreSettings } from "@/lib/useSettings";
 import { formatPrice } from "@/lib/utils";
 
-import Image from "next/image";
+import DecodedImage from "@/components/ui/DecodedImage";
 
 export default function DynamicHero({ initialSettings }: { initialSettings?: StoreSettings }) {
   const { settings: hookSettings } = useSettings();
@@ -80,11 +80,12 @@ export default function DynamicHero({ initialSettings }: { initialSettings?: Sto
           <div className="relative animate-in zoom-in-95 duration-1000 delay-200">
               <div className="aspect-square rounded-[4rem] bg-slate-50 border border-slate-100 flex items-center justify-center p-12 overflow-hidden shadow-inner group relative">
                   {settings?.homepage?.hero_image_url ? (
-                      <Image
+                      <DecodedImage
                         src={settings.homepage.hero_image_url}
                         alt="Hero"
                         fill
                         priority
+                        sizes="(max-width: 1024px) 100vw, 50vw"
                         className="object-contain transform group-hover:scale-110 transition-transform duration-700"
                       />
                   ) : (

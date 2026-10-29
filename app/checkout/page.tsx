@@ -444,7 +444,8 @@ function CheckoutContent() {
                   productId: item.id,
                   quantity: item.quantity,
                   size: item.size || 'Standard',
-                  addonIds: (item.addons || []).map(addon => addon.id)
+                  addonIds: (item.addons || []).map(addon => addon.id),
+                  ...(item.engraving ? { engraving: item.engraving } : {})
               })),
               customerName,
               customerPhone,

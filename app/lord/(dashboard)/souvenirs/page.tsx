@@ -30,6 +30,9 @@ interface SouvenirProduct {
     price: number;
     old_price?: number;
     stock: number;
+    engraving_enabled?: boolean;
+    engraving_fee?: number | string;
+    gift_packaging_fee?: number | string;
     low_stock_alert?: number;
     is_available_now: boolean;
     image_url: string | null;
@@ -46,6 +49,9 @@ export default function SouvenirForgePage() {
     const [salesReportAvailable, setSalesReportAvailable] = React.useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [savingEngravingId, setSavingEngravingId] = React.useState<number | string | null>(null);
+    const [engravingDrafts, setEngravingDrafts] = React.useState<Record<string, { enabled: boolean; engravingFee: string; packagingFee: string }>>({});
+    const [engravingSavedId, setEngravingSavedId] = React.useState<number | string | null>(null);
     const [activeCategoryFilter, setActiveCategoryFilter] = React.useState('All');
 
     // Form values are entered by the admin; do not invent catalog details.
@@ -62,7 +68,10 @@ export default function SouvenirForgePage() {
         old_price: '',
         description: '',
         story: '',
-        drink_pairings: ''
+        drink_pairings: '',
+        engraving_enabled: false,
+        engraving_fee: '0',
+        gift_packaging_fee: '150'
     });
     const [imageFile, setImageFile] = React.useState<File | null>(null);
     const [imagePreview, setImagePreview] = React.useState<string | null>(null);
@@ -90,7 +99,13 @@ export default function SouvenirForgePage() {
                 salesReportAvailable?: boolean;
             };
             if (!response.ok) throw new Error(result.error || 'Unable to load souvenir inventory.');
-            setSouvenirs(result.products || []);
+            const products = result.products || [];
+            setSouvenirs(products);
+            setEngravingDrafts(Object.fromEntries(products.map(product => [String(product.id), {
+                enabled: product.engraving_enabled === true,
+                engravingFee: String(product.engraving_fee ?? 0),
+                packagingFee: String(product.gift_packaging_fee ?? 150)
+            }])));
             setGiftOrdersCount(result.giftOrdersCount ?? null);
             setTopSeller(result.topSeller || null);
             setSalesReportAvailable(result.salesReportAvailable === true);
@@ -155,6 +170,59 @@ export default function SouvenirForgePage() {
         }
     };
 
+    const updateEngravingDraft = (id: number | string, field: 'enabled' | 'engravingFee' | 'packagingFee', value: boolean | string) => {
+        setEngravingDrafts(current => ({
+            ...current,
+            [String(id)]: {
+                enabled: current[String(id)]?.enabled ?? false,
+                engravingFee: current[String(id)]?.engravingFee ?? '0',
+                packagingFee: current[String(id)]?.packagingFee ?? '150',
+                [field]: value
+            }
+        }));
+        setEngravingSavedId(null);
+    };
+
+    const saveEngravingSettings = async (item: SouvenirProduct) => {
+        const draft = engravingDrafts[String(item.id)];
+        const engravingFee = Number(draft?.engravingFee);
+        const giftPackagingFee = Number(draft?.packagingFee);
+        if (!draft || !Number.isFinite(engravingFee) || engravingFee < 0
+            || !Number.isFinite(giftPackagingFee) || giftPackagingFee < 0) {
+            setLoadError('Engraving and gift-packaging fees must be valid non-negative amounts.');
+            return;
+        }
+        setSavingEngravingId(item.id);
+        setLoadError(null);
+        try {
+            const response = await fetch('/api/admin/products', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: Number(item.id),
+                    product: {
+                        engraving_enabled: draft.enabled,
+                        engraving_fee: engravingFee,
+                        gift_packaging_fee: giftPackagingFee
+                    }
+                })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Engraving settings could not be saved.');
+            setSouvenirs(current => current.map(product => product.id === item.id ? {
+                ...product,
+                engraving_enabled: draft.enabled,
+                engraving_fee: engravingFee,
+                gift_packaging_fee: giftPackagingFee
+            } : product));
+            setEngravingSavedId(item.id);
+        } catch (error) {
+            setLoadError(error instanceof Error ? error.message : 'Engraving settings could not be saved.');
+        } finally {
+            setSavingEngravingId(null);
+        }
+    };
+
     const handleDelete = async (id: number | string) => {
         if (!confirm('Are you sure you want to remove this souvenir from the catalogue?')) return;
         try {
@@ -179,15 +247,19 @@ export default function SouvenirForgePage() {
         const oldPrice = formData.old_price ? Number(formData.old_price) : null;
         const capacity = formData.capacity_oz ? Number(formData.capacity_oz) : null;
         const weight = formData.weight_grams ? Number(formData.weight_grams) : null;
+        const engravingFee = Number(formData.engraving_fee);
+        const packagingFee = Number(formData.gift_packaging_fee);
         if (
             !formData.name.trim() || !formData.category ||
             !Number.isFinite(price) || price <= 0 ||
             !Number.isInteger(stock) || stock < 0 ||
             (oldPrice !== null && (!Number.isFinite(oldPrice) || oldPrice <= price)) ||
             (capacity !== null && (!Number.isFinite(capacity) || capacity <= 0)) ||
-            (weight !== null && (!Number.isFinite(weight) || weight <= 0))
+            (weight !== null && (!Number.isFinite(weight) || weight <= 0)) ||
+            !Number.isFinite(engravingFee) || engravingFee < 0 ||
+            !Number.isFinite(packagingFee) || packagingFee < 0
         ) {
-            setLoadError('Enter a name, category, positive price, non-negative whole-number stock, and valid optional dimensions and original price.');
+            setLoadError('Enter a name, category, positive price, non-negative stock and engraving fees, and valid optional dimensions and original price.');
             return;
         }
 
@@ -229,7 +301,12 @@ export default function SouvenirForgePage() {
                 drink_pairings: pairings,
                 is_souvenir: true,
                 is_available_now: stock > 0,
-                stock
+                stock,
+                ...(formData.engraving_enabled ? {
+                    engraving_enabled: true,
+                    engraving_fee: engravingFee,
+                    gift_packaging_fee: packagingFee
+                } : {})
             };
             const response = await fetch('/api/admin/products', {
                 method: 'POST',
@@ -245,7 +322,8 @@ export default function SouvenirForgePage() {
             setFormData({
                 name: '', category: '', brand: '', material: '', finish: '', capacity_oz: '',
                 weight_grams: '', stock: '', price: '', old_price: '', description: '',
-                story: '', drink_pairings: ''
+                story: '', drink_pairings: '', engraving_enabled: false, engraving_fee: '0',
+                gift_packaging_fee: '150'
             });
             await fetchSouvenirs();
         } catch (err) {
@@ -428,6 +506,31 @@ export default function SouvenirForgePage() {
                                     </div>
                                 </div>
 
+                                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={engravingDrafts[String(item.id)]?.enabled ?? item.engraving_enabled === true}
+                                            onChange={event => updateEngravingDraft(item.id, 'enabled', event.target.checked)}
+                                            className="h-4 w-4 accent-amber-600"
+                                        />
+                                        Offer custom engraving
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <label className="space-y-1 text-[9px] font-bold uppercase text-slate-500">
+                                            Engraving fee (KSh)
+                                            <Input type="number" min="0" step="any" value={engravingDrafts[String(item.id)]?.engravingFee ?? String(item.engraving_fee ?? 0)} onChange={event => updateEngravingDraft(item.id, 'engravingFee', event.target.value)} className="h-10 rounded-lg bg-white" />
+                                        </label>
+                                        <label className="space-y-1 text-[9px] font-bold uppercase text-slate-500">
+                                            Gift pack (KSh)
+                                            <Input type="number" min="0" step="any" value={engravingDrafts[String(item.id)]?.packagingFee ?? String(item.gift_packaging_fee ?? 150)} onChange={event => updateEngravingDraft(item.id, 'packagingFee', event.target.value)} className="h-10 rounded-lg bg-white" />
+                                        </label>
+                                    </div>
+                                    <Button onClick={() => saveEngravingSettings(item)} disabled={savingEngravingId === item.id} className="h-10 w-full rounded-lg bg-slate-900 text-[9px] font-black uppercase tracking-widest text-white">
+                                        {savingEngravingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : engravingSavedId === item.id ? 'Engraving settings saved' : 'Save engraving settings'}
+                                    </Button>
+                                </div>
+
                                 <div className="flex gap-2">
                                     <Button
                                         onClick={() => toggleAvailability(item.id, item.is_available_now)}
@@ -553,6 +656,28 @@ export default function SouvenirForgePage() {
                                         placeholder="8"
                                         className="rounded-xl h-12 bg-slate-50 border-none"
                                     />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                <label className="flex items-center gap-2 text-xs font-bold text-amber-950">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.engraving_enabled}
+                                        onChange={event => setFormData({ ...formData, engraving_enabled: event.target.checked })}
+                                        className="h-4 w-4 accent-amber-600"
+                                    />
+                                    Offer custom engraving
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <label className="space-y-1 text-[9px] font-bold uppercase text-amber-900">
+                                        Engraving fee (KSh)
+                                        <Input type="number" min="0" step="any" value={formData.engraving_fee} onChange={event => setFormData({ ...formData, engraving_fee: event.target.value })} required className="h-10 rounded-lg bg-white" />
+                                    </label>
+                                    <label className="space-y-1 text-[9px] font-bold uppercase text-amber-900">
+                                        Gift packaging (KSh)
+                                        <Input type="number" min="0" step="any" value={formData.gift_packaging_fee} onChange={event => setFormData({ ...formData, gift_packaging_fee: event.target.value })} required className="h-10 rounded-lg bg-white" />
+                                    </label>
                                 </div>
                             </div>
 

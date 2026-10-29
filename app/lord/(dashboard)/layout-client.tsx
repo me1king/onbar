@@ -49,7 +49,8 @@ import {
   Camera as CameraIcon,
   MapPin,
   PackageSearch,
-  UserRoundPlus
+  UserRoundPlus,
+  ClipboardList
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -166,11 +167,13 @@ export default function AdminLayoutClient({
       { name: 'Kitchen Control', href: '/lord/kitchen', icon: Flame, permission: 'can_manage_kitchen' },
       { name: 'Munchie Hub', href: '/lord/munchies', icon: Cookie, permission: 'can_manage_inventory' },
       { name: 'Souvenir Forge', href: '/lord/souvenirs', icon: Gift, permission: 'can_manage_inventory' },
+      { name: 'Engraving Production', href: '/lord/engraving-production', icon: ClipboardList, permission: 'can_manage_orders' },
       { name: 'Dispatch Queue', href: '/lord/orders', icon: ShoppingCart, permission: 'can_manage_orders' },
     ]},
     { group: 'EXPERIENCE', items: [
       { name: 'Web Widgets', href: '/lord/experience/widgets', icon: LayoutIcon, permission: 'can_manage_settings' },
       { name: 'App Widgets', href: '/lord/experience/mobile-widgets', icon: Smartphone, permission: 'can_manage_settings' },
+      { name: 'Concierge Trainer', href: '/lord/concierge-trainer', icon: MessageCircle, permission: 'can_manage_settings' },
     ]},
     { group: 'OPERATIONS', items: [
       { name: 'Ticketing', href: '/lord/ticketing', icon: Ticket, minRole: 'admin' },

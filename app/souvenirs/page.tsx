@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +9,6 @@ import {
     Gift,
     Sparkles,
     ArrowLeft,
-    Loader2,
     Type,
     X,
     Plus,
@@ -19,7 +17,7 @@ import {
 import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
-import Image from 'next/image';
+import DecodedImage from '@/components/ui/DecodedImage';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 interface SouvenirItem {
@@ -31,9 +29,13 @@ interface SouvenirItem {
     finish?: string;
     capacity_oz?: number;
     weight_grams?: number;
+    is_souvenir?: boolean;
     price: number;
     old_price?: number;
     stock?: number;
+    engraving_enabled?: boolean;
+    engraving_fee?: number;
+    gift_packaging_fee?: number;
     image_url?: string;
     image?: string;
     description?: string;
@@ -54,56 +56,55 @@ const CATEGORIES = [
 export default function SouvenirPalacePage() {
     const [souvenirs, setSouvenirs] = useState<SouvenirItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [activeCat, setActiveCat] = useState('All Souvenirs');
     const [addedId, setAddedId] = useState<number | string | null>(null);
 
     // Engraving Studio Modal State
     const [selectedEngraveItem, setSelectedEngraveItem] = useState<SouvenirItem | null>(null);
-    const [engraveText, setEngraveText] = useState('DAVID M.');
+    const [engraveText, setEngraveText] = useState('');
     const [engraveFont, setEngraveFont] = useState<'classic' | 'modern' | 'signature'>('modern');
-    const [isGiftWrap, setIsGiftWrap] = useState(true);
+    const [engraveFinish, setEngraveFinish] = useState<'matte_black' | 'brushed_steel'>('brushed_steel');
+    const [isGiftWrap, setIsGiftWrap] = useState(false);
     const [giftMessage, setGiftMessage] = useState('');
+    const [spellingApproved, setSpellingApproved] = useState(false);
 
     const { addToCart } = useCart();
 
-    useEffect(() => {
-        async function fetchSouvenirs() {
-            setLoading(true);
-            if (!supabase) {
-                setLoading(false);
-                return;
-            }
-            try {
-                const { data } = await supabase
-                    .from('products')
-                    .select('*')
-                    .or('is_souvenir.eq.true,category.ilike.%souvenir%,category.ilike.%flask%,category.ilike.%shot glass%')
-                    .order('created_at', { ascending: false });
+    const openEngraving = (item: SouvenirItem) => {
+        setEngraveText('');
+        setEngraveFont('modern');
+        setEngraveFinish('brushed_steel');
+        setIsGiftWrap(false);
+        setGiftMessage('');
+        setSpellingApproved(false);
+        setSelectedEngraveItem(item);
+    };
 
-                if (data && data.length > 0) {
-                    setSouvenirs((data as unknown as SouvenirItem[]).filter(isStorefrontProductVisible));
-                }
-            } catch (e) {
-                console.error('Error fetching souvenirs:', e);
-            } finally {
-                setLoading(false);
-            }
-        }
-        fetchSouvenirs();
+    const fetchSouvenirs = React.useCallback(async () => {
+        setLoading(true);
+        setLoadError(null);
+        try {
+            const response = await fetch('/api/catalog/products?limit=500', { cache: 'no-store' });
+            const result = await response.json() as { error?: string; products?: SouvenirItem[] };
+            if (!response.ok) throw new Error(result.error || 'Souvenir products could not be loaded.');
 
-        if (supabase) {
-            const channel = supabase
-                .channel('realtime_storefront_souvenirs')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
-                    fetchSouvenirs();
-                })
-                .subscribe();
-
-            return () => {
-                if (supabase) supabase.removeChannel(channel);
-            };
+            const products = (result.products || []).filter(product =>
+                product.is_souvenir === true
+                || /\b(souvenir|flask|shot glass)\b/i.test(product.category || '')
+            );
+            setSouvenirs(products.filter(isStorefrontProductVisible));
+        } catch (error) {
+            console.error('[SouvenirPalace] Could not load souvenirs:', error);
+            setLoadError(error instanceof Error ? error.message : 'Souvenir products could not be loaded.');
+        } finally {
+            setLoading(false);
         }
     }, []);
+
+    useEffect(() => {
+        void fetchSouvenirs();
+    }, [fetchSouvenirs]);
 
     const handleAddDirect = (item: SouvenirItem) => {
         const img = item.image_url || item.image || '';
@@ -121,12 +122,12 @@ export default function SouvenirPalacePage() {
     };
 
     const handleConfirmEngraveAdd = () => {
-        if (!selectedEngraveItem) return;
+        const text = engraveText.trim();
+        if (!selectedEngraveItem || !text || text.length > 20 || !/^[A-Za-z0-9 .,'&-]+$/.test(text) || !spellingApproved) return;
 
-        const extraFee = isGiftWrap ? 150 : 0;
-        const finalPrice = selectedEngraveItem.price + extraFee;
-        const customDetails = `Engraving: "${engraveText || 'None'}" (${engraveFont.toUpperCase()})${isGiftWrap ? ' + Gift Wrap' : ''}`;
-
+        const engravingFee = Number(selectedEngraveItem.engraving_fee) || 0;
+        const packagingFee = isGiftWrap ? Number(selectedEngraveItem.gift_packaging_fee) || 0 : 0;
+        const finalPrice = selectedEngraveItem.price + engravingFee + packagingFee;
         const img = selectedEngraveItem.image_url || selectedEngraveItem.image || '';
 
         addToCart({
@@ -137,7 +138,17 @@ export default function SouvenirPalacePage() {
             image: normalizeImage(img),
             quantity: 1,
             category: selectedEngraveItem.category || 'Custom Merch',
-            size: customDetails
+            size: 'Standard',
+            engraving: {
+                text,
+                font: engraveFont,
+                finish: engraveFinish,
+                giftPackage: isGiftWrap,
+                giftMessage: isGiftWrap ? giftMessage.trim() || null : null,
+                spellingApproved: true
+            },
+            engraving_fee: engravingFee,
+            gift_packaging_fee: packagingFee
         });
 
         setAddedId(selectedEngraveItem.id);
@@ -145,6 +156,10 @@ export default function SouvenirPalacePage() {
         setTimeout(() => setAddedId(null), 2000);
     };
 
+    const engravingText = engraveText.trim();
+    const engravingTextValid = engravingText.length > 0
+        && engravingText.length <= 20
+        && /^[A-Za-z0-9 .,'&-]+$/.test(engravingText);
     const filteredSouvenirs = souvenirs.filter(s => {
         if (activeCat === 'All Souvenirs') return true;
         return (s.category || '').toLowerCase().includes(activeCat.toLowerCase());
@@ -197,12 +212,26 @@ export default function SouvenirPalacePage() {
 
             {/* MERCH GRID */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                {loading ? (
-                    <div className="py-32 flex flex-col items-center justify-center gap-4">
-                        <Loader2 className="animate-spin text-primary" size={48} />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Opening Souvenir Vault...</p>
+                {loadError && (
+                    <div role="alert" className="mb-8 flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-900 sm:flex-row sm:items-center sm:justify-between">
+                        <span>{loadError}</span>
+                        <Button onClick={() => void fetchSouvenirs()} className="min-h-11 rounded-xl bg-white px-4 font-bold text-rose-900 ring-1 ring-rose-200 hover:bg-rose-100">
+                            Try again
+                        </Button>
                     </div>
-                ) : filteredSouvenirs.length === 0 ? (
+                )}
+                {loading ? (
+                    <div role="status" aria-label="Loading souvenir products" className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+                        {Array.from({ length: 3 }, (_, index) => (
+                            <div key={index} aria-hidden="true" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[3rem] sm:p-8">
+                                <div className="aspect-square rounded-xl bg-slate-100 motion-safe:animate-pulse sm:rounded-[2.5rem]" />
+                                <div className="mt-6 h-5 w-2/3 rounded bg-slate-100 motion-safe:animate-pulse" />
+                                <div className="mt-3 h-4 w-1/3 rounded bg-slate-100 motion-safe:animate-pulse" />
+                                <div className="mt-6 h-12 rounded-xl bg-slate-100 motion-safe:animate-pulse" />
+                            </div>
+                        ))}
+                    </div>
+                ) : !loadError && filteredSouvenirs.length === 0 ? (
                     <div className="py-32 text-center text-slate-400 space-y-4">
                         <Gift size={56} className="mx-auto opacity-30" />
                         <p className="text-sm font-black uppercase tracking-widest italic">&quot;No collectibles found in this section. Show All.&quot;</p>
@@ -219,7 +248,7 @@ export default function SouvenirPalacePage() {
                                     <div className="relative z-10 space-y-5">
                                         {/* Image Stage */}
                                         <div className="relative aspect-square w-full min-w-0 rounded-xl sm:rounded-[2.5rem] bg-slate-50/80 border border-slate-100 overflow-hidden flex items-center justify-center p-2 sm:p-6 shadow-inner group-hover:scale-105 transition-transform duration-700">
-                                            <Image src={normalizeImage(img)} alt={item.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-contain p-2 sm:p-4" />
+                                            <DecodedImage src={normalizeImage(img)} alt={item.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-contain p-2 sm:p-4" />
                                             {item.capacity_oz ? (
                                                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full border border-slate-200/80 shadow-sm text-[9px] font-black uppercase text-foreground">
                                                     {item.capacity_oz} oz
@@ -252,12 +281,14 @@ export default function SouvenirPalacePage() {
                                     </div>
 
                                     <div className="mt-8 pt-6 border-t border-slate-100 relative z-10 flex gap-3">
-                                        <Button
-                                            onClick={() => setSelectedEngraveItem(item)}
-                                            className="flex-1 h-14 rounded-2xl bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-primary transition-all active:scale-95"
-                                        >
-                                            <Type size={16} className="mr-2" /> Custom Engrave
-                                        </Button>
+                                        {item.engraving_enabled && (
+                                            <Button
+                                                onClick={() => openEngraving(item)}
+                                                className="flex-1 h-14 rounded-2xl bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-primary transition-all active:scale-95"
+                                            >
+                                                <Type size={16} className="mr-2" /> Custom Engrave
+                                            </Button>
+                                        )}
                                         <Button
                                             onClick={() => handleAddDirect(item)}
                                             className={cn(
@@ -277,8 +308,8 @@ export default function SouvenirPalacePage() {
 
             {/* DIGITAL ENGRAVING STUDIO MODAL */}
             {selectedEngraveItem && (
-                <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[3rem] p-6 sm:p-10 max-w-xl w-full space-y-6 shadow-2xl relative max-h-[92vh] overflow-y-auto no-scrollbar border border-slate-100 text-left">
+                <div role="presentation" className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+                    <div role="dialog" aria-modal="true" aria-labelledby="engraving-studio-title" className="bg-white rounded-[2rem] p-5 sm:p-8 max-w-xl w-full space-y-5 shadow-2xl relative max-h-[92vh] overflow-y-auto no-scrollbar border border-slate-100 text-left">
                         <button
                             onClick={() => setSelectedEngraveItem(null)}
                             className="absolute top-6 right-6 h-10 w-10 rounded-full bg-slate-100 text-slate-500 hover:text-foreground flex items-center justify-center transition-colors"
@@ -288,54 +319,80 @@ export default function SouvenirPalacePage() {
 
                         <div className="space-y-1">
                             <span className="text-[10px] font-black uppercase text-primary tracking-widest">Digital Engraving Studio</span>
-                            <h2 className="text-3xl font-black text-foreground uppercase tracking-tight">{selectedEngraveItem.name}</h2>
+                            <h2 id="engraving-studio-title" className="text-2xl font-black text-foreground uppercase tracking-tight">{selectedEngraveItem.name}</h2>
                         </div>
 
                         {/* LIVE PRODUCT ENGRAVING PREVIEW STAGE */}
-                        <div className="relative aspect-[16/9] rounded-[2.5rem] bg-slate-900 overflow-hidden flex items-center justify-center shadow-xl p-6">
-                            <Image
+                        <div className="sticky top-0 z-30 relative aspect-[16/9] rounded-2xl bg-slate-900 overflow-hidden flex items-center justify-center shadow-xl p-6">
+                            <DecodedImage
                                 src={normalizeImage(selectedEngraveItem.image_url || selectedEngraveItem.image || '')}
-                                alt="Engraving Preview"
+                                alt={`${selectedEngraveItem.name} engraving preview`}
                                 fill
+                                sizes="(max-width: 640px) 100vw, 560px"
                                 className="object-contain opacity-50 p-6"
                             />
 
                             {/* Live Engraved Overlay Text */}
-                            <div className="relative z-20 text-center px-6 py-3 bg-slate-950/80 backdrop-blur-md rounded-2xl border border-amber-500/40 shadow-2xl animate-in zoom-in-90 duration-300">
-                                <span className="text-[8px] font-black uppercase tracking-[0.3em] text-amber-500 block mb-1">Laser Engraving Preview</span>
-                                <p className={cn(
-                                    "text-2xl sm:text-3xl font-black tracking-widest text-amber-300 uppercase drop-shadow-[0_2px_10px_rgba(245,158,11,0.6)]",
+                            <div className="relative z-20 max-w-full text-center px-6 py-3">
+                                <span className="text-[8px] font-black uppercase tracking-[0.3em] text-white/80 block mb-1">Laser engraving preview</span>
+                                <p style={engraveFont === 'signature' ? { fontFamily: 'cursive' } : undefined} className={cn(
+                                    "break-words text-2xl sm:text-3xl font-black tracking-widest uppercase drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]",
+                                    engraveFinish === 'matte_black' ? "text-slate-100" : "text-slate-900",
                                     engraveFont === 'classic' && "font-serif italic",
                                     engraveFont === 'modern' && "font-sans uppercase font-black",
-                                    engraveFont === 'signature' && "italic tracking-wider font-mono"
+                                    engraveFont === 'signature' && "italic tracking-wider"
                                 )}>
-                                    {engraveText || 'YOUR NAME HERE'}
+                                    {engravingText || 'YOUR NAME HERE'}
                                 </p>
+                                <span className="mt-1 block text-[9px] font-semibold text-white/70">{engraveFinish === 'matte_black' ? 'Matte black · light engraving' : 'Brushed steel · dark engraving'}</span>
                             </div>
                         </div>
 
                         {/* ENGRAVING CONTROLS */}
                         <div className="space-y-4">
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase text-slate-400">Engraving Text (Max 20 Characters)</label>
+                                <div className="flex items-center justify-between gap-2">
+                                    <label htmlFor="engraving-text" className="text-[10px] font-black uppercase text-slate-600">Engraving text · max 20 characters</label>
+                                    <span className="text-xs tabular-nums text-slate-500">{engravingText.length}/20</span>
+                                </div>
                                 <Input
+                                    id="engraving-text"
                                     value={engraveText}
                                     onChange={e => setEngraveText(e.target.value.slice(0, 20))}
-                                    placeholder="e.g. DAVID M."
+                                    maxLength={20}
+                                    placeholder="Enter the exact text"
                                     className="rounded-xl h-12 bg-slate-50 border-none font-bold text-sm tracking-wider"
                                 />
+                                {!engravingTextValid && engravingText.length > 0 && <p role="alert" className="text-xs text-rose-700">Use letters, numbers, spaces, and . , &amp; &apos; - only.</p>}
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase text-slate-400">Choose Font Style</label>
+                                <label className="text-[10px] font-black uppercase text-slate-600">Engraving finish</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {([
+                                        ['matte_black', 'Matte black'],
+                                        ['brushed_steel', 'Brushed steel']
+                                    ] as const).map(([finish, label]) => (
+                                        <button key={finish} type="button" aria-pressed={engraveFinish === finish} onClick={() => setEngraveFinish(finish)} className={cn("min-h-11 rounded-xl border px-3 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600", engraveFinish === finish ? "border-amber-600 bg-amber-50 text-amber-950" : "border-slate-200 bg-white text-slate-700")}>
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase text-slate-600">Choose font style</label>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(['classic', 'modern', 'signature'] as const).map(f => (
                                         <button
                                             key={f}
                                             type="button"
+                                            aria-pressed={engraveFont === f}
                                             onClick={() => setEngraveFont(f)}
                                             className={cn(
                                                 "py-3 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all text-center",
+                                                f === 'classic' && "font-serif italic",
+                                                f === 'signature' && "italic",
                                                 engraveFont === f
                                                     ? "bg-primary text-white border-primary shadow-md"
                                                     : "bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100"
@@ -350,7 +407,7 @@ export default function SouvenirPalacePage() {
                             {/* GIFT WRAP TOGGLE */}
                             <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/60 space-y-3">
                                 <label className="flex items-center justify-between cursor-pointer">
-                                    <span className="text-xs font-black uppercase text-amber-900">Add Premium Gift Packaging (+KSh 150)</span>
+                                    <span className="text-xs font-black uppercase text-amber-900">Add premium gift packaging (+{formatPrice(Number(selectedEngraveItem.gift_packaging_fee) || 0)})</span>
                                     <input
                                         type="checkbox"
                                         checked={isGiftWrap}
@@ -359,31 +416,48 @@ export default function SouvenirPalacePage() {
                                     />
                                 </label>
                                 {isGiftWrap && (
-                                    <Textarea
-                                        value={giftMessage}
-                                        onChange={e => setGiftMessage(e.target.value)}
-                                        placeholder="Write a personal gift message to include in the box..."
-                                        className="rounded-xl bg-white border-amber-200 text-xs text-amber-950"
-                                        rows={2}
-                                    />
+                                    <>
+                                        <Textarea
+                                            value={giftMessage}
+                                            onChange={e => setGiftMessage(e.target.value.slice(0, 150))}
+                                            maxLength={150}
+                                            placeholder="Write a personal gift message to include in the box..."
+                                            className="rounded-xl bg-white border-amber-200 text-xs text-amber-950"
+                                            rows={2}
+                                        />
+                                        <p className="text-right text-[11px] tabular-nums text-amber-900/70">{giftMessage.length}/150</p>
+                                    </>
                                 )}
                             </div>
+
+                            <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                                <input type="checkbox" checked={spellingApproved} onChange={event => setSpellingApproved(event.target.checked)} className="mt-1 h-4 w-4 accent-amber-600" />
+                                <span>I have checked and approve the exact spelling and finish shown above.</span>
+                            </label>
                         </div>
 
                         {/* TOTAL & CONFIRM */}
-                        <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-4">
-                            <div>
+                        <div className="space-y-3 pt-4 border-t border-slate-100">
+                            <div className="space-y-1 text-xs">
+                                <div className="flex justify-between gap-3"><span className="text-slate-600">Product</span><span className="font-semibold">{formatPrice(selectedEngraveItem.price)}</span></div>
+                                <div className="flex justify-between gap-3"><span className="text-slate-600">Engraving</span><span className="font-semibold">{formatPrice(Number(selectedEngraveItem.engraving_fee) || 0)}</span></div>
+                                {isGiftWrap && <div className="flex justify-between gap-3"><span className="text-slate-600">Gift packaging</span><span className="font-semibold">{formatPrice(Number(selectedEngraveItem.gift_packaging_fee) || 0)}</span></div>}
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
                                 <p className="text-[9px] font-black uppercase text-slate-400">Total Price</p>
                                 <p className="text-3xl font-black text-primary tracking-tight">
-                                    {formatPrice(selectedEngraveItem.price + (isGiftWrap ? 150 : 0))}
+                                    {formatPrice(selectedEngraveItem.price + (Number(selectedEngraveItem.engraving_fee) || 0) + (isGiftWrap ? Number(selectedEngraveItem.gift_packaging_fee) || 0 : 0))}
                                 </p>
-                            </div>
+                              </div>
                             <Button
                                 onClick={handleConfirmEngraveAdd}
+                                disabled={!engravingTextValid || !spellingApproved}
                                 className="h-16 px-8 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl hover:bg-primary/90 transition-all"
                             >
-                                Add Engraved Merch
+                                Add to cart
                             </Button>
+                            </div>
                         </div>
                     </div>
                 </div>

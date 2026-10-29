@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/context/CartContext";
 import { formatPrice, normalizeImage } from "@/lib/utils";
 import { Minus, Plus, Trash2 } from "lucide-react";
-import Image from "next/image";
+import DecodedImage from "@/components/ui/DecodedImage";
 
 interface CartItemProps {
   item: {
@@ -17,7 +17,17 @@ interface CartItemProps {
     quantity: number;
     size?: string;
     cart_key?: string;
+    engraving_fee?: number;
+    gift_packaging_fee?: number;
     addons?: Array<{ id: string; name: string; price: number }>;
+    engraving?: {
+      text: string;
+      font: 'classic' | 'modern' | 'signature';
+      finish: 'matte_black' | 'brushed_steel';
+      giftPackage: boolean;
+      giftMessage: string | null;
+      spellingApproved: true;
+    };
   };
   isLast: boolean;
 }
@@ -29,7 +39,7 @@ export default function CartItem({ item, isLast }: CartItemProps) {
     <div>
       <div className="flex items-start gap-4">
         <div className="relative w-[100px] h-[100px]">
-          <Image
+          <DecodedImage
             src={normalizeImage(item.image)}
             alt={item.name}
             fill
@@ -45,6 +55,19 @@ export default function CartItem({ item, isLast }: CartItemProps) {
                 {item.name}
               </h2>
               {item.size && <p className="text-xs text-muted-foreground mt-1">{item.size}</p>}
+              {item.engraving && (
+                <div className="mt-1 space-y-1 text-xs leading-5 text-muted-foreground">
+                  <p>
+                    Engraving: “{item.engraving.text}” · {item.engraving.font} · {item.engraving.finish === 'matte_black' ? 'Matte black' : 'Brushed steel'}
+                    {item.engraving.giftPackage ? ' · Gift packaging' : ''}
+                  </p>
+                  <p>
+                    Engraving {formatPrice(item.engraving_fee || 0)}
+                    {item.engraving.giftPackage ? ` · Gift packaging ${formatPrice(item.gift_packaging_fee || 0)}` : ''}
+                  </p>
+                  {item.engraving.giftMessage && <p className="whitespace-pre-wrap">Gift message: {item.engraving.giftMessage}</p>}
+                </div>
+              )}
               <p className="text-sm text-muted-foreground mt-1">
                 {formatPrice(item.price)} each
               </p>

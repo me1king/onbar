@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+.decoded-image {
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.decoded-image[data-decoded="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decoded-image {
+    transition: none;
+  }
+}
+
 @keyframes receipt-print {
   from { transform: translateY(-115%); }
   to { transform: translateY(0); }

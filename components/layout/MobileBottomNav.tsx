@@ -22,7 +22,7 @@ const NAV_ITEMS = [
     { label: 'Drinks', icon: Wine, href: '/beverages' },
     { label: 'Food', icon: Utensils, href: '/bites' },
     { label: 'Souvenirs', icon: Gift, href: '/souvenirs' },
-    { label: 'My Night', icon: Flame, href: '/buzz?planner=true' },
+    { label: 'My Night', icon: Flame, href: '/build-my-night' },
     { label: 'Munchies', icon: Cookie, href: '/shop/snacks' },
     { label: 'My Bar', icon: User, href: '/profile' }
 ];

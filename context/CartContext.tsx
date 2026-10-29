@@ -5,6 +5,15 @@ import { OB_OS } from "@/lib/onlineBarOS";
 import { supabase } from "@/lib/supabaseClient";
 import { Product } from "@/types/product";
 
+export interface EngravingCustomization {
+  text: string;
+  font: 'classic' | 'modern' | 'signature';
+  finish: 'matte_black' | 'brushed_steel';
+  giftPackage: boolean;
+  giftMessage: string | null;
+  spellingApproved: true;
+}
+
 export interface CartItem {
   id: number;
   name: string;
@@ -17,6 +26,9 @@ export interface CartItem {
   wholesale_price?: number;
   wholesale_min_qty?: number;
   addons?: Array<{ id: string; name: string; price: number }>;
+  engraving?: EngravingCustomization;
+  engraving_fee?: number;
+  gift_packaging_fee?: number;
   cart_key?: string;
 }
 
@@ -33,7 +45,17 @@ interface CartContextProps {
 
 function getCartKey(item: CartItem) {
   const addonIds = (item.addons || []).map(addon => addon.id).sort().join(',');
-  return `${item.id}:${item.size || 'Standard'}:${addonIds}`;
+  const engraving = item.engraving ? JSON.stringify(item.engraving) : '';
+  return `${item.id}:${item.size || 'Standard'}:${addonIds}:${engraving}`;
+}
+
+function getUnitPrice(item: CartItem, quantity: number) {
+  const basePrice = item.wholesale_price && item.wholesale_min_qty && quantity >= item.wholesale_min_qty
+    ? item.wholesale_price
+    : item.base_price ?? item.price;
+  const addonPrice = (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
+  const customizationPrice = Number(item.engraving_fee || 0) + Number(item.gift_packaging_fee || 0);
+  return basePrice + addonPrice + customizationPrice;
 }
 
 const CartContext = createContext<CartContextProps | undefined>(undefined);
@@ -92,26 +114,20 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         return prevCart.map((cartItem) => {
           if (getCartKey(cartItem) === cartKey) {
               const newQty = cartItem.quantity + (item.quantity || 1);
-              let basePrice = cartItem.base_price;
-
-              if (cartItem.wholesale_price && cartItem.wholesale_min_qty && newQty >= cartItem.wholesale_min_qty) {
-                  basePrice = cartItem.wholesale_price;
-              }
-
-              const addonPrice = (cartItem.addons || []).reduce((sum, addon) => sum + addon.price, 0);
-              return { ...cartItem, cart_key: cartKey, quantity: newQty, price: basePrice + addonPrice };
+              return { ...cartItem, cart_key: cartKey, quantity: newQty, price: getUnitPrice(cartItem, newQty) };
           }
           return cartItem;
         });
       }
 
-      let initialPrice = (item.base_price ?? item.price) + (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
       const qty = item.quantity || 1;
-      if (item.wholesale_price && item.wholesale_min_qty && qty >= item.wholesale_min_qty) {
-          initialPrice = item.wholesale_price + (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
-      }
-
-      return [...prevCart, { ...item, cart_key: cartKey, base_price: item.base_price ?? item.price, price: initialPrice, quantity: qty }];
+      return [...prevCart, {
+        ...item,
+        cart_key: cartKey,
+        base_price: item.base_price ?? item.price,
+        price: getUnitPrice(item, qty),
+        quantity: qty
+      }];
     });
   };
 
@@ -119,12 +135,23 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     setCart((prevCart) => {
       let newCart = [...prevCart];
       items.forEach(item => {
+          const quantity = Number.isSafeInteger(item.quantity) && item.quantity > 0 ? item.quantity : 1;
           const cartKey = getCartKey(item);
-          const existingItem = newCart.find(c => getCartKey(c) === cartKey);
-          if (existingItem) {
-              newCart = newCart.map(c => getCartKey(c) === cartKey ? { ...c, quantity: c.quantity + 1 } : c);
+          const existingIndex = newCart.findIndex(c => getCartKey(c) === cartKey);
+          if (existingIndex >= 0) {
+              newCart = newCart.map((cartItem, index) => {
+                if (index !== existingIndex) return cartItem;
+                const nextQuantity = cartItem.quantity + quantity;
+                return { ...cartItem, quantity: nextQuantity, price: getUnitPrice(cartItem, nextQuantity) };
+              });
           } else {
-              newCart.push({ ...item, cart_key: cartKey, quantity: 1 });
+              newCart.push({
+                ...item,
+                cart_key: cartKey,
+                base_price: item.base_price ?? item.price,
+                quantity,
+                price: getUnitPrice(item, quantity)
+              });
           }
       });
       return newCart;
@@ -145,14 +172,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       prevCart.map((item) => {
         if (cartKey ? getCartKey(item) === cartKey : item.id === id) {
             const newQty = Math.max(1, quantity);
-            let basePrice = item.base_price;
-
-            if (item.wholesale_price && item.wholesale_min_qty && newQty >= item.wholesale_min_qty) {
-                basePrice = item.wholesale_price;
-            }
-
-            const addonPrice = (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
-            return { ...item, quantity: newQty, price: basePrice + addonPrice };
+            return { ...item, quantity: newQty, price: getUnitPrice(item, newQty) };
         }
         return item;
       })

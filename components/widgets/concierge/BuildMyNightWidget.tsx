@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import {
     ArrowRight,
@@ -22,8 +21,8 @@ import {
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import DecodedImage from '@/components/ui/DecodedImage';
 import { cn, formatPrice, normalizeImage } from '@/lib/utils';
-import { supabase } from '@/lib/supabaseClient';
 import { useCart } from '@/context/CartContext';
 import { OB_OS } from '@/lib/onlineBarOS';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
@@ -55,6 +54,11 @@ interface BuildResult {
     is_souvenir: boolean | null;
     hide_product?: boolean | null;
     status?: string | null;
+    sizes?: string[] | null;
+    size?: string;
+    variant_prices?: Record<string, number | string> | null;
+    variant_stock?: Record<string, number> | null;
+    beverage_specs?: { variant_prices?: Record<string, number | string> | null } | null;
 }
 
 interface PlanItem {
@@ -134,6 +138,27 @@ function planTotal(plan: NightPlan) {
     return plan.items.reduce((total, item) => total + item.product.price * item.quantity, 0);
 }
 
+function chooseInStockVariant(product: BuildResult): BuildResult | null {
+    const variantPrices = product.variant_prices || product.beverage_specs?.variant_prices || {};
+    const variants = (product.sizes || [])
+        .map(size => ({
+            size,
+            price: Number(variantPrices[size] ?? product.price),
+            stock: Number(product.variant_stock?.[size] ?? product.stock)
+        }))
+        .filter(variant => Number.isFinite(variant.price) && variant.price > 0
+            && Number.isFinite(variant.stock) && variant.stock > 0)
+        .sort((first, second) => first.price - second.price);
+    if (variants.length) {
+        return { ...product, ...variants[0] };
+    }
+
+    const price = Number(product.price);
+    const stock = Number(product.stock);
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(stock) || stock <= 0) return null;
+    return { ...product, price, stock };
+}
+
 export default function BuildMyNightWidget({ compact = false }: { compact?: boolean }) {
     const [step, setStep] = React.useState<PlannerStep>(0);
     const [occasion, setOccasion] = React.useState<string | null>(defaultPreferences.occasion);
@@ -186,38 +211,25 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
             setError('Confirm that you are 18 or older before viewing alcohol recommendations.');
             return;
         }
-        if (!supabase) {
-            setError('Product recommendations are unavailable because the store connection is not configured.');
-            return;
-        }
         setLoading(true);
         setError(null);
         setAddedToCart(false);
         try {
-            const { data, error: productsError } = await supabase
-                .from('products')
-                .select('id, name, price, image_url, category, stock, is_available_now, is_souvenir, hide_product, status')
-                .gt('stock', 0)
-                .order('price', { ascending: true })
-                .limit(100);
-            if (productsError) throw productsError;
+            const response = await fetch('/api/catalog/products?limit=500', { cache: 'no-store' });
+            const result = await response.json() as { error?: string; products?: BuildResult[] };
+            if (!response.ok) throw new Error(result.error || 'Product recommendations could not be loaded.');
 
-            const eligible = (data || [])
-                .filter(product =>
-                    product.is_available_now !== false
+            const eligible = (result.products || [])
+                .filter(product => product.is_available_now !== false
                     && product.is_souvenir !== true
-                    && Number(product.stock) > 0
-                    && Number.isFinite(Number(product.price))
-                    && Number(product.price) > 0
-                    && isStorefrontProductVisible(product)
-                )
-                .map(product => ({
+                    && isStorefrontProductVisible(product))
+                .map(product => chooseInStockVariant({
                     ...product,
-                    price: Number(product.price),
                     image_url: product.image_url || '',
-                    category: product.category || 'Products',
-                    stock: Number(product.stock)
-                })) as BuildResult[];
+                    category: product.category || 'Products'
+                }))
+                .filter((product): product is BuildResult => product !== null)
+                .sort((first, second) => first.price - second.price) as BuildResult[];
             const matched = eligible.filter(product => matchesTaste(product, preferences.tastes));
             if (matched.length === 0) {
                 setCatalog([]);
@@ -270,7 +282,8 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
             base_price: product.price,
             image: normalizeImage(product.image_url),
             quantity,
-            category: product.category
+            category: product.category,
+            ...(product.size ? { size: product.size } : {})
         })));
         setAddedToCart(true);
         setError(null);
@@ -582,12 +595,12 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                                                 <div key={product.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
                                                     <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
                                                         {product.image_url
-                                                            ? <Image src={normalizeImage(product.image_url)} alt="" fill sizes="56px" className="object-contain p-1" />
+                                                            ? <DecodedImage src={normalizeImage(product.image_url)} alt="" fill sizes="56px" className="object-contain p-1" />
                                                             : <Package size={20} className="text-slate-400" aria-hidden="true" />}
                                                     </div>
                                                     <div className="min-w-0 flex-1">
                                                         <p className="truncate text-sm font-semibold text-slate-900">{product.name}</p>
-                                                        <p className="text-xs text-slate-500">{product.category} · {formatPrice(product.price)} each</p>
+                                                        <p className="text-xs text-slate-500">{product.category}{product.size ? ` · ${product.size}` : ''} · {formatPrice(product.price)} each</p>
                                                     </div>
                                                     <div className="flex items-center gap-1">
                                                         <button type="button" aria-label={`Decrease ${product.name} quantity`} onClick={() => updatePlanItem(selected.id, product.id, 'decrease')} className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"><Minus size={14} aria-hidden="true" /></button>
@@ -651,7 +664,7 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                             </dl>
                             <div className="mt-5 border-t border-slate-100 pt-4">
                                 <div className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-500">{step === 4 ? `${itemCount} items` : 'Plan total'}</span>
+                                    <span className="text-slate-500">{step === 4 ? `${itemCount} ${itemCount === 1 ? 'item' : 'items'}` : 'Plan total'}</span>
                                     <span className="font-semibold tabular-nums">{step === 4 ? formatPrice(total) : '—'}</span>
                                 </div>
                                 <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-500">

@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Flame,
     TrendingUp,
@@ -11,7 +10,6 @@ import {
     ChevronRight,
     MapPin,
     Smartphone,
-    Loader2,
     ArrowRight,
     Sparkles,
     X,
@@ -41,18 +39,29 @@ interface BuzzArea {
     active_orders: number;
 }
 
-interface DBBuzzPost {
-    id: string;
-    title: string;
-    description: string | null;
-    area_zone: string | null;
-    category: { label: string } | null;
-    status: string;
-    trend_score: number;
-    latitude: number;
-    longitude: number;
-    start_at: string;
-    media: Array<{ media_type: string, url: string }> | null;
+interface BuzzDiscoveryResponse {
+    error?: string;
+    metricsAvailable: boolean;
+    hotspots: Array<{
+        zone_name: string;
+        buzz_score: number;
+        buzz_status: BuzzArea['buzz_status'];
+        active_visitors: number;
+        active_orders: number;
+    }>;
+    stories: Array<{
+        id: string;
+        title: string;
+        description: string | null;
+        area_zone: string | null;
+        category: { label: string } | null;
+        status: string;
+        trend_score: number;
+        latitude: number | null;
+        longitude: number | null;
+        start_at: string;
+        media: Array<{ media_type: string; url: string }> | null;
+    }>;
 }
 
 export default function TheBuzzDiscovery() {
@@ -73,7 +82,9 @@ function BuzzDiscoveryContent() {
     const [isDetailOpen, setIsDetailOpen] = React.useState(false);
     const [filter, setFilter] = React.useState<'trending' | 'live' | 'tonight'>('trending');
     const [loading, setLoading] = React.useState(true);
-    const [nightPlannerOpen, setNightPlannerOpen] = React.useState(false);
+    const [loadError, setLoadError] = React.useState<string | null>(null);
+    const [metricsUnavailable, setMetricsUnavailable] = React.useState(false);
+    const [nightPlannerOpen, setNightPlannerOpen] = React.useState(plannerRequested);
 
     React.useEffect(() => {
         if (plannerRequested) setNightPlannerOpen(true);
@@ -93,56 +104,54 @@ function BuzzDiscoveryContent() {
 
     const closeNightPlanner = () => {
         setNightPlannerOpen(false);
-        if (plannerRequested) router.replace('/buzz', { scroll: false });
+        if (plannerRequested) router.replace('/shop', { scroll: false });
     };
 
     const fetchBuzzData = React.useCallback(async () => {
-        if (!supabase) {
-            setLoading(false);
-            return;
-        }
         setLoading(true);
+        setLoadError(null);
         try {
-            const [hotspotsRes, storiesRes] = await Promise.all([
-                supabase.from('buzz_metrics').select('*').order('buzz_score', { ascending: false }),
-                supabase.from('buzz_posts').select('*, category:buzz_categories(label), media:buzz_media(*)').in('status', ['LIVE', 'TRENDING', 'STARTING_SOON']).order('trend_score', { ascending: false })
-            ]);
+            const response = await fetch('/api/buzz/discovery', { cache: 'no-store' });
+            const result = await response.json() as BuzzDiscoveryResponse;
+            if (!response.ok) throw new Error(result.error || 'Published events could not be loaded.');
 
-            if (hotspotsRes.data) {
-                const data = (hotspotsRes.data as Array<{ zone_name: string, buzz_score: number, buzz_status: BuzzArea['buzz_status'], active_visitors: number, active_orders: number }>).map((h) => ({
-                        id: h.zone_name,
-                        zone_name: h.zone_name,
-                        buzz_score: Number(h.buzz_score) || 0,
-                        buzz_status: h.buzz_status,
-                        active_visitors: h.active_visitors,
-                        active_orders: h.active_orders
-                    }));
-                setHotspots(data as BuzzArea[]);
-                if (data.length > 0) setSelectedArea(data[0] as BuzzArea);
-            }
-
-            if (storiesRes.data) {
-                setStories((storiesRes.data as unknown as DBBuzzPost[]).map((s) => ({
-                    id: s.id,
-                    title: s.title,
-                    description: s.description || '',
-                    area_zone: s.area_zone || 'Area not provided',
-                    category: s.category?.label || 'Uncategorized',
-                    status: s.status,
-                    trend_score: s.trend_score,
-                    latitude: Number(s.latitude),
-                    longitude: Number(s.longitude),
-                    starts_at: s.start_at,
-                    media: s.media?.map((m) => ({ type: m.media_type as 'IMAGE' | 'VIDEO', url: m.url })) || [],
-                })));
-            }
-        } catch (err) { console.error(err); }
+            const areas = result.hotspots.map(area => ({
+                id: area.zone_name,
+                zone_name: area.zone_name,
+                buzz_score: Number(area.buzz_score) || 0,
+                buzz_status: area.buzz_status,
+                active_visitors: Number(area.active_visitors) || 0,
+                active_orders: Number(area.active_orders) || 0
+            }));
+            setHotspots(areas);
+            setSelectedArea(areas[0] || null);
+            setMetricsUnavailable(!result.metricsAvailable);
+            setStories(result.stories.map(story => ({
+                id: story.id,
+                title: story.title,
+                description: story.description || '',
+                area_zone: story.area_zone || 'Area not provided',
+                category: story.category?.label || 'Uncategorized',
+                status: story.status,
+                trend_score: Number(story.trend_score) || 0,
+                latitude: Number(story.latitude),
+                longitude: Number(story.longitude),
+                starts_at: story.start_at,
+                media: story.media?.map(media => ({
+                    type: media.media_type.toUpperCase() === 'VIDEO' ? 'VIDEO' : 'IMAGE',
+                    url: media.url
+                })) || []
+            })));
+        } catch (error) {
+            console.error('[BuzzDiscovery] Could not load the event feed:', error);
+            setLoadError(error instanceof Error ? error.message : 'Published events could not be loaded. Please try again.');
+        }
         finally { setLoading(false); }
     }, []);
 
     React.useEffect(() => {
-        fetchBuzzData();
-    }, [fetchBuzzData]);
+        if (!plannerRequested) fetchBuzzData();
+    }, [fetchBuzzData, plannerRequested]);
 
     const visibleStories = React.useMemo(() => {
         if (filter === 'live') return stories.filter(story => story.status === 'LIVE');
@@ -159,16 +168,32 @@ function BuzzDiscoveryContent() {
         return [...stories].sort((first, second) => second.trend_score - first.trend_score);
     }, [filter, stories]);
 
-    if (loading && !plannerRequested && !nightPlannerOpen) return (
-        <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white">
-            <Loader2 className="h-10 w-10 text-primary animate-spin" />
-            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-300">Synchronizing City Signal...</p>
-        </div>
-    );
+    if (nightPlannerOpen) {
+        return (
+            <main className="fixed inset-0 z-[2500] flex flex-col overflow-y-auto overscroll-contain bg-white">
+                <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between border-b border-slate-100 bg-white/95 p-3 backdrop-blur sm:p-5">
+                    <Link href="/shop" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                        Back to shop
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={closeNightPlanner}
+                        aria-label="Close Build My Night"
+                        className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                    >
+                        <X size={20} />
+                    </button>
+                </header>
+                <div className="min-h-0 flex-1">
+                    <BuildMyNightWidget compact />
+                </div>
+            </main>
+        );
+    }
 
     return (
         <div
-            className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 text-left selection:bg-primary/20 pb-40 animate-in fade-in duration-1000 relative overflow-hidden"
+            className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 text-left selection:bg-primary/20 pb-40 animate-in fade-in duration-200 motion-reduce:animate-none relative overflow-hidden"
             style={{
                 background: 'radial-gradient(circle at top right, rgba(248, 164, 0, 0.12), transparent 45%), radial-gradient(circle at bottom left, rgba(30, 58, 138, 0.1), transparent 45%), #FFFFFF'
             }}
@@ -201,12 +226,12 @@ function BuzzDiscoveryContent() {
                         <div className="bg-white/90 backdrop-blur-md p-6 rounded-[2.5rem] border border-slate-200/80 flex items-center gap-6 shadow-md shrink-0">
                             <div className="space-y-1">
                                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Published hotspots</p>
-                                <p className="text-2xl font-black text-foreground tabular-nums leading-none">{hotspots.length}</p>
+                                <p className="text-2xl font-black text-foreground tabular-nums leading-none">{loading && hotspots.length === 0 ? '—' : hotspots.length}</p>
                             </div>
                             <div className="h-8 w-px bg-slate-200" />
                             <div className="space-y-1">
                                 <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Live events</p>
-                                <p className="text-2xl font-black text-emerald-600 tabular-nums leading-none">{stories.filter(story => story.status === 'LIVE').length}</p>
+                                <p className="text-2xl font-black text-emerald-600 tabular-nums leading-none">{loading && stories.length === 0 ? '—' : stories.filter(story => story.status === 'LIVE').length}</p>
                             </div>
                         </div>
 
@@ -218,6 +243,20 @@ function BuzzDiscoveryContent() {
                         </Button>
                     </div>
                 </header>
+
+                {metricsUnavailable && (
+                    <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900">
+                        Live hotspot metrics are temporarily unavailable. Published events are still shown below.
+                    </p>
+                )}
+                {loadError && (
+                    <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-900 sm:flex-row sm:items-center sm:justify-between">
+                        <span>{loadError}</span>
+                        <button type="button" onClick={() => void fetchBuzzData()} className="min-h-11 shrink-0 rounded-xl bg-white px-4 font-semibold text-rose-900 ring-1 ring-rose-200 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600">
+                            Try again
+                        </button>
+                    </div>
+                )}
 
                 {/* 🔍 TACTICAL FILTERS */}
                 <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
@@ -242,7 +281,20 @@ function BuzzDiscoveryContent() {
 
                 {/* 🎞️ CINEMATIC DISCOVERY FEED */}
                 <section className="space-y-12">
-                    {visibleStories.length > 0 ? (
+                    {loading && visibleStories.length === 0 ? (
+                        <div role="status" aria-label="Loading published events" className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            {Array.from({ length: 4 }, (_, index) => (
+                                <div key={index} aria-hidden="true" className="relative aspect-[9/16] w-full max-w-sm overflow-hidden rounded-[3rem] border border-slate-200 bg-slate-100 motion-safe:animate-pulse">
+                                    <div className="absolute inset-x-8 top-8 h-8 rounded-full bg-slate-200" />
+                                    <div className="absolute inset-x-8 bottom-8 space-y-3">
+                                        <div className="h-3 w-1/3 rounded bg-slate-200" />
+                                        <div className="h-8 w-4/5 rounded bg-slate-200" />
+                                        <div className="h-14 rounded-2xl bg-slate-200" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : visibleStories.length > 0 ? (
                         <div className="space-y-8">
                             <div className="flex items-center gap-3 px-4">
                                 <div className="h-2 w-2 rounded-full bg-primary" />
@@ -256,12 +308,12 @@ function BuzzDiscoveryContent() {
                                 ))}
                             </div>
                         </div>
-                    ) : (
+                    ) : !loading && !loadError ? (
                         <div className="py-40 text-center opacity-20 border-2 border-dashed border-slate-100 rounded-[4rem]">
                             <Flame size={64} className="mx-auto mb-6" />
                             <p className="text-xl font-black uppercase tracking-widest">No events currently match this filter.</p>
                         </div>
-                    )}
+                    ) : null}
                 </section>
 
                 <div className="grid lg:grid-cols-12 gap-12 pt-10 text-left">
@@ -450,22 +502,6 @@ function BuzzDiscoveryContent() {
                 />
             )}
 
-            {nightPlannerOpen && (
-                <div className="fixed inset-0 z-[2500] flex flex-col overflow-y-auto overscroll-contain bg-white animate-in slide-in-from-bottom duration-700">
-                    <header className="sticky top-0 z-20 flex shrink-0 justify-end border-b border-slate-100 bg-white/95 p-3 backdrop-blur sm:p-5">
-                        <button
-                            onClick={closeNightPlanner}
-                            aria-label="Close Build My Night"
-                            className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-500 transition-all hover:bg-rose-50 hover:text-rose-600 active:scale-90"
-                        >
-                            <X size={20} />
-                        </button>
-                    </header>
-                    <div className="min-h-0 flex-1">
-                        <BuildMyNightWidget compact />
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

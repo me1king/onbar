@@ -1,18 +1,17 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
-    Bot,
-    Send,
-    X,
-    Sparkles,
+    CircleUserRound,
+    Headphones,
     Loader2,
+    Send,
+    ShieldCheck,
     ShoppingBag,
+    Trash2,
+    X,
     ChevronRight
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
@@ -27,15 +26,43 @@ interface Suggestion {
     name: string;
     price: number;
     image_url: string;
+    category: string;
+    stock: number;
 }
+
+interface ConciergeMessage {
+    role: 'user' | 'assistant';
+    text: string;
+    suggestions?: Suggestion[];
+    chips?: string[];
+    action?: 'none' | 'support';
+}
+
+interface ConciergeResponse {
+    response?: string;
+    recommendations?: Suggestion[];
+    chips?: string[];
+    scenario?: { name: string; action: 'none' | 'support' } | null;
+    action?: 'none' | 'support';
+    ageNotice?: string;
+    unmatchedLogged?: boolean;
+    scenarioStorageReady?: boolean;
+    error?: string;
+}
+
+const CONVERSATION_KEY = 'apex-concierge-conversation';
 
 export default function AIConcierge({ suppressLauncher = false }: { suppressLauncher?: boolean }) {
     const pathname = usePathname();
     const { settings } = useSettings();
     const [isOpen, setIsOpen] = React.useState(false);
     const [query, setQuery] = React.useState('');
-    const [messages, setMessages] = React.useState<{ role: 'user' | 'assistant', text: string, suggestions?: Suggestion[] }[]>([]);
+    const [messages, setMessages] = React.useState<ConciergeMessage[]>([]);
     const [isLoading, setIsLoading] = React.useState(false);
+    const [ageConfirmed, setAgeConfirmed] = React.useState(false);
+    const [logUnmatched, setLogUnmatched] = React.useState(false);
+    const [statusMessage, setStatusMessage] = React.useState('');
+    const [conversationLoaded, setConversationLoaded] = React.useState(false);
     const { addBundleToCart } = useCart();
     const { trackClick } = useInteractionTracking();
 
@@ -84,6 +111,35 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }, [messages]);
 
+    React.useEffect(() => {
+        try {
+            const stored: unknown = JSON.parse(localStorage.getItem(CONVERSATION_KEY) || '[]');
+            if (Array.isArray(stored)) {
+                setMessages(stored.filter((message): message is ConciergeMessage =>
+                    typeof message === 'object'
+                    && message !== null
+                    && 'role' in message
+                    && (message.role === 'user' || message.role === 'assistant')
+                    && 'text' in message
+                    && typeof message.text === 'string'
+                ).slice(-40));
+            }
+        } catch (error) {
+            console.warn('[AIConcierge] Saved conversation could not be restored:', error);
+        } finally {
+            setConversationLoaded(true);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        if (!conversationLoaded) return;
+        try {
+            localStorage.setItem(CONVERSATION_KEY, JSON.stringify(messages.slice(-40)));
+        } catch (error) {
+            console.warn('[AIConcierge] Conversation could not be saved on this device:', error);
+        }
+    }, [conversationLoaded, messages]);
+
     // Disable logic based on Admin settings
     if (settings?.features?.ai_concierge_enabled === false) return null;
 
@@ -91,81 +147,45 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
         e.preventDefault();
         if (!query.trim() || isLoading) return;
 
-        const userMsg = query.trim();
+        const userMsg = query.trim().slice(0, 500);
         setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
         setQuery('');
         setIsLoading(true);
+        setStatusMessage('Checking what is currently in stock…');
 
         trackClick('ai-concierge-msg', 'AI Concierge Message', { query: userMsg, msg_count: messages.length + 1 });
 
         try {
-            // Real Database Vector/Keyword Search Node
-            const low = userMsg.toLowerCase();
-            const conciergeSettings = settings?.ai_config;
-            const useClassicBehavior = conciergeSettings?.concierge_mode !== 'managed';
-            const config = {
-                build_setup_limit: conciergeSettings?.build_setup_limit || 5000,
-                assistant_name: conciergeSettings?.assistant_name || 'Online Bar AI',
-                party_categories: useClassicBehavior
-                    ? ['spirits', 'snacks', 'mixers']
-                    : conciergeSettings?.party_categories || ['spirits', 'snacks', 'mixers'],
-                date_night_categories: useClassicBehavior
-                    ? ['wine', 'snacks', 'mixers']
-                    : conciergeSettings?.date_night_categories || ['wine', 'snacks', 'mixers'],
-                recommendation_limit: useClassicBehavior ? 4 : conciergeSettings?.recommendation_limit || 4
-            };
-            const queryLimit = (classicLimit: number) => useClassicBehavior
-                ? classicLimit
-                : Math.min(6, Math.max(1, config.recommendation_limit));
-
-            let reply = `I'm analyzing the cellar for your premium selection. As ${config.assistant_name}, I recommend these:`;
-            let suggestions: Suggestion[] = [];
-
-            if (low.includes('date night') || low.includes('couple') || low.includes('romantic')) {
-                reply = "I've curated a refined selection for your evening. Our cellar recommends these pairings:";
-                if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*')
-                    .in('category', config.date_night_categories)
-                    .limit(queryLimit(3));
-                suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
-            } else if (low.includes('host') || low.includes('people') || low.includes('party')) {
-                reply = "For your gathering, I recommend these essentials to keep the grid alive:";
-                if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*')
-                    .in('category', config.party_categories)
-                    .limit(queryLimit(4));
-                suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
-            } else if (low.includes('setup') || low.includes('office') || low.includes('gaming')) {
-                const limit = config.build_setup_limit || 5000;
-                if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*')
-                    .lte('price', limit)
-                    .limit(queryLimit(3));
-                suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
-                if (suggestions.length === 0) {
-                    reply = `I couldn't find a complete selection under ${formatPrice(limit)}. I've pulled our closest premium essentials instead:`;
-                    const { data: alt } = await supabase.from('products').select('*').limit(queryLimit(2));
-                    suggestions = (alt || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
-                }
-            } else if (low.includes('cheap') || low.includes('budget') || low.includes('under')) {
-                if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*')
-                    .order('price', { ascending: true })
-                    .limit(queryLimit(2));
-                suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
-            } else {
-                reply = "I recommend these premium essentials to upgrade your bar experience.";
-                if (!supabase) throw new Error("Database offline");
-                const { data: prods } = await supabase.from('products').select('*').limit(queryLimit(2));
-                suggestions = (prods || []).map(p => ({ id: p.id, name: p.name, price: p.price, image_url: p.image_url }));
-            }
-
-            setMessages(prev => [...prev, { role: 'assistant', text: reply, suggestions }]);
-        } catch (error) {
-            console.error('[AIConcierge] Could not prepare recommendations:', error);
+            const response = await fetch('/api/concierge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: userMsg, ageConfirmed, logUnmatched }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as ConciergeResponse;
+            if (!response.ok) throw new Error(result.error || 'The concierge could not check the live catalog.');
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                text: 'I could not reach the live product catalog right now. Please try again shortly.'
+                text: result.response || 'I could not find a matching reply.',
+                suggestions: result.recommendations || [],
+                chips: result.chips || [],
+                action: result.action || result.scenario?.action || 'none'
+            }]);
+            const notices = [result.ageNotice];
+            if (logUnmatched && !result.scenario && !result.unmatchedLogged) {
+                notices.push(result.scenarioStorageReady === false
+                    ? 'Your question was not saved because the reply library is not installed yet.'
+                    : 'Your question was not saved for review.');
+            } else if (result.unmatchedLogged) {
+                notices.push('Your question was saved for reply review after basic contact-detail redaction.');
+            }
+            setStatusMessage(notices.filter(Boolean).join(' '));
+        } catch (error) {
+            console.error('[AIConcierge] Could not prepare recommendations:', error);
+            setStatusMessage('');
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                text: error instanceof Error ? error.message : 'I could not reach the live catalog just now. Please try again.'
             }]);
         } finally {
             setIsLoading(false);
@@ -179,11 +199,24 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
             price: i.price,
             base_price: i.price,
             image: i.image_url,
+            category: i.category,
             quantity: 1
         }));
         addBundleToCart(cartItems);
-        setMessages(prev => [...prev, { role: 'assistant', text: "Selection added to bag. Ready for dispatch!" }]);
+        setMessages(prev => [...prev, { role: 'assistant', text: 'Added to your bag. Delivery options and the final total are confirmed at checkout.' }]);
     };
+
+    const clearConversation = () => {
+        setMessages([]);
+        setStatusMessage('');
+        try {
+            localStorage.removeItem(CONVERSATION_KEY);
+        } catch (error) {
+            console.warn('[AIConcierge] Could not clear the saved conversation:', error);
+        }
+    };
+
+    const supportNumber = settings.contact.whatsapp.replace(/\D/g, '');
 
     if (pathname === '/affiliate/agreement') return null;
 
@@ -194,19 +227,19 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
                 <div className="fixed left-3 sm:left-8 bottom-[calc(6rem+env(safe-area-inset-bottom))] lg:bottom-28 z-[2100]">
                     <button
                         onClick={() => setIsOpen(true)}
-                        aria-label="Open AI Concierge"
-                        className="relative flex h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-primary text-white shadow-2xl shadow-primary/40 hover:scale-110 active:scale-95 transition-all items-center justify-center group border-4 border-white"
+                        aria-label="Open your night concierge"
+                        className="relative flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-amber-500 text-slate-950 shadow-xl shadow-amber-900/20 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 active:scale-95 sm:h-14 sm:w-14"
                     >
-                        <Bot className="h-6 w-6 sm:h-8 sm:w-8 group-hover:rotate-12 transition-transform" />
-                        <div className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />
+                        <span className="text-sm font-black tracking-tighter">A</span>
+                        <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500" />
                     </button>
                 </div>
                 )
             ) : (
-                <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/45 p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-sm sm:p-6">
+                <div className="fixed inset-0 z-[3000] flex items-end justify-center bg-slate-950/45 p-0 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:items-center sm:p-5">
                     <button
                         type="button"
-                        aria-label="Close AI Concierge"
+                        aria-label="Close night concierge"
                         onClick={() => setIsOpen(false)}
                         className="absolute inset-0 h-full w-full cursor-default"
                     />
@@ -215,87 +248,133 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
                         aria-modal="true"
                         aria-labelledby="ai-concierge-title"
                         onClick={event => event.stopPropagation()}
-                        className="relative z-10 flex h-[min(650px,calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom)))] max-h-full w-full max-w-[400px] flex-col overflow-hidden rounded-[2rem] border border-slate-100 bg-white text-left shadow-[0_30px_100px_-15px_rgba(0,0,0,0.35)] animate-in zoom-in-95 duration-200 sm:rounded-[2.5rem]"
+                        className="relative z-10 flex h-[min(760px,88dvh)] w-full max-w-[440px] flex-col overflow-hidden rounded-t-[2rem] border border-slate-200 bg-white text-left shadow-[0_30px_100px_-15px_rgba(0,0,0,0.35)] animate-in slide-in-from-bottom-4 duration-200 motion-reduce:animate-none sm:h-[min(700px,calc(100dvh-2.5rem))] sm:rounded-[2rem]"
                     >
-                    <div className="shrink-0 p-5 sm:p-6 bg-primary text-white relative overflow-hidden flex justify-between items-center shadow-lg">
-                        <div className="relative z-10 flex items-center gap-4">
-                            <div className="h-12 w-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/20"><Bot size={24} /></div>
-                            <div>
-                                <h3 id="ai-concierge-title" className="text-xl font-black uppercase tracking-tighter">AI Concierge</h3>
-                                <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Premium Shopping Agent</p>
+                    <div className="shrink-0 border-b border-slate-200 bg-white px-5 pb-4 pt-3 sm:px-6 sm:pt-5">
+                        <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-300 sm:hidden" />
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-amber-400">A</span>
+                                <div className="min-w-0">
+                                    <h3 id="ai-concierge-title" className="truncate text-base font-black tracking-tight text-slate-950">Your night concierge</h3>
+                                    <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-slate-600"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Online · live catalog + saved replies</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                {messages.length > 0 && <button type="button" onClick={clearConversation} aria-label="Delete this conversation" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"><Trash2 size={17} /></button>}
+                                <button type="button" onClick={() => setIsOpen(false)} aria-label="Close night concierge" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"><X size={20} /></button>
                             </div>
                         </div>
-                        <button onClick={() => setIsOpen(false)} aria-label="Close AI Concierge" className="h-10 w-10 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors relative z-10"><X size={24} /></button>
-                        <Sparkles className="absolute -bottom-10 -right-10 h-48 w-48 text-white/5 -rotate-12" />
                     </div>
 
-                    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
+                    <div ref={scrollRef} aria-live="polite" aria-relevant="additions text" className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-slate-50/70 p-4 sm:p-5">
                         {messages.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center space-y-10 py-10">
-                                <div className="h-24 w-24 rounded-[3rem] bg-white flex items-center justify-center shadow-inner animate-pulse"><Sparkles className="h-10 w-10 text-primary" /></div>
-                                <div className="space-y-4 px-10">
-                                    <h4 className="text-2xl font-black uppercase tracking-tighter text-foreground">Mission Brief</h4>
-                                    <p className="text-xs text-slate-400 font-medium leading-relaxed italic">
-                                        &quot;I am your tactical sales agent. Tell me what setup you need or your budget, and I will bundle it for you.&quot;
-                                    </p>
+                            <div className="flex min-h-full flex-col justify-center gap-6 py-6">
+                                <div className="space-y-2 px-2 text-center">
+                                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-amber-400">A</div>
+                                    <h4 className="pt-2 text-2xl font-black tracking-tight text-slate-950">What’s the plan tonight?</h4>
+                                    <p className="mx-auto max-w-xs text-sm leading-6 text-slate-700">Tell me the occasion, how many people, and your budget. I’ll check the live catalog and help you choose.</p>
+                                    <p className="text-xs text-slate-500">Apex Market AI assistant · prices and stock come from the live catalog.</p>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3 w-full px-4">
-                                    {['Date Night', 'Hosting 8 People', 'Sophisticated Mood', 'Under 5k'].map(opt => (
-                                        <button key={opt} onClick={() => setQuery(opt)} className="p-4 rounded-2xl bg-white border border-slate-100 text-[9px] font-black uppercase text-slate-500 hover:border-primary hover:text-primary transition-all shadow-sm">
-                                            {opt}
+                                <div className="grid gap-2 px-1">
+                                    {['House party for 10', 'Something for two, KES 3,000', 'Under KES 5,000', 'No alcohol, add snacks'].map(option => (
+                                        <button key={option} type="button" onClick={() => setQuery(option)} className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-left text-sm font-semibold text-slate-800 shadow-sm transition hover:border-amber-500 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
+                                            {option}
                                         </button>
                                     ))}
                                 </div>
                             </div>
                         ) : (
-                            messages.map((m, idx) => (
-                                <div key={idx} className={cn("flex flex-col gap-4", m.role === 'user' ? "items-end" : "items-start")}>
+                            messages.map((message, index) => (
+                                <div key={`${index}-${message.role}`} className={cn('flex flex-col gap-3', message.role === 'user' ? 'items-end' : 'items-start')}>
                                     <div className={cn(
-                                        "max-w-[85%] p-5 rounded-[2rem] text-sm shadow-sm",
-                                        m.role === 'user' ? "bg-primary text-white rounded-br-sm" : "bg-white text-slate-700 border border-slate-100 rounded-bl-sm font-medium italic"
+                                        'max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm',
+                                        message.role === 'user'
+                                            ? 'rounded-br-md bg-slate-950 text-white'
+                                            : 'rounded-bl-md border border-slate-200 bg-white text-slate-800'
                                     )}>
-                                        {m.text}
+                                        {message.text}
                                     </div>
-                                    {m.suggestions && m.suggestions.length > 0 && (
-                                        <div className="w-full space-y-3 animate-in fade-in slide-in-from-left-4 duration-500">
-                                            {m.suggestions.map(s => (
-                                                <div key={s.id} className="p-4 rounded-3xl bg-white border border-slate-100 flex items-center gap-4 shadow-sm group hover:border-primary/20 transition-all">
-                                                    <div className="h-14 w-14 rounded-2xl bg-slate-50 p-2 border border-slate-100 shrink-0">
-                                                        <Image src={normalizeImage(s.image_url)} alt="" width={56} height={56} className="h-full w-full object-contain" />
+                                    {message.suggestions && message.suggestions.length > 0 && (
+                                        <div className="w-full space-y-2">
+                                            {message.suggestions.map(product => (
+                                                <article key={product.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-50">
+                                                        <Image src={normalizeImage(product.image_url)} alt="" width={56} height={56} className="h-full w-full object-contain" />
                                                     </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-[10px] font-black uppercase truncate text-foreground">{s.name}</p>
-                                                        <p className="text-sm font-black text-primary">{formatPrice(s.price)}</p>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-bold text-slate-950">{product.name}</p>
+                                                        <p className="mt-0.5 text-sm font-black text-amber-700">{formatPrice(product.price)}</p>
+                                                        <p className="mt-0.5 text-[11px] text-slate-500">{product.category} · in stock</p>
                                                     </div>
-                                                    <Link href={`/shop/${s.id}`}><ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-primary" /></Link>
-                                                </div>
+                                                    <Link href={`/shop/${product.id}`} aria-label={`View ${product.name}`} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"><ChevronRight size={19} /></Link>
+                                                </article>
                                             ))}
-                                            <Button onClick={() => handleAddAll(m.suggestions!)} className="w-full h-12 rounded-2xl bg-indigo-50 text-indigo-600 font-black uppercase text-[10px] tracking-widest border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
-                                                <ShoppingBag size={14} className="mr-2" /> Add Bundle to Bag
-                                            </Button>
+                                            <div className="flex items-center justify-between rounded-xl bg-slate-100 px-3 py-2 text-xs">
+                                                <span className="font-semibold text-slate-700">Lowest listed price</span>
+                                                <span className="font-black text-slate-950">{formatPrice(Math.min(...message.suggestions.map(product => product.price)))}</span>
+                                            </div>
+                                            <button type="button" onClick={() => handleAddAll(message.suggestions!)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 text-sm font-bold text-slate-950 transition hover:bg-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700">
+                                                <ShoppingBag size={16} /> Add these picks to my bag
+                                            </button>
+                                        </div>
+                                    )}
+                                    {message.action === 'support' && (
+                                        <a href={supportNumber ? `https://wa.me/${supportNumber}?text=${encodeURIComponent('Hi Apex Market, I need help from the concierge. ')}` : '/contact'} target={supportNumber ? '_blank' : undefined} rel={supportNumber ? 'noopener noreferrer' : undefined} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
+                                            <Headphones size={16} /> Talk to a person
+                                        </a>
+                                    )}
+                                    {message.chips && message.chips.length > 0 && (
+                                        <div className="flex max-w-full flex-wrap gap-2">
+                                            {message.chips.slice(0, 4).map(chip => (
+                                                <button key={chip} type="button" onClick={() => setQuery(chip)} className="min-h-10 rounded-full border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:border-amber-500 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">{chip}</button>
+                                            ))}
                                         </div>
                                     )}
                                 </div>
                             ))
                         )}
-                        {isLoading && <div className="flex justify-start"><div className="bg-white p-5 rounded-[2rem] rounded-bl-sm border border-slate-100 shadow-sm"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div></div>}
+                        {isLoading && <div role="status" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700"><Loader2 className="h-4 w-4 shrink-0 animate-spin text-amber-700" />{statusMessage || 'One moment, I’m checking…'}</div>}
+                        {statusMessage && !isLoading && <p role="status" className="text-xs text-slate-600">{statusMessage}</p>}
                     </div>
 
-                    <form onSubmit={handleAsk} className="shrink-0 p-4 sm:p-5 bg-white border-t border-slate-50">
-                        <div className="relative">
-                            <Input
+                    <form onSubmit={handleAsk} className="shrink-0 space-y-3 border-t border-slate-200 bg-white p-4 sm:p-5">
+                        <label className="flex items-start gap-2 text-xs leading-5 text-slate-700">
+                            <input type="checkbox" checked={ageConfirmed} onChange={event => setAgeConfirmed(event.target.checked)} className="mt-1 h-4 w-4 accent-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600" />
+                            <span><ShieldCheck size={14} className="mr-1 inline text-slate-600" />I self-confirm I am at least 18. This is not ID verification; ID may be checked at delivery.</span>
+                        </label>
+                        <label className="flex items-start gap-2 text-[11px] leading-4 text-slate-600">
+                            <input type="checkbox" checked={logUnmatched} onChange={event => setLogUnmatched(event.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600" />
+                            <span>Share unmatched questions to improve replies. We redact common phone/email formats; avoid personal or payment details.</span>
+                        </label>
+                        <div className="flex gap-2">
+                            <textarea
                                 value={query}
-                                onChange={e => setQuery(e.target.value)}
-                                placeholder="Type mission query..."
-                                className="h-16 rounded-[1.5rem] bg-slate-50 border-slate-100 pr-16 font-bold text-sm text-foreground focus:ring-4 focus:ring-primary/5 transition-all"
+                                onChange={event => setQuery(event.target.value.slice(0, 500))}
+                                onKeyDown={event => {
+                                    if (event.key === 'Enter' && !event.shiftKey) {
+                                        event.preventDefault();
+                                        event.currentTarget.form?.requestSubmit();
+                                    }
+                                }}
+                                maxLength={500}
+                                rows={2}
+                                aria-label="Message the Apex Market concierge"
+                                placeholder="Tell me the occasion, guests, or budget…"
+                                className="min-h-12 min-w-0 flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-950 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
                             />
-                            <Button
+                            <button
                                 type="submit"
                                 disabled={!query.trim() || isLoading}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 h-12 w-12 rounded-xl bg-primary text-white p-0 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20"
+                                aria-label="Send message"
+                                className="inline-flex h-12 w-12 shrink-0 items-center justify-center self-end rounded-xl bg-amber-500 text-slate-950 shadow-sm transition hover:bg-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
                             >
-                                <Send className="h-5 w-5" />
-                            </Button>
+                                <Send size={19} />
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                            <span><CircleUserRound size={12} className="mr-1 inline" />Conversation saved on this device · use the bin to delete</span>
+                            <span>{query.length}/500</span>
                         </div>
                     </form>
                     </Card>

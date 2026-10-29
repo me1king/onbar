@@ -17,9 +17,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { useState } from "react";
 import { useWishlist } from "@/context/WishlistContext";
+import DecodedImage from "@/components/ui/DecodedImage";
 import { useSettings } from "@/lib/useSettings";
 import { Product } from "@/types/product";
 import { getStartingPrice, getStoredVariantPrices, getVariantPrice } from "@/lib/productPricing";
@@ -186,7 +186,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
 
             <Link href={`/shop/${product.id}`} prefetch={true} className="relative z-10 block h-full w-full">
                 {!imageError ? (
-                  <Image
+                  <DecodedImage
                     src={imageUrl}
                     alt={product.name}
                     fill

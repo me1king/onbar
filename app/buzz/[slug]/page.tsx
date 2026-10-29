@@ -3,21 +3,19 @@
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Flame,
     MapPin,
     Clock,
     ChevronLeft,
     Navigation,
-    Loader2,
     Zap,
     Camera
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { normalizeImage } from '@/lib/utils';
-import Image from 'next/image';
+import DecodedImage from '@/components/ui/DecodedImage';
 import { OB_OS } from '@/lib/onlineBarOS';
 
 interface BuzzDetail {
@@ -74,43 +72,45 @@ export default function BuzzDetailPage() {
     const router = useRouter();
     const [buzz, setBuzz] = React.useState<BuzzDetail | null>(null);
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState<string | null>(null);
 
     const fetchBuzzDetail = React.useCallback(async () => {
-        if (!supabase || !slug) return;
+        if (!slug) {
+            setLoadError('This event could not be found.');
+            setLoading(false);
+            return;
+        }
         setLoading(true);
+        setLoadError(null);
         try {
-            // High-fidelity fetch for Experience Detail
-            const { data: bData } = await supabase
-                .from('buzz_posts')
-                .select('*, venue:buzz_venues(*), category:buzz_categories(label), media:buzz_media(*), updates:buzz_updates(*)')
-                .eq('id', slug) // Assuming ID for now for simplicity, or slug if implemented
-                .single();
-
-            if (bData) {
-                const dbBuzz = bData as unknown as DBBuzzPostDetail;
-                setBuzz({
-                    id: dbBuzz.id,
-                    title: dbBuzz.title,
-                    description: dbBuzz.description,
-                    start_at: dbBuzz.start_at,
-                    end_at: dbBuzz.end_at,
-                    status: dbBuzz.status,
-                    trend_score: dbBuzz.trend_score,
-                    latitude: dbBuzz.latitude,
-                    longitude: dbBuzz.longitude,
-                    venue: dbBuzz.venue,
-                    category: dbBuzz.category || { label: 'Uncategorized' },
-                    media: dbBuzz.media || [],
-                    updates: dbBuzz.updates || []
-                });
-
-                // Track the Discovery
-                OB_OS.track('BUZZ_OPEN', {
-                    details: { buzzId: dbBuzz.id, title: dbBuzz.title, venue: dbBuzz.venue?.name }
-                });
+            const response = await fetch(`/api/buzz/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+            const result = await response.json() as { error?: string; buzz?: DBBuzzPostDetail };
+            if (!response.ok || !result.buzz) {
+                throw new Error(result.error || 'Event details could not be loaded.');
             }
-        } catch (err) {
-            console.error("Discovery Node offline.", err);
+
+            const dbBuzz = result.buzz;
+            setBuzz({
+                id: dbBuzz.id,
+                title: dbBuzz.title,
+                description: dbBuzz.description,
+                start_at: dbBuzz.start_at,
+                end_at: dbBuzz.end_at,
+                status: dbBuzz.status,
+                trend_score: dbBuzz.trend_score,
+                latitude: dbBuzz.latitude,
+                longitude: dbBuzz.longitude,
+                venue: dbBuzz.venue,
+                category: dbBuzz.category || { label: 'Uncategorized' },
+                media: dbBuzz.media || [],
+                updates: dbBuzz.updates || []
+            });
+            void OB_OS.track('BUZZ_OPEN', {
+                details: { buzzId: dbBuzz.id, title: dbBuzz.title, venue: dbBuzz.venue?.name }
+            });
+        } catch (error) {
+            console.error('[BuzzDetail] Could not load event details:', error);
+            setLoadError(error instanceof Error ? error.message : 'Event details could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -121,25 +121,44 @@ export default function BuzzDetailPage() {
     }, [fetchBuzzDetail]);
 
     if (loading) return (
-        <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white">
-            <Loader2 className="h-10 w-10 text-primary animate-spin" />
-            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-300">Decrypting Vibe Frequency...</p>
+        <div role="status" aria-label="Loading event details" className="min-h-screen bg-white">
+            <div className="h-[70vh] min-h-[420px] animate-pulse bg-slate-100" />
+            <div className="mx-auto max-w-7xl space-y-5 px-6 py-12">
+                <div className="h-8 w-2/3 rounded bg-slate-100 motion-safe:animate-pulse" />
+                <div className="h-5 w-1/3 rounded bg-slate-100 motion-safe:animate-pulse" />
+                <div className="h-28 rounded-2xl bg-slate-100 motion-safe:animate-pulse" />
+            </div>
         </div>
     );
 
-    if (!buzz) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-slate-300">Mission Expired: Node Not Found.</div>;
+    if (!buzz) return (
+        <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 px-6 text-center">
+            <p role="alert" className="max-w-lg text-sm font-semibold text-slate-700">{loadError || 'This event is no longer available.'}</p>
+            <div className="flex flex-wrap justify-center gap-3">
+                {loadError && <Button onClick={() => void fetchBuzzDetail()} className="min-h-11 rounded-xl bg-primary px-5 text-white">Try again</Button>}
+                <Button asChild variant="outline" className="min-h-11 rounded-xl px-5"><Link href="/buzz">Back to events</Link></Button>
+            </div>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-white text-left selection:bg-primary/20 animate-in fade-in duration-1000">
             {/* 📽️ CINEMATIC HERO SECTION */}
             <section className="relative h-[70vh] w-full overflow-hidden">
-                <Image
-                    src={normalizeImage(buzz.media[0]?.url)}
-                    alt={buzz.title}
-                    fill
-                    className="object-cover transition-transform duration-[5s] hover:scale-110"
-                    priority
-                />
+                {buzz.media[0]?.url ? (
+                    <DecodedImage
+                        src={normalizeImage(buzz.media[0].url)}
+                        alt={buzz.title}
+                        fill
+                        sizes="100vw"
+                        className="object-cover transition-transform duration-[5s] hover:scale-110"
+                        priority
+                    />
+                ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-950 text-white/50">
+                        <Camera size={48} aria-hidden="true" />
+                    </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-black/40" />
 
                 <button
@@ -197,7 +216,7 @@ export default function BuzzDetailPage() {
                                         <p className="text-sm font-medium text-slate-600 leading-relaxed italic">{update.message}</p>
                                         {update.media_url && (
                                             <div className="relative h-64 w-full rounded-2xl overflow-hidden border border-slate-100 shadow-inner">
-                                                <Image src={normalizeImage(update.media_url)} alt="" fill className="object-cover" />
+                                                <DecodedImage src={normalizeImage(update.media_url)} alt="" fill sizes="(max-width: 768px) 100vw, 50vw" className="object-cover" />
                                             </div>
                                         )}
                                     </Card>
@@ -216,7 +235,7 @@ export default function BuzzDetailPage() {
 
                         {buzz.venue ? <Card className="p-10 rounded-[4rem] bg-slate-900 text-white border-none shadow-2xl space-y-10 relative overflow-hidden group">
                             <div className="absolute inset-0">
-                                <Image src={normalizeImage(buzz.venue?.hero_image_url)} alt="" fill className="object-cover opacity-20 transition-transform duration-[3s] group-hover:scale-110" />
+                                <DecodedImage src={normalizeImage(buzz.venue?.hero_image_url)} alt="" fill sizes="(max-width: 1024px) 100vw, 40vw" className="object-cover opacity-20 transition-transform duration-[3s] group-hover:scale-110" />
                                 <div className="absolute inset-0 bg-slate-900/60" />
                             </div>
 

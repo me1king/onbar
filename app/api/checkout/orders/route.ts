@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { findDeliveryArea, parseDeliveryAreas } from '@/lib/deliveryAreas';
@@ -11,6 +12,14 @@ type CheckoutItemInput = {
   quantity: number;
   size: string;
   addonIds: string[];
+  engraving?: {
+    text: string;
+    font: 'classic' | 'modern' | 'signature';
+    finish: 'matte_black' | 'brushed_steel';
+    giftPackage: boolean;
+    giftMessage: string | null;
+    spellingApproved: true;
+  };
 };
 
 type CheckoutBody = {
@@ -57,6 +66,9 @@ type ProductRow = {
   hide_product: boolean | null;
   is_available_now: boolean | null;
   status: string | null;
+  engraving_enabled?: boolean | null;
+  engraving_fee?: number | string | null;
+  gift_packaging_fee?: number | string | null;
 };
 
 function getDatabase() {
@@ -79,6 +91,33 @@ function getDatabase() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readEngraving(value: unknown): CheckoutItemInput['engraving'] | null {
+  if (!isRecord(value)
+    || typeof value.text !== 'string'
+    || value.text.trim().length < 1
+    || value.text.trim().length > 20
+    || !/^[A-Za-z0-9 .,'&-]+$/.test(value.text.trim())
+    || !['classic', 'modern', 'signature'].includes(String(value.font))
+    || !['matte_black', 'brushed_steel'].includes(String(value.finish))
+    || typeof value.giftPackage !== 'boolean'
+    || value.spellingApproved !== true
+    || (value.giftMessage !== null && typeof value.giftMessage !== 'string')
+    || (typeof value.giftMessage === 'string' && value.giftMessage.length > 150)
+    || (!value.giftPackage && Boolean(value.giftMessage))
+  ) return null;
+
+  return {
+    text: value.text.trim(),
+    font: value.font as 'classic' | 'modern' | 'signature',
+    finish: value.finish as 'matte_black' | 'brushed_steel',
+    giftPackage: value.giftPackage,
+    giftMessage: value.giftPackage && typeof value.giftMessage === 'string'
+      ? value.giftMessage.trim() || null
+      : null,
+    spellingApproved: true
+  };
 }
 
 function readBody(value: unknown): CheckoutBody | null {
@@ -121,11 +160,14 @@ function readBody(value: unknown): CheckoutBody | null {
       || item.addonIds.length > 20
       || item.addonIds.some((id) => typeof id !== 'string' || id.length > 80)
     ) return null;
+    const engraving = item.engraving === undefined ? undefined : readEngraving(item.engraving);
+    if (item.engraving !== undefined && !engraving) return null;
     normalizedItems.push({
       productId: Number(item.productId),
       quantity: Number(item.quantity),
       size: item.size.trim() || 'Standard',
-      addonIds: [...new Set(item.addonIds as string[])]
+      addonIds: [...new Set(item.addonIds as string[])],
+      ...(engraving ? { engraving } : {})
     });
   }
 
@@ -246,14 +288,33 @@ export async function POST(request: Request) {
 
     const { database } = configuration;
     const settingKeys = ['system_lockdown', 'shipping', 'free_delivery_areas'];
-    const [{ data: settings, error: settingsError }, productsResult] = await Promise.all([
+    const [settingsResult, customizedProductsResult] = await Promise.all([
       database.from('settings').select('key, value').in('key', settingKeys),
       database.from('products')
-        .select('id, name, stock, variant_stock, price, old_price, variant_prices, beverage_specs, cost_price, is_bite, is_snack, sizes, hide_product, is_available_now, status')
+        .select('id, name, stock, variant_stock, price, old_price, variant_prices, beverage_specs, cost_price, is_bite, is_snack, sizes, hide_product, is_available_now, status, engraving_enabled, engraving_fee, gift_packaging_fee')
         .in('id', [...new Set(body.items.map((item) => item.productId))])
     ]);
-    if (settingsError || productsResult.error) {
-      console.error('[CheckoutOrder] Could not load checkout data:', settingsError || productsResult.error);
+    const { data: settings, error: settingsError } = settingsResult;
+    let productsData: unknown[] | null = customizedProductsResult.data as unknown[] | null;
+    let productsError = customizedProductsResult.error;
+    const missingEngravingColumns = Boolean(productsError
+      && ['42703', 'PGRST204'].includes(productsError.code || '')
+      && /engraving_enabled|engraving_fee|gift_packaging_fee/i.test(productsError.message));
+    if (missingEngravingColumns) {
+      if (body.items.some((item) => item.engraving)) {
+        return NextResponse.json({
+          error: 'Engraving checkout is not ready. Apply supabase/ENGRAVING_PRODUCTION_MIGRATION.sql and try again.'
+        }, { status: 503 });
+      }
+      console.error('[CheckoutOrder] Engraving migration is missing; continuing checkout without engraving products.');
+      const standardProductsResult = await database.from('products')
+        .select('id, name, stock, variant_stock, price, old_price, variant_prices, beverage_specs, cost_price, is_bite, is_snack, sizes, hide_product, is_available_now, status')
+        .in('id', [...new Set(body.items.map((item) => item.productId))]);
+      productsData = standardProductsResult.data as unknown[] | null;
+      productsError = standardProductsResult.error;
+    }
+    if (settingsError || productsError) {
+      console.error('[CheckoutOrder] Could not load checkout data:', settingsError || productsError);
       return NextResponse.json({ error: 'Checkout information could not be verified. Please try again.' }, { status: 503 });
     }
     const settingsByKey = new Map((settings || []).map((setting) => [setting.key, setting.value]));
@@ -292,7 +353,7 @@ export async function POST(request: Request) {
     const deliveryFee = matchedArea ? 0 : selectedRegion.fee || regionSettings['nairobi-outskirts'].fee;
     const deliveryLabel = matchedArea?.name || selectedRegion.label;
 
-    const products = (productsResult.data || []) as ProductRow[];
+    const products = (productsData || []) as ProductRow[];
     const productById = new Map(products.map((product) => [Number(product.id), product]));
     const normalizedLines = body.items.map((item) => {
       const product = productById.get(item.productId);
@@ -304,6 +365,9 @@ export async function POST(request: Request) {
       }
       if (item.addonIds.length && !product.is_bite && !product.is_snack) {
         throw new Error(`${product.name} does not support selected extras.`);
+      }
+      if (item.engraving && product.engraving_enabled !== true) {
+        throw new Error(`${product.name} is not currently available for engraving.`);
       }
       return { ...item, product };
     });
@@ -335,7 +399,13 @@ export async function POST(request: Request) {
         return { id: String(addon.id), name: addon.name, price: Number(addon.price) };
       });
       const addonPrice = selectedAddons.reduce((sum, addon) => sum + addon.price, 0);
-      const unitPrice = basePrice + addonPrice;
+      const engravingFee = item.engraving ? Number(product.engraving_fee) : 0;
+      const packagingFee = item.engraving?.giftPackage ? Number(product.gift_packaging_fee) : 0;
+      if (!Number.isFinite(engravingFee) || engravingFee < 0
+        || !Number.isFinite(packagingFee) || packagingFee < 0) {
+        throw new Error(`${product.name} has invalid engraving pricing. Please contact support.`);
+      }
+      const unitPrice = basePrice + addonPrice + engravingFee + packagingFee;
       if (!Number.isFinite(unitPrice) || unitPrice < 0) {
         throw new Error(`${product.name} has invalid pricing. Please contact support.`);
       }
@@ -491,24 +561,96 @@ export async function POST(request: Request) {
     }
 
     const rows = orderItems.map((item) => ({ ...item, order_id: order.id }));
-    let { error: itemsError } = await database.from('order_items').insert(rows);
-    if (itemsError && /unit_list_price/i.test(itemsError.message)
-      && (itemsError.code === '42703' || itemsError.code === 'PGRST204')) {
-      const legacyRows = rows.map((row) => {
+    let itemsError: { message: string; code?: string } | null = null;
+    const rowsMissingListPrice = (error: { message: string; code?: string } | null) =>
+      Boolean(error && /unit_list_price/i.test(error.message)
+        && (error.code === '42703' || error.code === 'PGRST204'));
+    const insertRows = async (rowsToInsert: typeof rows) => {
+      const result = await database.from('order_items').insert(rowsToInsert);
+      if (!rowsMissingListPrice(result.error)) return result.error;
+      const legacyRows = rowsToInsert.map((row) => {
         const legacyRow = { ...row };
         Reflect.deleteProperty(legacyRow, 'unit_list_price');
         return legacyRow;
       });
-      const legacyInsert = await database.from('order_items').insert(legacyRows);
-      itemsError = legacyInsert.error;
-      if (!itemsError) {
+      const legacyResult = await database.from('order_items').insert(legacyRows);
+      if (!legacyResult.error) {
         console.error('[CheckoutOrder] Sold-item list-price migration is missing; list-price history was omitted.');
       }
+      return legacyResult.error;
+    };
+
+    if (normalizedLines.some((item) => item.engraving)) {
+      const standardRows = rows.filter((_, index) => !normalizedLines[index].engraving);
+      if (standardRows.length) itemsError = await insertRows(standardRows);
+
+      for (let index = 0; index < normalizedLines.length && !itemsError; index += 1) {
+        const item = normalizedLines[index];
+        if (!item.engraving) continue;
+
+        let itemResult = await database.from('order_items')
+          .insert(rows[index])
+          .select('id')
+          .single();
+        if (rowsMissingListPrice(itemResult.error)) {
+          const legacyRow = { ...rows[index] };
+          Reflect.deleteProperty(legacyRow, 'unit_list_price');
+          itemResult = await database.from('order_items')
+            .insert(legacyRow)
+            .select('id')
+            .single();
+          if (!itemResult.error) {
+            console.error('[CheckoutOrder] Sold-item list-price migration is missing; list-price history was omitted.');
+          }
+        }
+        if (itemResult.error || !itemResult.data) {
+          itemsError = itemResult.error || { message: 'The customized order item was not returned.' };
+          break;
+        }
+
+        const approvedAt = new Date().toISOString();
+        const engravingFee = Number(item.product.engraving_fee);
+        const packagingFee = item.engraving.giftPackage ? Number(item.product.gift_packaging_fee) : 0;
+        const approvedSnapshot = {
+          productId: item.product.id,
+          productName: item.product.name,
+          quantity: item.quantity,
+          engravingText: item.engraving.text,
+          font: item.engraving.font,
+          finish: item.engraving.finish,
+          giftPackage: item.engraving.giftPackage,
+          giftMessage: item.engraving.giftMessage,
+          engravingFee,
+          packagingFee,
+          unitPrice: orderItems[index].unit_price,
+          approvedAt
+        };
+        const snapshotHash = createHash('sha256')
+          .update(JSON.stringify(approvedSnapshot))
+          .digest('hex');
+        const jobResult = await database.from('engraving_jobs').insert({
+          order_item_id: itemResult.data.id,
+          approved_snapshot: approvedSnapshot,
+          snapshot_hash: snapshotHash,
+          approved_at: approvedAt,
+          status: 'queued'
+        });
+        if (jobResult.error) itemsError = jobResult.error;
+      }
+    } else {
+      itemsError = await insertRows(rows);
     }
+
     if (itemsError) {
       const { error: cleanupError } = await database.from('orders').delete().eq('id', order.id);
       if (cleanupError) console.error('[CheckoutOrder] Could not remove incomplete order:', cleanupError);
-      console.error('[CheckoutOrder] Could not create order items:', itemsError);
+      console.error('[CheckoutOrder] Could not persist order items or engraving jobs:', itemsError);
+      if (normalizedLines.some((item) => item.engraving)
+        && ['42P01', 'PGRST205'].includes(itemsError.code || '')) {
+        return NextResponse.json({
+          error: 'Engraving production is not installed yet. Run supabase/ENGRAVING_PRODUCTION_MIGRATION.sql and try again.'
+        }, { status: 503 });
+      }
       return NextResponse.json({ error: 'The order items could not be saved. Please try again.' }, { status: 503 });
     }
 

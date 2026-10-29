@@ -10,7 +10,7 @@ import {
     TrendingUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import Image from 'next/image';
+import DecodedImage from '@/components/ui/DecodedImage';
 import { Button } from '@/components/ui/button';
 
 export interface BuzzStory {
@@ -50,10 +50,11 @@ export default function BuzzStoryCard({ story }: { story: BuzzStory }) {
                         className="h-full w-full object-cover opacity-60"
                     />
                 ) : cover ? (
-                    <Image
+                    <DecodedImage
                         src={cover.url}
                         alt={story.title}
                         fill
+                        sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 25vw"
                         className="object-cover opacity-60 transition-transform duration-[2s] group-hover:scale-110"
                     />
                 ) : (

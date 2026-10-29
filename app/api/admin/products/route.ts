@@ -35,6 +35,22 @@ function isProductPayload(value: unknown): value is ProductPayload {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function validateEngravingFields(product: ProductPayload) {
+    const hasConfiguration = ['engraving_enabled', 'engraving_fee', 'gift_packaging_fee']
+        .some(field => Object.prototype.hasOwnProperty.call(product, field));
+    if (!hasConfiguration) return null;
+    if (product.engraving_enabled !== undefined && typeof product.engraving_enabled !== 'boolean') {
+        return 'Engraving availability must be enabled or disabled.';
+    }
+    for (const field of ['engraving_fee', 'gift_packaging_fee']) {
+        if (product[field] !== undefined
+            && (typeof product[field] !== 'number' || !Number.isFinite(product[field]) || product[field] < 0)) {
+            return 'Engraving and gift-packaging fees must be valid non-negative amounts.';
+        }
+    }
+    return null;
+}
+
 export async function GET(request: Request) {
     const access = await getAuthorizedDatabase();
     if ('response' in access) return access.response;
@@ -130,6 +146,9 @@ async function saveProduct(database: SupabaseClient, id: number | null, product:
         const missingColumn = message.match(/Could not find the '([^']+)' column of 'products'/i)
             || message.match(/column products\.([a-z_]+) does not exist/i);
         if (missingColumn?.[1] && missingColumn[1] in payload) {
+            if (['engraving_enabled', 'engraving_fee', 'gift_packaging_fee'].includes(missingColumn[1])) {
+                throw new Error('Engraving settings are not installed yet. Run supabase/ENGRAVING_PRODUCTION_MIGRATION.sql, then retry.');
+            }
             if (missingColumn[1] === 'variant_prices') {
                 const variantPrices = payload.variant_prices;
                 if (typeof variantPrices !== 'object' || variantPrices === null || Array.isArray(variantPrices)) {
@@ -189,6 +208,8 @@ export async function POST(request: Request) {
     if (!isProductPayload(body.product) || typeof body.product.name !== 'string' || !body.product.name.trim()) {
         return NextResponse.json({ error: 'A product name and valid product payload are required.' }, { status: 400 });
     }
+    const engravingValidationError = validateEngravingFields(body.product);
+    if (engravingValidationError) return NextResponse.json({ error: engravingValidationError }, { status: 400 });
 
     try {
         const result = await saveProduct(access.database, null, body.product);
@@ -212,6 +233,8 @@ export async function PATCH(request: Request) {
     if (!Number.isSafeInteger(body.id) || Number(body.id) < 1 || !isProductPayload(body.product)) {
         return NextResponse.json({ error: 'A valid product ID and payload are required.' }, { status: 400 });
     }
+    const engravingValidationError = validateEngravingFields(body.product);
+    if (engravingValidationError) return NextResponse.json({ error: engravingValidationError }, { status: 400 });
 
     try {
         const result = await saveProduct(access.database, Number(body.id), body.product);
