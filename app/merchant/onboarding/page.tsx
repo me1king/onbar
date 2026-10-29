@@ -66,6 +66,17 @@ interface DocumentRequirement {
   required: boolean;
 }
 
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) return {} as T;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(text.trim() || 'The server returned an unexpected response.');
+  }
+}
+
 export default function MerchantOnboarding() {
   const [step, setStep] = useState(0);
   const [businessType, setBusinessType] = useState<MerchantBusinessType>('bar');
@@ -119,7 +130,7 @@ export default function MerchantOnboarding() {
     const params = new URLSearchParams({ businessType, county });
     fetch(`/api/merchant-applications?${params}`, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
-        const payload = await response.json() as { requirements?: Array<{ type: string; label: string; required: boolean }>; error?: string };
+        const payload = await readJsonResponse<{ requirements?: Array<{ type: string; label: string; required: boolean }>; error?: string }>(response);
         if (!response.ok || !payload.requirements) throw new Error(payload.error || 'Document checklist could not be loaded.');
         const configured = payload.requirements.filter((requirement): requirement is DocumentRequirement =>
           Object.prototype.hasOwnProperty.call(documentLabels, requirement.type)
@@ -187,7 +198,7 @@ export default function MerchantOnboarding() {
 
     try {
       const response = await fetch('/api/merchant-applications', { method: 'POST', body: payload });
-      const result = await response.json() as { id?: string; error?: string };
+      const result = await readJsonResponse<{ id?: string; error?: string }>(response);
       if (!response.ok) throw new Error(result.error || 'Your application could not be submitted.');
       setSubmittedApplicationId(result.id || '');
       setSubmitted(true);

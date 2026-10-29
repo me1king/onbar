@@ -26,6 +26,24 @@ type Step = 'welcome' | 'phone' | 'identity' | 'vehicle' | 'verification' | 'agr
 
 const normalizePhone = (p: string) => p.replace(/^\+254/, '').replace(/^0/, '').trim();
 
+async function withSupabaseTimeout<T>(
+    taskFactory: () => Promise<T>,
+    fallback: T,
+    timeoutMs = 4500
+): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const timeoutPromise = new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+    });
+
+    try {
+        return await Promise.race([taskFactory(), timeoutPromise]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 export default function RiderOnboarding() {
     const [step, setStep] = useState<Step>('welcome');
     const [loading, setLoading] = useState(false);
@@ -46,37 +64,60 @@ export default function RiderOnboarding() {
     // 0. Load Configuration & Resume Logic
     useEffect(() => {
         async function loadConfig() {
-            if (!supabase) return;
-            const { data } = await supabase.from('settings').select('value').eq('key', 'onboarding_config').maybeSingle();
+            const client = supabase;
+            if (!client) {
+                setEnabledSteps(['welcome', 'phone', 'identity', 'vehicle', 'verification', 'agreement', 'biometrics', 'pending', 'success']);
+                return;
+            }
+
+            const fallbackSteps = ['welcome', 'phone', 'identity', 'vehicle', 'verification', 'agreement', 'biometrics', 'pending', 'success'];
+            const result = await withSupabaseTimeout(
+                async () => {
+                    const { data, error } = await client.from('settings').select('value').eq('key', 'onboarding_config').maybeSingle();
+                    if (error) return { data: null, error };
+                    return { data, error: null };
+                },
+                { data: null, error: null }
+            );
+
+            const data = result.data as { value?: { rider_steps?: { id: string; enabled: boolean }[]; rules?: { min_age: number; require_license: boolean } } } | null;
             if (data?.value) {
-                const config = data.value as { rider_steps: { id: string; enabled: boolean }[], rules?: { min_age: number, require_license: boolean } };
-                setEnabledSteps(config.rider_steps.filter(s => s.enabled).map(s => s.id));
+                const config = data.value as { rider_steps: { id: string; enabled: boolean }[]; rules?: { min_age: number; require_license: boolean } };
+                setEnabledSteps((config.rider_steps || []).filter((s) => s.enabled).map((s) => s.id));
                 if (config.rules) setRules(config.rules);
             } else {
-                // Fallback to all steps
-                setEnabledSteps(['welcome', 'phone', 'identity', 'vehicle', 'verification', 'agreement', 'biometrics', 'pending', 'success']);
+                setEnabledSteps(fallbackSteps);
             }
         }
-        loadConfig();
+        void loadConfig();
 
         const savedPhone = localStorage.getItem('ob_onboarding_phone');
         if (savedPhone) {
             setPhone(savedPhone);
-            fetchProgress(savedPhone);
+            void fetchProgress(savedPhone);
         }
     }, []);
 
     const fetchProgress = async (p: string) => {
-        if (!supabase) return;
+        const client = supabase;
+        if (!client) return;
         const normalized = normalizePhone(p);
-        const { data } = await supabase
-            .from('rider_onboarding_sessions')
-            .select('*')
-            .eq('rider_phone', normalized)
-            .maybeSingle();
+        const result = await withSupabaseTimeout(
+            async () => {
+                const { data, error } = await client
+                    .from('rider_onboarding_sessions')
+                    .select('*')
+                    .eq('rider_phone', normalized)
+                    .maybeSingle();
+                if (error) return { data: null, error };
+                return { data, error: null };
+            },
+            { data: null, error: null }
+        );
 
+        const data = result.data as { current_step?: Step; form_data?: Record<string, string> } | null;
         if (data) {
-            setStep(data.current_step as Step);
+            setStep(data.current_step || 'welcome');
             if (data.form_data) {
                 const fd = data.form_data as Record<string, string>;
                 setRiderName(fd.riderName || '');
@@ -101,23 +142,41 @@ export default function RiderOnboarding() {
     };
 
     const saveProgress = async (nextStep: Step) => {
-        if (!supabase || !phone) return;
+        if (!phone) return;
         const normalized = normalizePhone(phone);
         localStorage.setItem('ob_onboarding_phone', phone);
 
-        await supabase.from('rider_onboarding_sessions').upsert({
-            rider_phone: normalized,
-            current_step: nextStep,
-            form_data: {
-                riderName,
-                birthDate,
-                idNumber,
-                licenseNumber,
-                plateNumber,
-                vehicleType
-            },
-            updated_at: new Date().toISOString()
-        });
+        const client = supabase;
+        if (!client) {
+            setStep(nextStep);
+            return;
+        }
+
+        try {
+            await withSupabaseTimeout(
+                async () => {
+                    const { error } = await client.from('rider_onboarding_sessions').upsert({
+                        rider_phone: normalized,
+                        current_step: nextStep,
+                        form_data: {
+                            riderName,
+                            birthDate,
+                            idNumber,
+                            licenseNumber,
+                            plateNumber,
+                            vehicleType
+                        },
+                        updated_at: new Date().toISOString()
+                    });
+                    if (error) throw error;
+                    return null;
+                },
+                null
+            );
+        } catch {
+            // Keep the flow moving even if the persistence layer is slow or unavailable.
+        }
+
         setStep(nextStep);
     };
 
@@ -162,9 +221,11 @@ export default function RiderOnboarding() {
         setLoading(true);
         setError(null);
 
-        // Transition to Identity (In prod, this would trigger OTP)
-        await saveProgress(getNextEnabledStep('phone'));
-        setLoading(false);
+        try {
+            await saveProgress(getNextEnabledStep('phone'));
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleBiometricEnroll = async () => {

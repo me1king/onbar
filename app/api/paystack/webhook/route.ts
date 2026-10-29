@@ -28,7 +28,28 @@ export async function POST(request: Request) {
         auth: { autoRefreshToken: false, persistSession: false }
     });
     try {
-        const body = await request.text();
+        const maxBodyBytes = 1_048_576;
+        const contentLength = Number(request.headers.get('content-length'));
+        if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+            return NextResponse.json({ error: "Webhook payload is too large" }, { status: 413 });
+        }
+
+        const reader = request.body?.getReader();
+        const bodyChunks: Uint8Array[] = [];
+        let bodyBytes = 0;
+        if (reader) {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                bodyBytes += value.byteLength;
+                if (bodyBytes > maxBodyBytes) {
+                    await reader.cancel();
+                    return NextResponse.json({ error: "Webhook payload is too large" }, { status: 413 });
+                }
+                bodyChunks.push(value);
+            }
+        }
+        const body = Buffer.concat(bodyChunks).toString('utf8');
         const signature = request.headers.get('x-paystack-signature');
 
         // 1. Verify Signature
