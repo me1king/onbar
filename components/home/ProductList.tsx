@@ -23,19 +23,44 @@ import { Product as CatalogProduct } from '@/types/product';
 import { getStartingPrice, getStoredVariantPrices } from '@/lib/productPricing';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
 import { isAllowed } from '@/lib/consentService';
+import { useSettings, type StoreSettings } from '@/lib/useSettings';
 
 type Product = CatalogProduct;
 
-const CATEGORIES = [
-    { id: 'all', label: 'All Menu', icon: LayoutGrid },
-    { id: 'wine', label: 'Vintages', icon: Wine },
-    { id: 'whiskey', label: 'Whiskey', icon: GlassWater },
-    { id: 'beer', label: 'Chilled Beers', icon: Beer },
-    { id: 'snacks', label: 'Snacks', icon: Cookie },
-    { id: 'mixers', label: 'Mixers', icon: Zap },
-];
+const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
+    wine: Wine,
+    spirits: Wine,
+    whiskey: GlassWater,
+    beer: Beer,
+    snacks: Cookie,
+    mixers: Zap,
+    extras: Zap
+};
 
-export default function ProductList({ initialProducts }: { initialProducts?: Product[] }) {
+export default function ProductList({
+  initialProducts,
+  kicker,
+  title,
+  subtitle,
+  categoryFilters
+}: {
+  initialProducts?: Product[];
+  kicker?: string;
+  title?: string;
+  subtitle?: string;
+  categoryFilters?: StoreSettings['catalog']['categories'];
+}) {
+  const { settings } = useSettings();
+  const categories = useMemo(() => [
+    { id: 'all', label: 'All Menu', icon: LayoutGrid },
+    ...(categoryFilters || settings.catalog.categories)
+      .filter(category => category.id.trim() && category.label.trim())
+      .map(category => ({
+        id: category.id.toLowerCase(),
+        label: category.label,
+        icon: CATEGORY_ICONS[category.id.toLowerCase()] || LayoutGrid
+      }))
+  ], [categoryFilters, settings.catalog.categories]);
   const [products, setProducts] = useState<Product[]>(initialProducts || []);
   const [loading, setLoading] = useState(!initialProducts);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -274,15 +299,15 @@ export default function ProductList({ initialProducts }: { initialProducts?: Pro
     <div className="mx-auto max-w-screen-2xl px-3 pb-24 pt-6 text-left scroll-mt-32 sm:px-6" id="catalog-start">
 
     <header className="mb-8 space-y-2 px-2 sm:mb-10">
-      <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">Browse the live menu</p>
-      <h2 className="break-words text-3xl font-black uppercase leading-tight tracking-tight text-slate-950 sm:text-4xl">Pick your pour</h2>
-      <p className="max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">Explore available products, compare prices, and find something for your occasion.</p>
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-primary">{kicker || 'Browse the live menu'}</p>
+      <h2 className="break-words text-3xl font-black uppercase leading-tight tracking-tight text-slate-950 sm:text-4xl">{title || 'Pick your pour'}</h2>
+      <p className="max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">{subtitle || 'Explore available products, compare prices, and find something for your occasion.'}</p>
     </header>
 
       {/* 1. Category Tabs & Quick Munchies */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 px-4">
           <div className="flex overflow-x-auto pb-2 gap-2.5 sm:gap-4 scrollbar-hide no-scrollbar -mx-4 px-4 flex-1">
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => {

@@ -13,3 +13,11 @@ export const defaultTicketTheme: TicketThemeId = 'midnight';
 export function isTicketThemeId(value: unknown): value is TicketThemeId {
   return typeof value === 'string' && ticketThemes.some(theme => theme.id === value);
 }
+
+export function isMissingTicketEmailThemeColumn(error: { code?: string; message?: string } | null | undefined) {
+  return Boolean(
+    error
+    && (error.code === '42703' || error.code === 'PGRST204')
+    && /buyer_email_theme/i.test(error.message || '')
+  );
+}

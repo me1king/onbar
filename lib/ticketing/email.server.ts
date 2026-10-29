@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import { createHash } from 'crypto';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { decryptTicketCredential } from '@/lib/ticketing/credentials.server';
-import { defaultTicketTheme, isTicketThemeId } from '@/lib/ticketing/theme';
+import { defaultTicketTheme, isMissingTicketEmailThemeColumn, isTicketThemeId } from '@/lib/ticketing/theme';
 import type { TicketThemeId } from '@/lib/ticketing/theme';
 import {
   DEFAULT_TICKET_EMAIL_SETTINGS,
@@ -525,13 +525,13 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
 
   try {
     const { data: order, error: orderError } = await database.from('ticketing_orders')
-      .select('id,reference,status,total_minor,subtotal_minor,fees_minor,discount_minor,currency,buyer_email,buyer_name,buyer_phone,buyer_email_theme,paid_at,created_at,event_id,promotion_id')
+      .select('id,reference,status,total_minor,subtotal_minor,fees_minor,discount_minor,currency,buyer_email,buyer_name,buyer_phone,paid_at,created_at,event_id,promotion_id')
       .eq('id', orderId)
       .maybeSingle();
     if (orderError) throw orderError;
     if (!order || order.status !== 'paid') throw new Error('Paid ticket order could not be found.');
 
-    const [eventResult, itemsResult, themeResult, paymentResult, emailSettings] = await Promise.all([
+    const [eventResult, itemsResult, themeResult, paymentResult, emailSettings, buyerEmailThemeResult] = await Promise.all([
       database.from('ticketing_events')
         .select('organizer_id,title,description,starts_at,ends_at,doors_open_at,venue_name,venue_address,venue_latitude,venue_longitude,entrance_guide,parking_guide,transport_guide,city,timezone,cancellation_policy,cover_image_url')
         .eq('id', order.event_id)
@@ -542,10 +542,14 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
       database.from('settings').select('value').eq('key', 'ticketing_theme').eq('is_published', true).maybeSingle(),
       database.from('ticketing_payment_attempts').select('provider').eq('order_id', order.id)
         .order('created_at', { ascending: false }).limit(1).maybeSingle(),
-      getTicketEmailSettings(database)
+      getTicketEmailSettings(database),
+      database.from('ticketing_orders').select('buyer_email_theme').eq('id', order.id).maybeSingle()
     ]);
     if (eventResult.error || itemsResult.error || themeResult.error || paymentResult.error) {
       throw eventResult.error || itemsResult.error || themeResult.error || paymentResult.error;
+    }
+    if (buyerEmailThemeResult.error && !isMissingTicketEmailThemeColumn(buyerEmailThemeResult.error)) {
+      throw buyerEmailThemeResult.error;
     }
     if (!eventResult.data || !itemsResult.data?.length) throw new Error('Ticket event details could not be loaded.');
     const event = eventResult.data;
@@ -583,8 +587,9 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
     const configuredTheme = themeResult.data?.value && typeof themeResult.data.value === 'object'
       ? (themeResult.data.value as { theme?: unknown }).theme
       : null;
-    const theme = isTicketThemeId(order.buyer_email_theme)
-      ? order.buyer_email_theme
+    const buyerEmailTheme = buyerEmailThemeResult.error ? null : buyerEmailThemeResult.data?.buyer_email_theme;
+    const theme = isTicketThemeId(buyerEmailTheme)
+      ? buyerEmailTheme
       : isTicketThemeId(configuredTheme) ? configuredTheme : defaultTicketTheme;
     const orderDetails: EmailOrder = {
       ...order,

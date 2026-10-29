@@ -18,7 +18,7 @@ import {
 import { encryptTicketWalletToken } from '@/lib/ticketing/whatsapp.server';
 import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
 import { logTicketNotificationFailures, sendTicketOrderNotifications } from '@/lib/ticketing/notifications.server';
-import { defaultTicketTheme, isTicketThemeId } from '@/lib/ticketing/theme';
+import { defaultTicketTheme, isMissingTicketEmailThemeColumn, isTicketThemeId } from '@/lib/ticketing/theme';
 import { getPublicBaseUrl } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -182,16 +182,31 @@ export async function POST(request: Request) {
     }
   }
 
-  const { error: contactError } = await database.from('ticketing_orders').update({
+  const contactDetails = {
     buyer_phone: buyerPhone,
-    access_token_ciphertext: encryptTicketWalletToken(accessToken),
-    ...(checkout.status === 'paid' ? {} : { buyer_email_theme: buyerEmailTheme })
-  }).eq('id', checkout.order_id).eq('access_token_hash', hashTicketAccessToken(accessToken));
+    access_token_ciphertext: encryptTicketWalletToken(accessToken)
+  };
+  const orderQuery = database.from('ticketing_orders')
+    .update({
+      ...contactDetails,
+      ...(checkout.status === 'paid' ? {} : { buyer_email_theme: buyerEmailTheme })
+    })
+    .eq('id', checkout.order_id)
+    .eq('access_token_hash', hashTicketAccessToken(accessToken));
+  let { error: contactError } = await orderQuery;
+  if (isMissingTicketEmailThemeColumn(contactError)) {
+    console.warn('[TicketingCheckout] Buyer email theme migration is missing; continuing with the default email theme.');
+    const fallbackUpdate = await database.from('ticketing_orders')
+      .update(contactDetails)
+      .eq('id', checkout.order_id)
+      .eq('access_token_hash', hashTicketAccessToken(accessToken));
+    contactError = fallbackUpdate.error;
+  }
   if (contactError) {
     console.error('[TicketingCheckout] Could not save ticket checkout preferences:', contactError);
     return NextResponse.json({
       error: contactError.code === '42703' || contactError.code === 'PGRST204'
-        ? 'Ticket checkout needs the latest email-color preference database migration. Please contact support while this setup is completed.'
+        ? 'Ticket checkout needs the ticket wallet delivery database migration. Please contact support while this setup is completed.'
         : 'Checkout was prepared but secure ticket delivery preferences could not be saved. Retry this checkout.'
     }, { status: 503 });
   }

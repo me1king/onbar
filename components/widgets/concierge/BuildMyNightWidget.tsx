@@ -1,41 +1,47 @@
 'use client';
 
 import * as React from 'react';
-import { Card } from '@/components/ui/card';
+import Image from 'next/image';
+import Link from 'next/link';
 import {
-    Moon,
-    Users,
     ArrowRight,
-    Sparkles,
-    Wine,
-    Heart,
-    Zap,
-    Loader2,
     Check,
-    ShoppingBag
+    ChevronLeft,
+    ChevronRight,
+    Clock3,
+    Heart,
+    Minus,
+    Moon,
+    Package,
+    Plus,
+    ShoppingBag,
+    Sparkles,
+    Users,
+    Wine,
+    Zap
 } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { useCart } from '@/context/CartContext';
 import { OB_OS } from '@/lib/onlineBarOS';
-import Image from 'next/image';
-import Link from 'next/link';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
+
+const PREFERENCES_KEY = 'build_my_night_preferences';
+const STEPS = ['Occasion', 'Guests', 'Budget', 'Taste', 'Your night'] as const;
+const TASTES = ['Beer', 'Wine', 'Spirits', 'Mocktails', 'Snacks', 'Street food', 'No alcohol'] as const;
+type Taste = typeof TASTES[number];
+type PlannerStep = 0 | 1 | 2 | 3 | 4;
+type BuildMode = 'essential' | 'value' | 'premium';
 
 const OCCASIONS = [
-    { id: 'CELEBRATION', label: 'CELEBRATION', icon: Sparkles, color: 'bg-[#F5A000]/10 text-[#F5A000]' },
-    { id: 'DATE_NIGHT', label: 'DATE NIGHT', icon: Heart, color: 'bg-rose-50 text-rose-500' },
-    { id: 'PARTY', label: 'HOUSE PARTY', icon: Users, color: 'bg-indigo-50 text-indigo-500' },
-    { id: 'DINNER', label: 'DINNER TONIGHT', icon: Wine, color: 'bg-emerald-50 text-emerald-500' },
-    { id: 'CHILL', label: 'CHILL NIGHT', icon: Moon, color: 'bg-slate-100 text-slate-500' },
-    { id: 'GIFT', label: 'PREMIUM GIFT', icon: Zap, color: 'bg-amber-50 text-amber-600' },
-];
-
-const BUDGETS = [
-    { id: '2K', label: 'Under 2.5K', val: 2500 },
-    { id: '5K', label: '2.5K - 5K', val: 5000 },
-    { id: '10K', label: '5K - 10K', val: 10000 },
-    { id: '20K', label: '10K - 20K', val: 20000 },
+    { id: 'CELEBRATION', label: 'Celebration', icon: Sparkles, color: 'bg-amber-50 text-amber-700' },
+    { id: 'DATE_NIGHT', label: 'Date night', icon: Heart, color: 'bg-rose-50 text-rose-600' },
+    { id: 'PARTY', label: 'House party', icon: Users, color: 'bg-indigo-50 text-indigo-600' },
+    { id: 'DINNER', label: 'Dinner tonight', icon: Wine, color: 'bg-emerald-50 text-emerald-700' },
+    { id: 'CHILL', label: 'Chill night', icon: Moon, color: 'bg-slate-100 text-slate-700' },
+    { id: 'GIFT', label: 'Premium gift', icon: Zap, color: 'bg-orange-50 text-orange-700' },
 ];
 
 interface BuildResult {
@@ -47,21 +53,137 @@ interface BuildResult {
     stock: number;
     is_available_now: boolean | null;
     is_souvenir: boolean | null;
+    hide_product?: boolean | null;
+    status?: string | null;
+}
+
+interface PlanItem {
+    product: BuildResult;
+    quantity: number;
+}
+
+interface NightPlan {
+    id: BuildMode;
+    label: string;
+    description: string;
+    items: PlanItem[];
+}
+
+interface Preferences {
+    occasion: string | null;
+    guests: number;
+    budget: number;
+    tastes: Taste[];
+}
+
+const defaultPreferences: Preferences = {
+    occasion: null,
+    guests: 4,
+    budget: 8000,
+    tastes: ['Mocktails', 'Snacks']
+};
+
+function isNonAlcoholic(product: BuildResult) {
+    return /\b(non[- ]?alcoholic|alcohol[- ]free|mocktail|juice|water|soda|soft drink|cola|coke|fanta|sprite|lemonade|mixer)\b/i
+        .test(`${product.name} ${product.category}`);
+}
+
+function matchesTaste(product: BuildResult, tastes: Taste[]) {
+    const text = `${product.name} ${product.category}`.toLowerCase();
+    if (tastes.includes('No alcohol')) return isNonAlcoholic(product) || /\b(snack|bite|food|chips|crisps|nuts|fries|burger|pizza|wing|grill)\b/i.test(text);
+    if (tastes.length === 0) return !/\b(souvenir|merchandise|flask|shot glass)\b/i.test(text);
+
+    return tastes.some(taste => {
+        if (taste === 'Beer') return /\b(beer|lager|stout|ale|pilsner)\b/i.test(text);
+        if (taste === 'Wine') return /\b(wine|prosecco|champagne|sparkling)\b/i.test(text);
+        if (taste === 'Spirits') return /\b(spirit|gin|vodka|whisk?y|rum|tequila|brandy|cognac)\b/i.test(text);
+        if (taste === 'Mocktails') return isNonAlcoholic(product);
+        if (taste === 'Snacks') return /\b(snack|bite|food|chips|crisps|nuts|munch)\b/i.test(text);
+        return /\b(street food|nyama|grill|burger|pizza|fries|wings|chapati)\b/i.test(text);
+    });
+}
+
+function buildPlan(
+    products: BuildResult[],
+    budget: number,
+    mode: BuildMode
+): NightPlan {
+    const definitions: Record<BuildMode, Omit<NightPlan, 'id' | 'items'>> = {
+        essential: { label: 'Essential', description: 'A lighter, simple set for sharing.' },
+        value: { label: 'Best value', description: 'A balanced mix for your plans.' },
+        premium: { label: 'Premium', description: 'More choice for a fuller celebration.' }
+    };
+    const candidates = [...products];
+    if (mode === 'essential') candidates.sort((a, b) => a.price - b.price);
+    if (mode === 'premium') candidates.sort((a, b) => b.price - a.price);
+
+    const itemLimit = mode === 'essential' ? 2 : mode === 'value' ? 4 : 5;
+    const items: PlanItem[] = [];
+    let total = 0;
+    for (const product of candidates) {
+        if (items.length >= itemLimit) break;
+        if (total + product.price > budget) continue;
+        items.push({ product, quantity: 1 });
+        total += product.price;
+    }
+
+    return { id: mode, ...definitions[mode], items };
+}
+
+function planTotal(plan: NightPlan) {
+    return plan.items.reduce((total, item) => total + item.product.price * item.quantity, 0);
 }
 
 export default function BuildMyNightWidget({ compact = false }: { compact?: boolean }) {
-    const [step, setStep] = React.useState(1);
-    const [occasion, setOccasion] = React.useState<string | null>(null);
-    const [budget, setBudget] = React.useState<number | null>(null);
+    const [step, setStep] = React.useState<PlannerStep>(0);
+    const [occasion, setOccasion] = React.useState<string | null>(defaultPreferences.occasion);
+    const [guests, setGuests] = React.useState(defaultPreferences.guests);
+    const [budget, setBudget] = React.useState(defaultPreferences.budget);
+    const [tastes, setTastes] = React.useState<Taste[]>(defaultPreferences.tastes);
+    const [plans, setPlans] = React.useState<NightPlan[]>([]);
+    const [selectedPlan, setSelectedPlan] = React.useState<BuildMode>('value');
+    const [catalog, setCatalog] = React.useState<BuildResult[]>([]);
     const [loading, setLoading] = React.useState(false);
-    const [results, setResults] = React.useState<BuildResult[]>([]);
     const [error, setError] = React.useState<string | null>(null);
     const [addedToCart, setAddedToCart] = React.useState(false);
+    const [ageConfirmed, setAgeConfirmed] = React.useState(false);
+    const [preferencesLoaded, setPreferencesLoaded] = React.useState(false);
     const { addBundleToCart } = useCart();
 
-    const handleGenerate = async () => {
-        if (!occasion || !budget) {
-            setError('Choose an occasion and a budget to build your night.');
+    React.useEffect(() => {
+        try {
+            const saved = localStorage.getItem(PREFERENCES_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved) as Partial<Preferences>;
+                if (typeof parsed.occasion === 'string' || parsed.occasion === null) setOccasion(parsed.occasion);
+                if (typeof parsed.guests === 'number' && parsed.guests >= 1 && parsed.guests <= 30) setGuests(parsed.guests);
+                if (typeof parsed.budget === 'number' && parsed.budget >= 500 && parsed.budget <= 50000) setBudget(parsed.budget);
+                if (Array.isArray(parsed.tastes)) setTastes(parsed.tastes.filter((taste): taste is Taste => TASTES.includes(taste as Taste)));
+            }
+        } catch (storageError) {
+            console.warn('[BuildMyNight] Could not restore planner preferences:', storageError);
+        } finally {
+            setPreferencesLoaded(true);
+        }
+    }, []);
+
+    React.useEffect(() => {
+        if (!preferencesLoaded) return;
+        const preferences: Preferences = { occasion, guests, budget, tastes };
+        try {
+            localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
+        } catch (storageError) {
+            console.warn('[BuildMyNight] Could not save planner preferences:', storageError);
+        }
+    }, [occasion, guests, budget, tastes, preferencesLoaded]);
+
+    const handleGenerate = async (preferences: Preferences = { occasion, guests, budget, tastes }) => {
+        if (!preferences.occasion) {
+            setError('Choose an occasion to get started.');
+            return;
+        }
+        if (preferences.tastes.some(taste => ['Beer', 'Wine', 'Spirits'].includes(taste)) && !ageConfirmed) {
+            setError('Confirm that you are 18 or older before viewing alcohol recommendations.');
             return;
         }
         if (!supabase) {
@@ -74,7 +196,7 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
         try {
             const { data, error: productsError } = await supabase
                 .from('products')
-                .select('id, name, price, image_url, category, stock, is_available_now, is_souvenir')
+                .select('id, name, price, image_url, category, stock, is_available_now, is_souvenir, hide_product, status')
                 .gt('stock', 0)
                 .order('price', { ascending: true })
                 .limit(100);
@@ -87,32 +209,41 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                     && Number(product.stock) > 0
                     && Number.isFinite(Number(product.price))
                     && Number(product.price) > 0
-                    && Number(product.price) <= budget
+                    && isStorefrontProductVisible(product)
                 )
                 .map(product => ({
                     ...product,
                     price: Number(product.price),
                     image_url: product.image_url || '',
-                    category: product.category || 'Beverages',
+                    category: product.category || 'Products',
                     stock: Number(product.stock)
                 })) as BuildResult[];
-
-            let currentSum = 0;
-            const selected: BuildResult[] = [];
-            for (const product of eligible) {
-                if (currentSum + product.price <= budget) {
-                    selected.push(product);
-                    currentSum += product.price;
-                }
-                if (selected.length >= 3) break;
-            }
-            if (selected.length === 0) {
-                setResults([]);
-                setError(`No in-stock products fit under ${formatPrice(budget)} right now. Try a higher budget or check back later.`);
+            const matched = eligible.filter(product => matchesTaste(product, preferences.tastes));
+            if (matched.length === 0) {
+                setCatalog([]);
+                setPlans([]);
+                setError('No in-stock products match those tastes right now. Go back to adjust your picks.');
                 return;
             }
-            setResults(selected);
-            setStep(3);
+
+            setCatalog(matched);
+            const generated = (['essential', 'value', 'premium'] as const)
+                .map(mode => buildPlan(matched, preferences.budget, mode))
+                .filter(plan => plan.items.length > 0);
+            if (generated.length === 0) {
+                setPlans([]);
+                setError(`No matching products fit under ${formatPrice(preferences.budget)}. Try raising your budget.`);
+                return;
+            }
+            setPlans(generated);
+            setSelectedPlan(generated.find(plan => plan.id === 'value')?.id || generated[0].id);
+            setStep(4);
+            void OB_OS.track('UI_INTERACTION', {
+                details: {
+                    id: 'concierge.plan_generated',
+                    value: { occasion: preferences.occasion, guests: preferences.guests, budget: preferences.budget, tastes: preferences.tastes }
+                }
+            });
         } catch (requestError) {
             console.error('[BuildMyNight] Could not generate recommendations:', requestError);
             setError(requestError instanceof Error
@@ -123,198 +254,421 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
         }
     };
 
+    const selected = plans.find(plan => plan.id === selectedPlan);
+    const total = selected ? planTotal(selected) : 0;
+    const itemCount = selected?.items.reduce((count, item) => count + item.quantity, 0) || 0;
+
     const handleAddAll = () => {
-        if (results.length === 0) {
-            setError('There are no products to add. Build your selection first.');
+        if (!selected || selected.items.length === 0) {
+            setError('Choose a plan with at least one product before adding it to your bag.');
             return;
         }
-        const items = results.map(r => ({
-            id: r.id,
-            name: r.name,
-            price: r.price,
-            base_price: r.price,
-            image: normalizeImage(r.image_url),
-            quantity: 1,
-            category: r.category
-        }));
-        addBundleToCart(items);
+        addBundleToCart(selected.items.map(({ product, quantity }) => ({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            base_price: product.price,
+            image: normalizeImage(product.image_url),
+            quantity,
+            category: product.category
+        })));
         setAddedToCart(true);
+        setError(null);
+        void OB_OS.track('UI_INTERACTION', {
+            details: { id: 'concierge.plan_added_to_cart', value: { plan: selected.id, itemCount, total } }
+        });
+    };
+
+    const updatePlanItem = (planId: BuildMode, productId: number, change: 'remove' | 'decrease' | 'increase' | 'swap') => {
+        const plan = plans.find(item => item.id === planId);
+        const currentItem = plan?.items.find(item => item.product.id === productId);
+        if (!plan || !currentItem) return;
+        if (change === 'increase' && planTotal(plan) + currentItem.product.price > budget) {
+            setError('That quantity would go over your budget. Increase your budget or choose another item.');
+            return;
+        }
+        if (change === 'increase' && currentItem.quantity >= currentItem.product.stock) {
+            setError(`Only ${currentItem.product.stock} of this item are currently in stock.`);
+            return;
+        }
+        const existingIds = new Set(plan.items.map(item => item.product.id));
+        const otherTotal = planTotal(plan) - currentItem.product.price * currentItem.quantity;
+        const replacement = change === 'swap'
+            ? catalog.find(product =>
+                !existingIds.has(product.id)
+                && otherTotal + product.price * currentItem.quantity <= budget
+            )
+            : undefined;
+        if (change === 'swap' && !replacement) {
+            setError('There is no in-stock alternative in this taste and budget range right now.');
+            return;
+        }
+        setError(null);
+        setPlans(current => current.map(plan => {
+            if (plan.id !== planId) return plan;
+            if (change === 'remove') {
+                return { ...plan, items: plan.items.filter(item => item.product.id !== productId) };
+            }
+            if (change === 'decrease') {
+                const item = plan.items.find(value => value.product.id === productId);
+                if (!item) return plan;
+                return {
+                    ...plan,
+                    items: item.quantity <= 1
+                        ? plan.items.filter(item => item.product.id !== productId)
+                        : plan.items.map(item => item.product.id === productId ? { ...item, quantity: item.quantity - 1 } : item)
+                };
+            }
+            if (change === 'increase') {
+                return { ...plan, items: plan.items.map(item => item.product.id === productId ? { ...item, quantity: item.quantity + 1 } : item) };
+            }
+            if (!replacement) return plan;
+            return {
+                ...plan,
+                items: plan.items.map(item => item.product.id === productId
+                    ? { ...item, product: replacement }
+                    : item)
+            };
+        }));
+        setAddedToCart(false);
+    };
+
+    const toggleTaste = (taste: Taste) => {
+        setTastes(current => {
+            if (taste === 'No alcohol') return current.includes(taste) ? [] : [taste];
+            const withoutNoAlcohol = current.filter(value => value !== 'No alcohol');
+            return withoutNoAlcohol.includes(taste)
+                ? withoutNoAlcohol.filter(value => value !== taste)
+                : [...withoutNoAlcohol, taste];
+        });
         setError(null);
     };
 
-    const handleOccasionSelect = (id: string) => {
-        setOccasion(id);
-        setStep(2);
+    const surpriseMe = () => {
+        const randomOccasion = OCCASIONS[Math.floor(Math.random() * OCCASIONS.length)].id;
+        const randomGuests = 2 + Math.floor(Math.random() * 11);
+        const randomBudget = 5000 + Math.floor(Math.random() * 16) * 1000;
+        const randomTastes: Taste[] = Math.random() > 0.5 ? ['Mocktails', 'Snacks'] : ['Snacks', 'Street food'];
+        const preferences = { occasion: randomOccasion, guests: randomGuests, budget: randomBudget, tastes: randomTastes };
+        setOccasion(preferences.occasion);
+        setGuests(preferences.guests);
+        setBudget(preferences.budget);
+        setTastes(preferences.tastes);
         setError(null);
-        setAddedToCart(false);
-        OB_OS.track('UI_INTERACTION', { details: { id: 'concierge.occasion_selected', value: id } });
+        void OB_OS.track('UI_INTERACTION', { details: { id: 'concierge.surprise_me' } });
+        void handleGenerate(preferences);
+    };
+
+    const nextStep = () => {
+        setError(null);
+        if (step === 0 && !occasion) {
+            setError('Choose an occasion to continue.');
+            return;
+        }
+        if (step < 3) {
+            setStep((step + 1) as PlannerStep);
+            void OB_OS.track('UI_INTERACTION', { details: { id: `concierge.step_${step + 1}_complete` } });
+            return;
+        }
+        void handleGenerate();
     };
 
     return (
-        <section id="hero-section" className={cn(
-            "relative flex items-center overflow-hidden bg-white px-4 sm:px-8 lg:px-20",
-            compact ? "min-h-0 py-4" : "min-h-[70dvh] py-8 sm:py-12 lg:min-h-[85vh] lg:py-20"
+        <section className={cn(
+            'w-full bg-[#faf9f6] px-4 py-6 text-slate-900 sm:px-7',
+            compact ? 'min-h-full' : 'min-h-[calc(100dvh-5rem)] py-8 sm:py-12'
         )}>
-
-            {/* Soft Neural Accents */}
-            <div className="absolute top-0 right-0 w-1/2 h-full bg-slate-50/50 rounded-l-[10rem] -z-10" />
-
-            <div className={cn("relative z-10 mx-auto grid w-full max-w-7xl items-center lg:grid-cols-12", compact ? "gap-4 lg:gap-8" : "gap-8 lg:gap-16")}>
-
-                {/* LEFT: CONTENT (True Original Style) */}
-                <div className="space-y-6 text-left animate-in fade-in slide-in-from-left-8 duration-700 lg:col-span-5 lg:space-y-10">
-                    <div className="space-y-5 lg:space-y-8">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#F5A000]/10 rounded-full text-[9px] font-black uppercase tracking-widest text-[#F5A000] border border-[#F5A000]/10">
-                            <Sparkles size={12} /> DIGITAL CONCIERGE
+            <div className="mx-auto w-full max-w-6xl">
+                <header className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="max-w-2xl">
+                        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-800">
+                            <Sparkles size={13} aria-hidden="true" /> Your night, thoughtfully planned
                         </div>
-
-                        <h1 className="break-words font-sans text-5xl font-black uppercase leading-[0.9] tracking-tighter text-[#2D3748] sm:text-7xl lg:text-[7rem]">
-                            BUILD MY <br />
-                            <span className="text-[#F5A000]">NIGHT.</span>
-                        </h1>
-
-                        <p className="text-slate-500 font-medium text-lg leading-relaxed italic max-w-sm break-words">
-                            &quot;Planning the perfect evening shouldn&apos;t be tactical. Select your occasion, set your budget, and I will handle the inventory.&quot;
+                        <h1 className="font-sans text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">Build my night</h1>
+                        <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
+                            Tell us the occasion and your budget. We’ll find in-stock picks for your plans.
                         </p>
-
-                        <div className="flex gap-2 pt-2">
-                            {[1, 2, 3].map(s => (
-                                <div key={s} className={cn(
-                                    "h-1.5 w-10 rounded-full transition-all duration-500",
-                                    step >= s ? "bg-[#F5A000]" : "bg-slate-100"
-                                )} />
-                            ))}
-                        </div>
                     </div>
+                    <Button
+                        type="button"
+                        onClick={surpriseMe}
+                        disabled={loading}
+                        variant="outline"
+                        className="h-11 shrink-0 rounded-xl border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-50 focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2"
+                    >
+                        <Sparkles size={16} className="mr-2" aria-hidden="true" /> Surprise me
+                    </Button>
+                </header>
 
-                    <div className="pt-6">
-                        <Link href="/shop" className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 hover:text-primary transition-all flex items-center gap-2">
-                            JUST BROWSING? OPEN GLOBAL MENU &rarr;
-                        </Link>
+                <div className="mb-6" aria-label={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`}>
+                    <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-600">
+                        <span>Step {step + 1} of {STEPS.length}</span>
+                        <span>{STEPS[step]}</span>
                     </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                            className="h-full rounded-full bg-amber-500 transition-[width] duration-500 motion-reduce:transition-none"
+                            style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+                        />
+                    </div>
+                    <ol className="mt-3 hidden grid-cols-5 gap-2 sm:grid">
+                        {STEPS.map((label, index) => (
+                            <li key={label} className={cn('text-xs font-medium', index <= step ? 'text-amber-900' : 'text-slate-400')}>
+                                {index + 1}. {label}
+                            </li>
+                        ))}
+                    </ol>
                 </div>
 
-                {/* RIGHT: INTERACTIVE HUD (Original Screenshot Style) */}
-                <div className="lg:col-span-7">
-                    <Card className={cn(
-                        "relative flex flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white p-5 shadow-2xl sm:rounded-[2.5rem] sm:p-8 lg:rounded-[4rem] lg:p-12",
-                        compact ? "min-h-0" : "min-h-[460px] sm:min-h-[500px] lg:min-h-[550px]"
-                    )}>
-
-                        {step === 1 && (
-                            <div className={cn("relative z-10 animate-in fade-in slide-in-from-right-10 sm:space-y-10", compact ? "space-y-5 duration-300" : "space-y-7 duration-700")}>
-                                <h3 className="text-2xl font-black uppercase tracking-tighter text-[#2D3748] sm:text-3xl">What are you planning?</h3>
-                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-                                    {OCCASIONS.map(occ => (
-                                        <button
-                                            key={occ.id}
-                                            onClick={() => handleOccasionSelect(occ.id)}
-                                            className={cn(
-                                                "p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center gap-4 group/occ relative overflow-hidden",
-                                                occasion === occ.id ? "border-primary bg-primary/5" : "border-slate-50 bg-slate-50/30 hover:border-slate-100 hover:bg-white"
-                                            )}
-                                        >
-                                            <div className={cn("h-14 w-14 rounded-2xl flex items-center justify-center transition-all group-hover/occ:scale-110 shadow-sm", occ.color)}>
-                                                <occ.icon size={28} />
-                                            </div>
-                                            <span className="text-[10px] font-black uppercase tracking-widest">{occ.label}</span>
-                                            {occasion === occ.id && (
-                                                <div className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {step === 2 && (
-                            <div className={cn("relative z-10 animate-in fade-in slide-in-from-right-10 sm:space-y-10", compact ? "space-y-5 duration-300" : "space-y-7 duration-700")}>
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-2xl font-black uppercase tracking-tighter text-[#2D3748] sm:text-3xl">Target budget</h3>
-                                    <button onClick={() => { setStep(1); setError(null); }} className="text-[10px] font-black text-slate-400 uppercase hover:text-primary">Back</button>
-                                </div>
-                                <div className={cn("relative z-10 grid grid-cols-1 sm:grid-cols-2 sm:gap-4", compact ? "gap-2" : "gap-3")}>
-                                    {BUDGETS.map(bug => (
-                                        <button
-                                            key={bug.id}
-                                            onClick={() => { setBudget(bug.val); setError(null); setAddedToCart(false); }}
-                                            className={cn(
-                                                "flex items-center justify-between rounded-2xl border-2 text-left transition-all group/bug sm:rounded-[2rem] sm:p-6",
-                                                compact ? "p-3" : "p-4",
-                                                budget === bug.val ? "border-primary bg-primary/5" : "border-slate-50 bg-slate-50 hover:border-slate-200 hover:bg-white"
-                                            )}
-                                        >
-                                            <span className="text-base font-black uppercase tracking-tight sm:text-xl sm:tracking-tighter">{bug.label}</span>
-                                            <div className={cn(
-                                                "h-6 w-6 rounded-full border-2 flex items-center justify-center transition-all",
-                                                budget === bug.val ? "border-primary bg-primary" : "border-slate-200"
-                                            )}>
-                                                {budget === bug.val && <Check size={14} className="text-white" />}
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                                <Button
-                                    onClick={handleGenerate}
-                                    disabled={loading || !occasion || !budget}
-                                    className={cn("relative z-20 w-full rounded-2xl bg-slate-900 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-[1.01] active:scale-95 sm:h-20 sm:rounded-[2rem] sm:text-xs sm:tracking-[0.3em]", compact ? "h-12" : "h-14")}
-                                >
-                                    {loading ? <><Loader2 className="animate-spin" /> Finding in-stock picks...</> : "Build my selection"}
-                                </Button>
-                                {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
-                            </div>
-                        )}
-
-                        {step === 3 && (
-                            <div className={cn("relative z-10 animate-in fade-in zoom-in-95 sm:space-y-8", compact ? "space-y-4 duration-300" : "space-y-6 duration-700")}>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h3 className="text-xl font-black uppercase tracking-tighter text-foreground leading-none sm:text-2xl">Your night is ready</h3>
-                                        <p className="text-[10px] font-black text-[#F5A000] uppercase tracking-widest mt-2">{occasion?.replace('_', ' ')} &bull; {formatPrice(budget!)} Limit</p>
+                <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(250px,0.75fr)]">
+                    <Card className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+                        <div key={step} className="animate-in fade-in slide-in-from-right-2 duration-300 motion-reduce:animate-none">
+                            {step === 0 && (
+                                <div>
+                                    <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">What are you planning?</h2>
+                                    <p className="mt-1 text-sm text-slate-600">Pick an occasion to get started.</p>
+                                    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                        {OCCASIONS.map(option => (
+                                            <button
+                                                key={option.id}
+                                                type="button"
+                                                aria-pressed={occasion === option.id}
+                                                onClick={() => { setOccasion(option.id); setError(null); }}
+                                                className={cn(
+                                                    'group relative flex min-h-28 flex-col items-center justify-center gap-3 rounded-2xl border-2 p-4 text-center transition duration-200 hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-50/50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2 motion-reduce:transform-none motion-reduce:transition-none',
+                                                    occasion === option.id ? 'border-amber-500 bg-amber-50 shadow-sm' : 'border-slate-200 bg-white'
+                                                )}
+                                            >
+                                                <span className={cn('flex h-12 w-12 items-center justify-center rounded-xl', option.color)}>
+                                                    <option.icon size={24} aria-hidden="true" />
+                                                </span>
+                                                <span className="text-sm font-semibold">{option.label}</span>
+                                                {occasion === option.id && <Check size={16} className="absolute right-3 top-3 text-amber-700" aria-hidden="true" />}
+                                            </button>
+                                        ))}
                                     </div>
-                                    <button onClick={() => { setStep(1); setBudget(null); setResults([]); setError(null); setAddedToCart(false); }} className="text-[10px] font-black text-slate-400 uppercase hover:text-primary underline">Restart</button>
                                 </div>
+                            )}
 
-                                <div className="grid gap-3">
-                                    {results.map(prod => (
-                                        <div key={prod.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 transition-all hover:bg-white sm:rounded-3xl sm:p-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-14 w-14 rounded-2xl bg-white p-2 border border-slate-100 flex items-center justify-center relative overflow-hidden">
-                                                    <Image src={normalizeImage(prod.image_url)} alt="" fill className="object-contain p-2" />
-                                                </div>
-                                                <div className="text-left">
-                                                    <p className="max-w-[150px] truncate text-[11px] font-black uppercase leading-none text-foreground sm:max-w-[220px]">{prod.name}</p>
-                                                    <p className="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">{prod.category}</p>
-                                                </div>
-                                            </div>
-                                            <span className="text-sm font-black text-primary">{formatPrice(prod.price)}</span>
+                            {step === 1 && (
+                                <div>
+                                    <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">How many guests?</h2>
+                                    <p className="mt-1 text-sm text-slate-600">We’ll use this to shape a sensible mix.</p>
+                                    <div className="mt-8 flex items-center justify-center gap-6">
+                                        <button
+                                            type="button"
+                                            aria-label="Remove one guest"
+                                            onClick={() => setGuests(value => Math.max(1, value - 1))}
+                                            disabled={guests <= 1}
+                                            className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-300 text-slate-800 transition hover:border-amber-500 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-40"
+                                        ><Minus size={18} aria-hidden="true" /></button>
+                                        <div className="min-w-24 text-center" aria-live="polite">
+                                            <span className="block text-5xl font-semibold tracking-tight tabular-nums">{guests}</span>
+                                            <span className="mt-1 block text-xs font-semibold uppercase tracking-widest text-slate-500">{guests === 1 ? 'guest' : 'guests'}</span>
                                         </div>
-                                    ))}
-                                </div>
-
-                                <div className="relative z-20 flex flex-col items-start justify-between gap-4 border-t border-slate-100 bg-white pt-5 sm:flex-row sm:items-center sm:pt-6">
-                                    <div className="text-left">
-                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Experience Total</p>
-                                        <p className="text-2xl font-black text-foreground">{formatPrice(results.reduce((s, r) => s + Number(r.price), 0))}</p>
+                                        <button
+                                            type="button"
+                                            aria-label="Add one guest"
+                                            onClick={() => setGuests(value => Math.min(30, value + 1))}
+                                            disabled={guests >= 30}
+                                            className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-300 text-slate-800 transition hover:border-amber-500 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-40"
+                                        ><Plus size={18} aria-hidden="true" /></button>
                                     </div>
-                                    <Button onClick={handleAddAll} disabled={addedToCart} className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-primary px-6 text-[10px] font-black uppercase tracking-widest text-white shadow-2xl transition-all hover:bg-primary/90 active:scale-95 disabled:bg-emerald-600 sm:h-14 sm:w-auto sm:rounded-2xl sm:px-8">
-                                        {addedToCart ? <><Check size={16} /> Added to bag</> : <>Add selection to bag <ShoppingBag size={16} /> </>}
-                                    </Button>
+                                    <input
+                                        aria-label="Number of guests"
+                                        type="range"
+                                        min="1"
+                                        max="30"
+                                        value={guests}
+                                        onChange={event => setGuests(Number(event.target.value))}
+                                        className="mt-8 w-full accent-amber-600"
+                                    />
+                                    <div className="mt-1 flex justify-between text-xs text-slate-500"><span>1</span><span>30 guests</span></div>
                                 </div>
-                                {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
-                                {addedToCart && (
-                                    <Link href="/cart" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-700 underline underline-offset-4">
-                                        Your picks are in the bag. Review cart <ArrowRight size={15} />
-                                    </Link>
-                                )}
-                            </div>
+                            )}
+
+                            {step === 2 && (
+                                <div>
+                                    <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Set your budget</h2>
+                                    <p className="mt-1 text-sm text-slate-600">Your plan will stay within this amount.</p>
+                                    <p className="mt-8 text-center text-3xl font-semibold tracking-tight text-slate-900" aria-live="polite">
+                                        {formatPrice(budget)}
+                                        <span className="mt-2 block text-sm font-medium text-slate-500">for about {guests} {guests === 1 ? 'guest' : 'guests'}</span>
+                                    </p>
+                                    <input
+                                        aria-label="Budget in Kenyan shillings"
+                                        type="range"
+                                        min="500"
+                                        max="50000"
+                                        step="500"
+                                        value={budget}
+                                        onChange={event => setBudget(Number(event.target.value))}
+                                        className="mt-8 w-full accent-amber-600"
+                                    />
+                                    <div className="mt-1 flex justify-between text-xs text-slate-500"><span>KES 500</span><span>KES 50,000</span></div>
+                                </div>
+                            )}
+
+                            {step === 3 && (
+                                <div>
+                                    <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">What sounds good?</h2>
+                                    <p className="mt-1 text-sm text-slate-600">Choose a few tastes. Non-alcoholic options are included too.</p>
+                                    <div className="mt-5 flex flex-wrap gap-2">
+                                        {TASTES.map(taste => (
+                                            <button
+                                                key={taste}
+                                                type="button"
+                                                aria-pressed={tastes.includes(taste)}
+                                                onClick={() => toggleTaste(taste)}
+                                                className={cn(
+                                                    'min-h-11 rounded-full border px-4 py-2 text-sm font-semibold transition hover:border-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2',
+                                                    tastes.includes(taste) ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-amber-50'
+                                                )}
+                                            >
+                                                {tastes.includes(taste) && <Check size={14} className="mr-1 inline" aria-hidden="true" />}{taste}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {tastes.some(taste => ['Beer', 'Wine', 'Spirits'].includes(taste)) && (
+                                        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-5 text-amber-950">
+                                            <input
+                                                type="checkbox"
+                                                checked={ageConfirmed}
+                                                onChange={event => { setAgeConfirmed(event.target.checked); setError(null); }}
+                                                className="mt-1 accent-amber-700"
+                                            />
+                                            <span>I confirm I am 18 or older. Alcohol recommendations will only be shown after this confirmation.</span>
+                                        </label>
+                                    )}
+                                </div>
+                            )}
+
+                            {step === 4 && (
+                                <div>
+                                    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Your night, {occasion?.toLowerCase().replace('_', ' ')}</h2>
+                                            <p className="mt-1 text-sm text-slate-600">{guests} {guests === 1 ? 'guest' : 'guests'} · up to {formatPrice(budget)}</p>
+                                        </div>
+                                        <button type="button" onClick={() => { setStep(0); setPlans([]); setAddedToCart(false); }} className="text-sm font-semibold text-amber-800 underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
+                                            Start over
+                                        </button>
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-3">
+                                        {plans.map(plan => (
+                                            <button
+                                                key={plan.id}
+                                                type="button"
+                                                aria-pressed={selectedPlan === plan.id}
+                                                onClick={() => { setSelectedPlan(plan.id); setAddedToCart(false); setError(null); }}
+                                                className={cn(
+                                                    'rounded-2xl border-2 p-4 text-left transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2 motion-reduce:transform-none motion-reduce:transition-none',
+                                                    selectedPlan === plan.id ? 'border-amber-500 bg-amber-50/60 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'
+                                                )}
+                                            >
+                                                <span className="flex items-center justify-between gap-2">
+                                                    <span className="text-sm font-semibold">{plan.label}</span>
+                                                    {selectedPlan === plan.id && <Check size={16} className="text-amber-800" aria-hidden="true" />}
+                                                </span>
+                                                <span className="mt-1 block min-h-10 text-xs leading-5 text-slate-600">{plan.description}</span>
+                                                <span className="mt-2 block text-lg font-semibold tabular-nums">{formatPrice(planTotal(plan))}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {selected && (
+                                        <div className="mt-5 space-y-3">
+                                            {selected.items.map(({ product, quantity }) => (
+                                                <div key={product.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                                                    <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
+                                                        {product.image_url
+                                                            ? <Image src={normalizeImage(product.image_url)} alt="" fill sizes="56px" className="object-contain p-1" />
+                                                            : <Package size={20} className="text-slate-400" aria-hidden="true" />}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-semibold text-slate-900">{product.name}</p>
+                                                        <p className="text-xs text-slate-500">{product.category} · {formatPrice(product.price)} each</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <button type="button" aria-label={`Decrease ${product.name} quantity`} onClick={() => updatePlanItem(selected.id, product.id, 'decrease')} className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"><Minus size={14} aria-hidden="true" /></button>
+                                                        <span className="w-6 text-center text-sm font-semibold tabular-nums">{quantity}</span>
+                                                        <button type="button" aria-label={`Increase ${product.name} quantity`} onClick={() => updatePlanItem(selected.id, product.id, 'increase')} className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"><Plus size={14} aria-hidden="true" /></button>
+                                                    </div>
+                                                    <div className="hidden min-w-20 text-right text-sm font-semibold tabular-nums sm:block">{formatPrice(product.price * quantity)}</div>
+                                                    <button type="button" onClick={() => updatePlanItem(selected.id, product.id, 'swap')} aria-label={`Swap ${product.name}`} className="rounded-lg px-2 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">Swap</button>
+                                                    <button type="button" onClick={() => updatePlanItem(selected.id, product.id, 'remove')} aria-label={`Remove ${product.name}`} className="rounded-lg px-2 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">Remove</button>
+                                                </div>
+                                            ))}
+                                            {selected.items.length === 0 && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">This plan is empty. Choose another option or go back to adjust your tastes.</p>}
+                                        </div>
+                                    )}
+                                    <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+                                        Only available, in-stock items are suggested. Delivery coverage and arrival time are confirmed after you enter your address at checkout.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
+                            {step > 0 ? (
+                                <Button type="button" variant="outline" onClick={() => { setStep((step - 1) as PlannerStep); setError(null); }} className="h-11 rounded-xl border-slate-300 px-4 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-amber-600">
+                                    <ChevronLeft size={16} className="mr-1" aria-hidden="true" /> Back
+                                </Button>
+                            ) : <span />}
+                            {step < 4 ? (
+                                <Button type="button" onClick={nextStep} disabled={loading} className="h-11 rounded-xl bg-amber-600 px-5 text-sm font-semibold text-white hover:bg-amber-700 focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2">
+                                    {step === 3 ? 'Build my night' : 'Continue'} <ChevronRight size={16} className="ml-1" aria-hidden="true" />
+                                </Button>
+                            ) : (
+                                <Button type="button" onClick={handleAddAll} disabled={!selected || selected.items.length === 0 || addedToCart} className="h-11 rounded-xl bg-amber-600 px-5 text-sm font-semibold text-white hover:bg-amber-700 focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 disabled:bg-emerald-700">
+                                    {addedToCart ? <><Check size={16} className="mr-2" aria-hidden="true" /> Added to bag</> : <>Add plan to bag <ShoppingBag size={16} className="ml-2" aria-hidden="true" /></>}
+                                </Button>
+                            )}
+                        </div>
+                        {loading && <p className="mt-3 text-sm text-slate-600" role="status">Finding available picks for your night…</p>}
+                        {error && <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{error}</p>}
+                        {addedToCart && (
+                            <Link href="/cart" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-emerald-800 underline underline-offset-4">
+                                Your plan is in the bag. Review cart <ArrowRight size={15} aria-hidden="true" />
+                            </Link>
                         )}
-
-                        {/* Background Decoration */}
-                        <Zap className="pointer-events-none absolute -bottom-10 -right-10 z-0 h-64 w-64 select-none rotate-12 text-slate-100/40" />
                     </Card>
-                </div>
 
+                    <aside className="lg:sticky lg:top-6">
+                        <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-800"><ShoppingBag size={19} aria-hidden="true" /></div>
+                                <div>
+                                    <h2 className="text-sm font-semibold">Your night at a glance</h2>
+                                    <p className="text-xs text-slate-500">Updates as you make choices</p>
+                                </div>
+                            </div>
+                            <dl className="mt-5 space-y-3 text-sm">
+                                <div className="flex justify-between gap-3"><dt className="text-slate-500">Occasion</dt><dd className="text-right font-medium">{occasion ? occasion.replace('_', ' ').toLowerCase() : 'Not chosen'}</dd></div>
+                                <div className="flex justify-between gap-3"><dt className="text-slate-500">Guests</dt><dd className="font-medium">{guests}</dd></div>
+                                <div className="flex justify-between gap-3"><dt className="text-slate-500">Budget</dt><dd className="font-medium">{formatPrice(budget)}</dd></div>
+                                <div className="flex justify-between gap-3"><dt className="text-slate-500">Taste</dt><dd className="max-w-[65%] text-right font-medium">{tastes.length ? tastes.join(', ') : 'Any'}</dd></div>
+                            </dl>
+                            <div className="mt-5 border-t border-slate-100 pt-4">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-slate-500">{step === 4 ? `${itemCount} items` : 'Plan total'}</span>
+                                    <span className="font-semibold tabular-nums">{step === 4 ? formatPrice(total) : '—'}</span>
+                                </div>
+                                <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-500">
+                                    <Clock3 size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                    Delivery time is shown once your address is checked at checkout.
+                                </p>
+                            </div>
+                            <p className="mt-4 text-xs leading-5 text-slate-500">You can change quantities or remove any pick before adding the plan to your bag.</p>
+                        </Card>
+                        <Link href="/shop" className="mt-4 inline-flex items-center gap-2 px-2 text-sm font-medium text-slate-600 hover:text-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
+                            Just browsing? Open the menu <ArrowRight size={15} aria-hidden="true" />
+                        </Link>
+                        {tastes.some(taste => ['Beer', 'Wine', 'Spirits'].includes(taste)) && (
+                            <p className="mt-4 px-2 text-xs text-slate-500">Alcohol products are for adults 18+ only.</p>
+                        )}
+                    </aside>
+                </div>
             </div>
         </section>
     );

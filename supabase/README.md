@@ -97,6 +97,9 @@ encrypted token copy removed. Configure the approved Meta template and
 server-only WhatsApp credentials before enabling customer purchases. The buyer
 email-theme migration stores each checkout's chosen ticket email color on its
 order so the automatic ticket email and attached PDF use the buyer's selection.
+The email color is optional for payment: if this migration is not installed yet,
+checkout continues and ticket email uses the configured default theme. Apply the
+migration to enable saving individual buyer theme preferences.
 
 ## Demand Intelligence area contacts
 

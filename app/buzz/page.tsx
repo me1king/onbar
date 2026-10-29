@@ -79,6 +79,18 @@ function BuzzDiscoveryContent() {
         if (plannerRequested) setNightPlannerOpen(true);
     }, [plannerRequested]);
 
+    React.useEffect(() => {
+        if (!nightPlannerOpen) return;
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousDocumentOverflow = document.documentElement.style.overflow;
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.documentElement.style.overflow = previousDocumentOverflow;
+        };
+    }, [nightPlannerOpen]);
+
     const closeNightPlanner = () => {
         setNightPlannerOpen(false);
         if (plannerRequested) router.replace('/buzz', { scroll: false });
@@ -439,8 +451,8 @@ function BuzzDiscoveryContent() {
             )}
 
             {nightPlannerOpen && (
-                <div className="fixed inset-0 z-[2500] flex flex-col overflow-hidden bg-white animate-in slide-in-from-bottom duration-700">
-                    <header className="z-20 flex shrink-0 justify-end border-b border-slate-100 bg-white/95 p-3 backdrop-blur sm:p-5">
+                <div className="fixed inset-0 z-[2500] flex flex-col overflow-y-auto overscroll-contain bg-white animate-in slide-in-from-bottom duration-700">
+                    <header className="sticky top-0 z-20 flex shrink-0 justify-end border-b border-slate-100 bg-white/95 p-3 backdrop-blur sm:p-5">
                         <button
                             onClick={closeNightPlanner}
                             aria-label="Close Build My Night"
@@ -449,7 +461,7 @@ function BuzzDiscoveryContent() {
                             <X size={20} />
                         </button>
                     </header>
-                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                    <div className="min-h-0 flex-1">
                         <BuildMyNightWidget compact />
                     </div>
                 </div>

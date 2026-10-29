@@ -59,6 +59,9 @@ const DEFAULTS = {
     contact: { whatsapp: "254769345599", email: "support@onlinebar.co.ke", address: "Nairobi, Kenya" },
     branding: { owner_name: "Online Bar Team", portfolio_url: "#", hero_title: "Premium Vintages. Chilled Spirits.", hero_subtitle: "Experience authentic vintages and premium spirits curated for excellence.", logo_url: "", favicon_url: "" },
     homepage: {
+        show_hero: true,
+        show_catalog: true,
+        show_widgets: true,
         hero_image_url: "",
         hero_starting_price: 2500,
         hero_badge_text: "Nairobi drinks, snacks & gifting",
@@ -72,6 +75,9 @@ const DEFAULTS = {
         secondary_cta_label: "Send a gift",
         secondary_cta_href: "/gifting",
         browse_link_label: "Find your kind of night",
+        catalog_kicker: "Browse the live menu",
+        catalog_title: "Pick your pour",
+        catalog_subtitle: "Explore available products, compare prices, and find something for your occasion.",
         categories: [
             { label: "Spirits", href: "/shop/category/spirits" },
             { label: "Wine", href: "/shop/category/wine" },
@@ -687,6 +693,44 @@ export default function AdminSettingsPage() {
                     {/* HOMEPAGE TAB */}
                     {activeTab === 'homepage' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
+                            <Card className="rounded-[3rem] border border-border p-8 bg-card shadow-sm space-y-6 text-left">
+                                <div>
+                                    <h2 className="text-xl font-black text-foreground uppercase">Homepage Sections</h2>
+                                    <p className="mt-2 text-sm text-muted-foreground">Choose which live sections customers see. The hero includes its category links; products come from the managed catalog, and extra widgets follow the Widget Manager.</p>
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-3">
+                                    {([
+                                        ['show_hero', 'Hero and category links'],
+                                        ['show_catalog', 'Product catalog'],
+                                        ['show_widgets', 'Admin-managed widgets']
+                                    ] as const).map(([key, label]) => (
+                                        <label key={key} className="flex min-h-14 items-center gap-3 rounded-2xl border border-border bg-secondary px-4 text-sm font-bold text-foreground">
+                                            <input
+                                                type="checkbox"
+                                                checked={homepage[key]}
+                                                onChange={e => setHomepage({ ...homepage, [key]: e.target.checked })}
+                                                className="h-4 w-4 accent-primary"
+                                            />
+                                            {label}
+                                        </label>
+                                    ))}
+                                </div>
+                                <div className="grid gap-5 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Menu Section Eyebrow</label>
+                                        <Input value={homepage.catalog_kicker} onChange={e => setHomepage({ ...homepage, catalog_kicker: e.target.value })} className="h-12 rounded-xl bg-secondary border-border font-bold text-foreground" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Menu Section Headline</label>
+                                        <Input value={homepage.catalog_title} onChange={e => setHomepage({ ...homepage, catalog_title: e.target.value })} className="h-12 rounded-xl bg-secondary border-border font-bold text-foreground" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Menu Section Description</label>
+                                        <Input value={homepage.catalog_subtitle} onChange={e => setHomepage({ ...homepage, catalog_subtitle: e.target.value })} className="h-12 rounded-xl bg-secondary border-border font-medium text-foreground" />
+                                    </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground">Save or publish this Homepage tab to apply visibility and copy changes.</p>
+                            </Card>
                             <Card className="rounded-[3rem] border border-border p-10 bg-card shadow-sm space-y-8 text-left">
                                 <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><HomeIcon className="h-5 w-5 text-primary" /> Hero Configuration</h2>
 

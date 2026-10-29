@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Archive, ArrowLeft, ImagePlus, Package, Pencil, Store } from 'lucide-react';
+import { Archive, ArrowLeft, ImagePlus, Package, Pencil, Search, Store } from 'lucide-react';
 import { marketSupabase } from '@/lib/marketSupabaseClient';
 
 type Category = { name: string; slug: string };
@@ -55,8 +55,31 @@ type MerchantOffer = {
   messages: Array<{ actor: string; action: string; amount_minor: number | null; message: string | null; created_at: string }>;
 };
 type Application = { status: string; review_note: string | null; business_name: string };
+type MerchantCatalogItem = {
+  id: number;
+  name: string;
+  category: string;
+  sub_category: string | null;
+  price: number;
+  image_url: string;
+  is_bite: boolean;
+  is_snack: boolean;
+  is_souvenir: boolean;
+  merchant_price: number;
+  stock: number;
+  is_listed: boolean;
+};
+type CatalogSection = 'All' | 'Beverages' | 'Street food' | 'Snacks' | 'Souvenirs';
 
 const blankForm = { name: '', description: '', category: '', price: '', stock: '', size: '', color: '' };
+
+function getCatalogSection(item: MerchantCatalogItem): Exclude<CatalogSection, 'All'> {
+  const category = `${item.category} ${item.sub_category || ''}`.toLowerCase();
+  if (item.is_souvenir || /\b(souvenir|gift|merchandise|flask|shot glass)\b/.test(category)) return 'Souvenirs';
+  if (item.is_bite || /\b(street food|food|meal|kitchen|grill|nyama)\b/.test(category)) return 'Street food';
+  if (item.is_snack || /\b(snack|munch|bite|crisps|chips|nuts)\b/.test(category)) return 'Snacks';
+  return 'Beverages';
+}
 
 export default function MerchantDashboardPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -73,14 +96,14 @@ export default function MerchantDashboardPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [workingOfferId, setWorkingOfferId] = useState<string | null>(null);
-  const [catalogItems, setCatalogItems] = useState([
-    { id: 'tusker-500', name: 'Tusker Lager 500ml', category: 'Beer', vendorPrice: 300, customerPrice: 340, stock: 12, selected: true, reachable: true, eta: 22 },
-    { id: 'smirnoff-750', name: 'Smirnoff Vodka 750ml', category: 'Spirits', vendorPrice: 560, customerPrice: 620, stock: 8, selected: true, reachable: true, eta: 28 },
-    { id: 'coke-500', name: 'Coca-Cola 500ml', category: 'Mixer', vendorPrice: 120, customerPrice: 150, stock: 18, selected: true, reachable: true, eta: 18 },
-    { id: 'guinness-500', name: 'Guinness 500ml', category: 'Beer', vendorPrice: 330, customerPrice: 370, stock: 5, selected: false, reachable: false, eta: 44 },
-    { id: 'jack-750', name: 'Jack Daniels 750ml', category: 'Spirits', vendorPrice: 930, customerPrice: 980, stock: 4, selected: false, reachable: false, eta: 48 },
-  ]);
-  const [catalogFilter, setCatalogFilter] = useState<'All' | 'Beer' | 'Spirits' | 'Mixer'>('All');
+  const [catalogItems, setCatalogItems] = useState<MerchantCatalogItem[]>([]);
+  const [catalogDirtyIds, setCatalogDirtyIds] = useState<number[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogWorking, setCatalogWorking] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogMessage, setCatalogMessage] = useState('');
+  const [minimumMargin, setMinimumMargin] = useState(30);
+  const [catalogFilter, setCatalogFilter] = useState<CatalogSection>('All');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [routingProfile, setRoutingProfile] = useState({
     isOpen: true,
@@ -112,6 +135,26 @@ export default function MerchantDashboardPage() {
     const result = await response.json() as { products?: MerchantProduct[]; error?: string };
     if (!response.ok) throw new Error(result.error || 'Could not load your shop.');
     setProducts(result.products || []);
+  }, []);
+
+  const loadCatalog = useCallback(async (token: string) => {
+    setCatalogLoading(true);
+    setCatalogError('');
+    try {
+      const response = await fetch('/api/market/merchant-catalog', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store'
+      });
+      const result = await response.json() as { items?: MerchantCatalogItem[]; minimumMargin?: number; error?: string };
+      if (!response.ok || !result.items) throw new Error(result.error || 'Could not load the master product catalog.');
+      setCatalogItems(result.items);
+      setMinimumMargin(Number(result.minimumMargin) || 0);
+      setCatalogDirtyIds([]);
+    } catch (cause) {
+      setCatalogError(cause instanceof Error ? cause.message : 'Could not load the master product catalog.');
+    } finally {
+      setCatalogLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -152,7 +195,10 @@ export default function MerchantDashboardPage() {
         try {
           await loadProducts(session.access_token);
           await loadOffers(session.access_token);
-          if (active) setAccessToken(session.access_token);
+          if (active) {
+            setAccessToken(session.access_token);
+            await loadCatalog(session.access_token);
+          }
         } catch (cause) {
           const applicationResponse = await fetch('/api/market/merchant-application', {
             headers: { Authorization: `Bearer ${session.access_token}` },
@@ -176,7 +222,7 @@ export default function MerchantDashboardPage() {
     }
     void initialize();
     return () => { active = false; };
-  }, [loadOffers, loadProducts]);
+  }, [loadCatalog, loadOffers, loadProducts]);
 
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     setImage(event.target.files?.[0] || null);
@@ -215,6 +261,65 @@ export default function MerchantDashboardPage() {
       setError(cause instanceof Error ? cause.message : 'Could not create this listing.');
     } finally {
       setWorking(false);
+    }
+  }
+
+  function updateCatalogItem(productId: number, patch: Partial<Pick<MerchantCatalogItem, 'merchant_price' | 'stock' | 'is_listed'>>) {
+    setCatalogItems(current => current.map(item => item.id === productId ? { ...item, ...patch } : item));
+    setCatalogDirtyIds(current => current.includes(productId) ? current : [...current, productId]);
+    setCatalogError('');
+    setCatalogMessage('');
+  }
+
+  async function saveCatalogChanges() {
+    if (!accessToken) return;
+    const changedItems = catalogItems.filter(item => catalogDirtyIds.includes(item.id));
+    if (changedItems.length === 0) {
+      setCatalogMessage('Your catalog is already up to date.');
+      return;
+    }
+    const invalidListedItem = changedItems.find(item =>
+      item.is_listed && (
+        item.merchant_price <= 0
+        || item.price - item.merchant_price < minimumMargin
+      )
+    );
+    if (invalidListedItem) {
+      setCatalogError(
+        invalidListedItem.merchant_price <= 0
+          ? `Enter your payout price for ${invalidListedItem.name} before listing it.`
+          : `Your price for ${invalidListedItem.name} must leave at least KES ${minimumMargin} below the platform customer price.`
+      );
+      return;
+    }
+
+    setCatalogWorking(true);
+    setCatalogError('');
+    setCatalogMessage('');
+    try {
+      const response = await fetch('/api/market/merchant-catalog', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          items: changedItems.map(item => ({
+            product_id: item.id,
+            merchant_price: item.merchant_price,
+            stock: item.stock,
+            is_listed: item.is_listed
+          }))
+        })
+      });
+      const result = await response.json() as { saved?: number; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not save your stock and prices.');
+      setCatalogMessage(`${Number(result.saved) || changedItems.length} catalog ${Number(result.saved) === 1 ? 'item' : 'items'} saved.`);
+      await loadCatalog(accessToken);
+    } catch (cause) {
+      setCatalogError(cause instanceof Error ? cause.message : 'Could not save your stock and prices.');
+    } finally {
+      setCatalogWorking(false);
     }
   }
 
@@ -442,106 +547,174 @@ export default function MerchantDashboardPage() {
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-slate-200 bg-[#0d1630] p-5 shadow-sm text-white">
+            <section className="rounded-[2rem] border border-slate-200 bg-[#0d1630] p-5 text-white shadow-sm sm:p-7" aria-labelledby="merchant-catalog-heading">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Merchant stock</div>
-                  <h2 className="mt-2 text-xl font-semibold text-white">Merchant stock and prices</h2>
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Shared master catalog</div>
+                  <h2 id="merchant-catalog-heading" className="mt-2 text-xl font-semibold text-white">Choose what you sell</h2>
+                  <p className="mt-1 text-sm text-slate-300">Products and photos are supplied by the platform. Set your payout price and stock.</p>
                 </div>
-                <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-200">
-                  {catalogItems.filter(item => item.selected && item.reachable).length} visible to customers
+                <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-100">
+                  {catalogItems.filter(item => item.is_listed && item.stock > 0).length} listed and in stock
                 </div>
               </div>
 
               <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap gap-2">
-                  {(['All', 'Beer', 'Spirits', 'Mixer'] as const).map((pill) => (
+                  {(['All', 'Beverages', 'Street food', 'Snacks', 'Souvenirs'] as const).map(section => (
                     <button
-                      key={pill}
+                      key={section}
                       type="button"
-                      onClick={() => setCatalogFilter(pill)}
-                      className={`rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${catalogFilter === pill ? 'bg-white text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}
+                      aria-pressed={catalogFilter === section}
+                      onClick={() => setCatalogFilter(section)}
+                      className={`rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${catalogFilter === section ? 'bg-white text-slate-900' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}
                     >
-                      {pill}
+                      {section}
                     </button>
                   ))}
                 </div>
-                <input
-                  value={catalogSearch}
-                  onChange={(event) => setCatalogSearch(event.target.value)}
-                  placeholder="Search stock..."
-                  className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-slate-400 lg:max-w-xs"
-                />
+                <label className="relative block w-full lg:max-w-xs">
+                  <span className="sr-only">Search master catalog</span>
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                  <input
+                    value={catalogSearch}
+                    onChange={event => setCatalogSearch(event.target.value)}
+                    placeholder="Search products..."
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/5 pl-10 pr-3 text-sm text-white placeholder:text-slate-400 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                  />
+                </label>
               </div>
 
-              <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-                {catalogItems
-                  .filter((item) => (catalogFilter === 'All' || item.category === catalogFilter) && item.name.toLowerCase().includes(catalogSearch.toLowerCase()))
-                  .map((item) => (
-                  <div key={item.id} className={`relative overflow-hidden rounded-[1.5rem] border ${item.selected ? 'border-emerald-400/70' : 'border-white/10'} bg-[#1b2747]`}>
-                    <button
-                      type="button"
-                      onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, selected: !entry.selected } : entry))}
-                      className="relative block w-full text-left"
-                    >
-                      <div className={`flex min-h-[180px] items-center justify-center text-6xl ${item.selected ? 'bg-[#d8c3b7]' : item.category === 'Spirits' ? 'bg-[#cfe5ef]' : item.category === 'Beer' ? 'bg-[#d9c09d]' : 'bg-[#e6c7d8]'}`}>
-                        <span aria-hidden="true">{item.category === 'Beer' ? '🍺' : item.category === 'Spirits' ? '🍸' : '🥤'}</span>
-                      </div>
-                      {item.selected && (
-                        <span className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-lg text-white shadow-lg shadow-emerald-500/30">✓</span>
-                      )}
-                    </button>
+              {catalogError && <p role="alert" className="mt-4 rounded-xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{catalogError}</p>}
+              {catalogMessage && <p role="status" className="mt-4 rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{catalogMessage}</p>}
 
-                    <div className="space-y-3 p-4">
-                      <div className="min-h-[48px]">
-                        <p className="text-lg font-black text-white">{item.name}</p>
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">{item.category}</p>
-                      </div>
+              {catalogLoading ? (
+                <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Loading catalog">
+                  {[0, 1, 2, 3].map(index => <div key={index} className="h-80 animate-pulse rounded-2xl bg-white/10" />)}
+                </div>
+              ) : (
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {catalogItems
+                    .filter(item => (catalogFilter === 'All' || getCatalogSection(item) === catalogFilter)
+                      && `${item.name} ${item.category} ${item.sub_category || ''}`.toLowerCase().includes(catalogSearch.toLowerCase().trim()))
+                    .map(item => {
+                      const maxMerchantPrice = Math.max(0, item.price - minimumMargin);
+                      const isDirty = catalogDirtyIds.includes(item.id);
+                      return (
+                        <article key={item.id} className={`overflow-hidden rounded-2xl border bg-[#1b2747] ${item.is_listed ? 'border-emerald-400/70' : 'border-white/10'}`}>
+                          <button
+                            type="button"
+                            aria-pressed={item.is_listed}
+                            aria-label={`${item.is_listed ? 'Stop selling' : 'Start selling'} ${item.name}`}
+                            disabled={catalogWorking}
+                            onClick={() => updateCatalogItem(item.id, { is_listed: !item.is_listed })}
+                            className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-100 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400 disabled:opacity-70"
+                          >
+                            {item.image_url ? (
+                              <Image src={item.image_url} alt={item.name} fill unoptimized sizes="(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 25vw" className="object-contain p-5" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{item.category}</div>
+                            )}
+                            <span className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold shadow ${item.is_listed ? 'bg-emerald-500 text-white' : 'border border-slate-300 bg-white/90 text-slate-500'}`}>
+                              {item.is_listed ? '✓' : '+'}
+                            </span>
+                          </button>
 
-                      {item.selected ? (
-                        <>
-                          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                            <button type="button" onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, vendorPrice: Math.max(0, entry.vendorPrice - 10) } : entry))} className="h-9 w-9 rounded-lg bg-slate-700 text-lg font-black text-white">−</button>
-                            <div className="text-center">
-                              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Your price</div>
-                              <div className="text-2xl font-black text-white">KSh {item.vendorPrice}</div>
+                          <div className="space-y-3 p-4">
+                            <div className="min-h-12">
+                              <h3 className="line-clamp-2 text-sm font-bold text-white">{item.name}</h3>
+                              <p className="mt-1 text-xs text-slate-300">{item.sub_category || item.category}{isDirty ? ' · Unsaved' : ''}</p>
                             </div>
-                            <button type="button" onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, vendorPrice: entry.vendorPrice + 10 } : entry))} className="h-9 w-9 rounded-lg bg-slate-700 text-lg font-black text-white">+</button>
+                            {item.is_listed ? (
+                              <>
+                                <div className="rounded-xl bg-white/5 p-3">
+                                  <label htmlFor={`merchant-price-${item.id}`} className="block text-xs font-semibold text-slate-200">Your payout price (KES)</label>
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      aria-label={`Decrease ${item.name} payout price by 10 shillings`}
+                                      disabled={catalogWorking}
+                                      onClick={() => updateCatalogItem(item.id, { merchant_price: Math.max(0, item.merchant_price - 10) })}
+                                      className="h-10 w-10 shrink-0 rounded-lg bg-slate-700 text-lg font-bold text-white hover:bg-slate-600 disabled:opacity-50"
+                                    >−</button>
+                                    <input
+                                      id={`merchant-price-${item.id}`}
+                                      type="number"
+                                      min="0"
+                                      max={maxMerchantPrice}
+                                      step="1"
+                                      value={item.merchant_price || ''}
+                                      disabled={catalogWorking}
+                                      onChange={event => updateCatalogItem(item.id, { merchant_price: Number(event.target.value) || 0 })}
+                                      className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-[#0d1630] px-2 text-center text-sm font-bold text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                                    />
+                                    <button
+                                      type="button"
+                                      aria-label={`Increase ${item.name} payout price by 10 shillings`}
+                                      disabled={catalogWorking || item.merchant_price + 10 > maxMerchantPrice}
+                                      onClick={() => updateCatalogItem(item.id, { merchant_price: Math.min(maxMerchantPrice, item.merchant_price + 10) })}
+                                      className="h-10 w-10 shrink-0 rounded-lg bg-slate-700 text-lg font-bold text-white hover:bg-slate-600 disabled:opacity-50"
+                                    >+</button>
+                                  </div>
+                                  <p className="mt-2 text-xs text-slate-300">Customer price: KES {item.price.toLocaleString('en-KE')}</p>
+                                  <p className="mt-1 rounded-lg bg-emerald-500/15 px-2 py-2 text-xs font-semibold text-emerald-200">
+                                    {item.merchant_price > 0 ? `You receive KES ${item.merchant_price.toLocaleString('en-KE')} each` : 'Enter what you receive per sale'}
+                                  </p>
+                                  <p className="mt-2 text-[11px] leading-4 text-slate-400">Your price must leave at least KES {minimumMargin} below the platform customer price.</p>
+                                </div>
+
+                                <div className="rounded-xl bg-white/5 p-3">
+                                  <label htmlFor={`merchant-stock-${item.id}`} className="block text-xs font-semibold text-slate-200">Units in stock</label>
+                                  <input
+                                    id={`merchant-stock-${item.id}`}
+                                    type="number"
+                                    min="0"
+                                    max="1000000"
+                                    step="1"
+                                    value={item.stock}
+                                    disabled={catalogWorking}
+                                    onChange={event => updateCatalogItem(item.id, { stock: Math.min(1000000, Math.max(0, Number(event.target.value) || 0)) })}
+                                    className="mt-2 h-10 w-full rounded-lg border border-white/10 bg-[#0d1630] px-3 text-sm font-bold text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                                  />
+                                </div>
+                                {item.stock === 0 && (
+                                  <p className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">Out of stock. This offer will be unavailable.</p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="rounded-xl border border-dashed border-white/15 bg-white/5 px-3 py-3 text-xs font-medium text-slate-300">Tap the product photo to add it to your catalog.</p>
+                            )}
                           </div>
-
-                          <div className="text-[11px] text-slate-300">Typical nearby: <span className="font-bold text-slate-100">KES {Math.max(200, item.customerPrice - 30)}–{item.customerPrice + 20}</span></div>
-                          <div className="rounded-xl bg-emerald-500/15 px-3 py-2 text-sm font-black text-emerald-200">You receive KES {item.vendorPrice} each</div>
-
-                          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                            <button type="button" onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, stock: Math.max(0, entry.stock - 1) } : entry))} className="h-9 w-9 rounded-lg bg-slate-700 text-lg font-black text-white">−</button>
-                            <div className="text-center">
-                              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Stock</div>
-                              <div className="text-2xl font-black text-white">{item.stock}</div>
-                            </div>
-                            <button type="button" onClick={() => setCatalogItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, stock: entry.stock + 1 } : entry))} className="h-9 w-9 rounded-lg bg-slate-700 text-lg font-black text-white">+</button>
-                          </div>
-
-                          {item.stock === 0 && (
-                            <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-2 py-2 text-[11px] font-bold text-amber-100">Out of stock: hidden from customers</div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="rounded-xl border border-dashed border-white/15 bg-white/5 px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Tap the photo to sell this</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                        </article>
+                      );
+                    })}
+                  {!catalogLoading && catalogItems.filter(item =>
+                    (catalogFilter === 'All' || getCatalogSection(item) === catalogFilter)
+                    && `${item.name} ${item.category} ${item.sub_category || ''}`.toLowerCase().includes(catalogSearch.toLowerCase().trim())
+                  ).length === 0 && (
+                    <p className="rounded-xl border border-white/10 bg-white/5 p-5 text-sm text-slate-300 sm:col-span-2 xl:col-span-4">
+                      No products match this category and search. Ask Market Operations to add a missing product to the master catalog.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#101b35] p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Selected items</div>
-                  <div className="mt-1 text-sm text-slate-200">{catalogItems.filter(item => item.selected).length} items listed</div>
-                  <div className="text-[11px] text-slate-400">{catalogItems.filter(item => item.selected && item.stock > 0).length} in stock and visible to customers</div>
+                  <div className="text-xs font-semibold text-slate-200">Your catalog</div>
+                  <div className="mt-1 text-sm text-white">{catalogItems.filter(item => item.is_listed).length} items listed · {catalogItems.filter(item => item.is_listed && item.stock > 0).length} in stock</div>
+                  <div className="text-xs text-slate-400">Items with zero stock are unavailable to customers.</div>
                 </div>
-                <button type="button" onClick={() => {}} className="h-12 rounded-2xl bg-emerald-400 px-6 text-sm font-black text-slate-900 shadow-lg shadow-emerald-500/30">Save my stock</button>
+                <button
+                  type="button"
+                  disabled={catalogWorking || catalogDirtyIds.length === 0}
+                  onClick={() => void saveCatalogChanges()}
+                  className="h-12 rounded-xl bg-emerald-400 px-6 text-sm font-bold text-slate-900 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {catalogWorking ? 'Saving changes…' : `Save stock and prices${catalogDirtyIds.length ? ` (${catalogDirtyIds.length})` : ''}`}
+                </button>
               </div>
-            </div>
+            </section>
 
             <form id="merchant-listing-form" className="mm-form" onSubmit={submitProduct}>
               <div className="mm-form-wide flex flex-wrap items-center justify-between gap-3">
