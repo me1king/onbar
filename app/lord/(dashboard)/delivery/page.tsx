@@ -24,6 +24,7 @@ import {
   Route,
   Search,
   ShieldCheck,
+  Store,
   Truck,
   Users,
   Wallet
@@ -233,7 +234,7 @@ export default function DeliveryOpsPage() {
 
   React.useEffect(() => {
     void refresh();
-    const interval = window.setInterval(() => void refresh(true), 30_000);
+    const interval = window.setInterval(() => void refresh(true), 10_000);
     return () => window.clearInterval(interval);
   }, [refresh]);
 
@@ -408,7 +409,7 @@ export default function DeliveryOpsPage() {
                 Real-time runner deployment and delivery coordination. Every assignment remains protected by verified payment and merchant fulfilment checks.
               </p>
               <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-semibold text-slate-500">
-                <span className="inline-flex items-center gap-2"><RefreshCw size={12} className={refreshing ? 'animate-spin text-amber-600' : 'text-slate-400'} /> Auto-refresh every 30 seconds</span>
+                <span className="inline-flex items-center gap-2"><RefreshCw size={12} className={refreshing ? 'animate-spin text-amber-600' : 'text-slate-400'} /> Auto-refresh every 10 seconds</span>
                 <span>Last sync: {formatTime(lastUpdated)}</span>
               </div>
             </div>
@@ -421,6 +422,9 @@ export default function DeliveryOpsPage() {
               </Link>
               <Link href="/lord/riders" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:bg-slate-50">
                 <Users size={15} /> Rider fleet
+              </Link>
+              <Link href="/lord/delivery/scorecard" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:bg-slate-50">
+                <Store size={15} /> Vendor scorecard
               </Link>
               <Button onClick={() => void refresh(true)} disabled={refreshing} variant="outline" className="min-h-11 rounded-xl border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50">
                 <RefreshCw size={14} className={cn('mr-2', refreshing && 'animate-spin')} /> Sync

@@ -1,17 +1,23 @@
 'use client';
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Search, Package, Truck, CheckCircle, Clock, AlertCircle, Navigation, ShieldCheck, MessageSquare, Cookie, Zap, ArrowRight, Loader2, Phone, MessageCircle } from 'lucide-react';
+import { Search, Package, Truck, CheckCircle, Clock, AlertCircle, Navigation, ShieldCheck, MessageSquare, Cookie, Zap, ArrowRight, Loader2, Phone } from 'lucide-react';
 import { formatPrice, cn, normalizeImage } from '@/lib/utils';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useSettings } from '@/lib/useSettings';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
+
+const CustomerDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
+  ssr: false,
+  loading: () => <div className="flex h-72 items-center justify-center rounded-2xl bg-slate-800 text-sm text-slate-300">Loading live map…</div>
+});
 
 interface OrderDetails {
   id: number;
@@ -20,10 +26,15 @@ interface OrderDetails {
   total_price: number;
   created_at: string;
   payment_method: string;
+  delivered_at?: string | null;
   rider_name?: string | null;
+  rider_phone?: string | null;
+  rider_vehicle?: { type: string | null; registration: string | null; rating: number | null } | null;
   delivery_eta_minutes?: number | null;
+  delivery_eta_updated_at?: string | null;
   rider_location?: { latitude: number; longitude: number; updatedAt: string } | null;
   rider_location_message?: string | null;
+  delivery_location?: { latitude: number; longitude: number } | null;
 }
 
 interface QuickSnack {
@@ -52,7 +63,6 @@ function TrackingContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snacks, setSnacks] = useState<QuickSnack[]>([]);
-  const [simulatedProgress, setSimulatedProgress] = useState(0);
 
   const searchParams = useSearchParams();
   const { settings } = useSettings();
@@ -144,34 +154,9 @@ function TrackingContent() {
 
   useEffect(() => {
     if (!trackingToken) return;
-    const interval = window.setInterval(() => void refreshTracking(trackingToken), 30_000);
+    const interval = window.setInterval(() => void refreshTracking(trackingToken), 15_000);
     return () => window.clearInterval(interval);
   }, [trackingToken, refreshTracking]);
-
-  useEffect(() => {
-    if (!order || !['Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(order.status)) {
-      setSimulatedProgress(0);
-      return;
-    }
-
-    if (order.status === 'Delivered') {
-      setSimulatedProgress(1);
-      return;
-    }
-
-    const start = Date.now();
-    let rafId = 0;
-    const tick = () => {
-      const elapsed = (Date.now() - start) / 1000;
-      const progress = Math.min(0.97, Math.max(0, elapsed / 70));
-      setSimulatedProgress(progress);
-      if (elapsed < 70 && order.status !== 'Delivered') {
-        rafId = window.requestAnimationFrame(tick);
-      }
-    };
-    rafId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(rafId);
-  }, [order]);
 
   const getStatusIndex = (status: string) => {
     const idx = STEPS.findIndex((step) => step.id.toLowerCase() === status.toLowerCase());
@@ -179,8 +164,22 @@ function TrackingContent() {
   };
 
   const currentIndex = order ? getStatusIndex(order.status) : -1;
-  const liveEtaSeconds = Math.max(0, Math.ceil((1 - simulatedProgress) * 70));
-  const liveEtaLabel = order?.status === 'Delivered' ? 'Delivered' : `${Math.floor(liveEtaSeconds / 60)}:${String(liveEtaSeconds % 60).padStart(2, '0')}`;
+  const etaUpdatedAt = order?.delivery_eta_updated_at ? new Date(order.delivery_eta_updated_at).getTime() : 0;
+  const etaIsCurrent = etaUpdatedAt > 0 && Date.now() >= etaUpdatedAt && Date.now() - etaUpdatedAt <= 60 * 60 * 1000;
+  const liveEtaLabel = order?.status === 'Delivered'
+    ? 'Delivered'
+    : order?.delivery_eta_minutes != null && etaIsCurrent
+      ? `About ${order.delivery_eta_minutes} min`
+      : 'ETA not available';
+
+  const riderCallHref = order?.rider_phone ? `tel:${order.rider_phone}` : null;
+  const riderPhoneDigits = order?.rider_phone?.replace(/\D/g, '') || '';
+  const riderWhatsAppNumber = riderPhoneDigits.startsWith('254')
+    ? riderPhoneDigits
+    : riderPhoneDigits.startsWith('0')
+      ? `254${riderPhoneDigits.slice(1)}`
+      : riderPhoneDigits;
+  const riderWhatsAppHref = riderWhatsAppNumber ? `https://wa.me/${riderWhatsAppNumber}` : null;
 
   const handleWhatsAppDispatch = () => {
     if (!order) return;
@@ -335,7 +334,7 @@ function TrackingContent() {
                   <div className="space-y-1">
                     <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Est. Arrival</p>
                     <p className="text-xs font-bold uppercase text-emerald-600">
-                      {order.status === 'Delivered' ? 'Arrived' : order.delivery_eta_minutes != null ? `${order.delivery_eta_minutes} min` : 'ETA not available yet'}
+                      {liveEtaLabel}
                     </p>
                   </div>
                 </div>
@@ -361,75 +360,75 @@ function TrackingContent() {
 
                 {order.status === 'Out for Delivery' && (
                   <div className="mt-4 rounded-[2rem] border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_24px_60px_-30px_rgba(15,23,42,0.9)]">
-                    <div className="relative mb-5 h-[280px] overflow-hidden rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_20%_20%,rgba(45,212,191,0.25),transparent_22%),linear-gradient(135deg,#0b1323_0%,#11233d_35%,#162a3f_100%)]">
-                      <div className="absolute inset-0 opacity-30" aria-hidden="true">
-                        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:38px_38px]" />
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Live rider position</p>
+                        <p className="mt-1 text-xs text-slate-300">
+                          {order.rider_location
+                            ? `Last GPS update ${new Date(order.rider_location.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Location is approximate.`
+                            : order.rider_location_message || 'Waiting for the rider’s next GPS update.'}
+                        </p>
                       </div>
-                      <div className="absolute inset-y-0 left-[18%] w-1 bg-white/5" />
-                      <div className="absolute inset-x-0 top-[26%] h-1 bg-white/5" />
-
-                      <svg viewBox="0 0 320 280" className="absolute inset-0 h-full w-full" aria-label="Simulated rider route">
-                        <path d="M18 200 L90 200 L120 165 L180 165 L210 120 L260 120 L290 90" fill="none" stroke="rgba(45,212,191,0.9)" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 12px rgba(45,212,191,0.9))' }} />
-                        <path d="M18 200 L90 200 L120 165 L180 165 L210 120 L260 120 L290 90" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-
-                      <div className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white bg-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.8)] transition-all duration-500" style={{ left: `${18 + simulatedProgress * 72}%`, top: `${58 - simulatedProgress * 34}%` }} />
-                      <div className="absolute left-[62%] top-[48%] rounded-full border border-emerald-300/50 bg-emerald-400/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-200">Rider moving</div>
+                      {order.rider_location && (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${order.rider_location.latitude},${order.rider_location.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 px-3 text-[10px] font-bold text-amber-200 hover:bg-white/5"
+                        >
+                          Open map <ArrowRight className="h-3.5 w-3.5" />
+                        </a>
+                      )}
                     </div>
+
+                    {order.rider_location ? (
+                      <>
+                        <CustomerDeliveryMap rider={order.rider_location} destination={order.delivery_location || null} />
+                        {order.delivery_location && <p className="mt-2 text-[10px] text-slate-500">The dashed line is a straight-line guide, not a road route.</p>}
+                      </>
+                    ) : (
+                      <div className="flex h-40 items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-5 text-center text-sm text-slate-400">
+                        The rider has not shared a fresh GPS position yet. This map will update when the next location arrives.
+                      </div>
+                    )}
 
                     <div className="flex flex-col gap-4 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Arriving</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Dispatch ETA</p>
                         <p className="mt-2 text-3xl font-black uppercase tracking-tighter text-white">{liveEtaLabel}</p>
+                        <p className="mt-1 text-[10px] text-slate-500">Shown only when a current estimate is on file.</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm transition hover:scale-105" aria-label="Call rider"><Phone className="h-4 w-4" /></button>
-                        <button className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-white shadow-sm transition hover:scale-105" aria-label="Chat with rider"><MessageCircle className="h-4 w-4" /></button>
+                        {riderCallHref && (
+                          <a href={riderCallHref} className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-900 shadow-sm transition hover:scale-105" aria-label="Call assigned rider">
+                            <Phone className="h-4 w-4" />
+                          </a>
+                        )}
+                        {riderWhatsAppHref && (
+                          <a href={riderWhatsAppHref} target="_blank" rel="noreferrer" className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-white shadow-sm transition hover:scale-105" aria-label="Message assigned rider on WhatsApp">
+                            <MessageSquare className="h-4 w-4" />
+                          </a>
+                        )}
                       </div>
                     </div>
 
                     <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-sm font-black text-slate-900">BK</div>
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-sm font-black text-slate-900">
+                            {order.rider_name?.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'R'}
+                          </div>
                           <div>
-                            <p className="text-base font-black uppercase tracking-tight text-white">Brian K. · 4.9 ★</p>
-                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">Honda CB · KMGB 214X</p>
+                            <p className="text-base font-black uppercase tracking-tight text-white">{order.rider_name || 'Assigned rider'}</p>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">
+                              {[order.rider_vehicle?.type, order.rider_vehicle?.registration].filter(Boolean).join(' · ') || 'Vehicle details unavailable'}
+                              {order.rider_vehicle?.rating != null ? ` · ${order.rider_vehicle.rating.toFixed(1)} ★` : ''}
+                            </p>
                           </div>
                         </div>
                         <div className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-emerald-200">On route</div>
                       </div>
-
-                      <div className="mt-4 flex flex-col gap-3">
-                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
-                          <span>PIN</span>
-                          <span>{simulatedProgress > 0.72 ? 'Visible now' : 'Hidden until close'}</span>
-                        </div>
-                        <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-center text-4xl font-black tracking-[0.35em] text-emerald-300">
-                          {simulatedProgress > 0.72 ? '4827' : '••••'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex items-start gap-3">
-                          <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                          <div>
-                            <p className="text-xs font-black uppercase tracking-wide text-foreground">Live rider position</p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {order.rider_location
-                                ? `Updated ${new Date(order.rider_location.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Position is approximate for privacy.`
-                                : 'Location is temporarily unavailable; the route is in fallback mode.'}
-                            </p>
-                          </div>
-                        </div>
-                        {order.rider_location && (
-                          <a href={`https://www.google.com/maps/search/?api=1&query=${order.rider_location.latitude},${order.rider_location.longitude}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-primary hover:text-primary/80">
-                            Open map <ArrowRight className="h-3.5 w-3.5" />
-                          </a>
-                        )}
-                      </div>
+                      <p className="mt-4 text-xs leading-5 text-slate-300">Please have valid identification ready if required for this order.</p>
                     </div>
                   </div>
                 )}
@@ -481,8 +480,8 @@ function TrackingContent() {
                       <p className="mt-2 text-lg font-black uppercase tracking-tight text-primary">{liveEtaLabel}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Address share</p>
-                      <p className="mt-2 text-sm font-black uppercase tracking-tight text-foreground">Masked until rider arrives</p>
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Tracking updates</p>
+                      <p className="mt-2 text-sm font-black uppercase tracking-tight text-foreground">Refresh every 15 seconds</p>
                     </div>
                   </div>
                 )}
@@ -495,17 +494,22 @@ function TrackingContent() {
                         <h3 className="mt-2 text-xl font-black uppercase tracking-tighter text-foreground">Your rider</h3>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-primary hover:text-primary" aria-label="Call rider"><Phone className="h-4 w-4" /></button>
-                        <button className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-primary hover:text-primary" aria-label="Chat with rider"><MessageSquare className="h-4 w-4" /></button>
+                        {riderCallHref && <a href={riderCallHref} className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-primary hover:text-primary" aria-label="Call assigned rider"><Phone className="h-4 w-4" /></a>}
+                        {riderWhatsAppHref && <a href={riderWhatsAppHref} target="_blank" rel="noreferrer" className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-primary hover:text-primary" aria-label="Message assigned rider on WhatsApp"><MessageSquare className="h-4 w-4" /></a>}
                       </div>
                     </div>
 
                     <div className="mt-4 flex items-center gap-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-lg font-black text-slate-900">BK</div>
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-orange-500 text-lg font-black text-slate-900">
+                        {order.rider_name?.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'R'}
+                      </div>
                       <div>
-                        <p className="text-xl font-black uppercase tracking-tight text-foreground">Brian K. · 4.9 ★</p>
-                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Honda CB · KMGB 214X</p>
-                        <p className="mt-2 text-xs font-medium text-slate-600">Dispatching from the merchant. He will confirm a quick ID check when you receive the order.</p>
+                        <p className="text-xl font-black uppercase tracking-tight text-foreground">{order.rider_name || 'Assigned rider'}</p>
+                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                          {[order.rider_vehicle?.type, order.rider_vehicle?.registration].filter(Boolean).join(' · ') || 'Vehicle details unavailable'}
+                          {order.rider_vehicle?.rating != null ? ` · ${order.rider_vehicle.rating.toFixed(1)} ★` : ''}
+                        </p>
+                        <p className="mt-2 text-xs font-medium text-slate-600">Your assigned rider will complete any required age and identity checks at handover.</p>
                       </div>
                     </div>
                   </div>
@@ -518,13 +522,9 @@ function TrackingContent() {
                         <div className="flex items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/20 text-primary shadow-lg shadow-primary/10"><ShieldCheck className="h-6 w-6" /></div>
                           <div>
-                            <h3 className="text-xl font-black uppercase tracking-tighter leading-none">Bar Quality Guarantee</h3>
-                            <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-primary">Genuine Product Verified</p>
+                            <h3 className="text-xl font-black uppercase tracking-tighter leading-none">Delivery complete</h3>
+                            <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-primary">Status recorded by dispatch</p>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Serial Key</p>
-                          <p className="text-[10px] font-black uppercase text-foreground">OB-{order.id}-{new Date(order.created_at).getTime().toString().slice(-4)}</p>
                         </div>
                       </div>
 
@@ -533,23 +533,21 @@ function TrackingContent() {
                           <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">Status</p>
                           <p className="flex items-center gap-2 text-sm font-bold uppercase text-emerald-600">
                             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                            Authenticity Verified
+                          Delivered
                           </p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                           <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                             <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">Delivered On</p>
-                            <p className="text-sm font-bold uppercase text-foreground">{new Date(order.created_at).toLocaleDateString()}</p>
-                          </div>
-                          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-                            <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400">Coverage</p>
-                            <p className="text-sm font-bold uppercase text-foreground">Full Refund/Exchange</p>
+                            <p className="text-sm font-bold uppercase text-foreground">
+                              {order.delivered_at ? new Date(order.delivered_at).toLocaleString() : 'Delivery time not recorded'}
+                            </p>
                           </div>
                         </div>
                       </div>
 
-                      <p className="mt-8 text-[10px] font-medium italic leading-relaxed text-slate-400">&quot;Genuine spirits guarantee. If your selection is not up to our standard, our team will replace it instantly within 24 hours.&quot;</p>
+                      <p className="mt-8 text-[10px] font-medium italic leading-relaxed text-slate-400">If you need help with this delivery, contact our support team using the details shown on the site.</p>
                     </div>
                   </div>
                 )}

@@ -36,7 +36,7 @@ async function loadTrackingOrder(orderId: number) {
 
   const { data: order, error } = await database
     .from('orders')
-    .select('id, status, customer_name, customer_phone, total_price, created_at, payment_method, rider_name, rider_phone, delivery_eta_minutes')
+    .select('id, status, customer_name, customer_phone, total_price, created_at, payment_method, rider_name, rider_phone, delivery_eta_minutes, delivery_eta_updated_at, delivered_at, latitude, longitude')
     .eq('id', orderId)
     .maybeSingle();
   if (error) {
@@ -47,10 +47,11 @@ async function loadTrackingOrder(orderId: number) {
 
   let riderLocation: { latitude: number; longitude: number; updatedAt: string } | null = null;
   let riderLocationMessage: string | null = null;
+  let riderVehicle: { type: string | null; registration: string | null; rating: number | null } | null = null;
   if (order.status === 'Out for Delivery' && order.rider_phone) {
     const { data: rider, error: riderError } = await database
       .from('rider_status')
-      .select('last_known_lat, last_known_lng, location_updated_at')
+      .select('last_known_lat, last_known_lng, location_updated_at, vehicle_type, vehicle_reg, rating, verification_status')
       .eq('rider_phone', order.rider_phone)
       .eq('verification_status', 'Verified')
       .maybeSingle();
@@ -58,10 +59,21 @@ async function loadTrackingOrder(orderId: number) {
     if (riderError) {
       console.error('[DeliveryTracking] Could not load current rider position:', riderError);
       riderLocationMessage = 'Live rider location is temporarily unavailable.';
+    } else if (rider) {
+      const rating = rider.rating === null || rider.rating === undefined ? null : Number(rider.rating);
+      riderVehicle = {
+        type: rider.vehicle_type,
+        registration: rider.vehicle_reg,
+        rating: rating !== null && Number.isFinite(rating) ? rating : null
+      };
     }
 
-    const latitude = Number(rider?.last_known_lat);
-    const longitude = Number(rider?.last_known_lng);
+    const latitude = rider?.last_known_lat === null || rider?.last_known_lat === undefined
+      ? null
+      : Number(rider.last_known_lat);
+    const longitude = rider?.last_known_lng === null || rider?.last_known_lng === undefined
+      ? null
+      : Number(rider.last_known_lng);
     const updatedAt = rider?.location_updated_at ? new Date(rider.location_updated_at) : null;
     const locationIsFresh = updatedAt
       && Number.isFinite(updatedAt.getTime())
@@ -69,8 +81,8 @@ async function loadTrackingOrder(orderId: number) {
       && Date.now() >= updatedAt.getTime();
     if (
       locationIsFresh
-      && Number.isFinite(latitude) && latitude >= -90 && latitude <= 90
-      && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180
+      && latitude !== null && Number.isFinite(latitude) && latitude >= -90 && latitude <= 90
+      && longitude !== null && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180
     ) {
       riderLocation = {
         latitude: Math.round(latitude * 1000) / 1000,
@@ -89,11 +101,22 @@ async function loadTrackingOrder(orderId: number) {
       created_at: order.created_at,
       payment_method: order.payment_method,
       delivery_eta_minutes: order.delivery_eta_minutes,
+      delivery_eta_updated_at: order.delivery_eta_updated_at,
+      delivered_at: order.delivered_at,
       rider_name: order.status === 'Dispatched' || order.status === 'Picked Up' || order.status === 'Out for Delivery'
         ? order.rider_name
         : null,
+      rider_phone: order.status === 'Dispatched' || order.status === 'Picked Up' || order.status === 'Out for Delivery'
+        ? order.rider_phone
+        : null,
+      rider_vehicle: riderVehicle,
       rider_location: riderLocation,
-      rider_location_message: riderLocationMessage
+      rider_location_message: riderLocationMessage,
+      delivery_location: order.latitude !== null && order.longitude !== null
+        && Number.isFinite(Number(order.latitude)) && Number(order.latitude) >= -90 && Number(order.latitude) <= 90
+        && Number.isFinite(Number(order.longitude)) && Number(order.longitude) >= -180 && Number(order.longitude) <= 180
+        ? { latitude: Number(order.latitude), longitude: Number(order.longitude) }
+        : null
     }
   };
 }

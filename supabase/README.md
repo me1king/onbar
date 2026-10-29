@@ -42,6 +42,17 @@ The admin APIs use the server-side `SUPABASE_SERVICE_ROLE_KEY`. Keep that key
 server-only; the recovery migration denies direct browser access to its finance
 tables.
 
+## Delivery merchant scorecard
+
+After the merchant operations and dispatch migrations are installed, apply
+`DELIVERY_VENDOR_SCORECARD_MIGRATION.sql`. It adds service-role-only reporting
+views that calculate actual merchant accept/reject response times from order
+creation, fulfilment totals, and exceptions. It also adds an audited admin RPC
+for pausing or resuming new orders without changing a merchant's weekly hours.
+The response-time metric is explicitly order-created-to-decision; it is not an
+offer-delivery timestamp. No rating, preparation-time, or timeout figures are
+invented where the current event ledger does not record them.
+
 If the marketing dashboard reports that `marketing_campaigns.name` is missing,
 run `ADMIN_DASHBOARD_LOG_FIX_MIGRATION.sql` in the Supabase SQL Editor. It adds
 the column and fills existing campaign names from `title` when available.
