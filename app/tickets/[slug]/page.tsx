@@ -188,7 +188,7 @@ export default async function TicketEventPage({ params }: PageProps) {
 
           <aside className="space-y-4">
             <section role="status" className="ticket-theme-accent-soft rounded-3xl border p-5 sm:p-6">
-              <div className="flex items-start gap-3"><span className="rounded-xl border border-current/15 bg-white/70 p-2"><ShieldAlert size={18} /></span><div><h2 className="ticket-theme-text text-sm font-black">Secure checkout</h2><p className="ticket-theme-copy mt-2 text-xs leading-5">Paid tickets use Paystack checkout. Tickets appear in your wallet only after payment is verified server-side.</p></div></div>
+              <div className="flex items-start gap-3"><span className="rounded-xl border border-current/15 bg-white/70 p-2"><ShieldAlert size={18} /></span><div><h2 className="ticket-theme-text text-sm font-black">Secure checkout</h2><p className="ticket-theme-copy mt-2 text-xs leading-5">Pay by M-Pesa or card. Additional mobile-money methods, including Airtel Money, are available only when shown by the payment provider. Tickets appear in your wallet only after payment is verified server-side.</p></div></div>
             </section>
             <section className="ticket-theme-panel rounded-3xl border p-5 sm:p-6">
               <h2 className="ticket-theme-text text-sm font-black">The real-ticket promise</h2>

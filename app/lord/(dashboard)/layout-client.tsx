@@ -181,6 +181,7 @@ export default function AdminLayoutClient({
       { name: 'Vendor Scorecard', href: '/lord/delivery/scorecard', icon: Store, permission: 'can_manage_orders' },
       { name: 'The Buzz Hub', href: '/lord/buzz', icon: Flame, permission: 'can_manage_marketing' },
       { name: 'Tasks Board', href: '/lord/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },
+      { name: 'Vendor Launch Pipeline', href: '/lord/vendor-onboarding', icon: ClipboardList, minRole: 'admin' },
       { name: 'Merchant Onboarding', href: '/lord/merchants', icon: Store, minRole: 'admin' },
       { name: 'Market Operations', href: '/lord/market', icon: Store, permission: 'can_manage_inventory' },
       { name: 'Traceability & Incidents', href: '/lord/traceability', icon: PackageSearch, permission: 'can_manage_orders' },

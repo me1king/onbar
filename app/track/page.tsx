@@ -27,6 +27,7 @@ interface OrderDetails {
   created_at: string;
   payment_method: string;
   delivered_at?: string | null;
+  delivery_pin?: string | null;
   rider_name?: string | null;
   rider_phone?: string | null;
   rider_vehicle?: { type: string | null; registration: string | null; rating: number | null } | null;
@@ -355,6 +356,14 @@ function TrackingContent() {
                     <Button onClick={handleWhatsAppDispatch} className="h-12 rounded-xl bg-primary px-8 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-primary/20 hover:bg-primary/90">
                       <MessageSquare className="mr-2 h-4 w-4" /> Message Dispatch
                     </Button>
+                  </div>
+                )}
+
+                {order.delivery_pin && ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status) && (
+                  <div className="mt-4 rounded-3xl border border-amber-200 bg-amber-50 p-6 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">Private handover PIN</p>
+                    <p className="mt-2 text-4xl font-black tracking-[0.35em] text-slate-950">{order.delivery_pin}</p>
+                    <p className="mt-2 text-xs text-slate-600">Show this code to your rider at delivery. Keep it private until you receive the order.</p>
                   </div>
                 )}
 

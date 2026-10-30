@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import {
   isMerchantBusinessType,
+  isMerchantVendorType,
+  merchantVendorTypeForBusinessType,
   resolveMerchantDocumentRequirements,
   type MerchantDocumentRequirement,
   type MerchantApplicationDocument
@@ -20,6 +22,10 @@ const MAX_TOTAL_FILE_SIZE = 15 * 1024 * 1024;
 const allowedDocuments = new Set([
   'business_registration',
   'county_license',
+  'liquor_licence',
+  'wholesale_licence',
+  'kra_pin',
+  'medical_cert',
   'food_hygiene',
   'tax_document',
   'premises_document',
@@ -58,8 +64,13 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const businessType = params.get('businessType');
   const county = (params.get('county') || '').trim().slice(0, 100);
+  const vendorType = params.get('vendorType');
   if (!isMerchantBusinessType(businessType)) {
     return NextResponse.json({ error: 'Choose a supported business type.' }, { status: 400 });
+  }
+  const expectedVendorType = merchantVendorTypeForBusinessType(businessType);
+  if (vendorType && (!isMerchantVendorType(vendorType) || vendorType !== expectedVendorType)) {
+    return NextResponse.json({ error: 'Choose a supported vendor category.' }, { status: 400 });
   }
   const database = getDatabase();
   if (!database) return NextResponse.json({ error: 'Merchant requirements are temporarily unavailable.' }, { status: 503 });
@@ -76,6 +87,20 @@ export async function GET(request: Request) {
     businessType,
     county
   ).map(({ document_type, label, is_required }) => ({ type: document_type, label, required: is_required }));
+  const categoryDocument = expectedVendorType === 'retailer'
+    ? { type: 'liquor_licence', label: 'Alcohol retail licence', required: true }
+    : expectedVendorType === 'wholesaler'
+      ? { type: 'wholesale_licence', label: 'Alcohol wholesale licence', required: true }
+      : null;
+  if (categoryDocument) {
+    const existing = requirements.find(requirement => requirement.type === categoryDocument.type);
+    if (existing) {
+      existing.label = categoryDocument.label;
+      existing.required = true;
+    } else {
+      requirements.push(categoryDocument);
+    }
+  }
   return NextResponse.json({ requirements }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
@@ -114,6 +139,15 @@ export async function POST(request: Request) {
   if (!isMerchantBusinessType(businessTypeValue)) {
     return NextResponse.json({ error: 'Choose a supported business type.' }, { status: 400 });
   }
+  const expectedVendorType = merchantVendorTypeForBusinessType(businessTypeValue);
+  const vendorTypeInput = value(form, 'vendorType', 40);
+  if (businessTypeValue !== 'delivery_partner' && !expectedVendorType) {
+    return NextResponse.json({ error: 'Choose a supported vendor category.' }, { status: 400 });
+  }
+  if (vendorTypeInput && (!isMerchantVendorType(vendorTypeInput) || vendorTypeInput !== expectedVendorType)) {
+    return NextResponse.json({ error: 'The vendor category must match the selected business type.' }, { status: 400 });
+  }
+  const vendorTypeValue = expectedVendorType;
   const businessName = value(form, 'businessName', 160);
   const tradingName = value(form, 'tradingName', 160);
   const email = value(form, 'email', 254).toLowerCase();
@@ -198,6 +232,14 @@ export async function POST(request: Request) {
     businessTypeValue,
     county
   ).filter(requirement => requirement.is_required).map(requirement => requirement.document_type);
+  const categoryDocumentType = vendorTypeValue === 'retailer'
+    ? 'liquor_licence'
+    : vendorTypeValue === 'wholesaler'
+      ? 'wholesale_licence'
+      : null;
+  if (categoryDocumentType && !requiredTypes.includes(categoryDocumentType)) {
+    requiredTypes.push(categoryDocumentType);
+  }
 
   const fileEntries: { type: string; file: File; expiresAt: string | null }[] = [];
   const seenDocumentTypes = new Set<string>();
@@ -229,6 +271,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Application files exceed the 15 MB total upload limit.' }, { status: 413 });
     }
     const expiryValue = value(form, `expiry:${type}`, 10);
+    if ((type === 'liquor_licence' || type === 'wholesale_licence') && !expiryValue) {
+      return NextResponse.json({ error: 'Alcohol licence documents must include their expiry date.' }, { status: 400 });
+    }
     if (expiryValue) {
       const expiryDate = new Date(`${expiryValue}T00:00:00.000Z`);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryValue)
@@ -241,12 +286,21 @@ export async function POST(request: Request) {
   }
 
   if (requiredTypes.some(type => !fileEntries.some(document => document.type === type))) {
+    const applicableRequirements = resolveMerchantDocumentRequirements(
+      (configuredRequirements || []) as MerchantDocumentRequirement[],
+      businessTypeValue,
+      county
+    );
+    const missingLabels = requiredTypes
+      .filter(type => !fileEntries.some(document => document.type === type))
+      .map(type => {
+        const requirement = applicableRequirements.find(item => item.document_type === type);
+        if (type === 'liquor_licence') return 'Alcohol retail licence';
+        if (type === 'wholesale_licence') return 'Alcohol wholesale licence';
+        return requirement?.label || type.replace(/_/g, ' ');
+      });
     return NextResponse.json({
-      error: `Upload all required documents: ${resolveMerchantDocumentRequirements(
-        (configuredRequirements || []) as MerchantDocumentRequirement[],
-        businessTypeValue,
-        county
-      ).filter(requirement => requirement.is_required).map(requirement => requirement.label).join(', ')}.`
+      error: `Upload all required documents: ${missingLabels.join(', ')}.`
     }, { status: 400 });
   }
 
@@ -282,6 +336,7 @@ export async function POST(request: Request) {
       business_name: businessName,
       trading_name: tradingName || null,
       business_type: businessTypeValue,
+      vendor_type: vendorTypeValue,
       email,
       phone,
       owner_name: ownerName,

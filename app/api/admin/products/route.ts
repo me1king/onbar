@@ -56,10 +56,16 @@ export async function GET(request: Request) {
     if ('response' in access) return access.response;
 
     if (new URL(request.url).searchParams.get('scope') === 'inventory') {
-        const { data: inventory, error } = await access.database
-            .from('products')
+        const url = new URL(request.url);
+        const productId = url.searchParams.get('id');
+        if (productId !== null && (!/^\d+$/.test(productId) || Number(productId) < 1 || !Number.isSafeInteger(Number(productId)))) {
+            return NextResponse.json({ error: 'A valid product ID is required.' }, { status: 400 });
+        }
+        let query = access.database.from('products')
             .select('*')
             .order('created_at', { ascending: false });
+        if (productId !== null) query = query.eq('id', Number(productId));
+        const { data: inventory, error } = await query;
         if (error) {
             console.error('[ProductAdmin] Could not load beverage inventory:', error);
             return NextResponse.json({ error: 'Could not load beverage inventory.' }, { status: 503 });

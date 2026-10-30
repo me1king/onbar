@@ -285,6 +285,7 @@ function ticketHtml(input: {
   const heading = renderEmailCopy(input.emailSettings.headingTemplate, variables);
   const intro = renderEmailCopy(input.emailSettings.introTemplate, variables);
   const closing = renderEmailCopy(input.emailSettings.closingTemplate, variables);
+  const supportLink = `https://wa.me/254769345599?text=${encodeURIComponent(`Hello, I need help with ticket order ${input.order.reference}.`)}`;
   const tickets = input.tickets.map((ticket, index) => {
     const qrId = `ob-ticket-qr-${index + 1}`;
     return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;border:1px solid ${palette.border};border-radius:18px;border-collapse:separate;background:${palette.panel};color:${palette.foreground};overflow:hidden">
@@ -351,7 +352,7 @@ function ticketHtml(input: {
           <br>Tickets attached as PDF · Calendar event attached as .ics.<br>
           ${escapeHtml(closing).replace(/\r?\n/g, '<br>')}
         </td></tr>` : `<tr><td style="padding:4px 5px 18px;color:${palette.muted};font:12px/1.7 Arial,sans-serif">${escapeHtml(closing).replace(/\r?\n/g, '<br>')}</td></tr>`}
-        <tr><td style="border-top:1px solid ${palette.border};padding:15px 5px;color:${palette.muted};font:11px/1.6 Arial,sans-serif">${escapeHtml(input.emailSettings.brandTitle)} · This email contains your valid entry credentials. Do not forward the QR codes.</td></tr>
+        <tr><td style="border-top:1px solid ${palette.border};padding:15px 5px;color:${palette.muted};font:11px/1.6 Arial,sans-serif">${escapeHtml(input.emailSettings.brandTitle)} · This email contains your valid entry credentials. Do not forward the QR codes.<br>Need help? <a href="${escapeHtml(supportLink)}" style="color:${palette.accent}">WhatsApp ticket support on 0769 345 599</a>.</td></tr>
       </table>
     </td></tr></table>
   </body></html>`;
@@ -486,6 +487,8 @@ export async function generateTicketEmailPreview(
       '',
       renderEmailCopy(emailSettings.closingTemplate, getEmailTemplateVariables({ event, order, ticketCount: ticketsWithQr.length, organizerName: 'ONLINE BAR' })),
       '',
+      `Need help? WhatsApp ticket support on 0769 345 599. Order reference: ${order.reference}.`,
+      '',
       'Sample-only PDF tickets and calendar file attached. QR codes are not valid for entry.'
     ].join('\n')
   };
@@ -507,6 +510,131 @@ async function finishDelivery(database: Database, orderId: string, sent: boolean
     console.error('[TicketingEmail] Could not record email delivery outcome:', error);
     throw new Error('Ticket email delivery status could not be saved.');
   }
+}
+
+export async function buildTicketOrderEmailPreview(database: Database, orderId: string) {
+  const { data: order, error: orderError } = await database.from('ticketing_orders')
+    .select('id,reference,status,total_minor,subtotal_minor,fees_minor,discount_minor,currency,buyer_email,buyer_name,buyer_phone,paid_at,created_at,event_id,promotion_id')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (orderError) throw orderError;
+  if (!order || order.status !== 'paid') throw new Error('Only paid ticket orders have a confirmation email preview.');
+
+  const [eventResult, itemsResult, themeResult, paymentResult, emailSettings, buyerEmailThemeResult, deliveryResult] = await Promise.all([
+    database.from('ticketing_events')
+      .select('organizer_id,title,description,starts_at,ends_at,doors_open_at,venue_name,venue_address,venue_latitude,venue_longitude,entrance_guide,parking_guide,transport_guide,city,timezone,cancellation_policy,cover_image_url')
+      .eq('id', order.event_id)
+      .maybeSingle(),
+    database.from('ticketing_order_items')
+      .select('id,ticket_name_snapshot')
+      .eq('order_id', order.id),
+    database.from('settings').select('value').eq('key', 'ticketing_theme').eq('is_published', true).maybeSingle(),
+    database.from('ticketing_payment_attempts').select('provider').eq('order_id', order.id)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    getTicketEmailSettings(database),
+    database.from('ticketing_orders').select('buyer_email_theme').eq('id', order.id).maybeSingle(),
+    database.from('ticketing_email_deliveries').select('status,sent_at,attempts')
+      .eq('order_id', order.id).maybeSingle()
+  ]);
+  if (eventResult.error || itemsResult.error || themeResult.error || paymentResult.error || deliveryResult.error) {
+    throw eventResult.error || itemsResult.error || themeResult.error || paymentResult.error || deliveryResult.error;
+  }
+  if (buyerEmailThemeResult.error && !isMissingTicketEmailThemeColumn(buyerEmailThemeResult.error)) {
+    throw buyerEmailThemeResult.error;
+  }
+  if (!eventResult.data || !itemsResult.data?.length) throw new Error('Ticket event details could not be loaded.');
+  const event = eventResult.data;
+  const [organizerResult, promotionResult] = await Promise.all([
+    database.from('ticketing_organizers').select('name').eq('id', event.organizer_id).maybeSingle(),
+    order.promotion_id
+      ? database.from('ticketing_promotions').select('code').eq('id', order.promotion_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null })
+  ]);
+  if (organizerResult.error || promotionResult.error) throw organizerResult.error || promotionResult.error;
+
+  const itemNames = new Map(itemsResult.data.map(item => [item.id, item.ticket_name_snapshot]));
+  const { data: storedTickets, error: ticketError } = await database.from('ticketing_tickets')
+    .select('ticket_reference,attendee_name,credential_hash,credential_ciphertext,order_item_id,status')
+    .in('order_item_id', itemsResult.data.map(item => item.id))
+    .eq('status', 'issued')
+    .order('created_at', { ascending: true });
+  if (ticketError) throw ticketError;
+  if (!storedTickets?.length) throw new Error('No active tickets were found for this paid order.');
+
+  const tickets = storedTickets.map(ticket => {
+    if (!ticket.credential_ciphertext || !itemNames.has(ticket.order_item_id)) {
+      throw new Error('An issued ticket is missing its protected credential or ticket type.');
+    }
+    const credential = decryptTicketCredential(ticket.credential_ciphertext);
+    if (createHash('sha256').update(credential).digest('hex') !== ticket.credential_hash) {
+      throw new Error('An issued ticket credential failed integrity validation.');
+    }
+    return {
+      reference: ticket.ticket_reference,
+      attendeeName: ticket.attendee_name,
+      ticketName: itemNames.get(ticket.order_item_id) || 'Event ticket',
+      credential
+    };
+  });
+  const configuredTheme = themeResult.data?.value && typeof themeResult.data.value === 'object'
+    ? (themeResult.data.value as { theme?: unknown }).theme
+    : null;
+  const buyerEmailTheme = buyerEmailThemeResult.error ? null : buyerEmailThemeResult.data?.buyer_email_theme;
+  const theme = isTicketThemeId(buyerEmailTheme)
+    ? buyerEmailTheme
+    : isTicketThemeId(configuredTheme) ? configuredTheme : defaultTicketTheme;
+  const orderDetails: EmailOrder = {
+    ...order,
+    buyer_name: order.buyer_name || '',
+    buyer_phone: order.buyer_phone || null
+  };
+  const qrImages = await Promise.all(tickets.map(ticket => QRCode.toDataURL(ticket.credential, {
+    type: 'image/png',
+    width: 420,
+    margin: 2,
+    errorCorrectionLevel: 'H'
+  })));
+  const html = ticketHtml({
+    theme,
+    event,
+    order: orderDetails,
+    tickets: tickets.map((ticket, index) => ({ ...ticket, qrSource: qrImages[index] })),
+    organizerName: organizerResult.data?.name || undefined,
+    promotionCode: promotionResult.data?.code || null,
+    paymentMethod: paymentResult.data?.provider === 'payhero'
+      ? 'M-Pesa'
+      : paymentResult.data?.provider === 'paystack'
+        ? 'Paystack'
+        : paymentResult.data?.provider || undefined,
+    emailSettings
+  });
+  const subjectDate = new Intl.DateTimeFormat('en-KE', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: event.timezone
+  }).format(new Date(event.starts_at));
+  const emailVariables = getEmailTemplateVariables({
+    event,
+    order: orderDetails,
+    ticketCount: tickets.length,
+    organizerName: organizerResult.data?.name || undefined
+  });
+
+  return {
+    orderReference: order.reference,
+    recipient: order.buyer_email,
+    subject: renderEmailCopy(emailSettings.subjectTemplate, {
+      ...emailVariables,
+      event_date: subjectDate
+    }).replace(/[\r\n]/g, ' ').trim(),
+    html,
+    theme,
+    emailStatus: deliveryResult.data?.status || 'not_sent',
+    sentAt: deliveryResult.data?.sent_at || null,
+    attempts: deliveryResult.data?.attempts || 0,
+    themePreferenceAvailable: !buyerEmailThemeResult.error
+  };
 }
 
 export async function sendTicketOrderEmail(database: Database, orderId: string): Promise<'sent' | 'already_sent' | 'busy'> {
@@ -691,7 +819,9 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
       ] : []),
       ...(emailSections.showCancellationPolicy && event.cancellation_policy ? [`Cancellation policy: ${event.cancellation_policy}`] : []),
       '',
-      renderEmailCopy(emailSettings.closingTemplate, emailVariables)
+      renderEmailCopy(emailSettings.closingTemplate, emailVariables),
+      '',
+      `Need help? WhatsApp ticket support on 0769 345 599. Order reference: ${orderDetails.reference}.`
     ].join('\n');
     const pdfs = pdfAttachments;
     const attachments = [

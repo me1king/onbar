@@ -14,7 +14,12 @@ export async function POST(request: Request) {
   const session = verifyRiderSession(request.headers.get('authorization')?.replace(/^Bearer\s+/i, ''));
   if (!session) return NextResponse.json({ error: 'Rider session expired. Sign in again.' }, { status: 401 });
 
-  let body: { orderId?: unknown; nextStatus?: unknown };
+  let body: {
+    orderId?: unknown;
+    nextStatus?: unknown;
+    deliveryPin?: unknown;
+    customerIdVerified?: unknown;
+  };
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -25,6 +30,13 @@ export async function POST(request: Request) {
   if (!Number.isSafeInteger(orderId) || orderId <= 0
     || !['Picked Up', 'Out for Delivery', 'Delivered'].includes(nextStatus)) {
     return NextResponse.json({ error: 'A valid order ID and delivery status are required.' }, { status: 400 });
+  }
+  const deliveryPin = typeof body.deliveryPin === 'string' ? body.deliveryPin.trim() : '';
+  if (nextStatus === 'Delivered'
+    && (body.customerIdVerified !== true || !/^\d{6}$/.test(deliveryPin))) {
+    return NextResponse.json({
+      error: 'Check the customer’s ID and enter the six-digit delivery PIN before handover.'
+    }, { status: 400 });
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -65,19 +77,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `This order cannot advance from ${order.status} to ${nextStatus}.` }, { status: 409 });
   }
 
+  if (nextStatus === 'Delivered') {
+    const { data: allowed, error: rateLimitError } = await database.rpc('allow_rider_login_attempt', {
+      identity_input: `delivery-pin:${orderId}:${session.phone}`
+    });
+    if (rateLimitError) {
+      console.error('[RiderDelivery] Could not check handover PIN rate limit:', rateLimitError);
+      return NextResponse.json({ error: 'Delivery PIN verification is temporarily unavailable.' }, { status: 503 });
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: 'Too many PIN attempts. Try again in 15 minutes.' }, { status: 429 });
+    }
+  }
+
   const { data: updatedStatus, error: transitionError } = await database.rpc('advance_rider_delivery', {
     p_order_id: orderId,
     p_rider_phone: session.phone,
-    p_next_status: nextStatus
+    p_next_status: nextStatus,
+    p_delivery_pin: nextStatus === 'Delivered' ? deliveryPin : null,
+    p_customer_id_verified: nextStatus === 'Delivered' && body.customerIdVerified === true
   });
   if (transitionError) {
     console.error('[RiderDelivery] Could not advance delivery:', transitionError);
-    const conflict = /cannot advance|not assigned|invalid delivery status/i.test(transitionError.message);
+    const conflict = /cannot advance|not assigned|invalid delivery status|delivery PIN|customer ID/i.test(transitionError.message);
     return NextResponse.json({
       error: conflict
         ? 'Delivery status changed elsewhere or this transition is not allowed. Refresh the mission.'
         : /advance_rider_delivery|schema cache/i.test(transitionError.message)
-          ? 'Delivery migration is missing. Run supabase/DELIVERY_ENGINE_AND_BUZZ_MIGRATION.sql.'
+          ? 'Delivery safety migration is missing. Run supabase/RIDER_DELIVERY_SAFETY_MIGRATION.sql after the delivery and dispatch migrations.'
           : 'Delivery status and commission could not be saved.'
     }, { status: conflict ? 409 : 503 });
   }

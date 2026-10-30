@@ -31,7 +31,7 @@ type Wallet = {
     age_limit: number | null;
   };
   tickets?: WalletTicket[];
-  emailDelivery?: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown';
+  emailDelivery?: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown' | 'not_configured';
   whatsappDelivery?: 'pending' | 'sending' | 'sent' | 'unknown';
   error?: string;
 };
@@ -242,13 +242,17 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
             <section role="status" className={`flex items-start gap-3 rounded-2xl border p-4 ${wallet.emailDelivery === 'sent' ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
               <Mail className={`mt-0.5 shrink-0 ${wallet.emailDelivery === 'sent' ? 'text-emerald-700' : 'text-amber-700'}`} size={18} />
               <div>
-                <p className="text-sm font-black text-slate-900">Payment successful! 🎉</p>
+                <p className="text-sm font-black text-slate-900">Payment confirmed! 🎉</p>
                 <p className="mt-1 text-xs leading-5 text-slate-700">
                   {wallet.emailDelivery === 'sent'
                     ? 'Check your Gmail inbox (and spam or junk folder) for your ticket email with your QR code and event details.'
                     : wallet.emailDelivery === 'failed'
                       ? 'Your tickets are ready below, but the email has not been sent yet. Use “Send ticket email” below to try again.'
-                      : 'Your tickets are ready below. We are preparing your ticket email—check your Gmail inbox (and spam or junk folder) shortly.'}
+                      : wallet.emailDelivery === 'not_configured'
+                        ? 'Your valid tickets are ready below, but email delivery is not configured right now. Keep this page open or save your QR codes, and contact support if you need an email copy.'
+                        : wallet.emailDelivery === 'unknown'
+                          ? 'Your valid tickets are ready below, but we cannot confirm the email status right now. Check your inbox and spam folder, or try sending the email again below.'
+                          : 'Your payment is confirmed. We are preparing the ticket email with your QR codes and event details; it should be sent shortly. Your valid tickets are already available below.'}
                 </p>
               </div>
             </section>
@@ -290,18 +294,30 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
                 <Mail className="ticket-theme-accent shrink-0" size={18} />
                 <div>
                   <p className="ticket-theme-text text-sm font-bold">
-                    {wallet.emailDelivery === 'sent' ? 'Ticket email sent' : wallet.emailDelivery === 'failed' ? 'Ticket email needs retry' : 'Ticket email is being prepared'}
+                    {wallet.emailDelivery === 'sent'
+                      ? 'Ticket email sent'
+                      : wallet.emailDelivery === 'failed'
+                        ? 'Ticket email needs retry'
+                        : wallet.emailDelivery === 'not_configured'
+                          ? 'Email delivery is not configured'
+                          : wallet.emailDelivery === 'unknown'
+                            ? 'Ticket email status unavailable'
+                            : 'Ticket email is being prepared'}
                   </p>
                   <p className="ticket-theme-copy mt-1 text-xs">
                     {wallet.emailDelivery === 'sent'
                       ? 'Your ticket QR codes were sent to the checkout email. Check your inbox and spam or junk folder.'
                       : wallet.emailDelivery === 'failed'
                         ? 'Payment succeeded, but email delivery failed. Tap below to retry sending your tickets.'
-                        : 'We are preparing a copy of your tickets for the checkout email address.'}
+                        : wallet.emailDelivery === 'not_configured'
+                          ? 'Your paid tickets and QR codes are ready on this page. Email delivery will be available once the email service is configured.'
+                          : wallet.emailDelivery === 'unknown'
+                            ? 'Your tickets are ready on this page, but the current email delivery status could not be checked.'
+                            : 'Payment confirmed. We are preparing a copy of your tickets for the checkout email address; it should arrive shortly.'}
                   </p>
                 </div>
               </div>
-              {wallet.emailDelivery !== 'sent' && (
+              {wallet.emailDelivery !== 'sent' && wallet.emailDelivery !== 'not_configured' && (
                 <button type="button" onClick={sendTicketEmail} disabled={emailSending || !accessToken}
                   className="ticket-theme-accent-soft inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-black disabled:cursor-not-allowed disabled:opacity-60">
                   {emailSending ? <LoaderCircle size={15} className="animate-spin" /> : <Mail size={15} />}
@@ -366,6 +382,21 @@ export default function TicketWallet({ orderId, initialToken }: { orderId: strin
         <Link href="/tickets" className="ticket-theme-panel ticket-theme-hover-accent inline-flex min-h-11 items-center rounded-xl border px-4 text-xs font-bold transition">
           Browse more events
         </Link>
+        <section className="ticket-theme-panel rounded-2xl border p-4" aria-label="Ticket customer support">
+          <p className="ticket-theme-text text-sm font-black">Need help with your ticket?</p>
+          <p className="ticket-theme-copy mt-1 text-xs leading-5">
+            Send our customer support team a WhatsApp message on 0769 345 599
+            {wallet?.orderReference ? ` and include order reference ${wallet.orderReference}.` : '.'}
+          </p>
+          <a
+            href={`https://wa.me/254769345599?text=${encodeURIComponent(`Hello, I need help with ticket order${wallet?.orderReference ? ` ${wallet.orderReference}` : ''}.`)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="ticket-theme-accent mt-2 inline-flex min-h-9 items-center text-xs font-black underline"
+          >
+            Message ticket support on WhatsApp
+          </a>
+        </section>
       </div>
     </main>
     </>

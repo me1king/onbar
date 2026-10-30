@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Box,
+  BellRing,
   Building2,
   CheckCircle2,
   Clock3,
@@ -14,7 +15,9 @@ import {
   LogOut,
   PackageCheck,
   RefreshCw,
+  ShieldCheck,
   Store,
+  TrendingUp,
   Truck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,6 +30,7 @@ import {
   type MerchantWeekday
 } from '@/lib/merchantAvailability';
 import { supabase } from '@/lib/supabaseClient';
+import MerchantAlertsPanel from '@/components/merchant/MerchantAlertsPanel';
 
 type PartnerEvent = { event_type: string; details: Record<string, unknown> | null; created_at: string };
 type PartnerDocument = { id: string; type: string; name: string; uploadedAt: string; expiresAt: string | null };
@@ -73,6 +77,8 @@ type PartnerApplication = {
     business_name: string;
     trading_name: string | null;
     business_type: string;
+    vendor_type: 'retailer' | 'wholesaler' | 'street_food' | null;
+    prep_target_minutes: number | null;
     email: string;
     phone: string;
     owner_name: string;
@@ -104,7 +110,56 @@ type PartnerApplication = {
   incidents: PartnerIncident[];
 };
 
-type Section = 'overview' | 'orders' | 'inventory' | 'incidents' | 'business';
+type MerchantPerformanceWindow = {
+  decisions: number;
+  accepted: number;
+  rejected: number;
+  acceptanceRate: number | null;
+  averageResponseSeconds: number | null;
+  delivered: number;
+  exceptions: number;
+  averagePrepMinutes: number | null;
+  onTimePercent: number | null;
+  averageRating: number | null;
+  vendorComplaints: number;
+  complaintsPer100: number | null;
+  score: number | null;
+  rank: number | null;
+  zoneSize: number;
+  grade: string | null;
+};
+
+type MerchantPerformance = {
+  vendor: {
+    applicationId: string;
+    name: string;
+    type: 'retailer' | 'wholesaler' | 'street_food';
+    town: string;
+    acceptingOrders: boolean;
+    prepTargetMinutes: number;
+  };
+  targets: {
+    replySeconds: number;
+    prepMinutes: number;
+    minimumDecisions: number;
+    acceptancePercent: number;
+    onTimePercent: number;
+    rating: number;
+    complaintsPer100: number;
+    weights: {
+      response: number;
+      acceptance: number;
+      onTime: number;
+      rating: number;
+      vendorFaultComplaints: number;
+    };
+  };
+  complianceScore: number | null;
+  windows: Record<7 | 30, MerchantPerformanceWindow>;
+  limitations: { responseTime: string; timeouts: string; ratingsAndComplaints: string };
+};
+
+type Section = 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts';
 
 const businessLabels: Record<string, string> = {
   bar: 'Bar / Venue',
@@ -113,6 +168,11 @@ const businessLabels: Record<string, string> = {
   food_vendor: 'Food Vendor',
   supplier: 'Supplier',
   delivery_partner: 'Delivery Partner'
+};
+const vendorTypeLabels: Record<NonNullable<PartnerApplication['application']['vendor_type']>, string> = {
+  retailer: 'Alcohol retailer',
+  wholesaler: 'Alcohol wholesaler',
+  street_food: 'Street food vendor'
 };
 const statusLabels: Record<string, string> = {
   submitted: 'Submitted',
@@ -126,6 +186,10 @@ const statusLabels: Record<string, string> = {
 const documentLabels: Record<string, string> = {
   business_registration: 'Business registration',
   county_license: 'County business licence',
+  liquor_licence: 'Alcohol retail licence',
+  wholesale_licence: 'Alcohol wholesale licence',
+  kra_pin: 'KRA PIN certificate',
+  medical_cert: 'Food handler medical certificate',
   food_hygiene: 'Food hygiene documentation',
   tax_document: 'Tax / business information',
   premises_document: 'Premises documentation',
@@ -162,6 +226,8 @@ const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'overview', label: 'Overview', icon: Store },
   { id: 'orders', label: 'Orders', icon: Truck },
   { id: 'inventory', label: 'Inventory', icon: Box },
+  { id: 'performance', label: 'Performance', icon: TrendingUp },
+  { id: 'alerts', label: 'Order alerts', icon: BellRing },
   { id: 'incidents', label: 'Reports', icon: AlertTriangle },
   { id: 'business', label: 'Business profile', icon: Building2 }
 ];
@@ -191,13 +257,47 @@ function latestFulfillment(events: FulfillmentEvent[]): string {
   return [...events].sort((left, right) => new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime())[0]?.event_type || '';
 }
 
+function formatSeconds(seconds: number | null): string {
+  if (seconds === null) return 'Not recorded';
+  return seconds < 60 ? `${seconds} sec` : `${Math.floor(seconds / 60)} min ${seconds % 60} sec`;
+}
+
+function PerformanceMetricCard({
+  label,
+  value,
+  target,
+  meetsTarget
+}: {
+  label: string;
+  value: string;
+  target: string;
+  meetsTarget: boolean | null;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-4">
+      <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-black text-slate-900">{value}</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-slate-500">Target: {target}</p>
+        {meetsTarget !== null && <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${meetsTarget ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>{meetsTarget ? 'On target' : 'Improve'}</span>}
+      </div>
+    </article>
+  );
+}
+
 export default function OnBarPartnerNetworkPage() {
   const [accessToken, setAccessToken] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [workspace, setWorkspace] = useState<PartnerApplication[]>([]);
+  const [performance, setPerformance] = useState<MerchantPerformance | null>(null);
+  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [performanceError, setPerformanceError] = useState('');
+  const [performanceDays, setPerformanceDays] = useState<7 | 30>(7);
   const [selectedId, setSelectedId] = useState('');
   const [section, setSection] = useState<Section>('overview');
+  const [deepLinkApplicationId, setDeepLinkApplicationId] = useState('');
+  const [deepLinkOrderId, setDeepLinkOrderId] = useState('');
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -214,6 +314,31 @@ export default function OnBarPartnerNetworkPage() {
 
   const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
   const canOperate = selected?.application.status === 'approved';
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedSection = params.get('section');
+    const validSections: Section[] = ['overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts'];
+    if (requestedSection && validSections.includes(requestedSection as Section)) setSection(requestedSection as Section);
+    setDeepLinkApplicationId(params.get('applicationId') || '');
+    setDeepLinkOrderId(params.get('orderId') || '');
+  }, []);
+
+  useEffect(() => {
+    if (!deepLinkApplicationId || !workspace.length) return;
+    if (workspace.some(item => item.application.id === deepLinkApplicationId)) {
+      setSelectedId(deepLinkApplicationId);
+      setSection('orders');
+    }
+  }, [deepLinkApplicationId, workspace]);
+
+  useEffect(() => {
+    if (!deepLinkOrderId || section !== 'orders' || !selected?.orders.some(order => String(order.id) === deepLinkOrderId)) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`merchant-order-${deepLinkOrderId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [deepLinkOrderId, section, selected?.orders]);
 
   useEffect(() => {
     if (!selected) return;
@@ -290,6 +415,46 @@ export default function OnBarPartnerNetworkPage() {
       subscription.unsubscribe();
     };
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    const applicationId = selected?.application.id;
+    if (section !== 'performance' || !accessToken || !applicationId || selected?.application.status !== 'approved') {
+      setPerformance(null);
+      setPerformanceError('');
+      setPerformanceLoading(false);
+      return;
+    }
+
+    let active = true;
+    const loadPerformance = async (silent: boolean) => {
+      if (!silent) setPerformanceLoading(true);
+      setPerformanceError('');
+      try {
+        const response = await fetch(`/api/merchant/scorecard?applicationId=${encodeURIComponent(applicationId)}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: 'no-store'
+        });
+        const result = await response.json() as MerchantPerformance & { error?: string };
+        if (!response.ok || !result.vendor || !result.windows) {
+          throw new Error(result.error || 'Your performance records could not be loaded.');
+        }
+        if (active) setPerformance(result);
+      } catch (loadError) {
+        if (active) {
+          setPerformanceError(loadError instanceof Error ? loadError.message : 'Your performance records could not be loaded.');
+        }
+      } finally {
+        if (active) setPerformanceLoading(false);
+      }
+    };
+
+    void loadPerformance(false);
+    const interval = window.setInterval(() => void loadPerformance(true), 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [accessToken, section, selected?.application.id, selected?.application.status]);
 
   const apiAction = async (body: Record<string, unknown>, successMessage: string) => {
     if (!accessToken) {
@@ -534,6 +699,74 @@ export default function OnBarPartnerNetworkPage() {
 
   const application = selected?.application;
   const overview = selected;
+  const performanceWindow = performance?.windows[performanceDays];
+  const coachingTips = performance && performanceWindow ? [
+    performanceWindow.averageResponseSeconds !== null
+      && performanceWindow.averageResponseSeconds > performance.targets.replySeconds
+      ? `Try to answer new order requests within ${performance.targets.replySeconds} seconds.`
+      : null,
+    performanceWindow.acceptanceRate !== null
+      && performanceWindow.acceptanceRate < performance.targets.acceptancePercent
+      ? `Keep your acceptance rate at or above ${performance.targets.acceptancePercent}% by keeping stock and opening hours current.`
+      : null,
+    performanceWindow.averagePrepMinutes !== null
+      && performanceWindow.averagePrepMinutes > performance.targets.prepMinutes
+      ? `Your recorded prep time is above the ${performance.targets.prepMinutes}-minute target.`
+      : null,
+    performanceWindow.onTimePercent !== null
+      && performanceWindow.onTimePercent < performance.targets.onTimePercent
+      ? `Mark orders ready on time to reach the ${performance.targets.onTimePercent}% preparation target.`
+      : null,
+    performanceWindow.averageRating !== null
+      && performanceWindow.averageRating < performance.targets.rating
+      ? 'Review product accuracy and customer feedback to improve your recorded rating.'
+      : null,
+    performanceWindow.complaintsPer100 !== null
+      && performanceWindow.complaintsPer100 > performance.targets.complaintsPer100
+      ? 'Check order packing and item accuracy to reduce complaints formally attributed to the business.'
+      : null,
+    performance.complianceScore !== null && performance.complianceScore < 100
+      ? 'Review your submitted business documents and renew any expired or missing licence.'
+      : null
+  ].filter((tip): tip is string => tip !== null).slice(0, 3) : [];
+  const performanceMetrics = performance && performanceWindow ? [
+      {
+        label: 'Reply time',
+        value: formatSeconds(performanceWindow.averageResponseSeconds),
+        target: `Under ${performance.targets.replySeconds} sec`,
+        meetsTarget: performanceWindow.averageResponseSeconds === null ? null : performanceWindow.averageResponseSeconds <= performance.targets.replySeconds
+      },
+      {
+        label: 'Acceptance',
+        value: performanceWindow.acceptanceRate === null ? 'Not recorded' : `${performanceWindow.acceptanceRate}%`,
+        target: `At least ${performance.targets.acceptancePercent}%`,
+        meetsTarget: performanceWindow.acceptanceRate === null ? null : performanceWindow.acceptanceRate >= performance.targets.acceptancePercent
+      },
+      {
+        label: 'Prep time',
+        value: performanceWindow.averagePrepMinutes === null ? 'Not recorded' : `${performanceWindow.averagePrepMinutes} min`,
+        target: `Under ${performance.targets.prepMinutes} min`,
+        meetsTarget: performanceWindow.averagePrepMinutes === null ? null : performanceWindow.averagePrepMinutes <= performance.targets.prepMinutes
+      },
+      {
+        label: 'Ready on time',
+        value: performanceWindow.onTimePercent === null ? 'Not recorded' : `${performanceWindow.onTimePercent}%`,
+        target: `At least ${performance.targets.onTimePercent}%`,
+        meetsTarget: performanceWindow.onTimePercent === null ? null : performanceWindow.onTimePercent >= performance.targets.onTimePercent
+      },
+      {
+        label: 'Customer rating',
+        value: performanceWindow.averageRating === null ? 'Not recorded' : `${performanceWindow.averageRating.toFixed(1)} / 5`,
+        target: `At least ${performance.targets.rating.toFixed(1)} / 5`,
+        meetsTarget: performanceWindow.averageRating === null ? null : performanceWindow.averageRating >= performance.targets.rating
+      },
+      {
+        label: 'Vendor-fault complaints',
+        value: performanceWindow.complaintsPer100 === null ? 'Not recorded' : `${performanceWindow.complaintsPer100} per 100`,
+        target: `Under ${performance.targets.complaintsPer100} per 100`,
+        meetsTarget: performanceWindow.complaintsPer100 === null ? null : performanceWindow.complaintsPer100 <= performance.targets.complaintsPer100
+      }
+  ] : [];
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -566,7 +799,7 @@ export default function OnBarPartnerNetworkPage() {
         </div>}
 
         <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label="Merchant workspace sections">
-          {sections.map(item => {
+          {sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type)).map(item => {
             const Icon = item.icon;
             return <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? 'bg-primary text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><Icon size={16} />{item.label}</button>;
           })}
@@ -581,6 +814,122 @@ export default function OnBarPartnerNetworkPage() {
             <h2 className="mt-4 text-xl font-black text-slate-900">No application is linked to this account</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">The signed-in email must exactly match the email submitted with your OnBar partner application. If you haven’t applied yet, start an application. If you used another address, sign out and use an account verified with that address.</p>
             <Link href="/merchant/onboarding" className="mt-5 inline-flex h-11 items-center rounded-xl bg-primary px-4 text-sm font-black uppercase text-white">Start partner application</Link>
+          </section>
+        )}
+
+        {!loading && overview && section === 'performance' && (
+          <section className="space-y-5">
+            {application?.status !== 'approved' ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
+                Your performance page becomes available after OnBar approves this business.
+              </div>
+            ) : application.vendor_type === null ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+                Performance targets are available for alcohol retailers, alcohol wholesalers, and street food vendors.
+              </div>
+            ) : performanceLoading && !performance ? (
+              <div className="rounded-2xl bg-white p-10 text-center text-sm text-slate-500">
+                <Loader2 className="mx-auto mb-3 animate-spin text-primary" />Loading recorded performance…
+              </div>
+            ) : performanceError ? (
+              <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">{performanceError}</div>
+            ) : performance && performanceWindow ? (
+              <>
+                <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl bg-slate-950 p-5 text-white sm:p-7">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300">Merchant performance · recorded results</p>
+                    <h2 className="mt-2 text-2xl font-black sm:text-3xl">{performance.vendor.name}</h2>
+                    <p className="mt-1 text-sm text-slate-300">{vendorTypeLabels[performance.vendor.type]} · {performance.vendor.town || 'Town not set'}</p>
+                    <p className="mt-3 text-xs text-slate-400">{performance.vendor.acceptingOrders ? 'Online for new orders' : 'Offline for new orders'}</p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1" aria-label="Performance reporting period">
+                    {([7, 30] as const).map(days => (
+                      <button key={days} type="button" aria-pressed={performanceDays === days} onClick={() => setPerformanceDays(days)}
+                        className={`min-h-11 rounded-lg px-4 text-sm font-bold ${performanceDays === days ? 'bg-white text-slate-950' : 'text-slate-200 hover:bg-white/10'}`}>
+                        {days} days
+                      </button>
+                    ))}
+                  </div>
+                </header>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <article className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-2xl font-black text-primary">
+                        {performanceWindow.grade || '—'}
+                      </div>
+                      <div>
+                        <p className="text-3xl font-black text-slate-900">{performanceWindow.score === null ? '—' : `${performanceWindow.score} / 100`}</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {performanceWindow.decisions < performance.targets.minimumDecisions
+                            ? `${performanceWindow.decisions} decisions recorded; rank eligibility starts at ${performance.targets.minimumDecisions}.`
+                            : performanceWindow.rank
+                              ? `Rank ${performanceWindow.rank} of ${performanceWindow.zoneSize} ${performance.vendor.type.replace('_', ' ')} vendors in ${performance.vendor.town}.`
+                              : `No comparable rank is available in ${performance.vendor.town}.`}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                  <article className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wide text-slate-500">Compliance documents</p>
+                        <p className="mt-2 text-3xl font-black text-slate-900">{performance.complianceScore === null ? 'Not rated' : `${performance.complianceScore}%`}</p>
+                        <p className="mt-1 text-sm text-slate-500">Required documents on file and not expired.</p>
+                      </div>
+                      <ShieldCheck className="mt-1 text-primary" />
+                    </div>
+                  </article>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {performanceMetrics.map(metric => (
+                    <PerformanceMetricCard key={metric.label} {...metric} />
+                  ))}
+                  <PerformanceMetricCard
+                    label="Orders accepted"
+                    value={`${performanceWindow.accepted} / ${performanceWindow.decisions}`}
+                    target="Respond to each assigned order"
+                    meetsTarget={null}
+                  />
+                  <PerformanceMetricCard
+                    label="Delivered"
+                    value={String(performanceWindow.delivered)}
+                    target="Recorded merchant fulfilment"
+                    meetsTarget={null}
+                  />
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <article className="rounded-2xl border border-slate-200 bg-white p-5">
+                    <h3 className="font-black text-slate-900">What to do this week</h3>
+                    {coachingTips.length ? (
+                      <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+                        {coachingTips.map(tip => <li key={tip} className="rounded-xl bg-amber-50 p-3">{tip}</li>)}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+                        {performanceWindow.decisions
+                          ? 'No recorded performance target needs attention in this period.'
+                          : 'No decisions are recorded yet. Keep availability and stock current to receive eligible orders.'}
+                      </p>
+                    )}
+                  </article>
+                  <article className="rounded-2xl border border-slate-200 bg-white p-5">
+                    <h3 className="font-black text-slate-900">How the score works</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {Math.round(performance.targets.weights.response * 100)}% reply speed, {Math.round(performance.targets.weights.acceptance * 100)}% acceptance,
+                      {' '}{Math.round(performance.targets.weights.onTime * 100)}% ready-on-time, {Math.round(performance.targets.weights.rating * 100)}% customer ratings,
+                      {' '}{Math.round(performance.targets.weights.vendorFaultComplaints * 100)}% complaints formally attributed to the vendor.
+                      Missing data is left unscored rather than guessed. Rider delays and customer/platform fault complaints do not lower your vendor score.
+                    </p>
+                    <p className="mt-3 text-xs leading-5 text-slate-500">{performance.limitations.responseTime} {performance.limitations.timeouts}</p>
+                  </article>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">No vendor performance data is available yet.</div>
+            )}
           </section>
         )}
 
@@ -641,6 +990,14 @@ export default function OnBarPartnerNetworkPage() {
           </div>
         )}
 
+        {!loading && overview && section === 'alerts' && application && (
+          <MerchantAlertsPanel
+            accessToken={accessToken}
+            applicationId={application.id}
+            canOperate={canOperate}
+          />
+        )}
+
         {!loading && overview && section === 'orders' && (
           <section className="space-y-4">
             <div><h2 className="text-xl font-black text-slate-900">Assigned orders</h2><p className="mt-1 text-sm text-slate-500">Only orders linked to your traced products are shown.</p></div>
@@ -648,7 +1005,7 @@ export default function OnBarPartnerNetworkPage() {
             {overview.orders.map(order => {
               const latest = latestFulfillment(order.fulfillment);
               const nextEvents = fulfillmentNext[latest] || [];
-              return <article key={order.id} className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+              return <article id={`merchant-order-${order.id}`} key={order.id} className={`rounded-2xl bg-white p-5 shadow-sm sm:p-6 ${deepLinkOrderId === String(order.id) ? 'ring-2 ring-amber-400' : ''}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div><p className="text-xs font-black uppercase tracking-wide text-primary">Order #{order.id}</p><p className="mt-1 font-black text-slate-900">{order.customer_name}</p><p className="text-xs text-slate-500">{dateTime(order.created_at)} · customer order status: {order.status}</p></div>
                   <span className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase ${statusClass(latest || 'pending')}`}>{fulfillmentLabels[latest] || 'Awaiting response'}</span>

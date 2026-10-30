@@ -26,7 +26,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabaseClient';
 import ProductCard from '@/components/home/ProductCard';
 import Image from 'next/image';
 import { getStoredVariantPrices } from '@/lib/productPricing';
@@ -95,11 +94,26 @@ interface CatalogSuggestion {
     description?: string;
 }
 
+function readVariantPrices(value: unknown): Record<string, number> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const entries = Object.entries(value);
+    if (!entries.every(([, price]) => typeof price === 'number' && Number.isFinite(price))) return undefined;
+    return Object.fromEntries(entries) as Record<string, number>;
+}
+
+function readBeverageSpecs(value: unknown): { variant_prices?: Record<string, number> } | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const specs = value as Record<string, unknown>;
+    const variantPrices = readVariantPrices(specs.variant_prices);
+    return variantPrices ? { variant_prices: variantPrices } : null;
+}
+
 export default function ProductStudioTerminal() {
     const params = useParams();
     const id = params?.id as string;
     const router = useRouter();
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState('');
     const [saving, setSaving] = React.useState(false);
     const [activeSection, setActiveSection] = React.useState<StudioSection>('basic');
 
@@ -143,30 +157,51 @@ export default function ProductStudioTerminal() {
         bought_together_ids: []
     });
 
-    React.useEffect(() => {
-        async function loadProduct() {
-            if (!supabase || !id) return;
-            setLoading(true);
-            try {
-                const { data } = await supabase.from('products').select('*').eq('id', id).single();
-                if (data) setForm({
-                    ...data,
-                    sizes: data.sizes || (data.size_label ? [data.size_label] : []),
-                    variant_prices: getStoredVariantPrices(data.variant_prices, data.beverage_specs) || {},
-                    ingredients: data.ingredients || [],
-                    sensory_metrics: data.sensory_metrics || { body: 60, sweet: 60, smoke: 20, spice: 40 },
-                    pairing_suggestions: data.pairing_suggestions || [],
-                    faq_data: data.faq_data || [],
-                    bought_together_ids: data.bought_together_ids || []
-                });
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
+    const loadProduct = React.useCallback(async () => {
+        if (!id) {
+            setLoadError('A product ID is required.');
+            setLoading(false);
+            return;
         }
-        loadProduct();
+        setLoading(true);
+        setLoadError('');
+        try {
+            const response = await fetch(`/api/admin/products?scope=inventory&id=${encodeURIComponent(id)}`, {
+                cache: 'no-store',
+                signal: AbortSignal.timeout(15_000)
+            });
+            const result = await response.json() as { products?: ForgeProductData[]; error?: string };
+            if (!response.ok) throw new Error(result.error || 'Product details could not be loaded.');
+            const data = result.products?.[0];
+            if (!data) throw new Error(`Product #${id} was not found in the catalog.`);
+            setForm({
+                ...data,
+                sizes: data.sizes || (data.size_label ? [data.size_label] : []),
+                variant_prices: getStoredVariantPrices(
+                    readVariantPrices(data.variant_prices),
+                    readBeverageSpecs(data.beverage_specs)
+                ) || {},
+                ingredients: data.ingredients || [],
+                sensory_metrics: data.sensory_metrics || { body: 60, sweet: 60, smoke: 20, spice: 40 },
+                pairing_suggestions: data.pairing_suggestions || [],
+                faq_data: data.faq_data || [],
+                bought_together_ids: data.bought_together_ids || []
+            });
+        } catch (err) {
+            console.error('[ProductForge] Could not load product details:', err);
+            setLoadError(err instanceof Error && ['AbortError', 'TimeoutError'].includes(err.name)
+                ? 'The product request timed out. Check your connection and try again.'
+                : err instanceof Error
+                    ? err.message
+                    : 'Product details could not be loaded. Check your connection and try again.');
+        } finally {
+            setLoading(false);
+        }
     }, [id]);
+
+    React.useEffect(() => {
+        void loadProduct();
+    }, [loadProduct]);
 
     const handleAutofillSearch = async (val: string) => {
         setSearchQuery(val);
@@ -204,7 +239,7 @@ export default function ProductStudioTerminal() {
     };
 
     const handleSave = async () => {
-        if (!supabase || !id) return;
+        if (!id) return;
         for (const [size, price] of Object.entries(form.variant_prices)) {
             if (!Number.isFinite(price) || price < 0) {
                 alert(`Enter a valid non-negative price for ${size}.`);
@@ -279,6 +314,18 @@ export default function ProductStudioTerminal() {
         <div className="min-h-screen flex flex-col items-center justify-center bg-white gap-4">
             <Loader2 className="h-10 w-10 text-primary animate-spin" />
             <p className="font-black text-slate-400 uppercase tracking-widest text-[10px]">Establishing Studio Connection...</p>
+        </div>
+    );
+    if (loadError) return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-slate-50 px-6 text-center">
+            <div className="max-w-lg rounded-3xl border border-rose-100 bg-white p-8 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-widest text-rose-600">Product Studio could not load this node</p>
+                <p role="alert" className="mt-3 text-sm leading-6 text-slate-600">{loadError}</p>
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                    <Button type="button" onClick={() => void loadProduct()} className="rounded-xl">Try again</Button>
+                    <Button type="button" variant="outline" onClick={() => router.push('/lord/forge')} className="rounded-xl">Back to Product Studio</Button>
+                </div>
+            </div>
         </div>
     );
 

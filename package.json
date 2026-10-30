@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "cross-env NEXT_TURBO_DISABLE=1 next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "worker:merchant-alerts": "node workers/vendor-order-alerts.mjs"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^12.0.0",
@@ -21,6 +22,7 @@
     "@vercel/analytics": "^2.0.1",
     "@zxing/browser": "^0.1.5",
     "axios": "^1.20.0",
+    "bullmq": "^6.5.1",
     "cache-manager": "^7.2.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -9,6 +9,9 @@ export const merchantBusinessTypes = [
 
 export type MerchantBusinessType = (typeof merchantBusinessTypes)[number];
 
+export const merchantVendorTypes = ['retailer', 'wholesaler', 'street_food'] as const;
+export type MerchantVendorType = (typeof merchantVendorTypes)[number];
+
 export const foodBusinessTypes: MerchantBusinessType[] = [
   'kitchen',
   'restaurant',
@@ -50,6 +53,20 @@ export interface MerchantDocumentRequirement {
 export function isMerchantBusinessType(value: unknown): value is MerchantBusinessType {
   return typeof value === 'string'
     && merchantBusinessTypes.includes(value as MerchantBusinessType);
+}
+
+export function isMerchantVendorType(value: unknown): value is MerchantVendorType {
+  return typeof value === 'string'
+    && merchantVendorTypes.includes(value as MerchantVendorType);
+}
+
+export function merchantVendorTypeForBusinessType(
+  businessType: MerchantBusinessType
+): MerchantVendorType | null {
+  if (businessType === 'bar') return 'retailer';
+  if (businessType === 'supplier') return 'wholesaler';
+  if (foodBusinessTypes.includes(businessType)) return 'street_food';
+  return null;
 }
 
 export function isMerchantApplicationStatus(value: unknown): value is MerchantApplicationStatus {

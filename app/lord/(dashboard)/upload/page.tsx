@@ -282,21 +282,26 @@ function UploadContent() {
   const fetchProducts = async () => {
     if (!supabase) return;
     try {
-      const [prodRes, hubRes] = await Promise.all([
-        supabase.from('products').select('*').order('id', { ascending: false }),
+      const [productsResponse, hubRes] = await Promise.all([
+        fetch('/api/admin/products?scope=inventory', { cache: 'no-store' }),
         supabase.from('hubs').select('id, name').eq('is_active', true)
       ]);
-
-      if (prodRes.error) {
-          if (prodRes.error.message.includes('column')) {
-              setMessage({ type: 'error', text: "Database Schema Outdated. Run the updated FINAL_ESTABLISHMENT_SQL.sql script." });
-          }
-          throw prodRes.error;
+      const productResult = await productsResponse.json() as { products?: Product[]; error?: string };
+      if (!productsResponse.ok || !Array.isArray(productResult.products)) {
+        throw new Error(productResult.error || 'Could not load the product inventory.');
       }
-      setProducts(prodRes.data || []);
+      if (hubRes.error) {
+        console.error('[ProductUpload] Could not load active hubs:', hubRes.error);
+        setMessage({ type: 'error', text: 'Products loaded, but active hubs could not be loaded. Hub stock assignment is unavailable.' });
+      }
+      setProducts(productResult.products);
       setHubs(hubRes.data || []);
-    } catch {
-      // Handled in message state
+    } catch (error) {
+      console.error('[ProductUpload] Could not load product inventory:', error);
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Could not load the product inventory.'
+      });
     }
   };
 

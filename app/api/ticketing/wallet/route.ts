@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { decryptTicketCredential } from '@/lib/ticketing/credentials.server';
+import { getTransactionalEmailConfig } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Your issued ticket details could not be loaded.' }, { status: 503 });
   }
   const itemNames = new Map(itemsResult.data.map(item => [item.id, item.ticket_name_snapshot]));
+  const emailConfigured = getTransactionalEmailConfig().configured;
 
   try {
     const walletTickets = tickets.map(ticket => {
@@ -139,7 +141,9 @@ export async function POST(request: Request) {
       },
       event: eventResult.data,
       tickets: walletTickets,
-      emailDelivery: emailResult.error ? 'unknown' : emailResult.data?.status || 'pending',
+      emailDelivery: !emailConfigured
+        ? 'not_configured'
+        : emailResult.error ? 'unknown' : emailResult.data?.status || 'pending',
       whatsappDelivery: whatsappResult.error ? 'unknown' : whatsappResult.data?.status || 'pending'
     }, {
       headers: { 'Cache-Control': 'private, no-store, max-age=0', 'Referrer-Policy': 'no-referrer' }

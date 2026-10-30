@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, CalendarDays, Download, RefreshCw, Ticket, Wallet } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Download, Mail, RefreshCw, Ticket, Wallet } from 'lucide-react';
+import { ticketThemes } from '@/lib/ticketing/theme';
+import TicketOrderEmailPreview from '@/components/ticketing/TicketOrderEmailPreview';
 
 type SalesSummary = {
   paidOrders: number;
@@ -29,6 +31,7 @@ type EventSales = {
 };
 
 type RecentSale = {
+  orderId: string;
   reference: string;
   eventTitle: string;
   tickets: number;
@@ -41,6 +44,16 @@ type RecentSale = {
   paymentProvider: string | null;
   paymentReference: string | null;
   verifiedAt: string | null;
+  buyerName: string;
+  buyerEmail: string;
+  buyerEmailTheme: string | null;
+  selections: Array<{ name: string; quantity: number }>;
+  emailStatus: string;
+  emailAttempts: number;
+  emailSentAt: string | null;
+  emailError: string | null;
+  providerEmailStatus: string | null;
+  providerEmailUpdatedAt: string | null;
 };
 
 type SalesReport = {
@@ -48,6 +61,8 @@ type SalesReport = {
   byEvent: EventSales[];
   recentOrders: RecentSale[];
   generatedAt: string;
+  providerDeliveryTrackingAvailable: boolean;
+  buyerEmailThemeAvailable: boolean;
 };
 
 const cardClass = 'rounded-2xl border border-amber-200/10 bg-[#17121e] p-4 sm:p-5';
@@ -78,6 +93,24 @@ function csvCell(value: string | number) {
   return `"${String(value).replaceAll('"', '""')}"`;
 }
 
+function emailDeliveryLabel(order: RecentSale, providerTrackingAvailable: boolean) {
+  switch (order.providerEmailStatus) {
+    case 'email.delivered': return 'Delivered to mail server';
+    case 'email.opened': return 'Opened';
+    case 'email.clicked': return 'Link clicked';
+    case 'email.bounced': return 'Bounced';
+    case 'email.complained': return 'Marked as spam';
+    case 'email.failed': return 'Delivery failed';
+  }
+  if (order.emailStatus === 'sending') return 'Sending';
+  if (order.emailStatus === 'sent') {
+    return providerTrackingAvailable ? 'Sent · awaiting delivery update' : 'Sent · delivery tracking not configured';
+  }
+  if (order.emailStatus === 'pending' && order.emailError) return 'Failed · retry available';
+  if (order.emailStatus === 'pending') return 'Pending';
+  return 'Not sent';
+}
+
 export default function TicketingSalesPage() {
   const [period, setPeriod] = useState<'all' | '7d' | '30d'>('all');
   const [report, setReport] = useState<SalesReport | null>(null);
@@ -91,7 +124,9 @@ export default function TicketingSalesPage() {
       const response = await fetch(`/api/admin/ticketing/sales?period=${period}`, { cache: 'no-store' });
       const result = await response.json().catch(() => ({})) as SalesReport & { error?: string };
       if (!response.ok) throw new Error(result.error || `Ticket sales request failed (${response.status}).`);
-      if (!result.summary || !Array.isArray(result.byEvent) || !Array.isArray(result.recentOrders)) {
+      if (!result.summary || !Array.isArray(result.byEvent) || !Array.isArray(result.recentOrders)
+        || typeof result.providerDeliveryTrackingAvailable !== 'boolean'
+        || typeof result.buyerEmailThemeAvailable !== 'boolean') {
         throw new Error('Ticket sales response was incomplete.');
       }
       setReport(result);
@@ -112,9 +147,13 @@ export default function TicketingSalesPage() {
   function exportCsv() {
     if (!report) return;
     const rows = [
-      ['Type', 'Order reference', 'Payment provider', 'Payment reference', 'Event', 'Verified at', 'Tickets', 'Gross ticket sales', 'Service fees', 'Discounts', 'Collected', 'Currency'],
+      ['Type', 'Order reference', 'Buyer name', 'Buyer email', 'Ticket selection', 'Email color', 'Email delivery status', 'Email sent at', 'Payment provider', 'Payment reference', 'Event', 'Verified at', 'Tickets', 'Gross ticket sales', 'Service fees', 'Discounts', 'Collected', 'Currency'],
       ...report.recentOrders.map(order => [
-        'Ticket order', order.reference, order.paymentProvider || '', order.paymentReference || '',
+        'Ticket order', order.reference, order.buyerName, order.buyerEmail,
+        order.selections.map(selection => `${selection.name} x ${selection.quantity}`).join('; '),
+        ticketThemes.find(theme => theme.id === order.buyerEmailTheme)?.label || 'Midnight black (default)',
+        emailDeliveryLabel(order, report.providerDeliveryTrackingAvailable), order.emailSentAt || '',
+        order.paymentProvider || '', order.paymentReference || '',
         order.eventTitle, order.verifiedAt || order.paidAt, order.tickets,
         order.grossSalesMinor, order.serviceFeesMinor, order.discountsMinor, order.collectedMinor, order.currency
       ])
@@ -152,11 +191,14 @@ export default function TicketingSalesPage() {
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Dedicated ticketing ledger</p>
               <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Ticket sales<span className="text-amber-300">.</span></h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                Only server-verified paid Ticketing orders and successful refunds appear here. Recent payments include their provider transaction reference for reconciliation; this report refreshes every 30 seconds.
-                Beverage orders, shop reports, product stock and merchant payouts are not included.
+                Review ticket buyers, their selected ticket types, verified payment references, and the latest email delivery status. This report refreshes every 30 seconds; beverage orders, shop reports, product stock and merchant payouts are not included.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Link href="/lord/ticketing/email-preview"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/20 bg-amber-100/5 px-4 text-sm font-bold text-amber-100 hover:bg-amber-100/10">
+                <Mail size={15} /> Email preview
+              </Link>
               <label className="sr-only" htmlFor="ticket-sales-period">Reporting period</label>
               <select id="ticket-sales-period" value={period} onChange={event => setPeriod(event.target.value as typeof period)}
                 className="min-h-11 rounded-xl border border-white/10 bg-[#17121e] px-3 text-sm font-bold text-white outline-none focus:border-amber-300">
@@ -181,6 +223,21 @@ export default function TicketingSalesPage() {
           <p className="font-black">Ticket sales report unavailable</p>
           <p className="mt-1 text-xs leading-5 text-red-100/80">{error}</p>
         </section>}
+
+        {report && !report.providerDeliveryTrackingAvailable && (
+          <section className="rounded-2xl border border-amber-200/20 bg-amber-200/5 p-4 text-xs leading-5 text-amber-100">
+            Provider-confirmed delivery tracking is not enabled. Apply
+            {' '}<code>supabase/JMSURF_EMAIL_WEBHOOK_MIGRATION.sql</code> and configure the signed JMSURF webhook;
+            until then, “Sent” means the email provider accepted the message, not that the recipient mail server delivered it.
+          </section>
+        )}
+        {report && !report.buyerEmailThemeAvailable && (
+          <section className="rounded-2xl border border-amber-200/20 bg-amber-200/5 p-4 text-xs leading-5 text-amber-100">
+            Checkout email-color preferences are not available because
+            {' '}<code>supabase/TICKETING_BUYER_EMAIL_THEME_MIGRATION.sql</code> has not been applied to the live database.
+            New orders will use the default color until that migration is applied.
+          </section>
+        )}
 
         {loading && !report ? (
           <div className="rounded-2xl border border-white/10 bg-[#17121e] p-10 text-center text-sm text-slate-400">Syncing the Ticketing ledger…</div>
@@ -230,18 +287,39 @@ export default function TicketingSalesPage() {
             <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#17121e]">
               <div className="border-b border-white/10 p-5">
                 <h2 className="text-lg font-black">Recent verified orders</h2>
-                <p className="mt-1 text-xs text-slate-400">Latest 50 server-verified payments with their provider references. Customer contact details and ticket credentials are intentionally excluded.</p>
+                <p className="mt-1 text-xs text-slate-400">Latest 50 verified ticket purchases. Delivery confirmation means the provider reported acceptance by the recipient mail server; it cannot guarantee inbox placement.</p>
               </div>
               {report.recentOrders.length ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1040px] text-left text-sm">
+                  <table className="w-full min-w-[1600px] text-left text-sm">
                     <thead className="bg-white/[0.03] text-[10px] uppercase tracking-wider text-slate-400">
-                      <tr><th className="px-5 py-3">Ticket order</th><th className="px-4 py-3">Payment provider reference</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">Tickets</th><th className="px-4 py-3">Amount paid</th><th className="px-5 py-3">Verified at</th></tr>
+                      <tr><th className="px-5 py-3">Ticket order</th><th className="px-4 py-3">Buyer</th><th className="px-4 py-3">Ticket selection</th><th className="px-4 py-3">Email color</th><th className="px-4 py-3">Email delivery</th><th className="px-4 py-3">Payment reference</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">Tickets</th><th className="px-4 py-3">Amount paid</th><th className="px-5 py-3">Verified at</th></tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.06]">
                       {report.recentOrders.map(order => (
                         <tr key={order.reference}>
-                          <td className="px-5 py-4 font-mono text-xs text-amber-100">{order.reference}</td>
+                          <td className="px-5 py-4">
+                            <span className="block font-mono text-xs text-amber-100">{order.reference}</span>
+                            {order.orderId && <TicketOrderEmailPreview orderId={order.orderId} />}
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className="block font-semibold text-white">{order.buyerName || 'Name not provided'}</span>
+                            <span className="mt-1 block text-xs text-slate-400">{order.buyerEmail || 'Email unavailable'}</span>
+                          </td>
+                          <td className="px-4 py-4 text-xs text-slate-300">
+                            {order.selections.length ? order.selections.map((selection, index) => (
+                              <span key={`${selection.name}-${index}`} className="block">{selection.name} × {count(selection.quantity)}</span>
+                            )) : 'Ticket selection unavailable'}
+                          </td>
+                          <td className="px-4 py-4 text-xs text-slate-300">
+                            {ticketThemes.find(theme => theme.id === order.buyerEmailTheme)?.label || 'Midnight black (default)'}
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className="block text-xs font-bold text-white">{emailDeliveryLabel(order, report.providerDeliveryTrackingAvailable)}</span>
+                            {order.emailSentAt && <span className="mt-1 block text-[10px] text-slate-400">Sent {dateTime(order.emailSentAt)}</span>}
+                            {order.providerEmailUpdatedAt && <span className="mt-1 block text-[10px] text-slate-400">Provider update {dateTime(order.providerEmailUpdatedAt)}</span>}
+                            {order.emailAttempts > 0 && <span className="mt-1 block text-[10px] text-slate-500">Attempts: {count(order.emailAttempts)}</span>}
+                          </td>
                           <td className="px-4 py-4">
                             <span className="block text-[10px] font-black uppercase text-slate-400">{order.paymentProvider || 'Provider unavailable'}</span>
                             <span className={`mt-1 block font-mono text-xs ${order.paymentReference ? 'text-slate-200' : 'text-red-200'}`}>{order.paymentReference || 'Missing successful payment record'}</span>

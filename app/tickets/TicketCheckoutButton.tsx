@@ -276,7 +276,10 @@ export default function TicketCheckoutButton({
               Cancel
             </button>
           </div>
-          <p className="ticket-theme-muted text-[9px] leading-4">Paid tickets use Paystack checkout. Tickets appear here after server-side payment verification.</p>
+          <p className="ticket-theme-muted text-[9px] leading-4">Pay securely by M-Pesa or card. Any additional mobile-money options, such as Airtel Money, appear only if enabled for this checkout by the payment provider. Tickets appear here after server-side payment verification.</p>
+          <p className="ticket-theme-muted text-[9px] leading-4">
+            Need help? <a href="https://wa.me/254769345599?text=Hello%2C%20I%20need%20help%20with%20ticket%20checkout." target="_blank" rel="noreferrer" className="font-bold underline">WhatsApp customer support on 0769 345 599</a>.
+          </p>
         </form>
       )}
     </div>

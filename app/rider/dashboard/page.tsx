@@ -12,7 +12,8 @@ import {
     Fingerprint,
     MessageCircle,
     Zap,
-    Search
+    Search,
+    Bell
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +44,15 @@ interface Mission {
     longitude?: number;
 }
 
+function decodeVapidKey(value: string): ArrayBuffer {
+    const padding = '='.repeat((4 - value.length % 4) % 4);
+    const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = window.atob(base64);
+    const bytes = new Uint8Array(raw.length);
+    for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+    return bytes.buffer;
+}
+
 function RiderDashboardContent() {
     const searchParams = useSearchParams();
     const phoneParam = searchParams?.get('phone');
@@ -55,6 +65,11 @@ function RiderDashboardContent() {
     const [loading, setLoading] = useState(false);
     const [missions, setMissions] = useState<Mission[]>([]);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [pushEnabled, setPushEnabled] = useState(false);
+    const [pushBusy, setPushBusy] = useState(false);
+    const [pushMessage, setPushMessage] = useState<string | null>(null);
+    const [deliveryPin, setDeliveryPin] = useState('');
+    const [customerIdVerified, setCustomerIdVerified] = useState(false);
 
     // Online Bar Pro States
     const [isOnline, setIsOnline] = useState(false);
@@ -62,6 +77,7 @@ function RiderDashboardContent() {
     const [wallet, setWallet] = useState({ balance: 0, total_earned: 0 });
     const [stats, setStats] = useState({ tier: 'Bronze', rating: 5.0, acceptance: 100, maintenance: 'Healthy' });
     const [activeMission, setActiveMission] = useState<Mission | null>(null);
+    const hasActiveMission = activeMission !== null;
 
     const verifyAndFetch = useCallback(async (riderPhone: string, riderPin: string, savedToken?: string) => {
         setLoading(true);
@@ -138,8 +154,144 @@ function RiderDashboardContent() {
         }
     }, []);
 
+    useEffect(() => {
+        if (!isIdentified || !sessionToken || !('serviceWorker' in navigator)) return;
+        let active = true;
+        void navigator.serviceWorker.getRegistration('/sw.js')
+            .then(registration => registration?.pushManager.getSubscription())
+            .then(async subscription => {
+                if (!active || !subscription) return;
+                const response = await fetch('/api/rider/alerts', {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${sessionToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ operation: 'subscribe', subscription: subscription.toJSON() }),
+                    cache: 'no-store'
+                });
+                const result = await response.json() as { error?: string };
+                if (!response.ok) throw new Error(result.error || 'This device could not be registered for rider alerts.');
+                if (active) setPushEnabled(true);
+            })
+            .catch(error => {
+                if (active) {
+                    setPushMessage(error instanceof Error ? error.message : 'This device’s push subscription could not be refreshed.');
+                    console.error('[RiderDashboard] Could not refresh push subscription:', error);
+                }
+            });
+        return () => { active = false; };
+    }, [isIdentified, sessionToken]);
+
+    useEffect(() => {
+        if (!isIdentified || !sessionToken) return;
+        let active = true;
+        const timer = window.setInterval(async () => {
+            try {
+                const response = await fetch('/api/rider/missions', {
+                    headers: { Authorization: `Bearer ${sessionToken}` },
+                    cache: 'no-store'
+                });
+                const result = await response.json() as {
+                    missions?: Mission[];
+                    wallet?: { balance: number; total_earned: number };
+                    error?: string;
+                };
+                if (!response.ok) throw new Error(result.error || 'Rider missions could not be refreshed.');
+                if (!active) return;
+                const refreshedMissions = result.missions || [];
+                setMissions(refreshedMissions);
+                if (result.wallet) setWallet(result.wallet);
+                setActiveMission(current => {
+                    const activeStatuses = ['Dispatched', 'Picked Up', 'Out for Delivery'];
+                    const currentMission = current && refreshedMissions.find(mission =>
+                        mission.id === current.id && activeStatuses.includes(mission.status));
+                    return currentMission
+                        || refreshedMissions.find(mission => activeStatuses.includes(mission.status))
+                        || null;
+                });
+            } catch (error) {
+                if (active) console.error('[RiderDashboard] Mission refresh failed:', error);
+            }
+        }, 10_000);
+        return () => {
+            active = false;
+            window.clearInterval(timer);
+        };
+    }, [isIdentified, sessionToken]);
+
+    useEffect(() => {
+        const orderId = Number(searchParams?.get('orderId'));
+        if (!Number.isSafeInteger(orderId) || orderId <= 0) return;
+        const mission = missions.find(item => item.id === orderId
+            && ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(item.status));
+        if (mission) setActiveMission(mission);
+    }, [missions, searchParams]);
+
+    const enableMissionAlerts = async () => {
+        if (!sessionToken || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+            setPushMessage('This browser does not support push mission alerts. SMS fallback still depends on server setup.');
+            return;
+        }
+        setPushBusy(true);
+        setPushMessage(null);
+        try {
+            if (Notification.permission === 'denied') {
+                throw new Error('Notifications are blocked in browser settings. Allow them there, then try again.');
+            }
+            const permission = Notification.permission === 'granted'
+                ? 'granted'
+                : await Notification.requestPermission();
+            if (permission !== 'granted') throw new Error('Notification permission was not granted.');
+
+            const configResponse = await fetch('/api/rider/alerts', {
+                headers: { Authorization: `Bearer ${sessionToken}` },
+                cache: 'no-store'
+            });
+            const config = await configResponse.json() as { configured?: boolean; publicKey?: string | null; error?: string };
+            if (!configResponse.ok || !config.configured || !config.publicKey) {
+                throw new Error(config.error || 'Push mission alerts are not configured on the server.');
+            }
+
+            const registration = await navigator.serviceWorker.register('/sw.js');
+            const subscription = await registration.pushManager.getSubscription()
+                || await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: decodeVapidKey(config.publicKey)
+                });
+            const response = await fetch('/api/rider/alerts', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${sessionToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ operation: 'subscribe', subscription: subscription.toJSON() }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'This device could not be registered for rider alerts.');
+            setPushEnabled(true);
+            setPushMessage('Mission push alerts are enabled on this device. SMS reminders are sent by the server worker.');
+        } catch (error) {
+            setPushMessage(error instanceof Error ? error.message : 'Mission push alerts could not be enabled.');
+        } finally {
+            setPushBusy(false);
+        }
+    };
+
     const handleAdvanceMission = useCallback(async (orderId: number) => {
         if (!sessionToken) return;
+        const nextStatus = activeMission?.id === orderId
+            ? activeMission.status === 'Dispatched'
+                ? 'Picked Up'
+                : activeMission.status === 'Picked Up'
+                    ? 'Out for Delivery'
+                    : 'Delivered'
+            : '';
+        if (nextStatus === 'Delivered' && (!customerIdVerified || !/^\d{6}$/.test(deliveryPin.trim()))) {
+            setAuthError('Check the customer’s ID and enter the six-digit delivery PIN before handover.');
+            return;
+        }
         setLoading(true);
         try {
             const response = await fetch('/api/rider/delivery-status', {
@@ -147,13 +299,9 @@ function RiderDashboardContent() {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
                 body: JSON.stringify({
                     orderId,
-                    nextStatus: activeMission?.id === orderId
-                        ? activeMission.status === 'Dispatched'
-                            ? 'Picked Up'
-                            : activeMission.status === 'Picked Up'
-                                ? 'Out for Delivery'
-                                : 'Delivered'
-                        : undefined
+                    nextStatus,
+                    deliveryPin: nextStatus === 'Delivered' ? deliveryPin.trim() : null,
+                    customerIdVerified: nextStatus === 'Delivered' && customerIdVerified
                 }),
                 cache: 'no-store'
             });
@@ -169,6 +317,8 @@ function RiderDashboardContent() {
             if (result.wallet) setWallet(result.wallet);
             if (result.status === 'Delivered') {
                 setActiveMission(null);
+                setDeliveryPin('');
+                setCustomerIdVerified(false);
                 alert(result.warning || 'Mission accomplished. The order and rider commission are saved.');
             } else {
                 setActiveMission(prev => prev?.id === orderId ? { ...prev, status: result.status! } : prev);
@@ -179,7 +329,7 @@ function RiderDashboardContent() {
         } finally {
             setLoading(false);
         }
-    }, [activeMission, sessionToken]);
+    }, [activeMission, customerIdVerified, deliveryPin, sessionToken]);
 
     useEffect(() => {
         const savedPhone = localStorage.getItem('ob_rider_phone');
@@ -203,7 +353,7 @@ function RiderDashboardContent() {
         let lastSentAt = 0;
         let active = true;
         const watchId = navigator.geolocation.watchPosition(async position => {
-            if (!active || Date.now() - lastSentAt < 30_000) return;
+            if (!active || Date.now() - lastSentAt < (hasActiveMission ? 10_000 : 30_000)) return;
             lastSentAt = Date.now();
             try {
                 const response = await fetch('/api/rider/sync-location', {
@@ -239,7 +389,7 @@ function RiderDashboardContent() {
             active = false;
             navigator.geolocation.clearWatch(watchId);
         };
-    }, [isOnline, sessionToken]);
+    }, [hasActiveMission, isOnline, sessionToken]);
 
     const handleBioAuth = async () => {
         try {
@@ -383,6 +533,27 @@ function RiderDashboardContent() {
             <div className="flex-1 bg-white rounded-t-[3.5rem] -mt-10 relative z-[1001] shadow-[0_-20px_50px_rgba(0,0,0,0.3)] p-8 sm:p-12 overflow-y-auto no-scrollbar">
                 <div className="w-16 h-1.5 bg-slate-100 rounded-full mx-auto mb-10 cursor-grab active:cursor-grabbing" />
 
+                <div className="mb-8 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                        <Bell className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                        <div>
+                            <p className="text-sm font-bold text-slate-900">
+                                {pushEnabled ? 'Mission alerts enabled' : 'Enable mission alerts'}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-600">
+                                Get an immediate push when assigned, plus an SMS reminder after 10 seconds when the worker is running.
+                            </p>
+                            {pushMessage && <p role="status" className="mt-2 text-xs font-semibold text-slate-700">{pushMessage}</p>}
+                        </div>
+                    </div>
+                    {!pushEnabled && (
+                        <Button type="button" onClick={() => void enableMissionAlerts()} disabled={pushBusy} className="shrink-0">
+                            {pushBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />}
+                            Enable push
+                        </Button>
+                    )}
+                </div>
+
                 {activeMission ? (
                     <div className="space-y-10 animate-in slide-in-from-bottom-12 duration-1000 ease-in-out text-left">
                         <div className="flex justify-between items-start">
@@ -417,10 +588,36 @@ function RiderDashboardContent() {
                             </Button>
                         </div>
 
+                        {activeMission.status === 'Out for Delivery' && (
+                            <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                                <label className="flex items-start gap-3 text-sm font-semibold text-slate-800">
+                                    <input
+                                        type="checkbox"
+                                        checked={customerIdVerified}
+                                        onChange={event => setCustomerIdVerified(event.target.checked)}
+                                        className="mt-1 h-4 w-4 accent-amber-600"
+                                    />
+                                    I checked the customer’s valid photo ID in person.
+                                </label>
+                                <Input
+                                    value={deliveryPin}
+                                    onChange={event => setDeliveryPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    maxLength={6}
+                                    placeholder="Customer’s 6-digit delivery PIN"
+                                    aria-label="Customer's six-digit delivery PIN"
+                                    className="h-12 rounded-xl border-amber-200 bg-white text-center text-lg font-black tracking-[0.4em]"
+                                />
+                                <p className="text-xs text-slate-600">Delivery is recorded only after the ID check and correct customer PIN.</p>
+                            </div>
+                        )}
+
                         <div className="pt-8 border-t border-slate-50 space-y-6">
                             <Button
                                 onClick={() => handleAdvanceMission(activeMission.id)}
-                                disabled={loading}
+                                disabled={loading || (activeMission.status === 'Out for Delivery'
+                                    && (!customerIdVerified || !/^\d{6}$/.test(deliveryPin.trim())))}
                                 className="w-full h-24 rounded-[2.5rem] bg-primary hover:bg-primary/90 text-white font-black uppercase text-sm tracking-[0.5em] shadow-[0_20px_40px_-10px_rgba(255,107,0,0.3)] active:scale-95 transition-all relative overflow-hidden"
                             >
                                 {loading ? 'Updating...' : activeMission.status === 'Dispatched'

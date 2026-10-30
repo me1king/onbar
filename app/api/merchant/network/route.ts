@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { isValidMerchantOperatingHours } from '@/lib/merchantAvailability';
+import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -240,7 +241,7 @@ export async function GET(request: Request) {
   try {
     const { data: applications, error } = await context.database
       .from('merchant_applications')
-      .select('id, merchant_code, business_name, trading_name, business_type, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, documents, status, review_note, submitted_at, reviewed_at, updated_at')
+      .select('id, merchant_code, business_name, trading_name, business_type, vendor_type, prep_target_minutes, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, documents, status, review_note, submitted_at, reviewed_at, updated_at')
       .eq('email', context.actor)
       .order('submitted_at', { ascending: false })
       .limit(25);
@@ -311,6 +312,8 @@ export async function POST(request: Request) {
       return NextResponse.json({
         error: /approved merchant application/i.test(error.message)
           ? 'Only an approved business can change order availability.'
+          : /current alcohol licence with an expiry date is required/i.test(error.message)
+            ? 'A current alcohol licence with an expiry date is required before accepting orders.'
           : 'Business hours could not be saved. Confirm the merchant availability migration is installed.'
       }, { status: 503 });
     }
@@ -420,6 +423,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The order could not be verified.' }, { status: 503 });
     }
     if (!linkedItem) return NextResponse.json({ error: 'This order is not assigned to your business.' }, { status: 403 });
+
+    if (eventType === 'accepted' || eventType === 'rejected') {
+      const { data: recorded, error } = await context.database.rpc('respond_merchant_order_alert', {
+        p_order_id: orderId,
+        p_application_id: application.id,
+        p_actor: context.actor,
+        p_response: eventType
+      });
+      if (error) {
+        console.error('[MerchantNetwork] Could not record merchant order response:', error);
+        return NextResponse.json({
+          error: /transition is not permitted|first fulfilment event|must be assigned|only an approved merchant|accept_merchant_order_alert|respond_merchant_order_alert/i.test(error.message)
+            ? 'That order has already been answered or is no longer available.'
+            : 'The order response could not be saved.'
+        }, { status: 409 });
+      }
+      if (recorded !== true) {
+        return NextResponse.json({ error: 'This order has already been accepted, declined, or reassigned.' }, { status: 409 });
+      }
+      if (eventType === 'rejected') {
+        try {
+          const alerts = await alertAllocatedMerchants(context.database, orderId);
+          if (alerts.applications > 0 && !alerts.escalationQueued) {
+            return NextResponse.json({ error: 'The order was declined, but the next merchant alert could not be scheduled. Contact OnBar support.' }, { status: 503 });
+          }
+        } catch (alertError) {
+          console.error('[MerchantNetwork] Could not alert newly allocated merchants:', alertError);
+          return NextResponse.json({ error: 'The order was declined, but the next merchant alert could not be sent.' }, { status: 503 });
+        }
+      }
+      return NextResponse.json({ accepted: eventType === 'accepted' }, { status: 201 });
+    }
 
     const { data, error } = await context.database.from('merchant_fulfillment_events').insert({
       order_id: orderId,

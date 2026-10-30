@@ -5,6 +5,7 @@ import { getPublicBaseUrl } from "@/lib/utils";
 import { recordVerifiedPaystackPayment } from "@/lib/paystackServer";
 import { createTicketCredentials } from "@/lib/ticketing/credentials.server";
 import { logTicketNotificationFailures, sendTicketOrderNotifications } from "@/lib/ticketing/notifications.server";
+import { alertAllocatedMerchants } from "@/lib/merchantOrderAlerts.server";
 import {
     getPaystackSecretKey,
     verifyPaystackTicketTransaction
@@ -291,6 +292,15 @@ export async function POST(request: Request) {
                             console.error("Webhook inventory fulfillment retry failed:", inventoryError);
                             return NextResponse.json({ error: "Inventory fulfillment failed" }, { status: 500 });
                         }
+                        try {
+                            const alertResult = await alertAllocatedMerchants(database, Number(matchedOrder.id));
+                            if (alertResult.applications > 0 && !alertResult.escalationQueued) {
+                                return NextResponse.json({ error: 'Merchant order-alert escalation could not be scheduled.' }, { status: 503 });
+                            }
+                        } catch (alertError) {
+                            console.error('[PaystackWebhook] Merchant order alerts could not be scheduled:', alertError);
+                            return NextResponse.json({ error: 'Merchant order alerts could not be scheduled.' }, { status: 503 });
+                        }
                     }
                     return NextResponse.json({ received: true, message: "Order status already changed" });
                 }
@@ -301,6 +311,15 @@ export async function POST(request: Request) {
                 if (inventoryError) {
                     console.error("Webhook inventory fulfillment failed:", inventoryError);
                     return NextResponse.json({ error: "Inventory fulfillment failed" }, { status: 500 });
+                }
+                try {
+                    const alertResult = await alertAllocatedMerchants(database, Number(matchedOrder.id));
+                    if (alertResult.applications > 0 && !alertResult.escalationQueued) {
+                        return NextResponse.json({ error: 'Merchant order-alert escalation could not be scheduled.' }, { status: 503 });
+                    }
+                } catch (alertError) {
+                    console.error('[PaystackWebhook] Merchant order alerts could not be scheduled:', alertError);
+                    return NextResponse.json({ error: 'Merchant order alerts could not be scheduled.' }, { status: 503 });
                 }
 
                 // Post-Success Fulfillment Logic

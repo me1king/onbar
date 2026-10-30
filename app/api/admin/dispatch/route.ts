@@ -5,6 +5,8 @@ import { verifySessionCookie } from '@/lib/adminAuth';
 import { isMerchantOpenAt } from '@/lib/merchantAvailability';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { routingEngine, type GeoPoint } from '@/lib/engines/routingEngine';
+import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
+import { alertAssignedRider } from '@/lib/riderOrderAlerts.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -623,6 +625,15 @@ export async function POST(request: Request) {
     if (!result?.success) {
       return NextResponse.json({ error: result?.error || 'The paid order could not be reallocated.', code: result?.code }, { status: 409 });
     }
+    try {
+      const alerts = await alertAllocatedMerchants(database, orderId);
+      if (alerts.applications > 0 && !alerts.escalationQueued) {
+        return NextResponse.json({ error: 'Merchant allocation succeeded, but the alert ladder could not be scheduled.', allocation: result }, { status: 503 });
+      }
+    } catch (alertError) {
+      console.error('[AdminDispatch] Merchant allocation succeeded but alerts could not be scheduled:', alertError);
+      return NextResponse.json({ error: 'Merchant allocation succeeded, but the alert ladder could not be scheduled.', allocation: result }, { status: 503 });
+    }
     return NextResponse.json({
       allocation: result,
       message: result.fully_allocated
@@ -699,7 +710,21 @@ export async function POST(request: Request) {
       }, { status: result?.code === 'PAYMENT_NOT_CONFIRMED' ? 409 : 409 });
     }
 
-    return NextResponse.json({ assignment: result });
+    let notificationWarning: string | undefined;
+    if (typeof result.rider_phone === 'string') {
+      try {
+        const notification = await alertAssignedRider(database, orderId, result.rider_phone);
+        notificationWarning = notification.warning || undefined;
+      } catch (notificationError) {
+        console.error('[AdminDispatch] Rider assignment saved but rider alerts failed:', notificationError);
+        notificationWarning = 'Assignment was saved, but rider alerts could not be scheduled.';
+      }
+    }
+
+    return NextResponse.json({
+      assignment: result,
+      ...(notificationWarning ? { warning: notificationWarning } : {})
+    });
   } catch (error) {
     console.error('[AdminDispatch] Assignment request failed:', error);
     return NextResponse.json({ error: 'Assignment could not be completed. Refresh the dispatch board and try again.' }, { status: 503 });

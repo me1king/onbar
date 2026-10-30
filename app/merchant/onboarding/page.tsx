@@ -18,7 +18,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { isFoodBusinessType, merchantBusinessTypes, type MerchantBusinessType } from '@/lib/merchantApplications';
+import {
+  isFoodBusinessType,
+  merchantVendorTypeForBusinessType,
+  merchantBusinessTypes,
+  type MerchantBusinessType,
+  type MerchantVendorType
+} from '@/lib/merchantApplications';
 import {
   merchantWeekdays,
   normalizeMerchantOperatingHours,
@@ -29,6 +35,10 @@ import {
 type DocumentType =
   | 'business_registration'
   | 'county_license'
+  | 'liquor_licence'
+  | 'wholesale_licence'
+  | 'kra_pin'
+  | 'medical_cert'
   | 'food_hygiene'
   | 'tax_document'
   | 'premises_document'
@@ -43,6 +53,12 @@ const businessTypeLabels: Record<MerchantBusinessType, string> = {
   delivery_partner: 'Delivery Partner'
 };
 
+const vendorTypeLabels: Record<MerchantVendorType, string> = {
+  retailer: 'Alcohol retailer',
+  wholesaler: 'Alcohol wholesaler',
+  street_food: 'Street food vendor'
+};
+
 const weekdayLabels: Record<MerchantWeekday, string> = {
   monday: 'Monday',
   tuesday: 'Tuesday',
@@ -55,6 +71,10 @@ const weekdayLabels: Record<MerchantWeekday, string> = {
 const documentLabels: Record<DocumentType, string> = {
   business_registration: 'Business registration',
   county_license: 'County business licence',
+  liquor_licence: 'Alcohol retail licence',
+  wholesale_licence: 'Alcohol wholesale licence',
+  kra_pin: 'KRA PIN certificate',
+  medical_cert: 'Food handler medical certificate',
   food_hygiene: 'Food hygiene documentation',
   tax_document: 'Tax / business information',
   premises_document: 'Premises documentation',
@@ -80,6 +100,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
 export default function MerchantOnboarding() {
   const [step, setStep] = useState(0);
   const [businessType, setBusinessType] = useState<MerchantBusinessType>('bar');
+  const [vendorType, setVendorType] = useState<MerchantVendorType>('retailer');
   const [businessName, setBusinessName] = useState('');
   const [tradingName, setTradingName] = useState('');
   const [email, setEmail] = useState('');
@@ -127,7 +148,7 @@ export default function MerchantOnboarding() {
     setRequirementsLoading(true);
     setRequirementsLoaded(false);
     setError(null);
-    const params = new URLSearchParams({ businessType, county });
+    const params = new URLSearchParams({ businessType, county, vendorType: businessType === 'delivery_partner' ? '' : vendorType });
     fetch(`/api/merchant-applications?${params}`, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
         const payload = await readJsonResponse<{ requirements?: Array<{ type: string; label: string; required: boolean }>; error?: string }>(response);
@@ -147,7 +168,7 @@ export default function MerchantOnboarding() {
         if (!controller.signal.aborted) setRequirementsLoading(false);
       });
     return () => controller.abort();
-  }, [step, businessType, county]);
+  }, [step, businessType, vendorType, county]);
 
   const contactAndLocationValid = email.trim().length > 3
     && phone.trim().length >= 7
@@ -166,11 +187,19 @@ export default function MerchantOnboarding() {
       setError('Upload all required documents before submitting.');
       return;
     }
+    if (requiredDocumentTypes.some(type =>
+      (type === 'liquor_licence' || type === 'wholesale_licence')
+      && !expiryDates[type]
+    )) {
+      setError('Enter the expiry date for your alcohol licence before submitting.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
     const payload = new FormData();
     payload.set('businessType', businessType);
+    payload.set('vendorType', businessType === 'delivery_partner' ? '' : vendorType);
     payload.set('businessName', businessName.trim());
     payload.set('tradingName', tradingName.trim());
     payload.set('email', email.trim());
@@ -275,7 +304,11 @@ export default function MerchantOnboarding() {
                   <button
                     key={type}
                     type="button"
-                    onClick={() => setBusinessType(type)}
+                    onClick={() => {
+                      setBusinessType(type);
+                      const category = merchantVendorTypeForBusinessType(type);
+                      if (category) setVendorType(category);
+                    }}
                     className={`flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left text-sm font-bold transition ${
                       businessType === type ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 hover:border-primary/50'
                     }`}
@@ -285,6 +318,14 @@ export default function MerchantOnboarding() {
                   </button>
                 ))}
               </div>
+              {businessType !== 'delivery_partner' && (
+                <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-800">
+                  Vendor category: {vendorTypeLabels[vendorType]}
+                  <span className="mt-1 block text-xs font-normal text-slate-500">
+                    This category matches your business type and determines its performance targets and compliance checks.
+                  </span>
+                </p>
+              )}
               <Input value={businessName} onChange={event => setBusinessName(event.target.value)} maxLength={160} placeholder="Registered business name *" className="h-12 rounded-xl" />
               <Input value={tradingName} onChange={event => setTradingName(event.target.value)} maxLength={160} placeholder="Trading name (if different)" className="h-12 rounded-xl" />
               <Button disabled={businessName.trim().length < 2} onClick={() => setStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
@@ -440,8 +481,14 @@ export default function MerchantOnboarding() {
                     </label>
                     {documents[type] && (
                       <label className="mt-3 block text-xs font-semibold text-slate-500">
-                        Expiry date (if applicable)
-                        <Input type="date" value={expiryDates[type] || ''} onChange={event => setExpiryDates(current => ({ ...current, [type]: event.target.value }))} className="mt-1 h-10 rounded-lg" />
+                        Expiry date {type === 'liquor_licence' || type === 'wholesale_licence' ? '*' : '(if applicable)'}
+                        <Input
+                          type="date"
+                          required={type === 'liquor_licence' || type === 'wholesale_licence'}
+                          value={expiryDates[type] || ''}
+                          onChange={event => setExpiryDates(current => ({ ...current, [type]: event.target.value }))}
+                          className="mt-1 h-10 rounded-lg"
+                        />
                       </label>
                     )}
                   </div>

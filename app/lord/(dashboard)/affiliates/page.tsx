@@ -453,18 +453,75 @@ export default function AdminAffiliateCommandCenter() {
                                 <h2 className="text-xl font-black text-foreground uppercase tracking-tighter flex items-center gap-3"><Zap className="h-5 w-5 text-primary" /> Tactical Tasks</h2>
                                 <div className="space-y-4">
                                     {[
-                                        { label: 'Review Applications', icon: User, href: '#', count: stats.pendingApps },
-                                        { label: 'Manage Creatives', icon: Camera, href: '/lord/media?tab=posters' },
-                                        { label: 'Finance Review', icon: CreditCard, href: '/lord/payouts' },
-                                    ].map(task => (
-                                        <button key={task.label} className="w-full p-6 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between group hover:bg-white hover:shadow-xl transition-all text-left">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-10 w-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><task.icon size={20} /></div>
-                                                <span className="text-[10px] font-black uppercase text-slate-600">{task.label}</span>
-                                            </div>
-                                            {task.count ? <span className="bg-rose-500 text-white text-[8px] px-1.5 py-0.5 rounded-full">{task.count}</span> : <ChevronRight size={16} className="text-slate-200 group-hover:text-primary transition-all" />}
-                                        </button>
-                                    ))}
+                                        {
+                                            label: 'Review Applications',
+                                            description: 'Check new partner details and approve or decline applications.',
+                                            action: 'Open application desk',
+                                            icon: User,
+                                            count: stats.pendingApps,
+                                            href: null
+                                        },
+                                        {
+                                            label: 'Manage Creatives',
+                                            description: 'Upload and organize posters for upcoming campaigns.',
+                                            action: 'Open poster library',
+                                            icon: Camera,
+                                            count: null,
+                                            href: '/lord/media?tab=posters'
+                                        },
+                                        {
+                                            label: 'Finance Review',
+                                            description: 'Review affiliate withdrawal requests and payout receipts.',
+                                            action: 'Open payout queue',
+                                            icon: CreditCard,
+                                            count: null,
+                                            href: '/lord/payouts'
+                                        },
+                                    ].map(task => {
+                                        const content = (
+                                            <>
+                                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-white text-slate-400 shadow-sm transition-all duration-300 group-hover:-rotate-3 group-hover:scale-110 group-hover:border-primary/20 group-hover:text-primary">
+                                                    <task.icon size={20} />
+                                                </span>
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-slate-700 group-hover:text-slate-950">
+                                                        {task.label}
+                                                        {task.count !== null && (
+                                                            <span className={cn(
+                                                                'rounded-full px-2 py-1 text-[8px] leading-none',
+                                                                task.count > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                                                            )}>
+                                                                {task.count > 0 ? `${task.count} pending` : 'All clear'}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span className="mt-1.5 block text-xs font-medium leading-5 text-slate-500">{task.description}</span>
+                                                    <span className="mt-2 inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-primary">
+                                                        {task.action}<ChevronRight size={12} className="transition-transform group-hover:translate-x-1" />
+                                                    </span>
+                                                </span>
+                                            </>
+                                        );
+                                        const className = 'group flex min-h-24 w-full items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/20 hover:bg-white hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 active:translate-y-0';
+                                        return task.href ? (
+                                            <Link key={task.label} href={task.href} aria-label={`${task.label}. ${task.description}`} className={className}>
+                                                {content}
+                                            </Link>
+                                        ) : (
+                                            <button
+                                                key={task.label}
+                                                type="button"
+                                                aria-label={`${task.label}. ${task.description}`}
+                                                className={className}
+                                                onClick={() => {
+                                                    setActiveTab('applications');
+                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                }}
+                                            >
+                                                {content}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </Card>
 

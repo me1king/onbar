@@ -16,7 +16,16 @@ export function getWebPushPublicKey() {
 
 export async function sendWebPush(
   subscription: WebPushSubscription,
-  payload: { title: string; body: string; url: string; tag: string }
+  payload: {
+    title: string;
+    body: string;
+    url: string;
+    tag: string;
+    orderId?: number;
+    requireInteraction?: boolean;
+    expiresAt?: string;
+  },
+  ttlSeconds = 3600
 ) {
   const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim();
   const privateKey = process.env.WEB_PUSH_VAPID_PRIVATE_KEY?.trim();
@@ -27,7 +36,7 @@ export async function sendWebPush(
 
   webPush.setVapidDetails(subject, publicKey, privateKey);
   return webPush.sendNotification(subscription, JSON.stringify(payload), {
-    TTL: 3600,
+    TTL: Math.max(0, Math.min(3600, Math.floor(ttlSeconds))),
     urgency: 'high'
   });
 }

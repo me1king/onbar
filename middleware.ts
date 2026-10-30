@@ -8,6 +8,7 @@ const ticketingPublicPaths = [
   '/tickets',
   '/scanner',
   '/launch-countdown',
+  '/api/settings',
   '/api/ticketing',
   '/api/payhero/ticketing',
   '/api/paystack/webhook',

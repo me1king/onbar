@@ -42,6 +42,64 @@ The admin APIs use the server-side `SUPABASE_SERVICE_ROLE_KEY`. Keep that key
 server-only; the recovery migration denies direct browser access to its finance
 tables.
 
+## Merchant order alerts
+
+After applying `FINAL_ESTABLISHMENT_SQL.sql`, `MERCHANT_OPERATIONS_MIGRATION.sql`,
+and `DISPATCH_MIGRATION.sql`, apply `MERCHANT_ORDER_ALERTS_MIGRATION.sql`.
+The migration creates private merchant contact/device/delivery-log storage and
+atomic accept, decline, and timeout functions. Do not apply it before the
+merchant and dispatch migrations.
+
+Configure the web application and the separate alert-worker service with
+`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_BASE_URL`
+(the deployed OnlineBar origin), `REDIS_URL`, `INTERNAL_API_SECRET`,
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`,
+`TWILIO_ALERT_TOKEN_SECRET`, `WEB_PUSH_VAPID_PUBLIC_KEY`,
+`WEB_PUSH_VAPID_PRIVATE_KEY`, and `WEB_PUSH_SUBJECT`. Generate VAPID keys with
+`npx web-push generate-vapid-keys`; keep private keys server-side. The worker
+must run continuously as a separate process with `npm run worker:merchant-alerts`.
+The web process schedules 20-second SMS, 60-second voice, and 90-second timeout
+jobs in Redis; the worker sends the Twilio messages/calls, records provider
+status callbacks, and invokes the authenticated internal dispatch endpoint to
+alert newly allocated merchants after a timeout. Configure adequate Redis
+persistence and monitor the worker heartbeat in the merchant workspace.
+
+Twilio credentials, an approved sender/number, Redis, VAPID keys, the migration,
+and the continuously running worker are required for live delivery. The browser
+health check cannot verify phone volume or battery-optimization settings.
+Web push uses the phone's normal notification behavior and cannot provide a
+reliable looping lock-screen alarm; native Android alert support remains a
+separate rollout step. Test on staging with real devices and provider accounts
+before launch.
+
+## Rider assignment alerts
+
+After applying `DISPATCH_MIGRATION.sql`, apply
+`RIDER_ORDER_ALERTS_MIGRATION.sql`. Riders must enable push notifications in
+Rider Command while signed in. On an admin-confirmed assignment, the server
+sends a web push immediately and queues a Twilio SMS reminder after 10 seconds.
+The existing `worker:merchant-alerts` process handles both merchant escalations
+and rider SMS. Redis, Twilio, VAPID keys, and an always-running worker are
+required for those channels.
+
+The current dispatch path is an admin-controlled assignment, not a rider offer
+queue: the order is assigned before its alert is sent. The 25-second push TTL
+only expires stale notifications; it does not automatically reassign an
+unanswered mission. Automatic rider acceptance/decline, timeout rerouting, and
+native Android full-screen alerts require separate implementation and staging
+validation.
+
+## Rider delivery PIN and ID check
+
+After applying `DISPATCH_MIGRATION.sql` and
+`DELIVERY_ENGINE_AND_BUZZ_MIGRATION.sql`, apply
+`RIDER_DELIVERY_SAFETY_MIGRATION.sql`. It creates a six-digit PIN when a rider
+is assigned, exposes it only to the customer through phone-verified delivery
+tracking, and requires the rider to confirm the customer ID check and enter the
+matching PIN before the delivery transition and commission are committed.
+Apply this migration after legacy all-in-one or delivery migrations so the older
+three-argument delivery RPC cannot bypass the handover checks.
+
 ## Delivery merchant scorecard
 
 After the merchant operations and dispatch migrations are installed, apply
@@ -52,6 +110,51 @@ for pausing or resuming new orders without changing a merchant's weekly hours.
 The response-time metric is explicitly order-created-to-decision; it is not an
 offer-delivery timestamp. No rating, preparation-time, or timeout figures are
 invented where the current event ledger does not record them.
+
+## Vendor categories and performance rankings
+
+After applying `FINAL_ESTABLISHMENT_SQL.sql`,
+`MERCHANT_OPERATIONS_MIGRATION.sql`, `DISPATCH_MIGRATION.sql`, and
+`DELIVERY_VENDOR_SCORECARD_MIGRATION.sql`, apply
+`DELIVERY_VENDOR_PERFORMANCE_MIGRATION.sql`. It adds retailer, wholesaler, and
+street-food targets; preparation commitments; compliance reporting; and
+type-separated town rankings. Existing business types map to categories:
+bars to retailers, suppliers to wholesalers, and kitchens, restaurants, and
+food vendors to street-food vendors. The onboarding API enforces that mapping
+so alcohol-licence requirements continue to match the dispatch eligibility
+checks. Alcohol licence expiry dates are required; businesses without a current
+licence are paused, and the dispatch eligibility check also excludes expired
+licences. Schedule `SELECT
+public.pause_alcohol_vendors_without_current_licence();` daily in Supabase to
+keep the merchant availability state in sync after a licence expires. The
+merchant workspace and delivery scorecard read the same view.
+
+The score uses recorded accept/reject, ready, delivery, rating, and formally
+vendor-attributed complaint data. Response time is order-created-to-decision,
+not routed-offer latency; the current workflow does not record offer timeouts.
+Ratings and complaints are not populated until their customer feedback and
+adjudication write paths are deployed. Apply this migration to staging first
+and verify the existing document requirements and merchant data before
+production.
+
+## Vendor launch pipeline
+
+Apply `VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql` to staging first. It adds the
+private, admin-only lead ledger, type-specific field checklists, visit
+check-ins, activity history, and launch-gate functions. The Admin page is
+`/lord/vendor-onboarding`. It tracks retailer, wholesaler, street-food, and
+rider leads, requires a future scheduled visit and GPS check-in plus the
+required checklist before visit verification, and requires a recorded passed
+test order and second-person review before a lead reaches its internal Live
+stage.
+
+This pipeline is an internal onboarding tracker. It does not create vendor or
+rider accounts, upload private documents, send SMS/WhatsApp messages, provision
+catalog items, or perform a real test order. Use the existing merchant and
+dispatch review flows to activate partners; never use this lead status alone
+to enable alcohol sales or rider dispatch. The scorecard reports stored lead
+counts and recorded launch duration only; it does not invent order volume or
+quality scores.
 
 If the marketing dashboard reports that `marketing_campaigns.name` is missing,
 run `ADMIN_DASHBOARD_LOG_FIX_MIGRATION.sql` in the Supabase SQL Editor. It adds
@@ -82,7 +185,15 @@ PayHero payment attempts; new ticket checkouts do not require PayHero. After the
 messaging and ticketing email delivery migrations (including
 `CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql`) are installed, run
 `JMSURF_EMAIL_WEBHOOK_MIGRATION.sql` to record signed JMSURF email events and
-link them to transactional message records.
+link them to transactional message records. The owner/admin-only
+`/lord/ticketing/sales` report includes purchaser name and email, selected
+ticket types and quantities, chosen ticket-email color, and the email send/provider status. Buyer email-color reporting and storage require
+`TICKETING_BUYER_EMAIL_THEME_MIGRATION.sql`. Provider-
+confirmed delivery requires this webhook migration and a configured signed
+JMSURF webhook; a provider accepting a send is not proof that the message
+reached the recipient's mail server or inbox. Point the provider webhook at
+`/api/webhooks/jmsurf-mail` and configure the matching server-only
+`JMSURF_WEBHOOK_SECRET`.
 For databases that already applied the earlier promotions migration, re-run
 `TICKETING_PROMOTIONS_MIGRATION.sql` after deploying the Paystack checkout
 change so its promo RPC stops converting new attempts to PayHero.

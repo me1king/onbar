@@ -24,6 +24,7 @@ const SUPPORTED_TEMPLATE_VARIABLES = new Set([
   'total',
   'rider_name',
   'rider_phone',
+  'delivery_pin',
   'eta',
   'tracking_link'
 ]);
@@ -49,7 +50,8 @@ function renderTemplate(
     delivery_eta_minutes: number | null;
   },
   trackingUrl: string,
-  status: CustomerNotificationStatus
+  status: CustomerNotificationStatus,
+  deliveryPin: string | null = null
 ) {
   const amount = Number(order.total_price);
   const variables: Record<string, string> = {
@@ -64,6 +66,7 @@ function renderTemplate(
       : '',
     rider_name: order.rider_name || '',
     rider_phone: maskPhone(order.rider_phone || ''),
+    delivery_pin: deliveryPin || '',
     eta: order.delivery_eta_minutes == null ? '' : `${order.delivery_eta_minutes} mins`,
     tracking_link: trackingUrl
   };
@@ -235,6 +238,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The order does not currently have that status.' }, { status: 409 });
   }
 
+  let deliveryPin: string | null = null;
+  if (status === 'Out for Delivery') {
+    const { data: safetyData, error: safetyError } = await database.from('orders')
+      .select('delivery_pin')
+      .eq('id', orderId)
+      .maybeSingle();
+    if (safetyError) {
+      console.error('[CustomerNotification] Could not load the handover PIN:', safetyError);
+      return NextResponse.json({
+        error: /delivery_pin|schema cache/i.test(safetyError.message)
+          ? 'Delivery safety migration is missing. Apply supabase/RIDER_DELIVERY_SAFETY_MIGRATION.sql.'
+          : 'The handover PIN could not be loaded.'
+      }, { status: 503 });
+    }
+    deliveryPin = typeof safetyData?.delivery_pin === 'string' ? safetyData.delivery_pin : null;
+  }
+
   const email = (order.customer_email || '').trim();
   const phone = (order.customer_phone || '').trim();
   if (!email && !phone) return NextResponse.json({ error: 'The order has no customer email or phone number.' }, { status: 409 });
@@ -259,7 +279,7 @@ export async function POST(request: Request) {
     .filter(token => !SUPPORTED_TEMPLATE_VARIABLES.has(token));
   if (unsupportedVariables.length) {
     return NextResponse.json({
-      error: `Unsupported template variable(s): ${[...new Set(unsupportedVariables)].map(token => `{${token}}`).join(', ')}. Delivery PIN and M-Pesa receipt code are not available in this notification flow.`
+      error: `Unsupported template variable(s): ${[...new Set(unsupportedVariables)].map(token => `{${token}}`).join(', ')}.`
     }, { status: 422 });
   }
 
@@ -278,9 +298,13 @@ export async function POST(request: Request) {
     : allowedChannels;
   const trackingUrl = `${getPublicBaseUrl()}/track?id=${encodeURIComponent(String(orderId))}`;
   const name = order.customer_name || 'there';
-  const subject = renderTemplate(rule.subject, name, order, trackingUrl, status as CustomerNotificationStatus);
-  const message = renderTemplate(rule.message, name, order, trackingUrl, status as CustomerNotificationStatus);
-  const smsMessage = renderTemplate(rule.smsMessage || rule.message, name, order, trackingUrl, status as CustomerNotificationStatus);
+  const subject = renderTemplate(rule.subject, name, order, trackingUrl, status as CustomerNotificationStatus, deliveryPin);
+  const handoverPinNote = deliveryPin
+    ? `\nYour delivery PIN is ${deliveryPin}. Share it with the rider only at handover after checking your order.`
+    : '';
+  const message = `${renderTemplate(rule.message, name, order, trackingUrl, status as CustomerNotificationStatus, deliveryPin)}${handoverPinNote && !rule.message.includes('{delivery_pin}') ? handoverPinNote : ''}`;
+  const smsTemplate = rule.smsMessage || rule.message;
+  const smsMessage = `${renderTemplate(smsTemplate, name, order, trackingUrl, status as CustomerNotificationStatus, deliveryPin)}${handoverPinNote && !smsTemplate.includes('{delivery_pin}') ? handoverPinNote : ''}`;
   const results: { channel: CustomerNotificationChannel; status: string; error?: string }[] = [];
 
   for (const channel of channels) {

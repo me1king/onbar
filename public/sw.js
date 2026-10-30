@@ -68,13 +68,19 @@ self.addEventListener('push', (event) => {
   const title = typeof payload.title === 'string' ? payload.title : 'Order update';
   const body = typeof payload.body === 'string' ? payload.body : 'There is an update to your delivery.';
   const url = typeof payload.url === 'string' ? payload.url : '/profile';
+  const expiry = typeof payload.expiresAt === 'string' ? Date.parse(payload.expiresAt) : null;
+  if (expiry !== null && Number.isFinite(expiry) && expiry <= Date.now()) return;
+  const merchantOrder = Number.isSafeInteger(payload.orderId);
   event.waitUntil(self.registration.showNotification(title, {
     body,
     tag: typeof payload.tag === 'string' ? payload.tag : 'onlinebar-order',
     renotify: false,
+    requireInteraction: payload.requireInteraction === true,
+    vibrate: merchantOrder ? [300, 150, 300, 150, 600] : undefined,
+    actions: merchantOrder ? [{ action: 'open', title: 'Open order' }] : undefined,
     icon: '/favicon.svg',
     badge: '/favicon.svg',
-    data: { url }
+    data: { url, orderId: merchantOrder ? payload.orderId : null }
   }));
 });
 

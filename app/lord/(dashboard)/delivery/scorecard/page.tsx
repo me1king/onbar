@@ -23,15 +23,35 @@ interface VendorWindow {
   accepted: number;
   rejected: number;
   averageResponseSeconds: number | null;
+  averagePrepMinutes: number | null;
+  onTimePercent: number | null;
+  averageRating: number | null;
+  vendorComplaints: number;
+  complaintsPer100: number | null;
   delivered: number;
   exceptions: number;
+  score: number | null;
+  grade: string | null;
+  rank: number | null;
+  zoneSize: number;
 }
 
 interface VendorScorecard {
   applicationId: string;
   name: string;
   town: string | null;
+  vendorType: 'retailer' | 'wholesaler' | 'street_food';
   acceptingOrders: boolean;
+  targets: {
+    replySeconds: number;
+    prepMinutes: number;
+    acceptancePercent: number;
+    onTimePercent: number;
+    rating: number;
+    complaintsPer100: number;
+    minimumDecisions: number;
+  };
+  complianceScore: number | null;
   windows: Record<WindowDays, VendorWindow>;
   dailyResponse: Array<{ date: string; averageResponseSeconds: number; decisions: number }>;
   declineReasons: Array<{ reason: string; count: number }>;
@@ -48,6 +68,7 @@ interface ScorecardResponse {
   vendors?: VendorScorecard[];
   updatedAt?: string;
   responseMetric?: string;
+  timeoutMetric?: string;
   error?: string;
 }
 
@@ -57,18 +78,25 @@ function acceptanceRate(metrics: VendorWindow) {
 }
 
 function score(metrics: VendorWindow) {
-  const acceptance = acceptanceRate(metrics);
-  if (acceptance === null || metrics.averageResponseSeconds === null || metrics.decisions < 5) return null;
-  const speed = Math.max(0, Math.min(100, 100 * (1 - metrics.averageResponseSeconds / 180)));
-  return Math.round(acceptance * 0.65 + speed * 0.35);
+  return metrics.score;
 }
 
 function grade(value: number | null) {
   if (value === null) return { label: '—', tone: 'bg-slate-800 text-slate-400' };
   if (value >= 85) return { label: 'A', tone: 'bg-emerald-500/15 text-emerald-300' };
-  if (value >= 70) return { label: 'B', tone: 'bg-sky-500/15 text-sky-300' };
-  if (value >= 55) return { label: 'C', tone: 'bg-amber-500/15 text-amber-300' };
+  if (value >= 72) return { label: 'B', tone: 'bg-sky-500/15 text-sky-300' };
+  if (value >= 58) return { label: 'C', tone: 'bg-amber-500/15 text-amber-300' };
   return { label: 'D', tone: 'bg-rose-500/15 text-rose-300' };
+}
+
+const vendorTypeLabels: Record<VendorScorecard['vendorType'], string> = {
+  retailer: 'Alcohol retailer',
+  wholesaler: 'Alcohol wholesaler',
+  street_food: 'Street food'
+};
+
+function isVendorType(value: string): value is VendorScorecard['vendorType'] {
+  return value === 'retailer' || value === 'wholesaler' || value === 'street_food';
 }
 
 function formatResponse(seconds: number | null) {
@@ -118,6 +146,7 @@ export default function DeliveryVendorScorecardPage() {
   const [vendors, setVendors] = React.useState<VendorScorecard[]>([]);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [days, setDays] = React.useState<WindowDays>(7);
+  const [vendorTypeFilter, setVendorTypeFilter] = React.useState<'all' | VendorScorecard['vendorType']>('all');
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -153,13 +182,15 @@ export default function DeliveryVendorScorecardPage() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  const rankedVendors = React.useMemo(() => [...vendors].sort((left, right) => {
+  const rankedVendors = React.useMemo(() => vendors.filter(vendor =>
+    vendorTypeFilter === 'all' || vendor.vendorType === vendorTypeFilter
+  ).sort((left, right) => {
     const leftScore = score(left.windows[days]);
     const rightScore = score(right.windows[days]);
     if (leftScore === null) return rightScore === null ? left.name.localeCompare(right.name) : 1;
     if (rightScore === null) return -1;
     return rightScore - leftScore;
-  }), [days, vendors]);
+  }), [days, vendorTypeFilter, vendors]);
   const selectedVendor = rankedVendors.find(vendor => vendor.applicationId === selectedId) || rankedVendors[0] || null;
   const selectedMetrics = selectedVendor?.windows[days] || null;
   const selectedScore = selectedMetrics ? score(selectedMetrics) : null;
@@ -208,7 +239,7 @@ export default function DeliveryVendorScorecardPage() {
             <p className="mt-5 text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Merchant operations · Verified records</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Vendor scorecard</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Real accepted/rejected and fulfilment events. Response time is measured from order creation to the merchant&apos;s recorded decision—not from a routed offer.
+              Real alcohol retailers, alcohol wholesalers, and street food vendors, ranked separately within their town. Response and preparation metrics use recorded merchant events.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -233,8 +264,22 @@ export default function DeliveryVendorScorecardPage() {
           <section aria-label="Ranked merchants" className="space-y-3">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-sm font-black uppercase tracking-wider text-slate-300">Approved merchants</h2>
-              <span className="text-xs text-slate-500">{vendors.length} tracked</span>
+              <span className="text-xs text-slate-500">{rankedVendors.length} tracked</span>
             </div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Vendor category
+              <select value={vendorTypeFilter} onChange={event => {
+                if (event.target.value === 'all' || isVendorType(event.target.value)) {
+                  setVendorTypeFilter(event.target.value);
+                }
+              }}
+                className="mt-1 h-11 w-full rounded-xl border border-white/10 bg-[#111a2e] px-3 text-xs normal-case text-white">
+                <option value="all">All vendor categories</option>
+                <option value="retailer">Alcohol retailers</option>
+                <option value="wholesaler">Alcohol wholesalers</option>
+                <option value="street_food">Street food vendors</option>
+              </select>
+            </label>
             {loading && !vendors.length ? (
               <div className="rounded-2xl border border-white/[0.08] bg-[#111a2e] p-6 text-sm text-slate-400">Loading recorded merchant metrics…</div>
             ) : rankedVendors.length === 0 ? (
@@ -252,15 +297,21 @@ export default function DeliveryVendorScorecardPage() {
                   <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-black', vendorGrade.tone)}>{vendorGrade.label}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-black">{vendor.name}</span>
+                    <span className="mt-1 block text-[10px] text-slate-400">{vendorTypeLabels[vendor.vendorType]}</span>
                     <span className="mt-1 flex items-center gap-1 text-[10px] text-slate-400"><MapPin size={11} />{vendor.town || 'Location not set'} · {formatResponse(metrics.averageResponseSeconds)} response</span>
                     <span className="mt-1 block text-[10px] text-slate-500">{acceptance === null ? 'No decision sample' : `${acceptance}% acceptance`} · {metrics.decisions} decisions</span>
+                    <span className="mt-1 block text-[10px] text-slate-500">
+                      {metrics.decisions < vendor.targets.minimumDecisions
+                        ? `Rank eligible after ${vendor.targets.minimumDecisions} decisions`
+                        : metrics.rank ? `Rank ${metrics.rank} of ${metrics.zoneSize} in ${vendor.town || 'town not set'}` : 'No town ranking available'}
+                    </span>
                   </span>
                   <span className="text-lg font-black tabular-nums">{vendorScore ?? '—'}</span>
                 </button>
               );
             })}
             <p className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-[10px] leading-5 text-slate-500">
-              Score uses acceptance (65%) and response speed (35%, full credit at 0 seconds and none at 180 seconds). Grades are withheld until five decisions exist. This is a dispatch aid, not a customer rating.
+              Ranking is separated by vendor category and town. Minimum sample thresholds are category-specific. Timeouts are not counted because this fulfilment workflow does not record offer timeouts.
             </p>
           </section>
 
@@ -271,22 +322,37 @@ export default function DeliveryVendorScorecardPage() {
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">Merchant detail · last {days} days</p>
                     <h2 className="mt-2 text-2xl font-black">{selectedVendor.name}</h2>
-                    <p className="mt-1 text-sm text-slate-400">{selectedVendor.town || 'Location not set'} · {selectedVendor.acceptingOrders ? 'Accepting orders' : 'Paused for new orders'}</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {vendorTypeLabels[selectedVendor.vendorType]} · {selectedVendor.town || 'Location not set'} · {selectedVendor.acceptingOrders ? 'Accepting orders' : 'Paused for new orders'}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {selectedMetrics.decisions < selectedVendor.targets.minimumDecisions
+                        ? `${selectedMetrics.decisions} decisions; ranking starts at ${selectedVendor.targets.minimumDecisions}.`
+                        : selectedMetrics.rank
+                          ? `Rank ${selectedMetrics.rank} of ${selectedMetrics.zoneSize} ${selectedVendor.vendorType.replace('_', ' ')} vendors in ${selectedVendor.town || 'town not set'}.`
+                          : 'No town comparison is currently available.'}
+                    </p>
                   </div>
                   <span className={cn('flex h-14 w-14 items-center justify-center rounded-2xl text-2xl font-black', selectedGrade.tone)}>{selectedGrade.label}</span>
                 </div>
                 <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {[
-                    { label: 'Avg response', value: formatResponse(selectedMetrics.averageResponseSeconds), icon: Clock3 },
+                    { label: 'Avg response', value: formatResponse(selectedMetrics.averageResponseSeconds), target: `Under ${selectedVendor.targets.replySeconds}s`, icon: Clock3 },
                     { label: 'Accepted', value: selectedMetrics.accepted, icon: CheckCircle2 },
-                    { label: 'Acceptance', value: acceptanceRate(selectedMetrics) === null ? '—' : `${acceptanceRate(selectedMetrics)}%`, icon: Store },
+                    { label: 'Acceptance', value: acceptanceRate(selectedMetrics) === null ? '—' : `${acceptanceRate(selectedMetrics)}%`, target: `At least ${selectedVendor.targets.acceptancePercent}%`, icon: Store },
                     { label: 'Declined', value: selectedMetrics.rejected, icon: ShieldAlert },
+                    { label: 'Avg preparation', value: selectedMetrics.averagePrepMinutes === null ? 'Not recorded' : `${selectedMetrics.averagePrepMinutes} min`, target: `Under ${selectedVendor.targets.prepMinutes} min`, icon: Clock3 },
+                    { label: 'Ready on time', value: selectedMetrics.onTimePercent === null ? 'Not recorded' : `${selectedMetrics.onTimePercent}%`, target: `At least ${selectedVendor.targets.onTimePercent}%`, icon: CheckCircle2 },
+                    { label: 'Customer rating', value: selectedMetrics.averageRating === null ? 'Not recorded' : `${selectedMetrics.averageRating.toFixed(1)} / 5`, target: `At least ${selectedVendor.targets.rating.toFixed(1)} / 5`, icon: Store },
+                    { label: 'Vendor-fault complaints', value: selectedMetrics.complaintsPer100 === null ? 'Not recorded' : `${selectedMetrics.complaintsPer100} / 100`, target: `Under ${selectedVendor.targets.complaintsPer100} / 100`, icon: AlertTriangle },
+                    { label: 'Compliance documents', value: selectedVendor.complianceScore === null ? 'Not rated' : `${selectedVendor.complianceScore}%`, icon: ShieldAlert },
                     { label: 'Delivered', value: selectedMetrics.delivered, icon: Truck },
                     { label: 'Exceptions', value: selectedMetrics.exceptions, icon: AlertTriangle }
                   ].map(metric => (
                     <article key={metric.label} className="rounded-2xl border border-white/[0.07] bg-[#0b1020] p-4">
                       <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400"><metric.icon size={13} />{metric.label}</p>
                       <p className="mt-2 text-2xl font-black tabular-nums">{metric.value}</p>
+                      {'target' in metric && <p className="mt-1 text-[10px] text-slate-500">Target: {metric.target}</p>}
                     </article>
                   ))}
                 </div>
