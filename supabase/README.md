@@ -100,6 +100,21 @@ matching PIN before the delivery transition and commission are committed.
 Apply this migration after legacy all-in-one or delivery migrations so the older
 three-argument delivery RPC cannot bypass the handover checks.
 
+## Owner order-flow timeline
+
+After applying `FINAL_ESTABLISHMENT_SQL.sql` and `DISPATCH_MIGRATION.sql`, apply
+`ORDER_FLOW_VISIBILITY_MIGRATION.sql`. The owner order workspace at
+`/lord/orders` then shows a per-order status timeline and refreshes it every 15
+seconds. New orders, payment updates, rider progress, and admin transitions are
+recorded with timestamps and the actor where available. History begins at
+migration time; earlier order steps cannot be reconstructed.
+
+The migration also provides locked, atomic status-transition functions for
+single and bulk admin updates and verified-rider assignment. The API does not
+fall back to direct status writes if those functions are missing: apply the
+migration rather than bypassing the state machine. Payment callbacks remain
+the authority for online payment confirmation.
+
 ## Delivery merchant scorecard
 
 After the merchant operations and dispatch migrations are installed, apply
@@ -155,6 +170,26 @@ dispatch review flows to activate partners; never use this lead status alone
 to enable alcohol sales or rider dispatch. The scorecard reports stored lead
 counts and recorded launch duration only; it does not invent order volume or
 quality scores.
+
+## Company-specific onboarding links
+
+After applying `VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql` and
+`MERCHANT_OPERATIONS_MIGRATION.sql`, apply
+`ONBOARDING_INVITES_MIGRATION.sql`. An authorized operator can issue a private
+seven-day, single-use link for an individual retailer, wholesaler, or food
+vendor from `/lord/vendor-onboarding`. The recipient sees only that company's
+application flow; the invited business name and partner category are locked,
+and submitting the application associates it with that exact lead. The raw
+token is shown only when the link is issued; the database stores its SHA-256
+hash. Reissuing a link invalidates the previous one.
+
+The public onboarding route and its application APIs are allowed through the
+public launch gate so invited companies can complete the form while the
+storefront remains closed. The link does not grant access to the admin
+pipeline, other companies, or uploaded documents. Rider leads do not receive
+merchant-application links. Apply the migration to staging and test an
+invitation through expiry, single-use submission, and admin review before
+issuing production links.
 
 If the marketing dashboard reports that `marketing_campaigns.name` is missing,
 run `ADMIN_DASHBOARD_LOG_FIX_MIGRATION.sql` in the Supabase SQL Editor. It adds

@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
@@ -189,7 +190,22 @@ export async function PATCH(request: Request) {
 
   let result;
   let error;
-  if (action === 'advance') {
+  if (action === 'issue_invite') {
+    const token = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    ({ data: result, error } = await access.database.rpc('issue_vendor_onboarding_invite', {
+      p_lead_id: id,
+      p_token_hash: tokenHash,
+      p_expires_at: expiresAt,
+      p_actor: access.actor
+    }));
+    if (!error && result) {
+      return NextResponse.json({ result, token }, {
+        headers: { 'Cache-Control': 'private, no-store, max-age=0' }
+      });
+    }
+  } else if (action === 'advance') {
     if (typeof body.stage !== 'string' || !stages.includes(body.stage as typeof stages[number])) {
       return NextResponse.json({ error: 'Select a valid next stage.' }, { status: 400 });
     }
@@ -259,7 +275,7 @@ export async function PATCH(request: Request) {
   if (error) {
     if (migrationMissing(error)) return migrationResponse();
     const message = error.message || '';
-    const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|second-person review|future visit date|after phone approval|schedule a (?:future )?visit/i.test(message);
+    const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|second-person review|future visit date|after phone approval|schedule a (?:future )?visit|already completed onboarding|only available for vendor companies/i.test(message);
     const notFound = /not found/i.test(message);
     if (!stageConflict && !notFound) console.error('[VendorOnboarding] Update failed:', error);
     return NextResponse.json({

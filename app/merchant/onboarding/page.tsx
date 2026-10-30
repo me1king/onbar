@@ -86,6 +86,13 @@ interface DocumentRequirement {
   required: boolean;
 }
 
+interface CompanyInvitation {
+  businessName: string;
+  vendorType: MerchantVendorType;
+  businessType: MerchantBusinessType;
+  expiresAt: string;
+}
+
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) return {} as T;
@@ -136,6 +143,43 @@ export default function MerchantOnboarding() {
   const [submittedApplicationId, setSubmittedApplicationId] = useState('');
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteToken, setInviteToken] = useState('');
+  const [invitation, setInvitation] = useState<CompanyInvitation | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('invite');
+    if (!token) return;
+
+    setInviteToken(token);
+    setInviteLoading(true);
+    setInviteError(null);
+    const controller = new AbortController();
+    fetch(`/api/merchant-onboarding-invite?token=${encodeURIComponent(token)}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+      referrerPolicy: 'no-referrer'
+    })
+      .then(async response => {
+        const payload = await readJsonResponse<{ invitation?: CompanyInvitation; error?: string }>(response);
+        if (!response.ok || !payload.invitation) throw new Error(payload.error || 'This company link could not be verified.');
+        setInvitation(payload.invitation);
+        setBusinessType(payload.invitation.businessType);
+        setVendorType(payload.invitation.vendorType);
+        setBusinessName(payload.invitation.businessName);
+        setPhone('');
+      })
+      .catch(loadError => {
+        if (!controller.signal.aborted) {
+          setInviteError(loadError instanceof Error ? loadError.message : 'This company link could not be verified.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setInviteLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
 
   const requiredDocumentTypes = useMemo(
     () => requirements.filter(requirement => requirement.required).map(requirement => requirement.type),
@@ -219,6 +263,7 @@ export default function MerchantOnboarding() {
     payload.set('deliveryRadiusKm', deliveryRadiusKm);
     payload.set('collectionAvailable', String(collectionAvailable));
     payload.set('privacyAcknowledged', String(privacyAcknowledged));
+    if (inviteToken) payload.set('inviteToken', inviteToken);
     for (const [type, file] of Object.entries(documents)) {
       if (!file) continue;
       payload.set(`document:${type}`, file);
@@ -229,6 +274,9 @@ export default function MerchantOnboarding() {
       const response = await fetch('/api/merchant-applications', { method: 'POST', body: payload });
       const result = await readJsonResponse<{ id?: string; error?: string }>(response);
       if (!response.ok) throw new Error(result.error || 'Your application could not be submitted.');
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.delete('invite');
+      window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
       setSubmittedApplicationId(result.id || '');
       setSubmitted(true);
     } catch (submissionError) {
@@ -241,6 +289,7 @@ export default function MerchantOnboarding() {
   if (submitted) {
     return (
       <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <meta name="referrer" content="no-referrer" />
         <Card className="w-full max-w-xl rounded-[2rem] border-0 p-8 text-center shadow-xl sm:p-12">
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600">
             <CheckCircle2 size={42} />
@@ -251,13 +300,46 @@ export default function MerchantOnboarding() {
             OnBar will review your business details and documents. A merchant ID is assigned after approval. Your business will not become active automatically.
           </p>
           {submittedApplicationId && <p className="mt-4 text-xs font-semibold text-slate-500">Application reference: {submittedApplicationId}</p>}
-          <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
-            Track your application from your profile. Once approved, the Partner Workspace button will appear there for the verified account using the email address you submitted.
-          </p>
-          <Link href="/profile#workspaces" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-primary px-6 text-sm font-black uppercase text-white hover:opacity-90">
-            Go to my profile
-          </Link>
+          {invitation ? (
+            <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
+              This application is linked to {invitation.businessName}. The OnBar team will contact the details you provided about next steps.
+            </p>
+          ) : (
+            <>
+              <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
+                Track your application from your profile. Once approved, the Partner Workspace button will appear there for the verified account using the email address you submitted.
+              </p>
+              <Link href="/profile#workspaces" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-primary px-6 text-sm font-black uppercase text-white hover:opacity-90">
+                Go to my profile
+              </Link>
+            </>
+          )}
           <Link href="/" className="mt-8 inline-flex text-sm font-bold text-primary hover:underline">Return to OnBar</Link>
+        </Card>
+      </main>
+    );
+  }
+
+  if (inviteLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <meta name="referrer" content="no-referrer" />
+        <Card className="flex items-center gap-3 rounded-2xl border-0 p-6 text-sm font-semibold text-slate-700 shadow-xl">
+          <Loader2 className="animate-spin text-primary" /> Opening your company&apos;s private onboarding…
+        </Card>
+      </main>
+    );
+  }
+
+  if (inviteToken && (inviteError || !invitation)) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <meta name="referrer" content="no-referrer" />
+        <Card className="w-full max-w-lg rounded-2xl border-0 p-8 text-center shadow-xl">
+          <h1 className="text-xl font-black text-slate-900">Private link unavailable</h1>
+          <p role="alert" className="mt-3 text-sm leading-6 text-slate-600">
+            {inviteError || 'This company onboarding link could not be verified.'}
+          </p>
         </Card>
       </main>
     );
@@ -265,6 +347,7 @@ export default function MerchantOnboarding() {
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 sm:py-12">
+      {inviteToken && <meta name="referrer" content="no-referrer" />}
       <div className="mx-auto max-w-3xl">
         <header className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/10 text-primary">
@@ -296,29 +379,48 @@ export default function MerchantOnboarding() {
           {step === 0 && (
             <section className="space-y-6">
               <div>
-                <h2 className="text-xl font-black uppercase text-slate-900">Business identity</h2>
-                <p className="mt-1 text-sm text-slate-500">Tell us what kind of partner you are.</p>
+                <h2 className="text-xl font-black uppercase text-slate-900">
+                  {invitation ? 'Your company invitation' : 'Business identity'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {invitation
+                    ? 'This private link is set up for this company only. Its business identity and partner category cannot be changed.'
+                    : 'Tell us what kind of partner you are.'}
+                </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {merchantBusinessTypes.map(type => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => {
-                      setBusinessType(type);
-                      const category = merchantVendorTypeForBusinessType(type);
-                      if (category) setVendorType(category);
-                    }}
-                    className={`flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left text-sm font-bold transition ${
-                      businessType === type ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 hover:border-primary/50'
-                    }`}
-                  >
-                    {isFoodBusinessType(type) ? <Utensils size={18} /> : type === 'delivery_partner' ? <Truck size={18} /> : <Store size={18} />}
-                    {businessTypeLabels[type]}
-                  </button>
-                ))}
-              </div>
-              {businessType !== 'delivery_partner' && (
+              {!invitation && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {merchantBusinessTypes.map(type => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => {
+                        setBusinessType(type);
+                        const category = merchantVendorTypeForBusinessType(type);
+                        if (category) setVendorType(category);
+                      }}
+                      className={`flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left text-sm font-bold transition ${
+                        businessType === type ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 hover:border-primary/50'
+                      }`}
+                    >
+                      {isFoodBusinessType(type) ? <Utensils size={18} /> : type === 'delivery_partner' ? <Truck size={18} /> : <Store size={18} />}
+                      {businessTypeLabels[type]}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {invitation ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+                  <p className="text-xs font-black uppercase tracking-widest text-emerald-800">Private application for</p>
+                  <p className="mt-2 text-xl font-black text-slate-900">{invitation.businessName}</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {businessTypeLabels[invitation.businessType]} · {vendorTypeLabels[invitation.vendorType]}
+                  </p>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Link expires {new Date(invitation.expiresAt).toLocaleString()} and accepts one application.
+                  </p>
+                </div>
+              ) : businessType !== 'delivery_partner' && (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-800">
                   Vendor category: {vendorTypeLabels[vendorType]}
                   <span className="mt-1 block text-xs font-normal text-slate-500">
@@ -326,9 +428,13 @@ export default function MerchantOnboarding() {
                   </span>
                 </p>
               )}
-              <Input value={businessName} onChange={event => setBusinessName(event.target.value)} maxLength={160} placeholder="Registered business name *" className="h-12 rounded-xl" />
-              <Input value={tradingName} onChange={event => setTradingName(event.target.value)} maxLength={160} placeholder="Trading name (if different)" className="h-12 rounded-xl" />
-              <Button disabled={businessName.trim().length < 2} onClick={() => setStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
+              {!invitation && (
+                <>
+                  <Input value={businessName} onChange={event => setBusinessName(event.target.value)} maxLength={160} placeholder="Registered business name *" className="h-12 rounded-xl" />
+                  <Input value={tradingName} onChange={event => setTradingName(event.target.value)} maxLength={160} placeholder="Trading name (if different)" className="h-12 rounded-xl" />
+                </>
+              )}
+              <Button disabled={!invitation && businessName.trim().length < 2} onClick={() => setStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
                 Continue <ArrowRight size={16} className="ml-2" />
               </Button>
             </section>

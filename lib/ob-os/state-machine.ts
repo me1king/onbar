@@ -1,5 +1,6 @@
 export type OrderStatus =
     | 'Created'
+    | 'Pending'
     | 'Payment Pending'
     | 'Paid'
     | 'Stock Reserved'
@@ -7,6 +8,7 @@ export type OrderStatus =
     | 'Processing'
     | 'Packed'
     | 'Dispatched'
+    | 'Picked Up'
     | 'Out for Delivery'
     | 'Delivered'
     | 'Completed'
@@ -22,20 +24,22 @@ export type OrderStatus =
  */
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
     'Created': ['Payment Pending', 'Cancelled'],
+    'Pending': ['Paid', 'Payment Failed', 'Cancelled'],
     'Payment Pending': ['Paid', 'Payment Failed', 'Cancelled'],
-    'Paid': ['Stock Reserved', 'Cancelled', 'Refunded'],
+    'Paid': ['Stock Reserved', 'Dispatched', 'Cancelled', 'Refunded'],
     'Stock Reserved': ['Supplier Confirmed', 'Processing', 'Cancelled', 'Refunded'],
     'Supplier Confirmed': ['Processing', 'Cancelled', 'Refunded'],
     'Processing': ['Packed', 'Cancelled', 'Refunded'],
     'Packed': ['Dispatched', 'Cancelled', 'Refunded'],
-    'Dispatched': ['Out for Delivery', 'Delivered', 'Cancelled', 'Refunded'],
+    'Dispatched': ['Picked Up', 'Out for Delivery', 'Delivered', 'Cancelled', 'Refunded'],
+    'Picked Up': ['Out for Delivery', 'Delivered', 'Returned'],
     'Out for Delivery': ['Delivered', 'Returned', 'Cancelled'],
     'Delivered': ['Completed', 'Warranty', 'Returned'],
     'Completed': ['Warranty', 'Returned'],
 
     // Termination/Special States
     'Cancelled': [],
-    'Payment Failed': ['Payment Pending'],
+    'Payment Failed': ['Payment Pending', 'Cancelled'],
     'Refunded': [],
     'Warranty': ['Processing', 'Completed'],
     'Returned': ['Refunded', 'Stock Reserved']

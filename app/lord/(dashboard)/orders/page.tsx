@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
   Plus,
@@ -17,6 +18,9 @@ import {
   Search,
   ShieldAlert,
   Navigation,
+  History,
+  Clock3,
+  ChevronDown,
   CheckSquare,
   Square,
   Gift,
@@ -65,6 +69,18 @@ interface OrderRecord {
   gift_message?: string | null;
   gift_recipient?: string | null;
   gift_occasion?: string | null;
+  status_events?: OrderStatusEvent[];
+}
+
+interface OrderStatusEvent {
+  id: number;
+  order_id: number;
+  from_status: string | null;
+  to_status: string;
+  actor_type: string;
+  actor_id: string | null;
+  reason: string | null;
+  created_at: string;
 }
 
 interface ManualOrderForm {
@@ -81,6 +97,17 @@ interface ManualOrderForm {
 const paymentOptions = ['M-Pesa', 'COD', 'Paystack'] as const;
 
 type PaymentMethod = (typeof paymentOptions)[number];
+const serverManagedStatuses = new Set<MachineStatus>([
+  'Paid', 'Payment Failed', 'Refunded', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'
+]);
+const bulkStatusCandidates: MachineStatus[] = [
+  'Payment Pending', 'Stock Reserved', 'Supplier Confirmed', 'Processing', 'Packed',
+  'Completed', 'Cancelled', 'Warranty', 'Returned'
+];
+
+function getAdminStatusActions(status: MachineStatus) {
+  return getAvailableActions(status).filter(nextStatus => !serverManagedStatuses.has(nextStatus));
+}
 
 const initialManualOrder: ManualOrderForm = {
   customer_name: '',
@@ -108,11 +135,11 @@ export default function AdminOrdersPage() {
   const [manualOrder, setManualOrder] = React.useState<ManualOrderForm>(initialManualOrder);
   const [selectedOrders, setSelectedOrders] = React.useState<number[]>([]);
   const [isBulkUpdating, setIsBulkUpdating] = React.useState(false);
-  const [assigningRiderId, setAssigningRiderId] = React.useState<number | null>(null);
-  const [riderForm, setRiderForm] = React.useState({ name: '', phone: '' });
   const [editingGiftOrderId, setEditingGiftOrderId] = React.useState<number | null>(null);
   const [giftMessageDraft, setGiftMessageDraft] = React.useState('');
   const [isSavingGiftMessage, setIsSavingGiftMessage] = React.useState(false);
+  const [flowHistoryWarning, setFlowHistoryWarning] = React.useState<string | null>(null);
+  const [expandedFlowOrderId, setExpandedFlowOrderId] = React.useState<number | null>(null);
 
   const canManageOrders = role === 'staff' || role === 'admin' || role === 'owner' || permissions.can_manage_orders;
   const canDeleteOrders = role === 'admin' || role === 'owner' || permissions.can_delete_items;
@@ -129,8 +156,8 @@ export default function AdminOrdersPage() {
     return new Map(products.map((product) => [product.id, product.name]));
   }, [products]);
 
-  const loadOrders = async () => {
-    setIsLoading(true);
+  const loadOrders = React.useCallback(async (background = false) => {
+    if (!background) setIsLoading(true);
 
     try {
       const response = await fetch('/api/admin/orders', { cache: 'no-store' });
@@ -138,10 +165,12 @@ export default function AdminOrdersPage() {
         orders?: OrderRecord[];
         products?: { id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number> }[];
         error?: string;
+        flowHistoryWarning?: string | null;
       };
       if (!response.ok || !result.orders || !result.products) throw new Error(result.error || 'Unable to load orders.');
       setOrders(result.orders);
       setProducts(result.products);
+      setFlowHistoryWarning(result.flowHistoryWarning || null);
       setStatusMessage({ type: 'idle', text: '' });
     } catch (err: unknown) {
       const error = err as Error;
@@ -150,7 +179,7 @@ export default function AdminOrdersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const filteredOrders = React.useMemo(() => {
       return orders.filter(o =>
@@ -161,14 +190,16 @@ export default function AdminOrdersPage() {
   }, [orders, searchQuery]);
 
   React.useEffect(() => {
-    loadOrders();
-  }, []);
+    void loadOrders();
+    const timer = window.setInterval(() => void loadOrders(true), 15_000);
+    return () => window.clearInterval(timer);
+  }, [loadOrders]);
 
   const summary = React.useMemo(() => {
     const totalRevenue = orders
       .filter(o => o.status === 'Delivered' || o.status === 'Completed')
       .reduce((sum, order) => sum + Number(order.total_price || 0), 0);
-    const pending = orders.filter((order) => order.status === 'Created' || order.status === 'Payment Pending').length;
+    const pending = orders.filter((order) => ['Created', 'Pending', 'Payment Pending'].includes(order.status)).length;
     const delivered = orders.filter((order) => order.status === 'Delivered' || order.status === 'Completed').length;
 
     return {
@@ -177,9 +208,62 @@ export default function AdminOrdersPage() {
       delivered,
     };
   }, [orders]);
+  const availableBulkStatuses = React.useMemo(() => {
+    const selected = orders.filter(order => selectedOrders.includes(order.id));
+    if (!selected.length) return [];
+    return bulkStatusCandidates.filter(status => selected.every(order =>
+      getAdminStatusActions(order.status).includes(status)
+    ));
+  }, [orders, selectedOrders]);
+
+  const renderOrderFlow = (order: OrderRecord) => {
+    const events = order.status_events || [];
+    const expanded = expandedFlowOrderId === order.id;
+    return (
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => setExpandedFlowOrderId(expanded ? null : order.id)}
+          aria-expanded={expanded}
+          className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-primary hover:underline"
+        >
+          <History className="h-3 w-3" />
+          Order flow ({events.length})
+          <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </button>
+        {expanded && (
+          <div className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3">
+            {events.length ? events.map(event => (
+              <div key={event.id} className="flex gap-2 text-[10px]">
+                <Clock3 className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-700">
+                    {event.from_status || 'Order received'} → {event.to_status}
+                  </p>
+                  <p className="mt-0.5 text-slate-500">
+                    {new Date(event.created_at).toLocaleString()} · {event.actor_type}
+                    {event.actor_id ? ` · ${event.actor_id}` : ''}
+                    {event.reason ? ` · ${event.reason}` : ''}
+                  </p>
+                </div>
+              </div>
+            )) : (
+              <p className="text-[10px] leading-relaxed text-slate-500">
+                No timeline entries are recorded yet. Older events cannot be reconstructed; new events are captured after the order-flow migration is installed.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const updateOrderStatus = async (orderId: number, status: MachineStatus) => {
     if (!canManageOrders) return;
+    if (serverManagedStatuses.has(status)) {
+      setStatusMessage({ type: 'error', text: `${status} is handled by payment verification or the protected dispatch/delivery workflow.` });
+      return;
+    }
 
     const orderToUpdate = orders.find(o => o.id === orderId);
     if (!orderToUpdate) return;
@@ -214,69 +298,16 @@ export default function AdminOrdersPage() {
         { old: oldStatus ?? null, new: status }
       );
 
-      let loyaltyWarning = '';
-      if (status === 'Delivered' && oldStatus !== 'Delivered' && orderToUpdate?.order_items) {
-        await loadOrders();
-      }
-
-      if (status === 'Delivered' && oldStatus !== 'Delivered') {
-        try {
-          const loyaltyResponse = await fetch('/api/admin/loyalty/order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId })
-          });
-          const loyaltyResult = await loyaltyResponse.json();
-          if (!loyaltyResponse.ok) throw new Error(loyaltyResult.error || 'Points could not be processed.');
-        } catch (loyaltyError) {
-          console.error('Order delivered but loyalty points could not be processed:', loyaltyError);
-          loyaltyWarning = ' Loyalty points need a retry; see server logs.';
-        }
-      }
-
       setOrders((current) =>
         current.map((order) =>
           order.id === orderId ? { ...order, status } : order
         )
       );
 
-      if (status === 'Dispatched' || status === 'Delivered') {
-          const currentOrder = orders.find(o => o.id === orderId);
-          if (currentOrder) {
-              const notificationResponse = await fetch('/api/admin/notify-customer', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      orderId: currentOrder.id,
-                      status
-                  })
-              });
-              if (!notificationResponse.ok) {
-                  console.error('Customer status notification failed:', await notificationResponse.text());
-              }
-          }
-
-          // Phase 9: Autonomous Payout Trigger on Delivery
-          if (status === 'Delivered' && currentOrder?.rider_phone) {
-              const payoutResponse = await fetch('/api/admin/payout-worker', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({})
-              });
-              if (!payoutResponse.ok) {
-                  const result = await payoutResponse.json() as { error?: string };
-                  setStatusMessage({
-                      type: 'error',
-                      text: result.error || 'Order status saved, but the rider payout was not processed.'
-                  });
-                  return;
-              }
-          }
-      }
-
+      await loadOrders(true);
       setStatusMessage({
         type: 'success',
-        text: `Order #${orderId} marked as ${status}.${loyaltyWarning}`,
+        text: `Order #${orderId} marked as ${status}.`,
       });
     } catch (err: unknown) {
       const error = err as Error;
@@ -434,42 +465,19 @@ export default function AdminOrdersPage() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'bulk_status', ids: selectedOrders, status })
           });
-          const result = await response.json() as { error?: string };
+          const result = await response.json() as { error?: string; updated?: number };
           if (!response.ok) throw new Error(result.error || 'Selected orders could not be updated.');
 
           await logAuditAction(email, 'BULK_UPDATE_ORDERS', { count: selectedOrders.length, newStatus: status });
 
-          setOrders(prev => prev.map(o => selectedOrders.includes(o.id) ? { ...o, status } : o));
+          await loadOrders(true);
           setSelectedOrders([]);
-          setStatusMessage({ type: 'success', text: `Successfully updated ${selectedOrders.length} orders.` });
+          setStatusMessage({ type: 'success', text: `Successfully updated ${result.updated ?? selectedOrders.length} orders.` });
       } catch (err: unknown) {
           const error = err as Error;
           setStatusMessage({ type: 'error', text: error.message });
       } finally {
           setIsBulkUpdating(false);
-      }
-  };
-
-  const handleAssignRider = async (orderId: number) => {
-      if (!riderForm.name || !riderForm.phone) return;
-      try {
-          const response = await fetch('/api/admin/orders', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'rider', id: orderId, name: riderForm.name, phone: riderForm.phone })
-          });
-          const result = await response.json() as { error?: string };
-          if (!response.ok) throw new Error(result.error || 'Rider could not be assigned.');
-
-          await logAuditAction(email, 'ASSIGN_RIDER', { id: orderId, rider: riderForm.name });
-
-          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, rider_name: riderForm.name, rider_phone: riderForm.phone, status: 'Dispatched' } : o));
-          setAssigningRiderId(null);
-          setRiderForm({ name: '', phone: '' });
-          setStatusMessage({ type: 'success', text: 'Rider assigned and order dispatched!' });
-      } catch (err: unknown) {
-          const error = err as Error;
-          setStatusMessage({ type: 'error', text: error.message });
       }
   };
 
@@ -517,6 +525,12 @@ export default function AdminOrdersPage() {
             </Button>
         </div>
       </header>
+
+      {flowHistoryWarning && (
+        <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          {flowHistoryWarning}
+        </div>
+      )}
 
       <div className="relative">
           <Input
@@ -629,10 +643,11 @@ export default function AdminOrdersPage() {
                   </select>
                   <select
                     className="rounded-2xl border border-slate-100 bg-slate-50/50 h-12 px-3 text-xs font-black uppercase tracking-widest outline-none"
-                    value={manualOrder.status}
-                    onChange={(e) => setManualOrder({...manualOrder, status: e.target.value as MachineStatus})}
+                    value="Created"
+                    disabled
+                    aria-label="Initial order status"
                   >
-                    {(['Created', 'Paid', 'Dispatched', 'Delivered'] as MachineStatus[]).map(s => <option key={s} value={s}>{s}</option>)}
+                    <option value="Created">Created</option>
                   </select>
                 </div>
               </div>
@@ -653,7 +668,7 @@ export default function AdminOrdersPage() {
                         <p className="text-[11px] font-black uppercase text-foreground tracking-[0.2em]">{selectedOrders.length} Orders Selected</p>
                     </div>
                     <div className="flex gap-3">
-                        {(['Paid', 'Dispatched', 'Delivered', 'Cancelled'] as MachineStatus[]).map(s => (
+                        {availableBulkStatuses.map(s => (
                             <Button
                                 key={s}
                                 size="sm"
@@ -731,6 +746,7 @@ export default function AdminOrdersPage() {
                                     <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-2 mt-1.5 whitespace-nowrap">
                                     <Phone className="h-3 w-3" /> {order.customer_phone}
                                     </span>
+                                    {renderOrderFlow(order)}
 
                                     {(order.is_gift || order.gift_message || order.note?.includes('GIFT')) && (
                                         <div className="mt-3 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-[10px] space-y-2 max-w-[240px]">
@@ -872,21 +888,18 @@ export default function AdminOrdersPage() {
                                         disabled={updatingId === order.id}
                                     >
                                         <option value={order.status}>{order.status}</option>
-                                        {getAvailableActions(order.status).map(s => (
+                                        {getAdminStatusActions(order.status).map(s => (
                                             <option key={s} value={s}>{s}</option>
                                         ))}
                                     </select>
 
                                     {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
-                                        <button
-                                            onClick={() => {
-                                                setAssigningRiderId(order.id);
-                                                setRiderForm({ name: order.rider_name || '', phone: order.rider_phone || '' });
-                                            }}
+                                        <Link
+                                            href="/lord/dispatch"
                                             className="text-[8px] font-black uppercase text-primary hover:underline text-left pl-1 whitespace-nowrap"
                                         >
                                             {order.rider_name ? `Runner: ${order.rider_name}` : 'Assign Runner'}
-                                        </button>
+                                        </Link>
                                     )}
                                 </div>
                                 </td>
@@ -971,6 +984,7 @@ export default function AdminOrdersPage() {
                                         <p className="text-[8px] font-black text-primary uppercase mt-1 tracking-widest">{order.payment_method}</p>
                                     </div>
                                 </div>
+                                {renderOrderFlow(order)}
 
                                 <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl">
                                     <span className="text-[9px] font-black uppercase text-slate-400">Pipeline Status</span>
@@ -980,13 +994,16 @@ export default function AdminOrdersPage() {
                                         onChange={(e) => updateOrderStatus(order.id, e.target.value as MachineStatus)}
                                     >
                                         <option value={order.status}>{order.status}</option>
-                                        {getAvailableActions(order.status).map(s => <option key={s} value={s}>{s}</option>)}
+                                        {getAdminStatusActions(order.status).map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                 </div>
 
                                 <div className="flex gap-2">
                                     <Button onClick={() => handleDownloadReceipt(order)} variant="outline" className="flex-1 h-10 rounded-xl text-[8px] font-black uppercase border-slate-100">Receipt</Button>
                                     <Button onClick={() => copyTrackingLink(order.id)} variant="outline" className="flex-1 h-10 rounded-xl text-[8px] font-black uppercase border-slate-100">Track</Button>
+                                    <Button asChild variant="outline" className="flex-1 h-10 rounded-xl text-[8px] font-black uppercase border-slate-100">
+                                      <Link href="/lord/dispatch">Dispatch</Link>
+                                    </Button>
                                     <Button onClick={() => handleShareOnWhatsApp(order)} className="flex-1 h-10 rounded-xl bg-primary text-white text-[8px] font-black uppercase shadow-lg">WhatsApp</Button>
                                 </div>
                             </div>
@@ -1003,28 +1020,6 @@ export default function AdminOrdersPage() {
         <div className="fixed bottom-8 right-8 p-6 rounded-[2rem] shadow-2xl animate-in slide-in-from-bottom-8 fade-in duration-500 font-black uppercase text-[10px] tracking-widest z-[100] bg-primary text-white shadow-primary/20">
           {statusMessage.text}
         </div>
-      )}
-
-      {assigningRiderId && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-500/10 backdrop-blur-md p-4">
-              <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
-                  <h3 className="text-xl font-black uppercase tracking-tighter text-foreground mb-6">Assign Bar Runner</h3>
-                  <div className="space-y-4">
-                      <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Runner Name</label>
-                          <Input value={riderForm.name} onChange={e => setRiderForm({...riderForm, name: e.target.value})} placeholder="e.g. Kelvin" className="rounded-xl h-12 bg-slate-50 border-slate-100" />
-                      </div>
-                      <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Phone (254...)</label>
-                          <Input value={riderForm.phone} onChange={e => setRiderForm({...riderForm, phone: e.target.value})} placeholder="07XXXXXXXX" className="rounded-xl h-12 bg-slate-50 border-slate-100" />
-                      </div>
-                      <div className="flex gap-2 pt-4">
-                          <Button onClick={() => handleAssignRider(assigningRiderId!)} className="flex-1 rounded-xl h-12 bg-primary text-white font-black uppercase text-[10px] shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95">Dispatch Runner</Button>
-                          <Button variant="outline" onClick={() => setAssigningRiderId(null)} className="flex-1 rounded-xl h-12 font-black uppercase text-[10px] border-slate-100">Cancel</Button>
-                      </div>
-                  </div>
-              </div>
-          </div>
       )}
 
       <div className="pt-8">

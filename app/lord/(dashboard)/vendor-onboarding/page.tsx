@@ -6,6 +6,8 @@ import {
   Check,
   ClipboardCheck,
   Clock3,
+  Copy,
+  Link2,
   MapPin,
   Plus,
   RefreshCcw,
@@ -157,6 +159,7 @@ export default function VendorOnboardingPage() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [inviteHref, setInviteHref] = useState('');
 
   const loadPipeline = useCallback(async (keepSelection = true) => {
     setLoading(true);
@@ -202,6 +205,7 @@ export default function VendorOnboardingPage() {
       setDetailChecklist([]);
       setEvents([]);
     }
+    setInviteHref('');
   }, [selectedId, loadDetail]);
 
   const selectedLead = leads.find(lead => lead.id === selectedId) || null;
@@ -235,6 +239,40 @@ export default function VendorOnboardingPage() {
       setError(saveError instanceof Error ? saveError.message : 'Could not save this update.');
     } finally {
       setWorking(false);
+    }
+  };
+
+  const createInvite = async () => {
+    if (!selectedLead || selectedLead.vendor_type === 'rider' || selectedLead.stage === 'live') return;
+    setWorking(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await requestJson('/api/admin/vendor-onboarding', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: selectedLead.id, action: 'issue_invite' })
+      }) as { token: string };
+      const link = new URL('/merchant/onboarding', window.location.origin);
+      link.searchParams.set('invite', result.token);
+      setInviteHref(link.toString());
+      setNotice(`A private 7-day onboarding link was created for ${selectedLead.business_name}.`);
+      await loadPipeline();
+      await loadDetail(selectedLead.id);
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : 'Could not create the company onboarding link.');
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!inviteHref) return;
+    try {
+      await navigator.clipboard.writeText(inviteHref);
+      setNotice('Company onboarding link copied.');
+    } catch (copyError) {
+      console.error('[VendorOnboarding] Could not copy private invite link:', copyError);
+      setError('Could not copy the link. Select and copy the displayed URL instead.');
     }
   };
 
@@ -324,7 +362,7 @@ export default function VendorOnboardingPage() {
   }), [agents, leads]);
 
   const messageHref = selectedLead
-    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, following up about onboarding ${selectedLead.business_name} with OnBar. Can we confirm a call or visit time?`)}`
+    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, here is the private onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} OnBar will only use this link for your company's application. It expires after 7 days.`)}`
     : '';
   const next = selectedLead ? nextStage(selectedLead.stage) : null;
   const stageBlocked = selectedLead?.stage === 'phone_approved' && !selectedLead.visit_scheduled_at;
@@ -466,10 +504,27 @@ export default function VendorOnboardingPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <a href={`tel:${selectedLead.phone}`} className="inline-flex h-9 items-center rounded-md border border-slate-700 px-3 text-sm hover:bg-slate-800">Call</a>
+              {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && (
+                <Button type="button" disabled={working} onClick={() => void createInvite()} className="h-9 bg-emerald-700 px-3 text-sm text-white hover:bg-emerald-600">
+                  <Link2 className="mr-2 h-4 w-4" /> Create private link
+                </Button>
+              )}
               <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-700 px-3 text-sm hover:bg-slate-800">Open WhatsApp</a>
               <button onClick={() => setSelectedId(null)} className="rounded-md border border-slate-700 p-2 text-slate-400 hover:text-white" aria-label="Close lead detail"><X className="h-4 w-4" /></button>
             </div>
           </div>
+          {inviteHref && (
+            <div className="mt-4 rounded-lg border border-emerald-900 bg-emerald-950/40 p-3">
+              <p className="text-xs font-semibold text-emerald-200">Private link for {selectedLead.business_name} · expires in 7 days · one application</p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <input readOnly value={inviteHref} aria-label={`Private onboarding link for ${selectedLead.business_name}`}
+                  className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200" />
+                <Button type="button" variant="outline" onClick={() => void copyInvite()} className="h-9 border-slate-700">
+                  <Copy className="mr-2 h-4 w-4" /> Copy link
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="mt-5 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section>
               <div className="flex items-center justify-between gap-3">

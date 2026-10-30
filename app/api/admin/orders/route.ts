@@ -6,10 +6,13 @@ import { isValidTransition, type OrderStatus } from '@/lib/ob-os/state-machine';
 export const dynamic = 'force-dynamic';
 
 const orderStatuses: OrderStatus[] = [
-  'Created', 'Payment Pending', 'Paid', 'Stock Reserved', 'Supplier Confirmed',
-  'Processing', 'Packed', 'Dispatched', 'Out for Delivery', 'Delivered',
+  'Created', 'Pending', 'Payment Pending', 'Paid', 'Stock Reserved', 'Supplier Confirmed',
+  'Processing', 'Packed', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered',
   'Completed', 'Cancelled', 'Payment Failed', 'Refunded', 'Warranty', 'Returned'
 ];
+const serverManagedStatuses = new Set<OrderStatus>([
+  'Paid', 'Payment Failed', 'Refunded', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'
+]);
 
 async function getAccess(request?: Request, mutation = false) {
   const session = await getAdminSession();
@@ -49,7 +52,7 @@ async function updateOrderStatus(
 ) {
   const { data: order, error: readError } = await database
     .from('orders')
-    .select('id,status,order_items(*)')
+    .select('id,status')
     .eq('id', id)
     .maybeSingle();
   if (readError || !order) {
@@ -68,44 +71,8 @@ async function updateOrderStatus(
     admin_email_input: adminEmail
   });
   if (transition.error) {
-    console.error('[AdminOrders] State transition RPC failed; applying validated status update:', transition.error);
-    const { error } = await database.from('orders').update({ status }).eq('id', id);
-    if (error) {
-      console.error('[AdminOrders] Could not update order status:', error);
-      throw new Error(error.message);
-    }
-  }
-
-  if (status === 'Delivered' && currentStatus !== 'Delivered') {
-    for (const item of order.order_items || []) {
-      const { data: product, error: productReadError } = await database
-        .from('products')
-        .select('stock,variant_stock')
-        .eq('id', item.product_id)
-        .maybeSingle();
-      if (productReadError) {
-        console.error('[AdminOrders] Could not read product stock after delivery:', productReadError);
-        throw new Error(`Order #${id} was delivered, but product stock could not be updated.`);
-      }
-      if (!product) continue;
-
-      const quantity = Number(item.quantity || 1);
-      const nextStock = Math.max(0, Number(product.stock || 0) - quantity);
-      const variantStock = product.variant_stock && typeof product.variant_stock === 'object'
-        ? { ...product.variant_stock as Record<string, number> }
-        : {};
-      if (item.size && variantStock[item.size] !== undefined) {
-        variantStock[item.size] = Math.max(0, Number(variantStock[item.size] || 0) - quantity);
-      }
-      const updates = item.size && variantStock[item.size] !== undefined
-        ? { stock: nextStock, variant_stock: variantStock }
-        : { stock: nextStock };
-      const { error: stockError } = await database.from('products').update(updates).eq('id', item.product_id);
-      if (stockError) {
-        console.error('[AdminOrders] Could not decrement product stock after delivery:', stockError);
-        throw new Error(`Order #${id} was delivered, but product stock could not be updated.`);
-      }
-    }
+    console.error('[AdminOrders] Atomic order status transition failed:', transition.error);
+    throw new Error(transition.error.message);
   }
   return { oldStatus: currentStatus };
 }
@@ -114,7 +81,7 @@ export async function GET() {
   const access = await getAccess();
   if ('response' in access) return access.response;
   const [orders, products] = await Promise.all([
-    access.database.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }),
+    access.database.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(500),
     access.database.from('products').select('id,name,price,cost_price,stock,variant_stock').order('name')
   ]);
   if (orders.error || products.error) {
@@ -122,7 +89,96 @@ export async function GET() {
     console.error('[AdminOrders] Could not load order fulfillment data:', error);
     return NextResponse.json({ error: 'Orders or product inventory could not be loaded. Check the database connection and schema.' }, { status: 503 });
   }
-  return NextResponse.json({ orders: orders.data || [], products: products.data || [] }, {
+  const orderIds = (orders.data || []).map(order => order.id);
+  const [history, merchantEvents, dispatchDecisions] = orderIds.length
+    ? await Promise.all([
+      access.database.from('order_status_events')
+        .select('id,order_id,from_status,to_status,actor_type,actor_id,reason,created_at')
+        .in('order_id', orderIds)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(10_000),
+      access.database.from('merchant_fulfillment_events')
+        .select('id,order_id,event_type,actor,occurred_at,application:merchant_applications(business_name)')
+        .in('order_id', orderIds)
+        .order('occurred_at', { ascending: true })
+        .limit(10_000),
+      access.database.from('dispatch_decisions')
+        .select('id,order_id,selected_rider_name,decision_type,chosen_by,override_reason,created_at')
+        .in('order_id', orderIds)
+        .order('created_at', { ascending: true })
+        .limit(10_000)
+    ])
+    : [
+      { data: [], error: null },
+      { data: [], error: null },
+      { data: [], error: null }
+    ] as const;
+  const historyWarning = history.error || merchantEvents.error || dispatchDecisions.error;
+  if (history.error) console.error('[AdminOrders] Order status history is unavailable:', history.error);
+  if (merchantEvents.error) console.error('[AdminOrders] Merchant fulfillment history is unavailable:', merchantEvents.error);
+  if (dispatchDecisions.error) console.error('[AdminOrders] Rider dispatch history is unavailable:', dispatchDecisions.error);
+
+  type FlowEvent = {
+    id: string;
+    order_id: number;
+    from_status: string | null;
+    to_status: string;
+    actor_type: string;
+    actor_id: string | null;
+    reason: string | null;
+    created_at: string;
+  };
+  const eventsByOrder = new Map<number, FlowEvent[]>();
+  const appendEvent = (event: FlowEvent) => {
+    const events = eventsByOrder.get(event.order_id) || [];
+    events.push(event);
+    eventsByOrder.set(event.order_id, events);
+  };
+  for (const event of history.data || []) {
+    appendEvent({ ...event, id: `status-${event.id}` });
+  }
+  for (const event of merchantEvents.data || []) {
+    const merchant = Array.isArray(event.application) ? event.application[0] : event.application;
+    appendEvent({
+      id: `merchant-${event.id}`,
+      order_id: event.order_id,
+      from_status: null,
+      to_status: `Vendor ${event.event_type.replaceAll('_', ' ')}`,
+      actor_type: 'vendor',
+      actor_id: merchant?.business_name || event.actor,
+      reason: null,
+      created_at: event.occurred_at
+    });
+  }
+  for (const decision of dispatchDecisions.data || []) {
+    appendEvent({
+      id: `dispatch-${decision.id}`,
+      order_id: decision.order_id,
+      from_status: null,
+      to_status: 'Rider assigned',
+      actor_type: decision.decision_type === 'admin_override' ? 'admin override' : 'dispatch',
+      actor_id: decision.chosen_by,
+      reason: [
+        decision.selected_rider_name,
+        decision.override_reason
+      ].filter(Boolean).join(' · ') || null,
+      created_at: decision.created_at
+    });
+  }
+  for (const events of eventsByOrder.values()) {
+    events.sort((left, right) => left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id));
+  }
+  return NextResponse.json({
+    orders: (orders.data || []).map(order => ({
+      ...order,
+      status_events: eventsByOrder.get(order.id) || []
+    })),
+    products: products.data || [],
+    flowHistoryWarning: historyWarning
+      ? 'Full order-flow history is not available. Apply ORDER_FLOW_VISIBILITY_MIGRATION.sql, MERCHANT_OPERATIONS_MIGRATION.sql, and DISPATCH_MIGRATION.sql; history starts after installation.'
+      : null
+  }, {
     headers: { 'Cache-Control': 'private, no-store, max-age=0' }
   });
 }
@@ -141,7 +197,7 @@ export async function POST(request: Request) {
   const quantity = Number(body.quantity);
   const totalPrice = Number(body.total_price);
   if (!customerName || !customerPhone || !Number.isSafeInteger(quantity) || quantity < 1
-    || !Number.isFinite(totalPrice) || totalPrice < 0 || !isOrderStatus(body.status)
+    || !Number.isFinite(totalPrice) || totalPrice < 0 || body.status !== 'Created'
     || !['M-Pesa', 'COD', 'Paystack'].includes(String(body.payment_method))
     || (body.product_id !== null && body.product_id !== undefined && !validOrderId(body.product_id))) {
     return NextResponse.json({ error: 'Enter valid customer, product, quantity, price, status and payment details.' }, { status: 400 });
@@ -151,7 +207,7 @@ export async function POST(request: Request) {
     customer_phone: customerPhone,
     quantity,
     total_price: totalPrice,
-    status: body.status,
+    status: 'Created',
     payment_method: body.payment_method,
     note: typeof body.note === 'string' ? body.note.trim() || null : null,
     product_id: body.product_id ?? null,
@@ -176,41 +232,41 @@ export async function PATCH(request: Request) {
   const action = body.action;
   try {
     if (action === 'status' && validOrderId(body.id) && isOrderStatus(body.status)) {
+      if (serverManagedStatuses.has(body.status)) {
+        return NextResponse.json({
+          error: `${body.status} is controlled by payment verification or the protected dispatch/delivery workflow.`
+        }, { status: 409 });
+      }
       const result = await updateOrderStatus(access.database, body.id, body.status, access.session.email || 'Admin',
         body.status === 'Paid' ? 'Payment Verified' : 'Manual Status Update');
       return NextResponse.json(result);
     }
     if (action === 'bulk_status' && Array.isArray(body.ids) && body.ids.length > 0
       && body.ids.length <= 100 && body.ids.every(validOrderId) && isOrderStatus(body.status)) {
-      const { data: orders, error: readError } = await access.database.from('orders')
-        .select('id,status').in('id', body.ids);
-      if (readError || !orders || orders.length !== body.ids.length) throw new Error('One or more selected orders could not be found.');
-      const invalid = orders.find(order => !isOrderStatus(order.status) || !isValidTransition(order.status as OrderStatus, body.status as OrderStatus));
-      if (invalid) throw new Error(`Cannot move order #${invalid.id} from ${invalid.status} to ${String(body.status)}.`);
-      const { error } = await access.database.from('orders').update({ status: body.status }).in('id', body.ids);
-      if (error) throw new Error(error.message);
-      return NextResponse.json({ updated: body.ids.length });
+      if (new Set(body.ids).size !== body.ids.length) {
+        return NextResponse.json({ error: 'An order may only be selected once.' }, { status: 400 });
+      }
+      if (serverManagedStatuses.has(body.status)) {
+        return NextResponse.json({
+          error: `${body.status} is controlled by payment verification or the protected dispatch/delivery workflow.`
+        }, { status: 409 });
+      }
+      const { data, error } = await access.database.rpc('transition_order_states', {
+        order_ids_input: body.ids,
+        new_state_input: body.status,
+        reason_input: 'Bulk admin status update',
+        admin_email_input: access.session.email || 'Admin'
+      });
+      if (error) {
+        console.error('[AdminOrders] Atomic bulk transition failed:', error);
+        throw new Error(error.message);
+      }
+      return NextResponse.json(data);
     }
     if (action === 'gift' && validOrderId(body.id) && typeof body.message === 'string') {
       const message = body.message.trim();
       if (message.length > 1000) return NextResponse.json({ error: 'Gift message must be 1,000 characters or fewer.' }, { status: 400 });
       const { error } = await access.database.from('orders').update({ is_gift: true, gift_message: message || null }).eq('id', body.id);
-      if (error) throw new Error(error.message);
-      return NextResponse.json({ success: true });
-    }
-    if (action === 'rider' && validOrderId(body.id)
-      && typeof body.name === 'string' && body.name.trim()
-      && typeof body.phone === 'string' && body.phone.trim()) {
-      const { data: order, error: readError } = await access.database.from('orders').select('status').eq('id', body.id).maybeSingle();
-      if (readError || !order) throw new Error(readError?.message || 'That order could not be found.');
-      if (!isOrderStatus(order.status) || !isValidTransition(order.status, 'Dispatched')) {
-        throw new Error(`Cannot dispatch an order from ${String(order.status)}.`);
-      }
-      const { error } = await access.database.from('orders').update({
-        rider_name: body.name.trim(),
-        rider_phone: body.phone.trim(),
-        status: 'Dispatched'
-      }).eq('id', body.id);
       if (error) throw new Error(error.message);
       return NextResponse.json({ success: true });
     }

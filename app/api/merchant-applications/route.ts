@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -149,6 +150,7 @@ export async function POST(request: Request) {
   }
   const vendorTypeValue = expectedVendorType;
   const businessName = value(form, 'businessName', 160);
+  const inviteToken = value(form, 'inviteToken', 128);
   const tradingName = value(form, 'tradingName', 160);
   const email = value(form, 'email', 254).toLowerCase();
   const phone = value(form, 'phone', 40);
@@ -217,6 +219,45 @@ export async function POST(request: Request) {
   const database = getDatabase();
   if (!database) {
     return NextResponse.json({ error: 'Merchant applications are temporarily unavailable. Please try again later.' }, { status: 503 });
+  }
+  let invitationLead: { id: string; business_name: string; vendor_type: string } | null = null;
+  let invitationTokenHash: string | null = null;
+  if (inviteToken) {
+    if (!/^[A-Za-z0-9_-]{40,64}$/.test(inviteToken)) {
+      return NextResponse.json({ error: 'This company onboarding link is invalid or expired.' }, { status: 410 });
+    }
+    invitationTokenHash = createHash('sha256').update(inviteToken).digest('hex');
+    const { data: lead, error: inviteError } = await database.from('vendor_onboarding_leads')
+      .select('id,business_name,vendor_type')
+      .eq('invite_token_hash', invitationTokenHash)
+      .gt('invite_expires_at', new Date().toISOString())
+      .is('invite_used_at', null)
+      .is('invite_application_id', null)
+      .maybeSingle();
+    if (inviteError) {
+      if (inviteError.code === '42P01' || inviteError.code === 'PGRST205' || /invite_token_hash/i.test(inviteError.message)) {
+        return NextResponse.json({
+          error: 'Private onboarding links are not configured. Contact the OnBar team to finish setting this up.'
+        }, { status: 503 });
+      }
+      console.error('[MerchantApplications] Could not verify the company invitation:', inviteError);
+      return NextResponse.json({ error: 'The company invitation could not be verified.' }, { status: 503 });
+    }
+    if (!lead || !['retailer', 'wholesaler', 'street_food'].includes(lead.vendor_type)) {
+      return NextResponse.json({ error: 'This company onboarding link is invalid, expired, or already used.' }, { status: 410 });
+    }
+    const invitedBusinessType = lead.vendor_type === 'retailer'
+      ? 'bar'
+      : lead.vendor_type === 'wholesaler'
+        ? 'supplier'
+        : 'food_vendor';
+    if (businessTypeValue !== invitedBusinessType
+      || businessName.trim().toLowerCase() !== lead.business_name.trim().toLowerCase()) {
+      return NextResponse.json({
+        error: 'This invitation is limited to the named company and its assigned partner category.'
+      }, { status: 400 });
+    }
+    invitationLead = lead;
   }
   const { data: configuredRequirements, error: requirementsError } = await database
     .from('merchant_document_requirements')
@@ -331,7 +372,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const { error: applicationError } = await database.from('merchant_applications').insert({
+    const applicationPayload = {
       id: applicationId,
       business_name: businessName,
       trading_name: tradingName || null,
@@ -357,6 +398,10 @@ export async function POST(request: Request) {
       privacy_notice_version: 'merchant-application-v1',
       privacy_acknowledged_at: new Date().toISOString(),
       status: 'submitted'
+    };
+    const { error: applicationError } = await database.from('merchant_applications').insert({
+      ...applicationPayload,
+      ...(invitationLead ? { onboarding_lead_id: invitationLead.id } : {})
     });
     if (applicationError) throw new Error(`Could not save the merchant application: ${applicationError.message}`);
 
@@ -367,6 +412,13 @@ export async function POST(request: Request) {
       details: { business_type: businessTypeValue, document_count: documents.length }
     });
     if (eventError) throw new Error(`Could not record application audit history: ${eventError.message}`);
+    if (invitationLead && invitationTokenHash) {
+      const { error: completionError } = await database.rpc('complete_vendor_onboarding_invite', {
+        p_token_hash: invitationTokenHash,
+        p_application_id: applicationId
+      });
+      if (completionError) throw new Error(`Could not complete the company invitation: ${completionError.message}`);
+    }
     return NextResponse.json({ id: applicationId, status: 'submitted' }, { status: 201 });
   } catch (error) {
     console.error('[MerchantApplications] Submission failed:', error);
@@ -376,6 +428,11 @@ export async function POST(request: Request) {
     }
     const { error: applicationCleanupError } = await database.from('merchant_applications').delete().eq('id', applicationId);
     if (applicationCleanupError) console.error('[MerchantApplications] Could not remove incomplete application:', applicationCleanupError);
+    if (error instanceof Error && /onboarding_lead_id|complete_vendor_onboarding_invite|vendor_onboarding_leads/i.test(error.message)) {
+      return NextResponse.json({
+        error: 'Private onboarding setup is incomplete. Apply supabase/ONBOARDING_INVITES_MIGRATION.sql, then retry with a newly issued company link.'
+      }, { status: 503 });
+    }
     return NextResponse.json({
       error: 'The application could not be safely saved. Confirm the merchant operations migration and private document storage are configured, then retry.'
     }, { status: 500 });
