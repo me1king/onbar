@@ -368,14 +368,14 @@ export default function VendorOnboardingPage() {
   const stageBlocked = selectedLead?.stage === 'phone_approved' && !selectedLead.visit_scheduled_at;
 
   return (
-    <div className="min-h-full space-y-6 p-4 text-slate-100 md:p-8">
+    <div className="min-h-full space-y-6 bg-[#f8f6f1] p-4 text-slate-900 md:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">
+          <div className="flex items-center gap-2 text-sm font-medium uppercase tracking-[0.2em] text-emerald-800">
             <ClipboardCheck className="h-4 w-4" /> Partner operations
           </div>
-          <h1 className="mt-2 text-3xl font-semibold text-white">Vendor launch pipeline</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-400">
+          <h1 className="mt-2 text-3xl font-semibold text-slate-950">Vendor launch pipeline</h1>
+          <p className="mt-2 max-w-3xl text-sm text-slate-600">
             Track outreach, field verification, launch gates, and agent progress. A tracked lead is not a live vendor account.
           </p>
         </div>
@@ -390,22 +390,22 @@ export default function VendorOnboardingPage() {
         </div>
       </header>
 
-      {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-950/40 p-3 text-sm text-rose-200">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-950/40 p-3 text-sm text-emerald-200">{notice}</div>}
+      {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
+      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div>}
 
-      {showAdd && <Card className="border-slate-700 bg-slate-900 p-5 text-slate-100">
+      {showAdd && <Card className="border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-white">{bulkMode ? 'Add a batch of leads' : 'Add a lead'}</h2>
-            <p className="mt-1 text-xs text-slate-400">This saves internal records only. No SMS or WhatsApp message is sent.</p>
+            <h2 className="font-semibold text-slate-950">{bulkMode ? 'Add a batch of leads' : 'Add a lead'}</h2>
+            <p className="mt-1 text-xs text-slate-600">This saves internal records only. No SMS or WhatsApp message is sent.</p>
           </div>
-          <button type="button" className="text-sm text-emerald-300 hover:text-emerald-200" onClick={() => setBulkMode(value => !value)}>
+          <button type="button" className="text-sm font-semibold text-emerald-800 hover:text-emerald-950" onClick={() => setBulkMode(value => !value)}>
             Switch to {bulkMode ? 'single lead' : 'bulk entry'}
           </button>
         </div>
         <form onSubmit={submitLead} className="space-y-4">
           {bulkMode ? <>
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-slate-700">
               One lead per line: business name, owner, phone, area, type. Separate columns with commas, tabs, or |.
               <textarea
                 required
@@ -413,23 +413,23 @@ export default function VendorOnboardingPage() {
                 onChange={event => setBulkText(event.target.value)}
                 rows={5}
                 placeholder={'The Corner Shop, Amina, +254700000000, Westlands, retailer\nFresh Bites | Peter | +254711111111 | Kilimani | street_food'}
-                className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 p-3 text-sm text-white placeholder:text-slate-300"
+                className="mt-2 w-full rounded-md border border-slate-300 bg-white p-3 text-sm text-slate-900 placeholder:text-slate-400"
               />
             </label>
-            <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} className="placeholder:text-slate-300" />
+            <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
           </> : <>
             <div className="grid gap-3 md:grid-cols-3">
-              <Input required placeholder="Business / rider name" value={form.business_name} onChange={event => setForm(current => ({ ...current, business_name: event.target.value }))} className="placeholder:text-slate-300" />
-              <Input required placeholder="Owner / contact name" value={form.owner_name} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} className="placeholder:text-slate-300" />
-              <Input required type="tel" placeholder="Phone" value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} className="placeholder:text-slate-300" />
-              <Input placeholder="WhatsApp number (optional)" value={form.whatsapp} onChange={event => setForm(current => ({ ...current, whatsapp: event.target.value }))} className="placeholder:text-slate-300" />
-              <Input required placeholder="Area / town" value={form.area} onChange={event => setForm(current => ({ ...current, area: event.target.value }))} className="placeholder:text-slate-300" />
-              <select value={form.vendor_type} onChange={event => setForm(current => ({ ...current, vendor_type: event.target.value as VendorType }))} className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white">
+              <Input required placeholder="Business / rider name" value={form.business_name} onChange={event => setForm(current => ({ ...current, business_name: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              <Input required placeholder="Owner / contact name" value={form.owner_name} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              <Input required type="tel" placeholder="Phone" value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              <Input placeholder="WhatsApp number (optional)" value={form.whatsapp} onChange={event => setForm(current => ({ ...current, whatsapp: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              <Input required placeholder="Area / town" value={form.area} onChange={event => setForm(current => ({ ...current, area: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              <select value={form.vendor_type} onChange={event => setForm(current => ({ ...current, vendor_type: event.target.value as VendorType }))} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900">
                 {types.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
               </select>
-              <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} className="placeholder:text-slate-300" />
-              <Input placeholder="Lead source (optional)" value={form.source || ''} onChange={event => setForm(current => ({ ...current, source: event.target.value }))} className="placeholder:text-slate-300" />
-              <Input placeholder="Notes (optional)" value={form.notes} onChange={event => setForm(current => ({ ...current, notes: event.target.value }))} className="placeholder:text-slate-300" />
+              <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              <Input placeholder="Lead source (optional)" value={form.source || ''} onChange={event => setForm(current => ({ ...current, source: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              <Input placeholder="Notes (optional)" value={form.notes} onChange={event => setForm(current => ({ ...current, notes: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
             </div>
           </>}
           <Button type="submit" disabled={working}>{working ? 'Saving…' : bulkMode ? 'Add batch' : 'Save lead'}</Button>
@@ -442,7 +442,7 @@ export default function VendorOnboardingPage() {
         <Metric icon={<Clock3 className="h-4 w-4" />} label="Waiting over 7 days" value={stuckCount} />
       </div>
 
-      <div className="flex gap-2 border-b border-slate-800">
+      <div className="flex gap-2 border-b border-slate-200">
         <TabButton active={tab === 'pipeline'} onClick={() => setTab('pipeline')}>Pipeline</TabButton>
         <TabButton active={tab === 'ledger'} onClick={() => setTab('ledger')}>Ledger & agent scorecard</TabButton>
       </div>
@@ -450,25 +450,25 @@ export default function VendorOnboardingPage() {
       {tab === 'pipeline' ? <>
         <div className="flex flex-wrap gap-3">
           <label className="relative min-w-[220px] flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, phone, area…" className="pl-9 placeholder:text-slate-300" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, phone, area…" className="border-slate-300 bg-white text-slate-900 pl-9 placeholder:text-slate-400" />
           </label>
-          <select value={typeFilter} onChange={event => setTypeFilter(event.target.value)} className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white">
+          <select value={typeFilter} onChange={event => setTypeFilter(event.target.value)} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900">
             <option value="">All partner types</option>
             {types.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
           </select>
-          <select value={agentFilter} onChange={event => setAgentFilter(event.target.value)} className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white">
+          <select value={agentFilter} onChange={event => setAgentFilter(event.target.value)} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900">
             <option value="">All agents</option>
             {agents.map(agent => <option key={agent} value={agent}>{agent}</option>)}
           </select>
         </div>
-        {loading ? <div className="py-12 text-center text-sm text-slate-400">Loading pipeline…</div> : <div className="grid gap-3 xl:grid-cols-6">
+        {loading ? <div className="py-12 text-center text-sm text-slate-600">Loading pipeline…</div> : <div className="grid gap-3 xl:grid-cols-6">
           {stages.map(stage => {
             const stageLeads = filtered.filter(lead => lead.stage === stage.id);
-            return <section key={stage.id} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+            return <section key={stage.id} className="min-w-0 rounded-xl border border-slate-200 bg-[#f1f4f0] p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-slate-200">{stage.label}</h2>
-                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">{stageLeads.length}</span>
+                <h2 className="text-sm font-semibold text-slate-800">{stage.label}</h2>
+                <span className="rounded-full bg-white px-2 py-0.5 text-xs text-slate-600 shadow-sm">{stageLeads.length}</span>
               </div>
               <div className="space-y-2">
                 {stageLeads.map(lead => {
@@ -476,12 +476,12 @@ export default function VendorOnboardingPage() {
                   const percent = progressFor(checklist);
                   const age = daysBetween(lead.first_call_at, null);
                   return <button key={lead.id} type="button" onClick={() => setSelectedId(lead.id)}
-                    className={`w-full rounded-lg border p-3 text-left transition hover:border-emerald-500/50 ${selectedId === lead.id ? 'border-emerald-500 bg-emerald-950/30' : 'border-slate-800 bg-slate-900'}`}>
+                    className={`w-full rounded-lg border p-3 text-left transition hover:border-emerald-500 ${selectedId === lead.id ? 'border-emerald-600 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white hover:bg-emerald-50/50'}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <span className="line-clamp-2 text-sm font-medium text-white">{lead.business_name}</span>
-                      {age > 7 && lead.stage !== 'live' && <span className="shrink-0 rounded bg-amber-950 px-1.5 py-0.5 text-[10px] text-amber-200">Stuck</span>}
+                      <span className="line-clamp-2 text-sm font-semibold text-slate-900">{lead.business_name}</span>
+                      {age > 7 && lead.stage !== 'live' && <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">Stuck</span>}
                     </div>
-                    <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+                    <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-600">
                       {lead.vendor_type === 'rider' ? <Truck className="h-3.5 w-3.5" /> : lead.vendor_type === 'street_food' ? <Utensils className="h-3.5 w-3.5" /> : <Wine className="h-3.5 w-3.5" />}
                       {typeLabel(lead.vendor_type)} · {lead.area}
                     </div>
@@ -490,36 +490,36 @@ export default function VendorOnboardingPage() {
                     </div>
                   </button>;
                 })}
-                {!stageLeads.length && <div className="rounded-lg border border-dashed border-slate-800 p-4 text-center text-xs text-slate-600">No leads</div>}
+                {!stageLeads.length && <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 p-4 text-center text-xs text-slate-500">No leads</div>}
               </div>
             </section>;
           })}
         </div>}
-        {selectedLead && <Card className="border-slate-700 bg-slate-900 p-5 text-slate-100">
+        {selectedLead && <Card className="border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-emerald-300">{typeLabel(selectedLead.vendor_type)} · {stageLabel(selectedLead.stage)}</div>
-              <h2 className="mt-1 text-xl font-semibold text-white">{selectedLead.business_name}</h2>
-              <p className="mt-1 text-sm text-slate-400">{selectedLead.owner_name} · {selectedLead.phone} · {selectedLead.area}</p>
+              <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-emerald-800">{typeLabel(selectedLead.vendor_type)} · {stageLabel(selectedLead.stage)}</div>
+              <h2 className="mt-1 text-xl font-semibold text-slate-950">{selectedLead.business_name}</h2>
+              <p className="mt-1 text-sm text-slate-600">{selectedLead.owner_name} · {selectedLead.phone} · {selectedLead.area}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <a href={`tel:${selectedLead.phone}`} className="inline-flex h-9 items-center rounded-md border border-slate-700 px-3 text-sm hover:bg-slate-800">Call</a>
+              <a href={`tel:${selectedLead.phone}`} className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Call</a>
               {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && (
-                <Button type="button" disabled={working} onClick={() => void createInvite()} className="h-9 bg-emerald-700 px-3 text-sm text-white hover:bg-emerald-600">
+                <Button type="button" disabled={working} onClick={() => void createInvite()} className="h-9 bg-emerald-700 px-3 text-sm text-white hover:bg-emerald-800">
                   <Link2 className="mr-2 h-4 w-4" /> Create private link
                 </Button>
               )}
-              <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-700 px-3 text-sm hover:bg-slate-800">Open WhatsApp</a>
-              <button onClick={() => setSelectedId(null)} className="rounded-md border border-slate-700 p-2 text-slate-400 hover:text-white" aria-label="Close lead detail"><X className="h-4 w-4" /></button>
+              <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Open WhatsApp</a>
+              <button onClick={() => setSelectedId(null)} className="rounded-md border border-slate-300 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-900" aria-label="Close lead detail"><X className="h-4 w-4" /></button>
             </div>
           </div>
           {inviteHref && (
-            <div className="mt-4 rounded-lg border border-emerald-900 bg-emerald-950/40 p-3">
-              <p className="text-xs font-semibold text-emerald-200">Private link for {selectedLead.business_name} · expires in 7 days · one application</p>
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-semibold text-emerald-900">Private link for {selectedLead.business_name} · expires in 7 days · one application</p>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <input readOnly value={inviteHref} aria-label={`Private onboarding link for ${selectedLead.business_name}`}
-                  className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200" />
-                <Button type="button" variant="outline" onClick={() => void copyInvite()} className="h-9 border-slate-700">
+                  className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800" />
+                <Button type="button" variant="outline" onClick={() => void copyInvite()} className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
                   <Copy className="mr-2 h-4 w-4" /> Copy link
                 </Button>
               </div>
@@ -528,16 +528,16 @@ export default function VendorOnboardingPage() {
           <div className="mt-5 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section>
               <div className="flex items-center justify-between gap-3">
-                <h3 className="font-medium text-white">Field visit checklist</h3>
-                <span className="text-xs text-slate-400">{progressFor(detailChecklist)}% complete</span>
+                <h3 className="font-medium text-slate-900">Field visit checklist</h3>
+                <span className="text-xs text-slate-600">{progressFor(detailChecklist)}% complete</span>
               </div>
               <div className="mt-3 space-y-2">
-                {detailChecklist.map(item => <label key={item.id} className="flex items-start gap-3 rounded-lg border border-slate-800 p-3 text-sm">
+                {detailChecklist.map(item => <label key={item.id} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 text-sm">
                   <input type="checkbox" checked={item.is_complete} disabled={working || selectedLead.stage !== 'visit_booked'}
                     onChange={event => void saveAction({ action: 'checklist', item_key: item.item_key, is_complete: event.target.checked }, 'Checklist updated.')}
                     className="mt-0.5 h-4 w-4 accent-emerald-500" />
-                  <span className={item.is_complete ? 'text-slate-400 line-through' : 'text-slate-200'}>
-                    {item.label}{item.is_required && <span className="ml-1 text-rose-300">*</span>}
+                  <span className={item.is_complete ? 'text-slate-500 line-through' : 'text-slate-700'}>
+                    {item.label}{item.is_required && <span className="ml-1 text-rose-600">*</span>}
                     {item.is_complete && item.completed_by && <span className="mt-1 block text-[11px] text-slate-500">Verified by {item.completed_by}</span>}
                   </span>
                 </label>)}
@@ -546,7 +546,7 @@ export default function VendorOnboardingPage() {
                 <Button variant="outline" disabled={working || selectedLead.stage !== 'visit_booked'} onClick={recordCheckin}>
                   <MapPin className="mr-2 h-4 w-4" /> {selectedLead.check_in_at ? 'Record another check-in' : 'GPS check-in'}
                 </Button>
-                {selectedLead.check_in_at && <span className="self-center text-xs text-slate-400">
+                {selectedLead.check_in_at && <span className="self-center text-xs text-slate-600">
                   Checked in {formatDate(selectedLead.check_in_at)} · {selectedLead.check_in_lat}, {selectedLead.check_in_lng}
                 </span>}
               </div>
@@ -554,14 +554,14 @@ export default function VendorOnboardingPage() {
             </section>
             <section className="space-y-5">
               {selectedLead.stage === 'phone_approved' && <div>
-                <h3 className="font-medium text-white">Schedule the field visit</h3>
+                <h3 className="font-medium text-slate-900">Schedule the field visit</h3>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <input
                     type="datetime-local"
                     min={formatDateTimeLocal(new Date().toISOString())}
                     value={visitDraft}
                     onChange={event => setVisitDraft(event.target.value)}
-                    className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+                    className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
                   />
                   <Button variant="outline" disabled={working || !visitDraft} onClick={() => {
                     const scheduledAt = new Date(visitDraft);
@@ -574,18 +574,18 @@ export default function VendorOnboardingPage() {
                 </div>
                 <p className="mt-2 text-xs text-slate-500">A future visit time must be saved before moving this lead to Visit booked.</p>
               </div>}
-              {selectedLead.visit_scheduled_at && <div className="text-sm text-slate-300">
-                Scheduled visit: <span className="font-medium text-white">{new Date(selectedLead.visit_scheduled_at).toLocaleString()}</span>
+              {selectedLead.visit_scheduled_at && <div className="text-sm text-slate-700">
+                Scheduled visit: <span className="font-medium text-slate-950">{new Date(selectedLead.visit_scheduled_at).toLocaleString()}</span>
               </div>}
               <div>
-                <h3 className="font-medium text-white">Launch gates</h3>
-                <label className="mt-3 flex items-center gap-2 text-sm text-slate-300">
+                <h3 className="font-medium text-slate-900">Launch gates</h3>
+                <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
                   <input type="checkbox" checked={selectedLead.test_order_passed} disabled={working || selectedLead.stage !== 'test_order'}
                     onChange={event => void saveAction({ action: 'launch_check', check: 'test_order', passed: event.target.checked }, 'Test-order result updated.')}
                     className="h-4 w-4 accent-emerald-500" />
                   Test order accepted (record only after a real test)
                 </label>
-                <label className="mt-3 flex items-center gap-2 text-sm text-slate-300">
+                <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
                   <input type="checkbox" checked={selectedLead.second_review_passed} disabled={working || selectedLead.stage !== 'test_order' || !selectedLead.test_order_passed}
                     onChange={event => void saveAction({ action: 'launch_check', check: 'second_review', passed: event.target.checked }, 'Second review updated.')}
                     className="h-4 w-4 accent-emerald-500" />
@@ -593,13 +593,13 @@ export default function VendorOnboardingPage() {
                 </label>
                 <p className="mt-2 text-xs text-slate-500">These checks are audit records; this page does not create test orders or activate accounts.</p>
               </div>
-              <div className="rounded-lg border border-slate-800 p-3">
-                <h3 className="text-sm font-medium text-white">Agent & notes</h3>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <h3 className="text-sm font-medium text-slate-900">Agent & notes</h3>
                 <div className="mt-3 space-y-2">
-                  <Input value={agentDraft} onChange={event => setAgentDraft(event.target.value)} aria-label="Assigned agent" className="placeholder:text-slate-300" />
+                  <Input value={agentDraft} onChange={event => setAgentDraft(event.target.value)} aria-label="Assigned agent" className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
                   <textarea value={notesDraft} onChange={event => setNotesDraft(event.target.value)} rows={3} placeholder="Call notes, visit details…"
-                    className="w-full rounded-md border border-slate-700 bg-slate-950 p-2 text-sm text-white placeholder:text-slate-300" />
-                  <Button size="sm" variant="outline" disabled={working} onClick={() => void saveAction({ action: 'edit', agent: agentDraft, notes: notesDraft }, 'Lead notes saved.')}>Save details</Button>
+                    className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm text-slate-900 placeholder:text-slate-400" />
+                  <Button size="sm" variant="outline" disabled={working} onClick={() => void saveAction({ action: 'edit', agent: agentDraft, notes: notesDraft }, 'Lead notes saved.')} className="border-slate-300 bg-white text-slate-700 hover:bg-slate-100">Save details</Button>
                 </div>
               </div>
               <div>
@@ -612,11 +612,11 @@ export default function VendorOnboardingPage() {
               </div>
             </section>
           </div>
-          <section className="mt-6 border-t border-slate-800 pt-4">
-            <h3 className="font-medium text-white">Activity history</h3>
+          <section className="mt-6 border-t border-slate-200 pt-4">
+            <h3 className="font-medium text-slate-900">Activity history</h3>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {events.map(event => <div key={event.id} className="rounded-md bg-slate-950 p-2 text-xs">
-                <div className="flex justify-between gap-3 text-slate-300"><span>{event.event_type.replaceAll('_', ' ')}</span><span>{formatDate(event.created_at)}</span></div>
+              {events.map(event => <div key={event.id} className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs">
+                <div className="flex justify-between gap-3 text-slate-700"><span>{event.event_type.replaceAll('_', ' ')}</span><span>{formatDate(event.created_at)}</span></div>
                 <div className="mt-1 text-slate-500">{event.actor}{typeof event.details.stage === 'string' ? ` · ${stageLabel(event.details.stage as Stage)}` : ''}</div>
               </div>)}
               {!events.length && <p className="text-xs text-slate-500">No activity recorded yet.</p>}
@@ -624,16 +624,16 @@ export default function VendorOnboardingPage() {
           </section>
         </Card>}
       </> : <>
-        <Card className="overflow-x-auto border-slate-700 bg-slate-900 p-4 text-slate-100">
-          <h2 className="mb-3 font-semibold text-white">Lead ledger</h2>
+        <Card className="overflow-x-auto border-slate-200 bg-white p-4 text-slate-800 shadow-sm">
+          <h2 className="mb-3 font-semibold text-slate-950">Lead ledger</h2>
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="text-xs uppercase tracking-wide text-slate-500">
               <tr><th className="p-2">Partner</th><th className="p-2">Type / area</th><th className="p-2">Agent</th><th className="p-2">Stage</th><th className="p-2">Checklist</th><th className="p-2">Days open</th><th className="p-2">Launched</th></tr>
             </thead>
             <tbody>{filtered.map(lead => {
               const checklist = checklists.filter(item => item.lead_id === lead.id);
-              return <tr key={lead.id} onClick={() => { setSelectedId(lead.id); setTab('pipeline'); }} className="cursor-pointer border-t border-slate-800 hover:bg-slate-800/50">
-                <td className="p-2"><span className="block font-medium text-white">{lead.business_name}</span><span className="text-xs text-slate-500">{lead.owner_name} · {lead.phone}</span></td>
+              return <tr key={lead.id} onClick={() => { setSelectedId(lead.id); setTab('pipeline'); }} className="cursor-pointer border-t border-slate-200 hover:bg-emerald-50">
+                <td className="p-2"><span className="block font-medium text-slate-900">{lead.business_name}</span><span className="text-xs text-slate-500">{lead.owner_name} · {lead.phone}</span></td>
                 <td className="p-2">{typeLabel(lead.vendor_type)}<span className="block text-xs text-slate-500">{lead.area}</span></td>
                 <td className="p-2">{lead.agent}</td><td className="p-2">{stageLabel(lead.stage)}</td>
                 <td className="p-2">{progressFor(checklist)}%</td><td className="p-2">{daysBetween(lead.first_call_at, lead.launched_at)}d</td>
@@ -645,18 +645,18 @@ export default function VendorOnboardingPage() {
         </Card>
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <div><h2 className="text-lg font-semibold text-white">Agent scorecard</h2><p className="text-xs text-slate-400">Based on saved onboarding records; no unrecorded order volume or quality ratings are estimated.</p></div>
+            <div><h2 className="text-lg font-semibold text-slate-900">Agent scorecard</h2><p className="text-xs text-slate-600">Based on saved onboarding records; no unrecorded order volume or quality ratings are estimated.</p></div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {agentStats.map(stat => <Card key={stat.agent} className="border-slate-700 bg-slate-900 p-4 text-slate-100">
-              <h3 className="font-semibold text-white">{stat.agent}</h3>
+            {agentStats.map(stat => <Card key={stat.agent} className="border-slate-200 bg-white p-4 text-slate-800 shadow-sm">
+              <h3 className="font-semibold text-slate-900">{stat.agent}</h3>
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div><div className="text-xl font-semibold text-emerald-300">{stat.assigned}</div><div className="text-xs text-slate-500">Leads added</div></div>
-                <div><div className="text-xl font-semibold text-white">{stat.live}</div><div className="text-xs text-slate-500">Live</div></div>
-                <div className="col-span-2"><div className="font-medium text-white">{stat.avgDays === null ? '—' : `${stat.avgDays} days`}</div><div className="text-xs text-slate-500">Average call-to-launch (live leads)</div></div>
+                <div><div className="text-xl font-semibold text-emerald-800">{stat.assigned}</div><div className="text-xs text-slate-500">Leads added</div></div>
+                <div><div className="text-xl font-semibold text-slate-900">{stat.live}</div><div className="text-xs text-slate-500">Live</div></div>
+                <div className="col-span-2"><div className="font-medium text-slate-900">{stat.avgDays === null ? '—' : `${stat.avgDays} days`}</div><div className="text-xs text-slate-500">Average call-to-launch (live leads)</div></div>
               </div>
             </Card>)}
-            {!agentStats.length && <Card className="border-slate-800 bg-slate-900 p-5 text-sm text-slate-500">Agent metrics will appear when leads are assigned.</Card>}
+            {!agentStats.length && <Card className="border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">Agent metrics will appear when leads are assigned.</Card>}
           </div>
         </section>
       </>}
@@ -665,12 +665,12 @@ export default function VendorOnboardingPage() {
 }
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
-  return <Card className="flex items-center gap-3 border-slate-800 bg-slate-900 p-4 text-slate-100">
-    <span className="rounded-lg bg-emerald-950 p-2 text-emerald-300">{icon}</span>
-    <span><span className="block text-xl font-semibold text-white">{value}</span><span className="text-xs text-slate-400">{label}</span></span>
+  return <Card className="flex items-center gap-3 border-slate-200 bg-white p-4 text-slate-800 shadow-sm">
+    <span className="rounded-lg bg-emerald-100 p-2 text-emerald-800">{icon}</span>
+    <span><span className="block text-xl font-semibold text-slate-950">{value}</span><span className="text-xs text-slate-600">{label}</span></span>
   </Card>;
 }
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button onClick={onClick} className={`border-b-2 px-3 py-2 text-sm font-medium ${active ? 'border-emerald-400 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-100'}`}>{children}</button>;
+  return <button onClick={onClick} className={`border-b-2 px-3 py-2 text-sm font-medium ${active ? 'border-emerald-700 text-emerald-900' : 'border-transparent text-slate-600 hover:text-slate-950'}`}>{children}</button>;
 }

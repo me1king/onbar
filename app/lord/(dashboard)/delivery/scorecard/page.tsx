@@ -82,11 +82,11 @@ function score(metrics: VendorWindow) {
 }
 
 function grade(value: number | null) {
-  if (value === null) return { label: '—', tone: 'bg-slate-800 text-slate-400' };
-  if (value >= 85) return { label: 'A', tone: 'bg-emerald-500/15 text-emerald-300' };
-  if (value >= 72) return { label: 'B', tone: 'bg-sky-500/15 text-sky-300' };
-  if (value >= 58) return { label: 'C', tone: 'bg-amber-500/15 text-amber-300' };
-  return { label: 'D', tone: 'bg-rose-500/15 text-rose-300' };
+  if (value === null) return { label: '—', tone: 'bg-slate-100 text-slate-600' };
+  if (value >= 85) return { label: 'A', tone: 'bg-emerald-100 text-emerald-900' };
+  if (value >= 72) return { label: 'B', tone: 'bg-sky-100 text-sky-900' };
+  if (value >= 58) return { label: 'C', tone: 'bg-amber-100 text-amber-900' };
+  return { label: 'D', tone: 'bg-rose-100 text-rose-900' };
 }
 
 const vendorTypeLabels: Record<VendorScorecard['vendorType'], string> = {
@@ -114,7 +114,7 @@ function ResponseTrend({ vendor, days }: { vendor: VendorScorecard; days: Window
   });
   const values = timeline.filter(item => item.decisions > 0).map(item => item.averageResponseSeconds);
   if (!values.length) {
-    return <div className="flex h-32 items-center justify-center rounded-xl border border-white/[0.06] text-xs text-slate-500">No merchant decisions recorded in this period.</div>;
+    return <div className="flex h-32 items-center justify-center rounded-xl border border-slate-200 bg-white text-xs text-slate-600">No merchant decisions recorded in this period.</div>;
   }
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -135,7 +135,7 @@ function ResponseTrend({ vendor, days }: { vendor: VendorScorecard; days: Window
           </circle>
         ) : null)}
       </svg>
-      <div className="mt-2 flex justify-between text-[9px] text-slate-500">
+      <div className="mt-2 flex justify-between text-[9px] text-slate-600">
         <span>{timeline[0]?.date}</span><span>{timeline[timeline.length - 1]?.date}</span>
       </div>
     </div>
@@ -229,51 +229,51 @@ export default function DeliveryVendorScorecardPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#0b1020] px-4 py-6 text-white sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[#f7f8fa] px-4 py-6 text-[#10231f] sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1500px] space-y-6">
-        <header className="flex flex-col justify-between gap-5 rounded-3xl border border-white/[0.08] bg-[#111a2e] p-5 sm:flex-row sm:items-center sm:p-7">
+        <header className="flex flex-col justify-between gap-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:p-7">
           <div>
-            <Link href="/lord/delivery" className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white">
+            <Link href="/lord/delivery" className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-950">
               <ArrowLeft size={14} /> Delivery command hub
             </Link>
-            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Merchant operations · Verified records</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Vendor scorecard</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.25em] text-amber-700">Merchant operations · Verified records</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-[#10231f] sm:text-4xl">Vendor scorecard</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               Real alcohol retailers, alcohol wholesalers, and street food vendors, ranked separately within their town. Response and preparation metrics use recorded merchant events.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-xl border border-white/10 bg-[#0b1020] p-1" aria-label="Scorecard reporting period">
+            <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-1" aria-label="Scorecard reporting period">
               {([7, 30] as const).map(period => (
                 <button key={period} type="button" onClick={() => setDays(period)} aria-pressed={days === period}
-                  className={cn('min-h-10 rounded-lg px-4 text-xs font-bold transition', days === period ? 'bg-white text-slate-950' : 'text-slate-300 hover:bg-white/5')}>
+                  className={cn('min-h-10 rounded-lg px-4 text-xs font-bold transition', days === period ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-white')}>
                   {period} days
                 </button>
               ))}
             </div>
-            <Button onClick={() => void refresh(true)} disabled={refreshing} variant="outline" className="min-h-11 border-white/15 bg-transparent text-white hover:bg-white/10">
+            <Button onClick={() => void refresh(true)} disabled={refreshing} variant="outline" className="min-h-11 border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <RefreshCw size={14} className={cn(refreshing && 'animate-spin')} /> Refresh
             </Button>
           </div>
         </header>
 
-        {error && <div role="alert" className="rounded-2xl border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-200"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>}
-        {notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className={cn('rounded-2xl border p-4 text-sm', notice.kind === 'success' ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200' : 'border-rose-400/20 bg-rose-400/10 text-rose-200')}>{notice.text}</div>}
+        {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>}
+        {notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className={cn('rounded-2xl border p-4 text-sm', notice.kind === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-rose-200 bg-rose-50 text-rose-800')}>{notice.text}</div>}
 
         <div className="grid gap-5 xl:grid-cols-[minmax(320px,0.78fr)_minmax(0,1.65fr)]">
           <section aria-label="Ranked merchants" className="space-y-3">
             <div className="flex items-center justify-between px-1">
-              <h2 className="text-sm font-black uppercase tracking-wider text-slate-300">Approved merchants</h2>
-              <span className="text-xs text-slate-500">{rankedVendors.length} tracked</span>
+              <h2 className="text-sm font-black uppercase tracking-wider text-slate-800">Approved merchants</h2>
+              <span className="text-xs text-slate-600">{rankedVendors.length} tracked</span>
             </div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
               Vendor category
               <select value={vendorTypeFilter} onChange={event => {
                 if (event.target.value === 'all' || isVendorType(event.target.value)) {
                   setVendorTypeFilter(event.target.value);
                 }
               }}
-                className="mt-1 h-11 w-full rounded-xl border border-white/10 bg-[#111a2e] px-3 text-xs normal-case text-white">
+                className="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs normal-case text-slate-900">
                 <option value="all">All vendor categories</option>
                 <option value="retailer">Alcohol retailers</option>
                 <option value="wholesaler">Alcohol wholesalers</option>
@@ -281,9 +281,9 @@ export default function DeliveryVendorScorecardPage() {
               </select>
             </label>
             {loading && !vendors.length ? (
-              <div className="rounded-2xl border border-white/[0.08] bg-[#111a2e] p-6 text-sm text-slate-400">Loading recorded merchant metrics…</div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">Loading recorded merchant metrics…</div>
             ) : rankedVendors.length === 0 ? (
-              <div className="rounded-2xl border border-white/[0.08] bg-[#111a2e] p-6 text-sm text-slate-400">No approved merchants have been recorded.</div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">No approved merchants have been recorded.</div>
             ) : rankedVendors.map(vendor => {
               const metrics = vendor.windows[days];
               const vendorScore = score(metrics);
@@ -293,39 +293,39 @@ export default function DeliveryVendorScorecardPage() {
                 <button key={vendor.applicationId} type="button" onClick={() => setSelectedId(vendor.applicationId)}
                   aria-pressed={selectedVendor?.applicationId === vendor.applicationId}
                   className={cn('flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition',
-                    selectedVendor?.applicationId === vendor.applicationId ? 'border-amber-400 bg-[#151e33] ring-1 ring-amber-400' : 'border-white/[0.08] bg-[#111a2e] hover:border-white/20')}>
+                    selectedVendor?.applicationId === vendor.applicationId ? 'border-amber-500 bg-amber-50 ring-1 ring-amber-500' : 'border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/40')}>
                   <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-black', vendorGrade.tone)}>{vendorGrade.label}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-black">{vendor.name}</span>
-                    <span className="mt-1 block text-[10px] text-slate-400">{vendorTypeLabels[vendor.vendorType]}</span>
-                    <span className="mt-1 flex items-center gap-1 text-[10px] text-slate-400"><MapPin size={11} />{vendor.town || 'Location not set'} · {formatResponse(metrics.averageResponseSeconds)} response</span>
-                    <span className="mt-1 block text-[10px] text-slate-500">{acceptance === null ? 'No decision sample' : `${acceptance}% acceptance`} · {metrics.decisions} decisions</span>
-                    <span className="mt-1 block text-[10px] text-slate-500">
+                    <span className="mt-1 block text-[10px] text-slate-600">{vendorTypeLabels[vendor.vendorType]}</span>
+                    <span className="mt-1 flex items-center gap-1 text-[10px] text-slate-600"><MapPin size={11} />{vendor.town || 'Location not set'} · {formatResponse(metrics.averageResponseSeconds)} response</span>
+                    <span className="mt-1 block text-[10px] text-slate-600">{acceptance === null ? 'No decision sample' : `${acceptance}% acceptance`} · {metrics.decisions} decisions</span>
+                    <span className="mt-1 block text-[10px] text-slate-600">
                       {metrics.decisions < vendor.targets.minimumDecisions
                         ? `Rank eligible after ${vendor.targets.minimumDecisions} decisions`
                         : metrics.rank ? `Rank ${metrics.rank} of ${metrics.zoneSize} in ${vendor.town || 'town not set'}` : 'No town ranking available'}
                     </span>
                   </span>
-                  <span className="text-lg font-black tabular-nums">{vendorScore ?? '—'}</span>
+                  <span className="text-lg font-black tabular-nums text-slate-950">{vendorScore ?? '—'}</span>
                 </button>
               );
             })}
-            <p className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-[10px] leading-5 text-slate-500">
+            <p className="rounded-xl border border-slate-200 bg-white p-3 text-[10px] leading-5 text-slate-600">
               Ranking is separated by vendor category and town. Minimum sample thresholds are category-specific. Timeouts are not counted because this fulfilment workflow does not record offer timeouts.
             </p>
           </section>
 
           {selectedVendor && selectedMetrics ? (
             <section aria-label={`${selectedVendor.name} performance details`} className="space-y-5">
-              <div className="rounded-3xl border border-white/[0.08] bg-[#111a2e] p-5 sm:p-7">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300">Merchant detail · last {days} days</p>
-                    <h2 className="mt-2 text-2xl font-black">{selectedVendor.name}</h2>
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700">Merchant detail · last {days} days</p>
+                    <h2 className="mt-2 text-2xl font-black text-[#10231f]">{selectedVendor.name}</h2>
+                    <p className="mt-1 text-sm text-slate-600">
                       {vendorTypeLabels[selectedVendor.vendorType]} · {selectedVendor.town || 'Location not set'} · {selectedVendor.acceptingOrders ? 'Accepting orders' : 'Paused for new orders'}
                     </p>
-                    <p className="mt-2 text-xs text-slate-500">
+                    <p className="mt-2 text-xs text-slate-600">
                       {selectedMetrics.decisions < selectedVendor.targets.minimumDecisions
                         ? `${selectedMetrics.decisions} decisions; ranking starts at ${selectedVendor.targets.minimumDecisions}.`
                         : selectedMetrics.rank
@@ -349,76 +349,76 @@ export default function DeliveryVendorScorecardPage() {
                     { label: 'Delivered', value: selectedMetrics.delivered, icon: Truck },
                     { label: 'Exceptions', value: selectedMetrics.exceptions, icon: AlertTriangle }
                   ].map(metric => (
-                    <article key={metric.label} className="rounded-2xl border border-white/[0.07] bg-[#0b1020] p-4">
-                      <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400"><metric.icon size={13} />{metric.label}</p>
-                      <p className="mt-2 text-2xl font-black tabular-nums">{metric.value}</p>
-                      {'target' in metric && <p className="mt-1 text-[10px] text-slate-500">Target: {metric.target}</p>}
+                    <article key={metric.label} className="rounded-2xl border border-slate-200 bg-[#f7f8fa] p-4">
+                      <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600"><metric.icon size={13} />{metric.label}</p>
+                      <p className="mt-2 text-2xl font-black tabular-nums text-slate-950">{metric.value}</p>
+                      {'target' in metric && <p className="mt-1 text-[10px] text-slate-600">Target: {metric.target}</p>}
                     </article>
                   ))}
                 </div>
                 <div className="mt-6 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div className="rounded-2xl border border-white/[0.07] bg-[#0b1020] p-4">
-                    <h3 className="text-sm font-black">Recorded response trend</h3>
-                    <p className="mb-3 mt-1 text-[10px] text-slate-500">Daily average seconds from order creation to accept/reject</p>
+                  <div className="rounded-2xl border border-slate-200 bg-[#f7f8fa] p-4">
+                    <h3 className="text-sm font-black text-slate-900">Recorded response trend</h3>
+                    <p className="mb-3 mt-1 text-[10px] text-slate-600">Daily average seconds from order creation to accept/reject</p>
                     <ResponseTrend vendor={selectedVendor} days={days} />
                   </div>
-                  <div className="rounded-2xl border border-white/[0.07] bg-[#0b1020] p-4">
-                    <h3 className="text-sm font-black">Recorded decline reasons</h3>
+                  <div className="rounded-2xl border border-slate-200 bg-[#f7f8fa] p-4">
+                    <h3 className="text-sm font-black text-slate-900">Recorded decline reasons</h3>
                     {selectedVendor.declineReasons.length ? (
                       <div className="mt-4 space-y-3">
                         {selectedVendor.declineReasons.map(item => (
                           <div key={item.reason}>
-                            <div className="mb-1 flex justify-between gap-3 text-[10px]"><span className="truncate text-slate-300">{item.reason}</span><span className="font-bold text-slate-400">{item.count}</span></div>
-                            <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-amber-500" style={{ width: `${(item.count / maxDeclines) * 100}%` }} /></div>
+                            <div className="mb-1 flex justify-between gap-3 text-[10px]"><span className="truncate text-slate-700">{item.reason}</span><span className="font-bold text-slate-700">{item.count}</span></div>
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-amber-500" style={{ width: `${(item.count / maxDeclines) * 100}%` }} /></div>
                           </div>
                         ))}
                       </div>
-                    ) : <p className="mt-4 text-xs text-slate-500">No merchant decline events recorded.</p>}
+                    ) : <p className="mt-4 text-xs text-slate-600">No merchant decline events recorded.</p>}
                   </div>
                 </div>
               </div>
 
               <div className="grid gap-5 lg:grid-cols-2">
-                <section className="rounded-3xl border border-white/[0.08] bg-[#111a2e] p-5">
-                  <h3 className="text-sm font-black">Availability control</h3>
-                  <p className="mt-2 text-xs leading-5 text-slate-400">Pausing stops new orders only. In-progress fulfilment remains unchanged. Every change requires a reason and is written to the merchant audit history.</p>
-                  <label className="mt-4 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <h3 className="text-sm font-black text-slate-900">Availability control</h3>
+                  <p className="mt-2 text-xs leading-5 text-slate-600">Pausing stops new orders only. In-progress fulfilment remains unchanged. Every change requires a reason and is written to the merchant audit history.</p>
+                  <label className="mt-4 block text-[10px] font-bold uppercase tracking-wider text-slate-600">
                     Audit reason
                     <textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={500} rows={3}
                       placeholder="Why is availability changing? (at least 8 characters)"
-                      className="mt-2 w-full resize-y rounded-xl border border-white/10 bg-[#0b1020] p-3 text-sm font-normal text-white outline-none focus:border-amber-400" />
+                      className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm font-normal text-slate-900 outline-none placeholder:text-slate-400 focus:border-amber-500" />
                   </label>
                   <Button onClick={() => void toggleAvailability()} disabled={actionId !== null || reason.trim().length < 8}
-                    variant="outline" className={cn('mt-3 min-h-11 w-full border-white/15 bg-transparent text-white hover:bg-white/10', selectedVendor.acceptingOrders && 'border-rose-400/30 text-rose-200')}>
+                    variant="outline" className={cn('mt-3 min-h-11 w-full border-slate-300 bg-white text-slate-800 hover:bg-slate-50', selectedVendor.acceptingOrders && 'border-rose-300 text-rose-800 hover:bg-rose-50')}>
                     {actionId ? <RefreshCw size={14} className="animate-spin" /> : selectedVendor.acceptingOrders ? 'Pause new orders' : 'Resume new orders'}
                   </Button>
                 </section>
-                <section className="rounded-3xl border border-white/[0.08] bg-[#111a2e] p-5">
-                  <h3 className="text-sm font-black">Recent merchant decisions</h3>
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <h3 className="text-sm font-black text-slate-900">Recent merchant decisions</h3>
                   {selectedVendor.recentDecisions.length ? (
                     <div className="mt-3 max-h-60 space-y-2 overflow-y-auto">
                       {selectedVendor.recentDecisions.slice(0, 8).map((decision, index) => (
-                        <div key={`${decision.orderId}-${decision.occurredAt}-${index}`} className="flex items-start justify-between gap-3 rounded-xl bg-[#0b1020] p-3 text-xs">
-                          <span><span className="font-bold">Order #{decision.orderId}</span><span className={cn('ml-2 capitalize', decision.eventType === 'accepted' ? 'text-emerald-300' : 'text-rose-300')}>{decision.eventType}</span>{decision.note && <span className="mt-1 block text-[10px] text-slate-500">{decision.note}</span>}</span>
-                          <span className="shrink-0 text-right text-[10px] text-slate-400">{formatResponse(decision.responseSeconds)}<br />{new Date(decision.occurredAt).toLocaleDateString()}</span>
+                        <div key={`${decision.orderId}-${decision.occurredAt}-${index}`} className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-[#f7f8fa] p-3 text-xs">
+                          <span><span className="font-bold text-slate-900">Order #{decision.orderId}</span><span className={cn('ml-2 capitalize', decision.eventType === 'accepted' ? 'text-emerald-800' : 'text-rose-800')}>{decision.eventType}</span>{decision.note && <span className="mt-1 block text-[10px] text-slate-600">{decision.note}</span>}</span>
+                          <span className="shrink-0 text-right text-[10px] text-slate-600">{formatResponse(decision.responseSeconds)}<br />{new Date(decision.occurredAt).toLocaleDateString()}</span>
                         </div>
                       ))}
                     </div>
-                  ) : <p className="mt-3 text-xs text-slate-500">No decisions recorded for this merchant in the last 30 days.</p>}
+                  ) : <p className="mt-3 text-xs text-slate-600">No decisions recorded for this merchant in the last 30 days.</p>}
                 </section>
               </div>
             </section>
           ) : !error ? (
-            <section className="flex min-h-64 flex-col items-center justify-center rounded-3xl border border-white/[0.08] bg-[#111a2e] p-8 text-center">
+            <section className="flex min-h-64 flex-col items-center justify-center rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
               <Store className="h-8 w-8 text-slate-500" />
-              <p className="mt-3 font-bold">No merchant performance data yet</p>
-              <p className="mt-1 text-xs text-slate-500">Approved merchants and recorded fulfillment events will appear here.</p>
+              <p className="mt-3 font-bold text-slate-900">No merchant performance data yet</p>
+              <p className="mt-1 text-xs text-slate-600">Approved merchants and recorded fulfillment events will appear here.</p>
             </section>
           ) : null}
         </div>
-        <footer className="flex flex-wrap justify-between gap-3 border-t border-white/[0.08] pt-4 text-[10px] text-slate-500">
+        <footer className="flex flex-wrap justify-between gap-3 border-t border-slate-200 pt-4 text-[10px] text-slate-600">
           <span>{updatedAt ? `Last refreshed ${new Date(updatedAt).toLocaleTimeString()}` : 'Waiting for first refresh'}</span>
-          <Link href="/lord/delivery" className="font-bold text-sky-300 hover:text-sky-200">Back to live delivery operations →</Link>
+          <Link href="/lord/delivery" className="font-bold text-emerald-800 hover:text-emerald-950">Back to live delivery operations →</Link>
         </footer>
       </div>
     </main>

@@ -68,26 +68,43 @@ export default function AskOB() {
         setMessages(prev => [...prev, { role: 'user', text: userQuery }]);
         setQuery('');
         setIsLoading(true);
+        const controller = new AbortController();
+        let timeoutId: number | undefined;
 
         try {
-            // Bar Intelligence: Local Data-Driven Response Engine
-            const response = await processQueryLocally(userQuery);
+            const timeout = new Promise<never>((_, reject) => {
+                timeoutId = window.setTimeout(() => {
+                    controller.abort();
+                    reject(new Error('The operations query timed out.'));
+                }, 12_000);
+            });
+            const response = await Promise.race([
+                processQueryLocally(userQuery, controller.signal),
+                timeout
+            ]);
             setMessages(prev => [...prev, { role: 'assistant', text: response }]);
-        } catch {
-            setMessages(prev => [...prev, { role: 'assistant', text: "Data link interrupted. Please retry." }]);
+        } catch (error) {
+            const message = error instanceof Error && error.message === 'The operations query timed out.'
+                ? 'The operations database did not respond in time. Check your connection and retry.'
+                : 'The operations data could not be loaded. Please retry.';
+            setMessages(prev => [...prev, { role: 'assistant', text: message }]);
         } finally {
+            if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+            controller.abort();
             setIsLoading(false);
         }
     };
 
-    const processQueryLocally = async (q: string): Promise<string | React.ReactNode> => {
+    const processQueryLocally = async (q: string, signal: AbortSignal): Promise<string | React.ReactNode> => {
         if (!supabase) return "Intelligence system offline.";
 
         const lowQuery = q.toLowerCase();
 
         // 1. TOP CUSTOMERS
         if (lowQuery.includes('best customer') || lowQuery.includes('top customer')) {
-            const { data } = await supabase.from('orders').select('customer_name, total_price').eq('status', 'Delivered');
+            const { data, error } = await supabase.from('orders').select('customer_name, total_price')
+                .eq('status', 'Delivered').abortSignal(signal);
+            if (error) throw error;
             if (data) {
                 const spendingMap = new Map<string, number>();
                 data.forEach(o => spendingMap.set(o.customer_name, (spendingMap.get(o.customer_name) || 0) + o.total_price));
@@ -108,20 +125,25 @@ export default function AskOB() {
 
         // 2. PROFIT / REVENUE
         if (lowQuery.includes('profit') || lowQuery.includes('revenue')) {
-            const { data } = await supabase.from('orders').select('total_price, status').eq('status', 'Delivered');
+            const { data, error } = await supabase.from('orders').select('total_price, status')
+                .eq('status', 'Delivered').abortSignal(signal);
+            if (error) throw error;
             const total = data?.reduce((s, o) => s + (o.total_price || 0), 0) || 0;
             return `Online Bar currently holds ${formatPrice(total)} in verified revenue. Our contribution margin is averaging 14.8% this week.`;
         }
 
         // 3. LOW STOCK
         if (lowQuery.includes('stock') || lowQuery.includes('inventory')) {
-            const { count } = await supabase.from('products').select('id', { count: 'exact' }).lte('stock', 5);
+            const { count, error } = await supabase.from('products').select('id', { count: 'exact' })
+                .lte('stock', 5).abortSignal(signal);
+            if (error) throw error;
             return `Alert: ${count || 0} critical beverages are approaching stock-out velocity. Recommended action: Initialize Procurement sequence now.`;
         }
 
         // 4. ORDERS
         if (lowQuery.includes('orders') || lowQuery.includes('sales')) {
-            const { count } = await supabase.from('orders').select('id', { count: 'exact' });
+            const { count, error } = await supabase.from('orders').select('id', { count: 'exact' }).abortSignal(signal);
+            if (error) throw error;
             return `We have processed ${count || 0} tactical missions since system launch. The pipeline is 100% healthy.`;
         }
 
