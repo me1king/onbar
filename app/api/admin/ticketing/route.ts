@@ -310,10 +310,13 @@ export async function POST(request: Request) {
       if (error?.code === 'P0002') return NextResponse.json({ error: 'The selected event was not found.' }, { status: 404 });
       if (error?.code === '22023') return NextResponse.json({ error: error.message }, { status: 400 });
       if (error?.code === '42501') return NextResponse.json({ error: error.message }, { status: 403 });
+      if (error?.code === 'PGRST202' || error?.code === '42883') {
+        return NextResponse.json({
+          error: 'Event details could not be saved. Apply supabase/TICKETING_EVENT_DETAILS_MIGRATION.sql and retry.'
+        }, { status: 503 });
+      }
       console.error('[TicketingAdmin] Could not update event details:', error);
-      return NextResponse.json({
-        error: 'Event details could not be saved. Apply supabase/TICKETING_EVENT_DETAILS_MIGRATION.sql and retry.'
-      }, { status: 503 });
+      return NextResponse.json({ error: 'Event details could not be saved. Please try again or contact support.' }, { status: 503 });
     }
     return NextResponse.json({ event: data });
   }

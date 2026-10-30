@@ -413,23 +413,23 @@ export default function VendorOnboardingPage() {
                 onChange={event => setBulkText(event.target.value)}
                 rows={5}
                 placeholder={'The Corner Shop, Amina, +254700000000, Westlands, retailer\nFresh Bites | Peter | +254711111111 | Kilimani | street_food'}
-                className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 p-3 text-sm text-white placeholder:text-slate-500"
+                className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 p-3 text-sm text-white placeholder:text-slate-300"
               />
             </label>
-            <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} />
+            <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} className="placeholder:text-slate-300" />
           </> : <>
             <div className="grid gap-3 md:grid-cols-3">
-              <Input required placeholder="Business / rider name" value={form.business_name} onChange={event => setForm(current => ({ ...current, business_name: event.target.value }))} />
-              <Input required placeholder="Owner / contact name" value={form.owner_name} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} />
-              <Input required type="tel" placeholder="Phone" value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} />
-              <Input placeholder="WhatsApp number (optional)" value={form.whatsapp} onChange={event => setForm(current => ({ ...current, whatsapp: event.target.value }))} />
-              <Input required placeholder="Area / town" value={form.area} onChange={event => setForm(current => ({ ...current, area: event.target.value }))} />
+              <Input required placeholder="Business / rider name" value={form.business_name} onChange={event => setForm(current => ({ ...current, business_name: event.target.value }))} className="placeholder:text-slate-300" />
+              <Input required placeholder="Owner / contact name" value={form.owner_name} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} className="placeholder:text-slate-300" />
+              <Input required type="tel" placeholder="Phone" value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} className="placeholder:text-slate-300" />
+              <Input placeholder="WhatsApp number (optional)" value={form.whatsapp} onChange={event => setForm(current => ({ ...current, whatsapp: event.target.value }))} className="placeholder:text-slate-300" />
+              <Input required placeholder="Area / town" value={form.area} onChange={event => setForm(current => ({ ...current, area: event.target.value }))} className="placeholder:text-slate-300" />
               <select value={form.vendor_type} onChange={event => setForm(current => ({ ...current, vendor_type: event.target.value as VendorType }))} className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white">
                 {types.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
               </select>
-              <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} />
-              <Input placeholder="Lead source (optional)" value={form.source || ''} onChange={event => setForm(current => ({ ...current, source: event.target.value }))} />
-              <Input placeholder="Notes (optional)" value={form.notes} onChange={event => setForm(current => ({ ...current, notes: event.target.value }))} />
+              <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} className="placeholder:text-slate-300" />
+              <Input placeholder="Lead source (optional)" value={form.source || ''} onChange={event => setForm(current => ({ ...current, source: event.target.value }))} className="placeholder:text-slate-300" />
+              <Input placeholder="Notes (optional)" value={form.notes} onChange={event => setForm(current => ({ ...current, notes: event.target.value }))} className="placeholder:text-slate-300" />
             </div>
           </>}
           <Button type="submit" disabled={working}>{working ? 'Saving…' : bulkMode ? 'Add batch' : 'Save lead'}</Button>
@@ -451,7 +451,7 @@ export default function VendorOnboardingPage() {
         <div className="flex flex-wrap gap-3">
           <label className="relative min-w-[220px] flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, phone, area…" className="pl-9" />
+            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name, phone, area…" className="pl-9 placeholder:text-slate-300" />
           </label>
           <select value={typeFilter} onChange={event => setTypeFilter(event.target.value)} className="h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white">
             <option value="">All partner types</option>
@@ -596,9 +596,9 @@ export default function VendorOnboardingPage() {
               <div className="rounded-lg border border-slate-800 p-3">
                 <h3 className="text-sm font-medium text-white">Agent & notes</h3>
                 <div className="mt-3 space-y-2">
-                  <Input value={agentDraft} onChange={event => setAgentDraft(event.target.value)} aria-label="Assigned agent" />
+                  <Input value={agentDraft} onChange={event => setAgentDraft(event.target.value)} aria-label="Assigned agent" className="placeholder:text-slate-300" />
                   <textarea value={notesDraft} onChange={event => setNotesDraft(event.target.value)} rows={3} placeholder="Call notes, visit details…"
-                    className="w-full rounded-md border border-slate-700 bg-slate-950 p-2 text-sm text-white placeholder:text-slate-500" />
+                    className="w-full rounded-md border border-slate-700 bg-slate-950 p-2 text-sm text-white placeholder:text-slate-300" />
                   <Button size="sm" variant="outline" disabled={working} onClick={() => void saveAction({ action: 'edit', agent: agentDraft, notes: notesDraft }, 'Lead notes saved.')}>Save details</Button>
                 </div>
               </div>

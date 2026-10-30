@@ -107,7 +107,7 @@ export default function TicketEventDetailsForm({
           <textarea className={`${inputClass} min-h-20 py-3`} name="cancellationPolicy" maxLength={5000} defaultValue={event.cancellation_policy} placeholder="Explain cancellation and refund terms." />
         </label>
       </div>
-      {error && <p role="alert" className="mt-3 rounded-lg border border-red-200/20 bg-red-950/20 p-3 text-xs text-red-200">{error}</p>}
+      {error && <p role="alert" className="mt-3 rounded-lg border border-red-300/40 bg-red-950 p-3 text-xs font-medium text-red-100">{error}</p>}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-orange-400 px-4 text-xs font-black text-[#170d18] hover:bg-orange-300 disabled:opacity-50">
           <CheckCircle2 size={14} /> {saving ? 'Saving details…' : 'Save event details'}
