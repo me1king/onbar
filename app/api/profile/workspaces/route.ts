@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   });
   const [{ data: applications, error: applicationsError }, { data: profile, error: profileError }] = await Promise.all([
     database.from('merchant_applications')
-      .select('id, business_name, status')
+      .select('id, business_name, status, offered_goods')
       .eq('email', user.email.toLowerCase())
       .order('submitted_at', { ascending: false })
       .limit(25),
@@ -94,7 +94,10 @@ export async function GET(request: Request) {
     merchantApplications: (applications || []).map(application => ({
       id: application.id,
       businessName: application.business_name,
-      status: application.status
+      status: application.status,
+      offeredGoods: Array.isArray(application.offered_goods)
+        ? application.offered_goods.filter((good): good is string => typeof good === 'string')
+        : []
     })),
     riderApproved
   }, {

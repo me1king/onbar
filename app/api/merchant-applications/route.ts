@@ -152,6 +152,22 @@ export async function POST(request: Request) {
   const businessName = value(form, 'businessName', 160);
   const inviteToken = value(form, 'inviteToken', 128);
   const tradingName = value(form, 'tradingName', 160);
+  let offeredGoods: string[] = [];
+  try {
+    const offeredGoodsValue = value(form, 'offeredGoods', 2000);
+    if (offeredGoodsValue) {
+      const parsedGoods = JSON.parse(offeredGoodsValue) as unknown;
+      if (!Array.isArray(parsedGoods)) {
+        throw new Error('Invalid offered goods selection.');
+      }
+      offeredGoods = parsedGoods
+        .map(item => typeof item === 'string' ? item.trim() : '')
+        .filter(item => item.length > 1 && item.length <= 120)
+        .slice(0, 50);
+    }
+  } catch {
+    return NextResponse.json({ error: 'Choose the goods you are willing to offer from the available product list.' }, { status: 400 });
+  }
   const email = value(form, 'email', 254).toLowerCase();
   const phone = value(form, 'phone', 40);
   const ownerName = value(form, 'ownerName', 120);
@@ -394,6 +410,7 @@ export async function POST(request: Request) {
       preparation_capacity: preparationCapacity,
       delivery_radius_km: deliveryRadiusKm,
       collection_available: collectionAvailable,
+      offered_goods: offeredGoods,
       documents,
       privacy_notice_version: 'merchant-application-v1',
       privacy_acknowledged_at: new Date().toISOString(),

@@ -104,6 +104,75 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   }
 }
 
+const MAX_DOCUMENT_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_TOTAL_DOCUMENT_SIZE = 15 * 1024 * 1024;
+
+function formatFriendlyUploadError(message: string | null | undefined): string {
+  const fallback = 'Your application could not be submitted.';
+  const normalized = (message || fallback).toLowerCase();
+
+  if (normalized.includes('request entity too large') || normalized.includes('payload too large') || normalized.includes('413')) {
+    return 'One or more documents are too large for this submission. Compress each file to 5 MB or less and keep the total under 15 MB before sending.';
+  }
+
+  return message || fallback;
+}
+
+async function compressDocumentIfNeeded(file: File): Promise<File> {
+  if (file.type === 'application/pdf' || file.size <= MAX_DOCUMENT_FILE_SIZE || !file.type.startsWith('image/')) {
+    return file;
+  }
+
+  try {
+    const imageBitmap = await createImageBitmap(file);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) {
+      imageBitmap.close?.();
+      return file;
+    }
+
+    const maxDimension = 2200;
+    let width = imageBitmap.width;
+    let height = imageBitmap.height;
+    const scale = Math.min(1, maxDimension / Math.max(width, height));
+
+    if (scale < 1) {
+      width = Math.max(1, Math.round(width * scale));
+      height = Math.max(1, Math.round(height * scale));
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    context.drawImage(imageBitmap, 0, 0, width, height);
+    imageBitmap.close?.();
+
+    const qualitySteps = [0.72, 0.56, 0.4];
+    for (const quality of qualitySteps) {
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((candidate) => {
+          if (!candidate) {
+            reject(new Error('Image compression failed.'));
+            return;
+          }
+          resolve(candidate);
+        }, 'image/jpeg', quality);
+      });
+
+      if (blob.size <= MAX_DOCUMENT_FILE_SIZE) {
+        return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+          type: 'image/jpeg',
+          lastModified: Date.now()
+        });
+      }
+    }
+  } catch {
+    return file;
+  }
+
+  return file;
+}
+
 export default function MerchantOnboarding() {
   const [step, setStep] = useState(0);
   const [businessType, setBusinessType] = useState<MerchantBusinessType>('bar');
@@ -142,6 +211,9 @@ export default function MerchantOnboarding() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedApplicationId, setSubmittedApplicationId] = useState('');
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
+  const [catalogOptions, setCatalogOptions] = useState<Array<{ id: number; name: string; category: string }>>([]);
+  const [selectedGoods, setSelectedGoods] = useState<number[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState('');
   const [invitation, setInvitation] = useState<CompanyInvitation | null>(null);
@@ -179,6 +251,52 @@ export default function MerchantOnboarding() {
         if (!controller.signal.aborted) setInviteLoading(false);
       });
     return () => controller.abort();
+  }, []);
+
+  const handleDocumentSelect = async (type: DocumentType, file?: File) => {
+    if (!file) {
+      setDocuments(current => ({ ...current, [type]: undefined }));
+      return;
+    }
+
+    const candidate = await compressDocumentIfNeeded(file);
+    const totalBytes = Object.values({ ...documents, [type]: candidate })
+      .filter((item): item is File => Boolean(item) && item instanceof File)
+      .reduce((sum, item) => sum + item.size, 0);
+
+    if (candidate.size > MAX_DOCUMENT_FILE_SIZE || totalBytes > MAX_TOTAL_DOCUMENT_SIZE) {
+      setError('Each document must be 5 MB or smaller and the total upload must stay under 15 MB. Please compress the files and try again.');
+      return;
+    }
+
+    setError(null);
+    setDocuments(current => ({ ...current, [type]: candidate }));
+  };
+
+  useEffect(() => {
+    let active = true;
+    async function loadCatalogOptions() {
+      setCatalogLoading(true);
+      try {
+        const response = await fetch('/api/catalog/products?limit=80', { cache: 'no-store' });
+        const payload = await readJsonResponse<{ products?: Array<{ id: number; name: string; category?: string | null }> }>(response);
+        if (!response.ok || !payload.products) throw new Error('Could not load the available goods list.');
+        if (!active) return;
+        setCatalogOptions(payload.products.map(product => ({
+          id: Number(product.id),
+          name: String(product.name),
+          category: product.category || 'General'
+        })).filter(product => product.id > 0 && product.name.trim().length > 0));
+      } catch {
+        if (active) setCatalogOptions([]);
+      } finally {
+        if (active) setCatalogLoading(false);
+      }
+    }
+    loadCatalogOptions();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const requiredDocumentTypes = useMemo(
@@ -222,6 +340,12 @@ export default function MerchantOnboarding() {
     && county.trim().length >= 2
     && town.trim().length >= 2;
 
+  const toggleSelectedGood = (productId: number) => {
+    setSelectedGoods(current => current.includes(productId)
+      ? current.filter(id => id !== productId)
+      : [...current, productId]);
+  };
+
   const submitApplication = async () => {
     if (!requirementsLoaded || requirementsLoading) {
       setError('Wait for the current document checklist to load before submitting.');
@@ -236,6 +360,15 @@ export default function MerchantOnboarding() {
       && !expiryDates[type]
     )) {
       setError('Enter the expiry date for your alcohol licence before submitting.');
+      return;
+    }
+
+    const totalDocumentBytes = Object.values(documents)
+      .filter((item): item is File => Boolean(item) && item instanceof File)
+      .reduce((sum, item) => sum + item.size, 0);
+
+    if (totalDocumentBytes > MAX_TOTAL_DOCUMENT_SIZE) {
+      setError('The combined document upload is too large. Please compress the files or upload smaller documents before submitting.');
       return;
     }
 
@@ -262,6 +395,11 @@ export default function MerchantOnboarding() {
     payload.set('preparationCapacity', preparationCapacity);
     payload.set('deliveryRadiusKm', deliveryRadiusKm);
     payload.set('collectionAvailable', String(collectionAvailable));
+    payload.set('offeredGoods', JSON.stringify(
+      selectedGoods
+        .map(id => catalogOptions.find(option => option.id === id)?.name)
+        .filter((name): name is string => Boolean(name))
+    ));
     payload.set('privacyAcknowledged', String(privacyAcknowledged));
     if (inviteToken) payload.set('inviteToken', inviteToken);
     for (const [type, file] of Object.entries(documents)) {
@@ -280,7 +418,8 @@ export default function MerchantOnboarding() {
       setSubmittedApplicationId(result.id || '');
       setSubmitted(true);
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Your application could not be submitted.');
+      const message = submissionError instanceof Error ? submissionError.message : 'Your application could not be submitted.';
+      setError(formatFriendlyUploadError(message));
     } finally {
       setLoading(false);
     }
@@ -560,6 +699,38 @@ export default function MerchantOnboarding() {
           {step === 3 && (
             <section className="space-y-5">
               <div>
+                <h2 className="text-xl font-black uppercase text-slate-900">Goods you can offer</h2>
+                <p className="mt-1 text-sm text-slate-500">Choose the items you stock or are willing to sell through OnBar. This helps the review team understand your product mix.</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Selected goods</p>
+                  <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-black uppercase text-primary">{selectedGoods.length} chosen</span>
+                </div>
+                {catalogLoading ? (
+                  <p className="text-sm text-slate-600">Loading your available product mix...</p>
+                ) : catalogOptions.length === 0 ? (
+                  <p className="text-sm text-slate-600">The product list is unavailable right now. You can continue with the rest of the application and update this later.</p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {catalogOptions.map(option => (
+                      <label key={option.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left text-sm text-slate-700 transition hover:border-primary/50">
+                        <input
+                          type="checkbox"
+                          checked={selectedGoods.includes(option.id)}
+                          onChange={() => toggleSelectedGood(option.id)}
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-bold text-slate-900">{option.name}</span>
+                          <span className="block text-[11px] uppercase tracking-[0.12em] text-slate-500">{option.category}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
                 <h2 className="text-xl font-black uppercase text-slate-900">Documents & compliance</h2>
                 <p className="mt-1 text-sm text-slate-500">The exact checklist depends on business type and county. Documents are private and only shared with authorized reviewers.</p>
               </div>
@@ -582,7 +753,10 @@ export default function MerchantOnboarding() {
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                         className="sr-only"
-                        onChange={event => setDocuments(current => ({ ...current, [type]: event.target.files?.[0] }))}
+                        onChange={async event => {
+                          const file = event.target.files?.[0];
+                          await handleDocumentSelect(type, file);
+                        }}
                       />
                     </label>
                     {documents[type] && (

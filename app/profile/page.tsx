@@ -125,7 +125,7 @@ interface ReferralNetworkStats {
 interface WorkspaceAccess {
   loading: boolean;
   error: string | null;
-  merchantApplications: Array<{ id: string; businessName: string; status: string }>;
+  merchantApplications: Array<{ id: string; businessName: string; status: string; offeredGoods: string[] }>;
   riderApproved: boolean;
 }
 
@@ -892,17 +892,28 @@ export default function ProfilePage() {
                         ) : (
                             <div className="mt-4 flex flex-wrap gap-3">
                                 {workspaceAccess.merchantApplications.map(application => application.status === 'approved' ? (
-                                    <Link
-                                        key={application.id}
-                                        href="/merchant/network"
-                                        className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-xs font-black uppercase tracking-wide text-white transition hover:opacity-90"
-                                    >
-                                        <Store size={15} /> {application.businessName} workspace
-                                    </Link>
+                                    <div key={application.id} className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                        <Link
+                                            href="/merchant/network"
+                                            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-xs font-black uppercase tracking-wide text-white transition hover:opacity-90"
+                                        >
+                                            <Store size={15} /> {application.businessName} workspace
+                                        </Link>
+                                        <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Goods offered</p>
+                                        <p className="mt-1 text-sm text-slate-700">
+                                            {application.offeredGoods.length ? application.offeredGoods.join(', ') : 'No goods selected on this application.'}
+                                        </p>
+                                    </div>
                                 ) : (
-                                    <p key={application.id} className="w-full text-sm text-slate-600">
-                                        Merchant application for <strong>{application.businessName}</strong>: {application.status.replaceAll('_', ' ')}. The workspace link will appear after approval.
-                                    </p>
+                                    <div key={application.id} className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                        <p className="text-sm text-slate-600">
+                                            Merchant application for <strong>{application.businessName}</strong>: {application.status.replaceAll('_', ' ')}.
+                                        </p>
+                                        <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Goods offered</p>
+                                        <p className="mt-1 text-sm text-slate-700">
+                                            {application.offeredGoods.length ? application.offeredGoods.join(', ') : 'No goods selected on this application.'}
+                                        </p>
+                                    </div>
                                 ))}
                                 {workspaceAccess.riderApproved && (
                                     <Link

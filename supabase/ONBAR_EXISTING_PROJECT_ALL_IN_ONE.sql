@@ -2032,6 +2032,7 @@ CREATE TABLE IF NOT EXISTS public.merchant_applications (
     preparation_capacity INTEGER CHECK (preparation_capacity IS NULL OR preparation_capacity BETWEEN 1 AND 100000),
     delivery_radius_km NUMERIC(6,2) CHECK (delivery_radius_km IS NULL OR delivery_radius_km BETWEEN 0 AND 500),
     collection_available BOOLEAN NOT NULL DEFAULT false,
+    offered_goods JSONB NOT NULL DEFAULT '[]'::JSONB,
     documents JSONB NOT NULL DEFAULT '[]'::JSONB,
     privacy_notice_version TEXT NOT NULL DEFAULT 'merchant-application-v1',
     privacy_acknowledged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -2049,7 +2050,8 @@ CREATE TABLE IF NOT EXISTS public.merchant_applications (
 
 ALTER TABLE public.merchant_applications
     ADD COLUMN IF NOT EXISTS accepting_orders BOOLEAN NOT NULL DEFAULT true,
-    ADD COLUMN IF NOT EXISTS availability_updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    ADD COLUMN IF NOT EXISTS availability_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ADD COLUMN IF NOT EXISTS offered_goods JSONB NOT NULL DEFAULT '[]'::JSONB;
 
 CREATE INDEX IF NOT EXISTS merchant_applications_status_created_idx
     ON public.merchant_applications (status, created_at DESC);

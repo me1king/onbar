@@ -97,6 +97,7 @@ type PartnerApplication = {
     preparation_capacity: number | null;
     delivery_radius_km: number | null;
     collection_available: boolean;
+    offered_goods: string[];
     documents: PartnerDocument[];
     status: string;
     review_note: string | null;
@@ -1180,6 +1181,18 @@ export default function OnBarPartnerNetworkPage() {
                   ['Capacity', application.preparation_capacity == null ? 'Not provided' : `${application.preparation_capacity} per day`]
                 ].map(([label, value]) => <div key={label}><dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 break-words font-semibold text-slate-800">{value}</dd></div>)}</dl>
                 {application.operating_areas.length > 0 && <p className="mt-5 border-t border-slate-100 pt-4 text-sm"><strong>Operating areas:</strong> {application.operating_areas.join(', ')}</p>}
+                <div className="mt-5 border-t border-slate-100 pt-4">
+                  <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">Goods you offered</h4>
+                  {application.offered_goods.length ? (
+                    <ul className="mt-3 flex flex-wrap gap-2">
+                      {application.offered_goods.map(good => (
+                        <li key={good} className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">{good}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500">No goods were recorded on this application.</p>
+                  )}
+                </div>
               </article>
               <article className="rounded-2xl bg-white p-6 shadow-sm">
                 <h3 className="font-black text-slate-900">Operating hours</h3>

@@ -241,7 +241,7 @@ export async function GET(request: Request) {
   try {
     const { data: applications, error } = await context.database
       .from('merchant_applications')
-      .select('id, merchant_code, business_name, trading_name, business_type, vendor_type, prep_target_minutes, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, documents, status, review_note, submitted_at, reviewed_at, updated_at')
+      .select('id, merchant_code, business_name, trading_name, business_type, vendor_type, prep_target_minutes, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, offered_goods, documents, status, review_note, submitted_at, reviewed_at, updated_at')
       .eq('email', context.actor)
       .order('submitted_at', { ascending: false })
       .limit(25);
