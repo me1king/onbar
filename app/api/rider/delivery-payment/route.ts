@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { verifyRiderSession } from '@/lib/riderSession.server';
 import {
@@ -8,7 +8,12 @@ import {
 } from '@/lib/riderDeliveryPayments.server';
 
 export const dynamic = 'force-dynamic';
-type RiderDatabase = SupabaseClient;
+
+function createRiderDatabase(url: string, serviceKey: string) {
+  return createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+}
+
+type RiderDatabase = ReturnType<typeof createRiderDatabase>;
 
 type PaymentAttempt = {
   id: number;
@@ -109,7 +114,7 @@ export async function GET(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!url || !serviceKey) return sendError('Rider payment tracking is not configured on the server.', 503);
-  const database = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  const database = createRiderDatabase(url, serviceKey);
 
   try {
     const order = await loadRiderOrder(database, orderId, session.phone);
@@ -150,7 +155,7 @@ export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!url || !serviceKey) return sendError('Rider payment collection is not configured on the server.', 503);
-  const database = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  const database = createRiderDatabase(url, serviceKey);
 
   let order: Awaited<ReturnType<typeof loadRiderOrder>>;
   try {
