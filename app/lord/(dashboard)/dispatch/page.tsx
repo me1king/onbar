@@ -341,6 +341,23 @@ export default function AdminDispatchPage() {
                     <p className="text-muted-foreground text-sm font-medium mt-1">Real-time runner deployment and delivery coordination hub.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
+                        <Link href="/lord/operations">
+                            <Button variant="outline" className="h-10 rounded-xl border-primary/20 bg-primary px-4 text-[9px] font-black uppercase tracking-widest text-white shadow-sm hover:bg-primary/90">
+                                <Activity className="mr-2 h-4 w-4" /> Operations Command
+                            </Button>
+                        </Link>
+                        <Link href="/lord/riders">
+                            <Button variant="outline" className="h-10 rounded-xl border-transparent px-4 text-[9px] font-black uppercase tracking-widest text-slate-600 hover:border-slate-200 hover:bg-slate-50">
+                                <Users className="mr-2 h-4 w-4" /> Rider Fleet
+                            </Button>
+                        </Link>
+                        <Link href="/lord/delivery">
+                            <Button variant="outline" className="h-10 rounded-xl border-transparent px-4 text-[9px] font-black uppercase tracking-widest text-slate-600 hover:border-slate-200 hover:bg-slate-50">
+                                <PackageCheck className="mr-2 h-4 w-4" /> Delivery Ledger
+                            </Button>
+                        </Link>
+                    </div>
                     <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex overflow-x-auto no-scrollbar max-w-sm sm:max-w-none mr-2">
                         {WAREHOUSES.map(w => (
                             <button
