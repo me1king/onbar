@@ -218,11 +218,17 @@ export default function MerchantOnboarding() {
   }, []);
 
   const sendJourneyEvent = useCallback(async (
-    eventType: 'onboarding_stage_entered' | 'onboarding_stage_exited' | 'onboarding_rage_click' | 'onboarding_application_submitted' | 'onboarding_analytics_consent',
+    eventType: 'onboarding_link_opened' | 'onboarding_step_started' | 'onboarding_step_completed' | 'onboarding_document_selected' | 'onboarding_stage_entered' | 'onboarding_stage_exited' | 'onboarding_rage_click' | 'onboarding_application_submitted' | 'onboarding_analytics_consent',
     stage: typeof onboardingStages[number],
     details: { durationMs?: number; controlType?: string } = {}
   ) => {
-    if (!journeyAnalyticsEnabled || !inviteToken || !journeySessionId) return;
+    const operationalEvent = eventType.startsWith('onboarding_') && [
+      'onboarding_link_opened',
+      'onboarding_step_started',
+      'onboarding_step_completed',
+      'onboarding_document_selected'
+    ].includes(eventType);
+    if ((!journeyAnalyticsEnabled && !operationalEvent) || !inviteToken || !journeySessionId) return;
     try {
       const response = await fetch('/api/merchant-applications/onboarding-events', {
         method: 'POST',
@@ -252,7 +258,7 @@ export default function MerchantOnboarding() {
   }, [journeyAnalyticsEnabled, journeySessionId, sendJourneyEvent]);
 
   useEffect(() => {
-    if (!journeyAnalyticsEnabled || !inviteToken) {
+    if (!inviteToken) {
       setJourneySessionId('');
       return;
     }
@@ -275,7 +281,8 @@ export default function MerchantOnboarding() {
     }
     lastStageRef.current = step;
     stageEnteredAtRef.current = now;
-    void sendJourneyEvent('onboarding_stage_entered', onboardingStages[step]);
+    void sendJourneyEvent('onboarding_step_started', onboardingStages[step]);
+    if (journeyAnalyticsEnabled) void sendJourneyEvent('onboarding_stage_entered', onboardingStages[step]);
   }, [step, inviteToken, journeyAnalyticsEnabled, journeySessionId, sendJourneyEvent]);
 
   useEffect(() => {
@@ -341,6 +348,12 @@ export default function MerchantOnboarding() {
 
     setError(null);
     setDocuments(current => ({ ...current, [type]: candidate }));
+    void sendJourneyEvent('onboarding_document_selected', onboardingStages[3], { controlType: type });
+  };
+
+  const moveToStep = (nextStep: number) => {
+    if (nextStep > step) void sendJourneyEvent('onboarding_step_completed', onboardingStages[step]);
+    setStep(nextStep);
   };
 
   useEffect(() => {
@@ -700,7 +713,7 @@ export default function MerchantOnboarding() {
                   </span>
                 </label>
               )}
-              <Button disabled={!invitation && businessName.trim().length < 2} onClick={() => setStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
+              <Button disabled={!invitation && businessName.trim().length < 2} onClick={() => moveToStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
                 Continue <ArrowRight size={16} className="ml-2" />
               </Button>
             </section>
@@ -734,7 +747,7 @@ export default function MerchantOnboarding() {
               </div>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setStep(0)} className="h-12 rounded-xl"><ArrowLeft size={16} className="mr-2" /> Back</Button>
-                <Button disabled={!contactAndLocationValid} onClick={() => setStep(2)} className="h-12 flex-1 rounded-xl font-black uppercase">
+                <Button disabled={!contactAndLocationValid} onClick={() => moveToStep(2)} className="h-12 flex-1 rounded-xl font-black uppercase">
                   Continue <ArrowRight size={16} className="ml-2" />
                 </Button>
               </div>
@@ -814,7 +827,7 @@ export default function MerchantOnboarding() {
                 <Button variant="outline" onClick={() => setStep(1)} className="h-12 rounded-xl"><ArrowLeft size={16} className="mr-2" /> Back</Button>
                 <Button
                   disabled={merchantWeekdays.some(day => hours[day].enabled && hours[day].open === hours[day].close)}
-                  onClick={() => setStep(3)}
+                  onClick={() => moveToStep(3)}
                   className="h-12 flex-1 rounded-xl font-black uppercase"
                 >
                   Continue <ArrowRight size={16} className="ml-2" />

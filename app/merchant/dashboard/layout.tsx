@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Merchant Studio | Midnight Market',
-  description: 'Manage products and stock for your Midnight Market boutique.'
+  title: 'Apex Market Partner Workspace',
+  description: 'Manage your approved Apex Market partner operations.'
 };
 
 export default function MerchantDashboardRouteLayout({ children }: Readonly<{ children: React.ReactNode }>) {

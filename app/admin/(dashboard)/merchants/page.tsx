@@ -44,6 +44,7 @@ interface ExpiringDocument {
 
 interface Application {
   id: string;
+  onboarding_lead_id?: string | null;
   merchant_code: string | null;
   business_name: string;
   trading_name: string | null;
@@ -104,7 +105,15 @@ const labels: Record<string, string> = {
   rejected: 'Rejected',
   suspended: 'Suspended',
   expired: 'Expired',
-  availability_updated: 'Availability updated'
+  availability_updated: 'Availability updated',
+  onboarding_link_opened: 'Opened onboarding link',
+  onboarding_step_started: 'Started onboarding step',
+  onboarding_step_completed: 'Completed onboarding step',
+  onboarding_document_selected: 'Selected document for upload',
+  documents_uploaded: 'Uploaded documents',
+  application_viewed: 'Application viewed',
+  document_upload_link_issued: 'Document upload link issued',
+  document_accessed: 'Document opened'
 };
 
 function statusClass(status: MerchantApplicationStatus) {
@@ -672,11 +681,12 @@ export default function MerchantApplicationsPage() {
               </section>
 
               <section className="border-t border-slate-100 pt-5">
-                <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-800">Audit history</h3>
-                <div className="max-h-48 space-y-2 overflow-y-auto">
+                <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-800">Onboarding progress timeline</h3>
+                <p className="mb-3 text-xs leading-5 text-slate-500">This shows when the vendor opened the link, started or completed each step, selected documents, uploaded them, and when admin review actions happened.</p>
+                <div className="max-h-64 space-y-2 overflow-y-auto">
                   {events.map(event => (
-                    <div key={event.id} className="flex justify-between gap-3 text-xs">
-                      <span className="font-semibold text-slate-700">{labels[event.event_type] || event.event_type} · {event.actor}</span>
+                    <div key={`${event.event_type}-${event.id}-${event.created_at}`} className="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                      <span className="font-semibold text-slate-700">{labels[event.event_type] || event.event_type} · {event.actor}{typeof event.details?.stage === 'string' ? ` · ${event.details.stage.replace('_', ' ')}` : ''}{typeof event.details?.document_types === 'object' ? ` · ${Array.isArray(event.details.document_types) ? `${event.details.document_types.length} document(s)` : ''}` : ''}</span>
                       <time className="shrink-0 text-slate-400">{new Date(event.created_at).toLocaleString()}</time>
                     </div>
                   ))}

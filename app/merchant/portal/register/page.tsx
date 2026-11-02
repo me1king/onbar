@@ -44,7 +44,7 @@ export default function MarketSellerAccountRegistrationPage() {
   return (
     <>
       <header className="mm-header">
-        <Link className="mm-brand" href="/merchant/portal/login">MIDNIGHT <span>MARKET</span></Link>
+        <Link className="mm-brand" href="/merchant/portal/login">APEX <span>MARKET</span></Link>
       </header>
       <main className="mm-page mm-merchant-register">
         <div className="mm-register-card">

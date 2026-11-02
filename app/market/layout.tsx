@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './market.css';
 
 export const metadata: Metadata = {
-  title: 'Midnight Market | Fashion After Dark',
-  description: 'Discover independent fashion, accessories and looks from Midnight Market boutiques.',
+  title: 'Apex Market',
+  description: 'Discover products and services from verified Apex Market partners.',
 };
 
 export default function MarketLayout({ children }: Readonly<{ children: React.ReactNode }>) {

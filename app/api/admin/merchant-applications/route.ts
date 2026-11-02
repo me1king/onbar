@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 const DOCUMENT_BUCKET = 'merchant-application-documents';
 const applicationListFields = [
   'id',
+  'onboarding_lead_id',
   'merchant_code',
   'business_name',
   'trading_name',
@@ -201,6 +202,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Could not load merchant application history.' }, { status: 500 });
     }
     if (!application) return NextResponse.json({ error: 'Merchant application not found.' }, { status: 404 });
+    const { data: journeyEvents, error: journeyError } = application.onboarding_lead_id
+      ? await access.database.from('vendor_onboarding_events')
+        .select('id, event_type, actor, details, created_at')
+        .eq('lead_id', application.onboarding_lead_id)
+        .order('created_at', { ascending: false })
+        .limit(200)
+      : { data: [], error: null };
+    if (journeyError) {
+      console.error('[MerchantAdmin] Could not load onboarding progress:', journeyError);
+      return NextResponse.json({ error: 'Could not load vendor onboarding progress.' }, { status: 500 });
+    }
     const { data: accessEvent, error: accessEventError } = await access.database.from('merchant_application_events').insert({
       application_id: applicationId,
       event_type: 'application_viewed',
@@ -230,7 +242,15 @@ export async function GET(request: Request) {
     if (application.vendor_type === 'wholesaler' && !requiredDocuments.includes('wholesale_licence')) {
       requiredDocuments.push('wholesale_licence');
     }
-    return NextResponse.json({ application: { ...application, requiredDocuments }, events: [accessEvent, ...(events || [])] }, {
+    const combinedEvents = [
+      ...(events || []),
+      ...(journeyEvents || []).map(event => ({
+        ...event,
+        details: { ...(event.details || {}), source: 'vendor_onboarding' }
+      })),
+      accessEvent
+    ].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+    return NextResponse.json({ application: { ...application, requiredDocuments }, events: combinedEvents }, {
       headers: { 'Cache-Control': 'private, no-store, max-age=0' }
     });
   }

@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Private Seller Registration | Midnight Market',
-  description: 'Create a separate Midnight Market seller account.'
+  title: 'Apex Market Partner Account',
+  description: 'Create an account to access the Apex Market partner application.'
 };
 
 export default function MarketSellerRegistrationLayout({ children }: Readonly<{ children: React.ReactNode }>) {

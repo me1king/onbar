@@ -77,7 +77,7 @@ export async function GET(request: Request) {
   }
 
   const { data, error } = await database.from('vendor_onboarding_leads')
-    .select('business_name,vendor_type,invite_expires_at')
+    .select('id,business_name,vendor_type,invite_expires_at')
     .eq('invite_token_hash', tokenHash)
     .gt('invite_expires_at', new Date().toISOString())
     .is('invite_used_at', null)
@@ -96,6 +96,16 @@ export async function GET(request: Request) {
   }
   if (!data || !['retailer', 'wholesaler', 'street_food'].includes(data.vendor_type)) {
     return invalidLink();
+  }
+  const { error: eventError } = await database.from('vendor_onboarding_events').insert({
+    lead_id: data.id,
+    event_type: 'onboarding_link_opened',
+    actor: 'applicant',
+    details: { source: 'invite_link' }
+  });
+  if (eventError) {
+    console.error('[MerchantOnboardingInvite] Could not record link opening:', eventError);
+    return NextResponse.json({ error: 'The onboarding link could not be recorded. Please try again.' }, { status: 503 });
   }
 
   const businessType = data.vendor_type === 'retailer'

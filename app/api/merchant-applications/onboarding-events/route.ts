@@ -7,6 +7,10 @@ export const dynamic = 'force-dynamic';
 
 const stages = ['business', 'contact_area', 'operations', 'goods_docs'] as const;
 const allowedEvents = [
+  'onboarding_link_opened',
+  'onboarding_step_started',
+  'onboarding_step_completed',
+  'onboarding_document_selected',
   'onboarding_stage_entered',
   'onboarding_stage_exited',
   'onboarding_rage_click',
@@ -37,13 +41,20 @@ export async function POST(request: Request) {
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId : '';
   const durationMs = body.durationMs;
   const controlType = body.controlType;
+  const progressEvent = [
+    'onboarding_link_opened',
+    'onboarding_step_started',
+    'onboarding_step_completed',
+    'onboarding_document_selected'
+  ].includes(eventType as string);
   if (!/^[A-Za-z0-9_-]{40,64}$/.test(token)
     || !allowedEvents.includes(eventType as typeof allowedEvents[number])
     || !stages.includes(stage as typeof stages[number])
     || !/^[0-9a-f-]{36}$/i.test(sessionId)
     || (eventType === 'onboarding_stage_exited'
       && (typeof durationMs !== 'number' || !Number.isSafeInteger(durationMs) || durationMs < 0 || durationMs > 86_400_000))
-    || (eventType === 'onboarding_rage_click' && !['button', 'input', 'select', 'textarea'].includes(String(controlType)))) {
+    || (eventType === 'onboarding_rage_click' && !['button', 'input', 'select', 'textarea'].includes(String(controlType)))
+    || (progressEvent && eventType === 'onboarding_document_selected' && typeof body.controlType !== 'string')) {
     return NextResponse.json({ error: 'The onboarding event contains invalid fields.' }, { status: 400 });
   }
 

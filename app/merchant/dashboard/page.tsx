@@ -412,7 +412,7 @@ export default function MerchantDashboardPage() {
   return (
     <>
       <header className="mm-header">
-        <Link className="mm-brand" href="/market">MIDNIGHT <span>MARKET</span></Link>
+        <Link className="mm-brand" href="/market">APEX <span>MARKET</span></Link>
         <nav className="mm-nav">
           <Link href="/merchant/business">Business locations</Link>
           <Link href="/merchant/register">Seller application</Link>
