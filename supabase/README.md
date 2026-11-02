@@ -124,6 +124,16 @@ unanswered mission. Automatic rider acceptance/decline, timeout rerouting, and
 native Android full-screen alerts require separate implementation and staging
 validation.
 
+## Rider verification onboarding
+
+After applying `DISPATCH_MIGRATION.sql` and
+`ADMIN_DASHBOARD_RECOVERY_MIGRATION.sql`, apply
+`RIDER_ONBOARDING_SECURITY_MIGRATION.sql`. The public rider onboarding form
+uploads verification photos and submits rider details through
+`/api/rider/onboarding/verification`; it must not query or write
+`rider_status` directly from the browser. The migration keeps that table and
+the `rider-verifications` bucket private to the server service role.
+
 ## Rider delivery PIN and ID check
 
 After applying `DISPATCH_MIGRATION.sql` and

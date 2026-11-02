@@ -233,23 +233,14 @@ export default function RiderOnboarding() {
         setError(null);
         try {
             const normalized = normalizePhone(phone);
-            const cred = await registerBiometrics(normalized);
-            if (cred) {
-                if (supabase) {
-                    await supabase.from('rider_status').update({ biometric_key: cred }).eq('rider_phone', normalized);
-                }
-            }
-
-            if (supabase) {
-                const { data } = await supabase.from('rider_status').select('verification_status').eq('rider_phone', normalized).maybeSingle();
-                if (data?.verification_status === 'Verified') {
-                    setStep('success');
-                } else {
-                    await saveProgress('pending');
-                }
-            } else {
-                setStep('pending');
-            }
+            await registerBiometrics(normalized);
+            const response = await fetch(`/api/rider/onboarding/verification?phone=${encodeURIComponent(normalized)}`, {
+                cache: 'no-store'
+            });
+            const result = await response.json() as { verificationStatus?: string | null; error?: string };
+            if (!response.ok) throw new Error(result.error || 'Rider verification status could not be loaded.');
+            if (result.verificationStatus === 'Verified') setStep('success');
+            else await saveProgress('pending');
         } catch {
             await saveProgress('pending');
         } finally {
@@ -282,41 +273,27 @@ export default function RiderOnboarding() {
         setLoading(true);
         setError(null);
         try {
-            if (!supabase) return;
             const normalized = normalizePhone(phone);
-            const BUCKET = 'rider-verifications';
+            const formData = new FormData();
+            formData.set('phone', normalized);
+            formData.set('riderName', riderName.trim());
+            formData.set('birthDate', birthDate);
+            formData.set('idNumber', idNumber);
+            formData.set('licenseNumber', licenseNumber);
+            formData.set('plateNumber', plateNumber);
+            formData.set('vehicleType', vehicleType);
+            formData.set('riderPhoto', riderPhoto);
+            formData.set('vehiclePhoto', vehiclePhoto);
 
-            // Upload Rider Photo
-            const riderPath = `riders/${normalized}-${Date.now()}-selfie`;
-            const currentSupabase = supabase;
-            await currentSupabase.storage.from(BUCKET).upload(riderPath, riderPhoto);
-            const { data: rData } = currentSupabase.storage.from(BUCKET).getPublicUrl(riderPath);
-
-            // Upload Vehicle Photo
-            const vehiclePath = `riders/${normalized}-${Date.now()}-vehicle`;
-            await currentSupabase.storage.from(BUCKET).upload(vehiclePath, vehiclePhoto);
-            const { data: vData } = currentSupabase.storage.from(BUCKET).getPublicUrl(vehiclePath);
-
-            // Update Rider Status with new info
-            const { error: updateError } = await currentSupabase
-                .from('rider_status')
-                .upsert({
-                    rider_phone: normalized,
-                    rider_name: riderName.trim(),
-                    id_number: idNumber,
-                    license_number: licenseNumber,
-                    plate_number: plateNumber,
-                    vehicle_type: vehicleType,
-                    rider_photo_url: rData.publicUrl,
-                    vehicle_photo_url: vData.publicUrl,
-                    verification_status: 'Pending',
-                    onboarding_step: 'AGREEMENT'
-                }, { onConflict: 'rider_phone' });
-
-            if (updateError) throw updateError;
+            const response = await fetch('/api/rider/onboarding/verification', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Rider verification could not be submitted.');
             await saveProgress(getNextEnabledStep('verification'));
         } catch (err: unknown) {
-            setError((err as Error).message || "Verification upload failed.");
+            setError(err instanceof Error ? err.message : "Verification upload failed.");
         } finally {
             setLoading(false);
         }
@@ -514,9 +491,17 @@ export default function RiderOnboarding() {
                                     <Button
                                         variant="ghost"
                                         onClick={async () => {
-                                            if (!supabase) { setStep('pending'); return; }
-                                            const { data } = await supabase.from('rider_status').select('verification_status').eq('rider_phone', normalizePhone(phone)).maybeSingle();
-                                            setStep(data?.verification_status === 'Verified' ? 'success' : getNextEnabledStep('biometrics'));
+                                            const normalized = normalizePhone(phone);
+                                            try {
+                                                const response = await fetch(`/api/rider/onboarding/verification?phone=${encodeURIComponent(normalized)}`, {
+                                                    cache: 'no-store'
+                                                });
+                                                const result = await response.json() as { verificationStatus?: string | null; error?: string };
+                                                if (!response.ok) throw new Error(result.error || 'Rider verification status could not be loaded.');
+                                                setStep(result.verificationStatus === 'Verified' ? 'success' : getNextEnabledStep('biometrics'));
+                                            } catch (statusError) {
+                                                setError(statusError instanceof Error ? statusError.message : 'Rider verification status could not be loaded.');
+                                            }
                                         }}
                                         className="w-full text-slate-400 font-black uppercase text-[10px]"
                                     >
@@ -548,19 +533,31 @@ export default function RiderOnboarding() {
                                 <div className="space-y-3">
                                     <Button
                                         onClick={async () => {
-                                            if (!supabase) return;
                                             setLoading(true);
                                             const normalized = normalizePhone(phone);
-                                            const { data } = await supabase.from('rider_status').select('verification_status, rider_name').eq('rider_phone', normalized).maybeSingle();
-                                            if (data?.verification_status === 'Verified') {
-                                                localStorage.setItem('ob_rider_phone', normalized);
-                                                localStorage.setItem('rider_name', data.rider_name);
-                                                setStep('success');
-                                            } else {
-                                                setError("Verification still pending. Check back soon.");
-                                                setTimeout(() => setError(null), 3000);
+                                            try {
+                                                const response = await fetch(`/api/rider/onboarding/verification?phone=${encodeURIComponent(normalized)}`, {
+                                                    cache: 'no-store'
+                                                });
+                                                const result = await response.json() as {
+                                                    verificationStatus?: string | null;
+                                                    riderName?: string | null;
+                                                    error?: string;
+                                                };
+                                                if (!response.ok) throw new Error(result.error || 'Rider verification status could not be loaded.');
+                                                if (result.verificationStatus === 'Verified') {
+                                                    localStorage.setItem('ob_rider_phone', normalized);
+                                                    if (result.riderName) localStorage.setItem('rider_name', result.riderName);
+                                                    setStep('success');
+                                                } else {
+                                                    setError("Verification still pending. Check back soon.");
+                                                    setTimeout(() => setError(null), 3000);
+                                                }
+                                            } catch (statusError) {
+                                                setError(statusError instanceof Error ? statusError.message : 'Rider verification status could not be loaded.');
+                                            } finally {
+                                                setLoading(false);
                                             }
-                                            setLoading(false);
                                         }}
                                         disabled={loading}
                                         className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 transition-all hover:scale-105 active:scale-95"
