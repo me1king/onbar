@@ -62,6 +62,9 @@ interface Lead {
   test_order_passed: boolean;
   second_review_passed: boolean;
   launched_at: string | null;
+  invite_expires_at?: string | null;
+  invite_used_at?: string | null;
+  invite_application_id?: string | null;
   created_at: string;
 }
 
@@ -308,7 +311,7 @@ export default function VendorOnboardingPage() {
       const link = new URL('/merchant/onboarding', window.location.origin);
       link.searchParams.set('invite', result.token);
       setInviteHref(link.toString());
-      setNotice(`A private 7-day onboarding link was created for ${selectedLead.business_name}.`);
+      setNotice(`A private 7-day Apex Market onboarding link was created for ${selectedLead.business_name}.`);
       await loadPipeline();
       await loadDetail(selectedLead.id);
     } catch (inviteError) {
@@ -415,7 +418,7 @@ export default function VendorOnboardingPage() {
   }), [agents, leads]);
 
   const messageHref = selectedLead
-    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, here is the private onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} OnBar will only use this link for your company's application. It expires after 7 days.`)}`
+    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, here is the private Apex Market onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} This link is only for your company application and expires after 7 days.`)}`
     : '';
   const next = selectedLead ? nextStage(selectedLead.stage) : null;
   const stageBlocked = selectedLead?.stage === 'phone_approved' && !selectedLead.visit_scheduled_at;
@@ -541,6 +544,9 @@ export default function VendorOnboardingPage() {
                     <div className="mt-2 flex justify-between text-[11px] text-slate-500">
                       <span>{lead.agent}</span><span>{percent}% checklist</span>
                     </div>
+                    {lead.vendor_type !== 'rider' && <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                      {lead.invite_used_at || lead.invite_application_id ? 'Link completed' : lead.invite_expires_at && new Date(lead.invite_expires_at).getTime() > Date.now() ? 'Link ready' : 'Create private link'}
+                    </p>}
                   </button>;
                 })}
                 {!stageLeads.length && <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 p-4 text-center text-xs text-slate-500">No leads</div>}
@@ -557,9 +563,9 @@ export default function VendorOnboardingPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <a href={`tel:${selectedLead.phone}`} className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Call</a>
-              {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && (
+              {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && !selectedLead.invite_application_id && (
                 <Button type="button" disabled={working} onClick={() => void createInvite()} className="h-9 bg-emerald-700 px-3 text-sm text-white hover:bg-emerald-800">
-                  <Link2 className="mr-2 h-4 w-4" /> Create private link
+                  <Link2 className="mr-2 h-4 w-4" /> {selectedLead.invite_expires_at && new Date(selectedLead.invite_expires_at).getTime() > Date.now() ? 'Reissue private link' : 'Create private link'}
                 </Button>
               )}
               <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Open WhatsApp</a>
@@ -568,7 +574,7 @@ export default function VendorOnboardingPage() {
           </div>
           {inviteHref && (
             <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-xs font-semibold text-emerald-900">Private link for {selectedLead.business_name} · expires in 7 days · one application</p>
+              <p className="text-xs font-semibold text-emerald-900">Private Apex Market link for {selectedLead.business_name} · expires in 7 days · one application</p>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <input readOnly value={inviteHref} aria-label={`Private onboarding link for ${selectedLead.business_name}`}
                   className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800" />
