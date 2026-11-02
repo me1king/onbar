@@ -210,8 +210,9 @@ export default function AdminDispatchPage() {
     }, [riders]);
 
     const filteredRiders = riders.filter(r =>
-        r.rider_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.area_zone.toLowerCase().includes(searchQuery.toLowerCase())
+        [r.rider_name, r.area_zone, r.rider_phone, r.plate_number, r.vehicle_reg, r.id_number]
+            .filter(Boolean)
+            .some(value => String(value).toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
     const handleAssignRider = React.useCallback(async (
@@ -393,6 +394,7 @@ export default function AdminDispatchPage() {
                     { label: 'Delivering', val: stats.delivering, icon: Truck },
                     { label: 'Standby', val: stats.standby, icon: Zap },
                     { label: 'Team Health', val: `${stats.avgHealth}%`, icon: ShieldCheck },
+                    { label: 'Cash held', val: formatPrice(riders.reduce((sum, rider) => sum + Number(rider.wallet?.balance || 0), 0)), icon: CreditCard },
                 ].map((item) => (
                     <Card key={item.label} className="p-6 rounded-3xl border border-border bg-card shadow-sm flex items-center gap-4 group hover:shadow-xl transition-all h-full">
                         <div className="h-12 w-12 rounded-xl bg-primary/5 flex items-center justify-center text-primary transition-transform group-hover:scale-110">
@@ -762,15 +764,15 @@ export default function AdminDispatchPage() {
                                     <div className="space-y-6 relative z-10">
                                         <div className="flex justify-between items-center pb-4 border-b border-primary/10">
                                             <span className="text-[10px] font-black uppercase text-muted-foreground">Active Order</span>
-                                            <span className="text-xs font-black text-foreground">#10492</span>
+                                            <span className="text-xs font-black text-foreground">Assigned order in dispatch queue</span>
                                         </div>
                                         <div className="flex justify-between items-center pb-4 border-b border-primary/10">
                                             <span className="text-[10px] font-black uppercase text-muted-foreground">Payload</span>
-                                            <span className="text-xs font-bold text-foreground truncate max-w-[150px]">AMAYA AM-05 + 1 Other</span>
+                                            <span className="text-xs font-bold text-foreground truncate max-w-[190px]">Open the queue for the live order payload</span>
                                         </div>
                                         <div className="flex justify-between items-center">
                                             <span className="text-[10px] font-black uppercase text-muted-foreground">ETA to Delivery</span>
-                                            <span className="text-sm font-black text-primary uppercase">12 Minutes</span>
+                                            <span className="text-sm font-black text-primary uppercase">Live GPS in rider terminal</span>
                                         </div>
                                     </div>
 
@@ -781,7 +783,7 @@ export default function AdminDispatchPage() {
                                         }}
                                         className="w-full h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest relative z-10 shadow-xl shadow-primary/20"
                                     >
-                                        View Delivery Path
+                                        View Rider Location
                                     </Button>
 
                                     <Zap className="absolute -bottom-10 -right-10 h-48 w-48 text-primary/5 rotate-12" />

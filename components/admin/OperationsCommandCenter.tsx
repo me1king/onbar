@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Activity, ArrowRight, ClipboardList, RefreshCcw, ShoppingBag, Truck, Users, type LucideIcon } from 'lucide-react';
+import { Activity, ArrowRight, ClipboardList, FileCheck2, RefreshCcw, ShoppingBag, Truck, Users, WalletCards, type LucideIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,10 @@ type LiveData = {
 };
 
 const modules = [
-  { title: 'Dispatch queue', description: 'Assign riders and move orders through delivery.', href: '/lord/orders', icon: Truck },
+  { title: 'Fleet Command', description: 'Live rider map, compliance, assignment, and delivery controls.', href: '/lord/dispatch', icon: Truck },
+  { title: 'Rider compliance', description: 'Review verification status, licence, vehicle, and fresh GPS activity.', href: '/lord/riders', icon: FileCheck2 },
+  { title: 'Delivery ledger', description: 'Monitor delivery events, waiting orders, active trips, and completed deliveries.', href: '/lord/delivery', icon: WalletCards },
+  { title: 'Dispatch queue', description: 'Review payment-confirmed orders and assign eligible riders.', href: '/lord/orders', icon: Truck },
   { title: 'Live customer feed', description: 'See active sessions, checkouts, carts, and order events.', href: '/lord/behavior/live', icon: Activity },
   { title: 'Merchant onboarding', description: 'Review approved businesses and their fulfillment status.', href: '/lord/merchants', icon: ShoppingBag },
   { title: 'Task control', description: 'Create and close internal operations work.', href: '/lord/operations/tasks', icon: ClipboardList },
@@ -110,6 +113,20 @@ export default function OperationsCommandCenter() {
             })}
           </div>
         </Card>
+      </section>
+
+      <section className="mt-5 grid gap-4 md:grid-cols-3">
+        {[
+          { title: 'Dispatch rule', text: 'Only verified riders with a fresh heartbeat, valid location, capacity, and compliant merchant allocation can be assigned.', href: '/lord/dispatch' },
+          { title: 'Compliance gate', text: 'Use Rider Fleet to review verification and location freshness before changing operational status.', href: '/lord/riders' },
+          { title: 'Evidence trail', text: 'Assignments and delivery state changes are recorded in the dispatch and delivery event history.', href: '/lord/delivery' }
+        ].map(item => (
+          <Link key={item.title} href={item.href} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-primary/40 hover:shadow-md">
+            <p className="text-xs font-black uppercase tracking-widest text-primary">{item.title}</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{item.text}</p>
+            <span className="mt-4 inline-flex items-center text-xs font-black uppercase text-slate-900">Open module <ArrowRight className="ml-1 h-3 w-3" /></span>
+          </Link>
+        ))}
       </section>
     </main>
   );
