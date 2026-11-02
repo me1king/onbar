@@ -998,12 +998,22 @@ export default function MerchantOnboarding() {
                 <span>I have read the <Link href="/privacy" target="_blank" className="font-bold underline">privacy notice</Link> and understand that OnBar will use these business details and documents to assess this application, communicate about verification, and maintain necessary compliance records. {journeyAnalyticsEnabled && invitation ? 'I also chose to share onboarding step timing and repeated-click counts; field values are not recorded. ' : ''}This is not consent to marketing.</span>
               </label>
               {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
-              <div className="flex gap-3">
-                <Button variant="outline" disabled={loading} onClick={() => setStep(2)} className="h-12 rounded-xl"><ArrowLeft size={16} className="mr-2" /> Back</Button>
-                <Button disabled={loading || requirementsLoading || !requirementsLoaded || !requirements.length || !privacyAcknowledged || (!documentsMayBeDeferred && requiredDocumentTypes.some(type => !documents[type]))} onClick={submitApplication} className="h-12 flex-1 rounded-xl font-black uppercase">
-                  {loading ? <Loader2 size={17} className="mr-2 animate-spin" /> : <ShieldCheck size={17} className="mr-2" />}
-                  Submit for review
-                </Button>
+              <div className="sticky bottom-3 z-20 -mx-2 rounded-2xl border border-primary/15 bg-white/95 p-3 shadow-xl shadow-slate-900/10 backdrop-blur sm:-mx-0 sm:p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Final step</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-600">Submit your application for review.</p>
+                  </div>
+                  <ShieldCheck className="h-5 w-5 shrink-0 text-primary" />
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" disabled={loading} onClick={() => setStep(2)} className="h-12 rounded-xl"><ArrowLeft size={16} className="mr-2" /> Back</Button>
+                  <Button disabled={loading || requirementsLoading || !requirementsLoaded || !requirements.length || !privacyAcknowledged || (!documentsMayBeDeferred && requiredDocumentTypes.some(type => !documents[type]))} onClick={submitApplication} className="h-12 flex-1 rounded-xl font-black uppercase shadow-lg shadow-primary/20">
+                    {loading ? <Loader2 size={17} className="mr-2 animate-spin" /> : <ShieldCheck size={17} className="mr-2" />}
+                    Submit application
+                  </Button>
+                </div>
+                {!privacyAcknowledged && <p className="mt-2 text-center text-[10px] font-semibold text-amber-700">Accept the privacy notice above to submit.</p>}
               </div>
             </section>
           )}
