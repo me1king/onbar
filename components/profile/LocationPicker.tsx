@@ -22,6 +22,7 @@ const fixLeafletIcons = () => {
 interface LocationPickerProps {
     initialLat?: number;
     initialLng?: number;
+    autoDetect?: boolean;
     onConfirm: (lat: number, lng: number) => void;
     onClose: () => void;
 }
@@ -41,7 +42,7 @@ function ChangeView({ center }: { center: [number, number] }) {
     return null;
 }
 
-export default function LocationPicker({ initialLat, initialLng, onConfirm, onClose }: LocationPickerProps) {
+export default function LocationPicker({ initialLat, initialLng, autoDetect = false, onConfirm, onClose }: LocationPickerProps) {
     const [pos, setPos] = useState<[number, number]>(
         initialLat != null && initialLng != null ? [initialLat, initialLng] : [-1.286389, 36.817223]
     );
@@ -111,6 +112,14 @@ export default function LocationPicker({ initialLat, initialLng, onConfirm, onCl
             }
         );
     };
+
+    useEffect(() => {
+        if (autoDetect && initialLat == null && initialLng == null) {
+            handleDetectLocation();
+        }
+        // The picker should request location once when opened from the delivery-pin button.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoDetect]);
 
     return (
         <div className="fixed inset-0 z-[400] flex items-center justify-center bg-white/70 backdrop-blur-xl p-0 sm:p-10 animate-in fade-in duration-300">

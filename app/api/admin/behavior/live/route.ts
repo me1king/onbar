@@ -157,10 +157,22 @@ export async function GET() {
     console.error('[LiveBehavior] Could not load live order flow:', recentOrdersError);
     return NextResponse.json({ error: 'Live order flow could not be loaded.' }, { status: 503 });
   }
+  const orderFlowEvents = (recentOrders || []).map(order => ({
+    id: -Number(order.id),
+    timestamp: order.created_at,
+    customer_code: `Order #${order.id}`,
+    session_id: null,
+    action_type: `ORDER_${String(order.status || 'PENDING').replace(/\s+/g, '_').toUpperCase()}`,
+    description: `${String(order.status || 'pending').replace(/_/g, ' ').toLowerCase()} order for ${order.customer_name || 'customer'}`,
+    page_url: '/admin/orders'
+  }));
+  const liveEvents = [...events, ...orderFlowEvents]
+    .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())
+    .slice(0, 100);
 
   return NextResponse.json({
     sessions,
-    events,
+    events: liveEvents,
     orders: recentOrders || [],
     metrics: {
       activeSessions: activeResult.count || 0,

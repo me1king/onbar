@@ -631,6 +631,7 @@ function CheckoutContent() {
           <LocationPicker
             initialLat={coords.lat ?? undefined}
             initialLng={coords.lng ?? undefined}
+            autoDetect
             onConfirm={async (lat, lng) => {
                 setCoords({ lat, lng });
                 try {
@@ -765,6 +766,7 @@ function CheckoutContent() {
                     </div>
                     <Button
                         type="button"
+                        onClick={() => setIsPickingLocation(true)}
                         className={cn(
                             "w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl font-black uppercase text-[9px] sm:text-[10px] tracking-widest transition-all shadow-xl active:scale-95",
                             coords.lat !== null && coords.lng !== null ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"

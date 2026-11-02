@@ -185,6 +185,20 @@ export async function POST(request: Request) {
   }
 
   const uploadedPaths: string[] = [];
+  const { data: existingBucket, error: bucketLookupError } = await database.storage.getBucket(bucket);
+  if (bucketLookupError || !existingBucket) {
+    const { error: bucketCreateError } = await database.storage.createBucket(bucket, {
+      public: false,
+      fileSizeLimit: maximumImageSize,
+      allowedMimeTypes: [...allowedImageTypes]
+    });
+    if (bucketCreateError && !/already exists/i.test(bucketCreateError.message)) {
+      console.error('[RiderOnboarding] Could not prepare verification storage bucket:', bucketLookupError || bucketCreateError);
+      return NextResponse.json({
+        error: 'Verification storage is not ready. Apply the rider onboarding security migration or contact support.'
+      }, { status: 503 });
+    }
+  }
   const uploadImage = async (file: File, suffix: string) => {
     const path = `riders/${randomUUID()}-${suffix}`;
     const { error } = await database.storage.from(bucket).upload(path, file, {

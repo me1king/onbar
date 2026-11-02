@@ -326,53 +326,33 @@ export default function ProfilePage() {
             profileData = data;
         } catch {}
 
-        let abandonedData = null;
-        try {
-            const { data } = await supabase.from('abandoned_carts').select('*').eq('customer_phone', session.user.email || '').maybeSingle();
-            abandonedData = data;
-        } catch {}
-
-        let orderData = [];
-        try {
-            const { data } = await supabase.from('orders').select('*, order_items(id, product_id, quantity, products(name))').eq('user_id', session.user.id).order('created_at', { ascending: false });
-            orderData = data || [];
-        } catch {}
-
-        let devicesData = [];
-        try {
-            const { data } = await supabase.from('user_devices').select('*').eq('user_id', session.user.id);
-            devicesData = data || [];
-        } catch {}
-
-        let achievementsData = [];
-        try {
-            const { data } = await supabase.from('user_achievements').select('*').eq('user_id', session.user.id);
-            achievementsData = data || [];
-        } catch {}
-
-        let warrantiesData = [];
-        try {
-            const { data } = await supabase.from('warranties').select('*').eq('user_id', session.user.id);
-            warrantiesData = data || [];
-        } catch {}
-
-        let ticketsData = [];
-        try {
-            const { data } = await supabase.from('support_tickets').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
-            ticketsData = data || [];
-        } catch {}
-
-        let notifData = [];
-        try {
-            const { data } = await supabase.from('user_notifications').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
-            notifData = data || [];
-        } catch {}
-
-        let gameConfig = null;
-        try {
-            const { data } = await supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle();
-            gameConfig = data?.value;
-        } catch {}
+        const [
+            abandonedResult,
+            ordersResult,
+            devicesResult,
+            achievementsResult,
+            warrantiesResult,
+            ticketsResult,
+            notificationsResult,
+            gameConfigResult
+        ] = await Promise.all([
+            supabase.from('abandoned_carts').select('*').eq('customer_phone', session.user.email || '').maybeSingle().then(result => result.data).catch(() => null),
+            supabase.from('orders').select('*, order_items(id, product_id, quantity, products(name))').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || []).catch(() => []),
+            supabase.from('user_devices').select('*').eq('user_id', session.user.id).then(result => result.data || []).catch(() => []),
+            supabase.from('user_achievements').select('*').eq('user_id', session.user.id).then(result => result.data || []).catch(() => []),
+            supabase.from('warranties').select('*').eq('user_id', session.user.id).then(result => result.data || []).catch(() => []),
+            supabase.from('support_tickets').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || []).catch(() => []),
+            supabase.from('user_notifications').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || []).catch(() => []),
+            supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle().then(result => result.data?.value || null).catch(() => null)
+        ]);
+        const abandonedData = abandonedResult;
+        const orderData = ordersResult;
+        const devicesData = devicesResult;
+        const achievementsData = achievementsResult;
+        const warrantiesData = warrantiesResult;
+        const ticketsData = ticketsResult;
+        const notifData = notificationsResult;
+        const gameConfig = gameConfigResult;
 
         if (profileData && !profileData.referral_code) {
             const newCode = `OB-${session.user.id.substring(0, 7).toUpperCase()}`;
@@ -1938,6 +1918,7 @@ export default function ProfilePage() {
           <LocationPicker
             initialLat={profile?.latitude}
             initialLng={profile?.longitude}
+            autoDetect
             onConfirm={handleLocationConfirm}
             onClose={() => setIsPickingLocation(false)}
           />
