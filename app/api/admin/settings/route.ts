@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { sanitizeSettingsRows } from '@/lib/settingsSanitizer';
+import { validateBuildMyNightConfig } from '@/lib/buildMyNightConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +70,10 @@ function isSettingUpdate(value: unknown): value is SettingUpdate {
     return update.value.analytics_provider === 'app'
       || update.value.analytics_provider === 'vercel'
       || update.value.analytics_provider === 'both';
+  }
+
+  if (update.key === 'ai_config') {
+    return validateBuildMyNightConfig(update.value) === null;
   }
 
   return true;

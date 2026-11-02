@@ -54,6 +54,12 @@ import { isSpiritProductCategory, spiritCategoryPostgrestFilter } from '@/lib/pr
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
 import { setAnalyticsProvider } from '@/lib/analyticsProvider';
 import ConnectionDiagnostics from '@/components/admin/ConnectionDiagnostics';
+import {
+    BUILD_MY_NIGHT_OCCASIONS,
+    DEFAULT_BUILD_MY_NIGHT_CONFIG,
+    normalizeBuildMyNightConfig,
+    validateBuildMyNightConfig
+} from '@/lib/buildMyNightConfig';
 
 const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAreaManager'), { ssr: false });
 
@@ -103,9 +109,11 @@ const DEFAULTS = {
         assistant_name: "Bar AI",
         response_style: "Premium",
         concierge_mode: 'classic' as 'classic' | 'managed',
+        random_suggestions_enabled: DEFAULT_BUILD_MY_NIGHT_CONFIG.random_suggestions_enabled,
         party_categories: ['spirits', 'snacks', 'mixers'],
         date_night_categories: ['wine', 'snacks', 'mixers'],
         recommendation_limit: 4,
+        occasion_products: DEFAULT_BUILD_MY_NIGHT_CONFIG.occasion_products,
         primary_gateway: "AUTO"
     },
     onboarding_config: {
@@ -145,6 +153,10 @@ interface HomepageProduct {
     id: number;
     name: string;
     stock: number | null;
+    category: string | null;
+    status: string | null;
+    hide_product: boolean | null;
+    is_available_now: boolean | null;
 }
 
 export default function AdminSettingsPage() {
@@ -262,17 +274,11 @@ export default function AdminSettingsPage() {
                         ...Object.fromEntries(Object.entries(item.value).filter(([key]) =>
                             !['google_gemini_api_key', 'openai_api_key', 'anthropic_claude_api_key'].includes(key)
                         )),
-                        concierge_mode: item.value.concierge_mode === 'managed' ? 'managed' : 'classic',
-                        party_categories: Array.isArray(item.value.party_categories)
-                            ? item.value.party_categories.filter((category): category is string => typeof category === 'string')
-                            : DEFAULTS.ai_config.party_categories,
-                        date_night_categories: Array.isArray(item.value.date_night_categories)
-                            ? item.value.date_night_categories.filter((category): category is string => typeof category === 'string')
-                            : DEFAULTS.ai_config.date_night_categories,
-                        recommendation_limit: Number.isInteger(item.value.recommendation_limit)
-                            ? Math.min(6, Math.max(1, Number(item.value.recommendation_limit)))
-                            : DEFAULTS.ai_config.recommendation_limit
+                        ...(normalizeBuildMyNightConfig(item.value) || DEFAULT_BUILD_MY_NIGHT_CONFIG)
                     } as typeof DEFAULTS.ai_config);
+                    if (item.key === 'ai_config' && !normalizeBuildMyNightConfig(item.value)) {
+                        setMessage({ type: 'error', text: 'Planner settings are invalid. Review and save the managed planner controls before publishing.' });
+                    }
                     if (item.key === 'onboarding_config') setOnboarding(item.value as typeof DEFAULTS.onboarding_config);
                     if (item.key === 'features') setFeatures({
                         ...features,
@@ -295,7 +301,7 @@ export default function AdminSettingsPage() {
             if (!supabase) throw new Error('Product database access is not configured.');
             const { data: productData, error: productsError } = await supabase
                 .from('products')
-                .select('id, name, stock')
+                .select('id, name, category, stock, status, hide_product, is_available_now')
                 .gt('stock', 0)
                 .order('name');
             if (productsError) throw productsError;
@@ -352,23 +358,11 @@ export default function AdminSettingsPage() {
     const handleSave = async (key: string, value: unknown, publish: boolean = true) => {
         if (key === 'ai_config') {
             const config = value as typeof aiConfig;
-            const allowedCategories = new Set(['wine', 'spirits', 'beer', 'snacks', 'mixers', 'extras']);
-            if (
-                config.concierge_mode === 'managed'
-                && (
-                    !Number.isInteger(config.recommendation_limit)
-                    || config.recommendation_limit < 1
-                    || config.recommendation_limit > 6
-                    || !Number.isFinite(config.build_setup_limit)
-                    || config.build_setup_limit < 1
-                    || ![config.party_categories, config.date_night_categories].every(categories =>
-                        categories.length > 0 && categories.every(category => allowedCategories.has(category))
-                    )
-                )
-            ) {
+            const plannerError = validateBuildMyNightConfig(config);
+            if (plannerError) {
                 setMessage({
                     type: 'error',
-                    text: 'Managed Concierge needs a budget above zero, 1–6 recommendations, and valid product categories.'
+                    text: plannerError
                 });
                 return;
             }
@@ -1497,6 +1491,22 @@ export default function AdminSettingsPage() {
                                                     className="h-14 rounded-2xl bg-white border-border font-bold text-foreground"
                                                 />
                                             </div>
+                                            <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-foreground sm:col-span-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={aiConfig.random_suggestions_enabled}
+                                                    disabled={aiConfig.concierge_mode !== 'managed'}
+                                                    onChange={event => setAiConfig({
+                                                        ...aiConfig,
+                                                        random_suggestions_enabled: event.target.checked
+                                                    })}
+                                                    className="mt-0.5 accent-primary"
+                                                />
+                                                <span>
+                                                    <span className="block text-xs font-black uppercase">Randomize product suggestions</span>
+                                                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">When enabled, each generated plan randomly selects from products allowed for that occasion, taste, stock, and budget. Turn on Managed mode to use this option.</span>
+                                                </span>
+                                            </label>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase text-muted-foreground">House party categories</label>
                                                 <Input
@@ -1535,6 +1545,76 @@ export default function AdminSettingsPage() {
                                                     onChange={e => setAiConfig({ ...aiConfig, build_setup_limit: Number(e.target.value) })}
                                                     className="h-14 rounded-2xl bg-white border-border font-bold text-foreground"
                                                 />
+                                            </div>
+                                            <div className="space-y-4 sm:col-span-2">
+                                                <div>
+                                                    <label className="text-[10px] font-black uppercase text-muted-foreground">Curate products by occasion</label>
+                                                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                                        Selected products are the only products suggested for that occasion, subject to customer tastes, stock, and budget. Leave a list empty to use its category defaults.
+                                                    </p>
+                                                </div>
+                                                <div className="grid gap-4 lg:grid-cols-2">
+                                                    {BUILD_MY_NIGHT_OCCASIONS.map(occasion => {
+                                                        const selectedIds = aiConfig.occasion_products[occasion.id] || [];
+                                                        const visibleProducts = homepageProducts.filter(product =>
+                                                            product.stock !== null
+                                                            && product.stock > 0
+                                                            && isStorefrontProductVisible(product)
+                                                        );
+                                                        const visibleIds = new Set(visibleProducts.map(product => product.id));
+                                                        const unavailableIds = selectedIds.filter(id => !visibleIds.has(id));
+                                                        return (
+                                                            <section key={occasion.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                                                <h4 className="mb-3 text-xs font-black uppercase text-foreground">{occasion.label}</h4>
+                                                                <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+                                                                    {visibleProducts.length === 0 && (
+                                                                        <p className="text-xs text-muted-foreground">No in-stock storefront products are available.</p>
+                                                                    )}
+                                                                    {visibleProducts.map(product => (
+                                                                        <label key={product.id} className="flex items-start gap-2 text-xs text-foreground">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={selectedIds.includes(product.id)}
+                                                                                disabled={aiConfig.concierge_mode !== 'managed'}
+                                                                                onChange={event => setAiConfig({
+                                                                                    ...aiConfig,
+                                                                                    occasion_products: {
+                                                                                        ...aiConfig.occasion_products,
+                                                                                        [occasion.id]: event.target.checked
+                                                                                            ? [...selectedIds, product.id]
+                                                                                            : selectedIds.filter(id => id !== product.id)
+                                                                                    }
+                                                                                })}
+                                                                                className="mt-0.5 accent-primary"
+                                                                            />
+                                                                            <span>{product.name} <span className="text-muted-foreground">({product.category || 'uncategorized'})</span></span>
+                                                                        </label>
+                                                                    ))}
+                                                                </div>
+                                                                {unavailableIds.length > 0 && (
+                                                                    <div className="mt-3 border-t border-slate-100 pt-2">
+                                                                        <p className="mb-2 text-[10px] text-amber-700">Unavailable selected product IDs: {unavailableIds.join(', ')}</p>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="outline"
+                                                                            disabled={aiConfig.concierge_mode !== 'managed'}
+                                                                            onClick={() => setAiConfig({
+                                                                                ...aiConfig,
+                                                                                occasion_products: {
+                                                                                    ...aiConfig.occasion_products,
+                                                                                    [occasion.id]: selectedIds.filter(id => visibleIds.has(id))
+                                                                                }
+                                                                            })}
+                                                                            className="h-8 rounded-lg px-2 text-[10px]"
+                                                                        >
+                                                                            Remove unavailable
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                            </section>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

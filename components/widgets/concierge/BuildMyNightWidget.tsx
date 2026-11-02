@@ -26,6 +26,11 @@ import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
 import { OB_OS } from '@/lib/onlineBarOS';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import {
+    BUILD_MY_NIGHT_OCCASIONS,
+    DEFAULT_BUILD_MY_NIGHT_CONFIG,
+    normalizeBuildMyNightConfig
+} from '@/lib/buildMyNightConfig';
 
 const PREFERENCES_KEY = 'build_my_night_preferences';
 const STEPS = ['Occasion', 'Guests', 'Budget', 'Taste', 'Your night'] as const;
@@ -107,28 +112,51 @@ function matchesTaste(product: BuildResult, tastes: Taste[]) {
     });
 }
 
+function shuffleProducts(products: BuildResult[]) {
+    const shuffled = [...products];
+    for (let index = shuffled.length - 1; index > 0; index--) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+    }
+    return shuffled;
+}
+
 function buildPlan(
     products: BuildResult[],
     budget: number,
-    mode: BuildMode
+    mode: BuildMode,
+    guests: number,
+    recommendationLimit?: number,
+    randomizeCandidates = false
 ): NightPlan {
     const definitions: Record<BuildMode, Omit<NightPlan, 'id' | 'items'>> = {
         essential: { label: 'Essential', description: 'A lighter, simple set for sharing.' },
         value: { label: 'Best value', description: 'A balanced mix for your plans.' },
         premium: { label: 'Premium', description: 'More choice for a fuller celebration.' }
     };
-    const candidates = [...products];
-    if (mode === 'essential') candidates.sort((a, b) => a.price - b.price);
-    if (mode === 'premium') candidates.sort((a, b) => b.price - a.price);
+    const candidates = randomizeCandidates ? shuffleProducts(products) : [...products];
+    if (!randomizeCandidates && mode === 'essential') candidates.sort((a, b) => a.price - b.price);
+    if (!randomizeCandidates && mode === 'premium') candidates.sort((a, b) => b.price - a.price);
 
-    const itemLimit = mode === 'essential' ? 2 : mode === 'value' ? 4 : 5;
+    const defaultItemLimit = mode === 'essential' ? 2 : mode === 'value' ? 4 : 5;
+    const itemLimit = recommendationLimit === undefined
+        ? defaultItemLimit
+        : Math.min(recommendationLimit, mode === 'premium' ? 6 : defaultItemLimit);
+    const unitsPerGuest = mode === 'essential' ? 8 : mode === 'value' ? 4 : 2;
+    const targetQuantity = Math.max(1, Math.ceil(guests / unitsPerGuest));
     const items: PlanItem[] = [];
     let total = 0;
     for (const product of candidates) {
         if (items.length >= itemLimit) break;
-        if (total + product.price > budget) continue;
-        items.push({ product, quantity: 1 });
-        total += product.price;
+        const remainingBudget = budget - total;
+        const quantity = Math.min(
+            targetQuantity,
+            product.stock,
+            Math.floor(remainingBudget / product.price)
+        );
+        if (quantity < 1) continue;
+        items.push({ product, quantity });
+        total += product.price * quantity;
     }
 
     return { id: mode, ...definitions[mode], items };
@@ -136,6 +164,13 @@ function buildPlan(
 
 function planTotal(plan: NightPlan) {
     return plan.items.reduce((total, item) => total + item.product.price * item.quantity, 0);
+}
+
+function planSignature(plan: NightPlan) {
+    return plan.items
+        .map(item => `${item.product.id}:${item.quantity}`)
+        .sort()
+        .join('|');
 }
 
 function chooseInStockVariant(product: BuildResult): BuildResult | null {
@@ -166,8 +201,11 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
     const [budget, setBudget] = React.useState(defaultPreferences.budget);
     const [tastes, setTastes] = React.useState<Taste[]>(defaultPreferences.tastes);
     const [plans, setPlans] = React.useState<NightPlan[]>([]);
+    const [suggestedPlans, setSuggestedPlans] = React.useState<NightPlan[]>([]);
     const [selectedPlan, setSelectedPlan] = React.useState<BuildMode>('value');
     const [catalog, setCatalog] = React.useState<BuildResult[]>([]);
+    const [randomSuggestionsEnabled, setRandomSuggestionsEnabled] = React.useState(false);
+    const [overrideProductId, setOverrideProductId] = React.useState('');
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [addedToCart, setAddedToCart] = React.useState(false);
@@ -207,6 +245,11 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
             setError('Choose an occasion to get started.');
             return;
         }
+        const occasion = BUILD_MY_NIGHT_OCCASIONS.find(item => item.id === preferences.occasion);
+        if (!occasion) {
+            setError('Choose a valid occasion to get started.');
+            return;
+        }
         if (preferences.tastes.some(taste => ['Beer', 'Wine', 'Spirits'].includes(taste)) && !ageConfirmed) {
             setError('Confirm that you are 18 or older before viewing alcohol recommendations.');
             return;
@@ -215,9 +258,31 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
         setError(null);
         setAddedToCart(false);
         try {
-            const response = await fetch('/api/catalog/products?limit=500', { cache: 'no-store' });
-            const result = await response.json() as { error?: string; products?: BuildResult[] };
+            const [response, settingsResponse] = await Promise.all([
+                fetch('/api/catalog/products?limit=500', { cache: 'no-store' }),
+                fetch('/api/settings', { cache: 'no-store' })
+            ]);
+            const [result, settingsResult] = await Promise.all([
+                response.json() as Promise<{ error?: string; products?: BuildResult[] }>,
+                settingsResponse.json() as Promise<{
+                    error?: string;
+                    settings?: Array<{ key: string; value: unknown }>;
+                }>
+            ]);
             if (!response.ok) throw new Error(result.error || 'Product recommendations could not be loaded.');
+            if (!settingsResponse.ok) throw new Error(settingsResult.error || 'Planner settings could not be loaded.');
+
+            const plannerSetting = settingsResult.settings?.find(setting => setting.key === 'ai_config');
+            const plannerConfig = plannerSetting
+                ? normalizeBuildMyNightConfig(plannerSetting.value)
+                : DEFAULT_BUILD_MY_NIGHT_CONFIG;
+            if (!plannerConfig) throw new Error('Planner settings are invalid. Please contact support.');
+            if (plannerConfig.concierge_mode === 'managed'
+                && preferences.budget > plannerConfig.build_setup_limit) {
+                setBudget(plannerConfig.build_setup_limit);
+                setStep(2);
+                throw new Error(`The planner budget limit is ${formatPrice(plannerConfig.build_setup_limit)}. Your budget was adjusted; generate the plan again.`);
+            }
 
             const eligible = (result.products || [])
                 .filter(product => product.is_available_now !== false
@@ -230,25 +295,57 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                 }))
                 .filter((product): product is BuildResult => product !== null)
                 .sort((first, second) => first.price - second.price) as BuildResult[];
-            const matched = eligible.filter(product => matchesTaste(product, preferences.tastes));
+            let occasionEligible = eligible;
+            if (plannerConfig.concierge_mode === 'managed') {
+                const curatedProductIds = plannerConfig.occasion_products[occasion.id];
+                if (curatedProductIds.length > 0) {
+                    const selectedIds = new Set(curatedProductIds);
+                    occasionEligible = eligible.filter(product => selectedIds.has(product.id));
+                } else if (occasion.id === 'PARTY' || occasion.id === 'DATE_NIGHT') {
+                    const categories = new Set(
+                        (occasion.id === 'PARTY'
+                            ? plannerConfig.party_categories
+                            : plannerConfig.date_night_categories
+                        ).map(category => category.toLowerCase())
+                    );
+                    occasionEligible = eligible.filter(product =>
+                        categories.has(product.category.trim().toLowerCase())
+                    );
+                }
+            }
+            const matched = occasionEligible.filter(product => matchesTaste(product, preferences.tastes));
             if (matched.length === 0) {
                 setCatalog([]);
                 setPlans([]);
-                setError('No in-stock products match those tastes right now. Go back to adjust your picks.');
+                setError('No in-stock products match this occasion and your selected tastes right now. Go back to adjust your picks.');
                 return;
             }
 
-            setCatalog(matched);
+            setCatalog(eligible);
             const generated = (['essential', 'value', 'premium'] as const)
-                .map(mode => buildPlan(matched, preferences.budget, mode))
+                .map(mode => buildPlan(
+                    matched,
+                    preferences.budget,
+                    mode,
+                    preferences.guests,
+                    plannerConfig.concierge_mode === 'managed' ? plannerConfig.recommendation_limit : undefined,
+                    plannerConfig.concierge_mode === 'managed' && plannerConfig.random_suggestions_enabled
+                ))
                 .filter(plan => plan.items.length > 0);
             if (generated.length === 0) {
                 setPlans([]);
                 setError(`No matching products fit under ${formatPrice(preferences.budget)}. Try raising your budget.`);
                 return;
             }
-            setPlans(generated);
-            setSelectedPlan(generated.find(plan => plan.id === 'value')?.id || generated[0].id);
+            const uniquePlans = generated.filter((plan, index) =>
+                generated.findIndex(candidate => planSignature(candidate) === planSignature(plan)) === index
+            );
+            setRandomSuggestionsEnabled(plannerConfig.concierge_mode === 'managed'
+                && plannerConfig.random_suggestions_enabled);
+            setSuggestedPlans(uniquePlans);
+            setPlans(uniquePlans);
+            setSelectedPlan(uniquePlans.find(plan => plan.id === 'value')?.id || uniquePlans[0].id);
+            setOverrideProductId('');
             setStep(4);
             void OB_OS.track('UI_INTERACTION', {
                 details: {
@@ -269,6 +366,7 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
     const selected = plans.find(plan => plan.id === selectedPlan);
     const total = selected ? planTotal(selected) : 0;
     const itemCount = selected?.items.reduce((count, item) => count + item.quantity, 0) || 0;
+    const overrideProduct = catalog.find(product => String(product.id) === overrideProductId);
 
     const handleAddAll = () => {
         if (!selected || selected.items.length === 0) {
@@ -308,6 +406,8 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
         const otherTotal = planTotal(plan) - currentItem.product.price * currentItem.quantity;
         const replacement = change === 'swap'
             ? catalog.find(product =>
+                matchesTaste(product, tastes)
+                &&
                 !existingIds.has(product.id)
                 && otherTotal + product.price * currentItem.quantity <= budget
             )
@@ -344,6 +444,49 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
             };
         }));
         setAddedToCart(false);
+    };
+
+    const addOverrideItem = () => {
+        const product = catalog.find(item => String(item.id) === overrideProductId);
+        const plan = plans.find(item => item.id === selectedPlan);
+        if (!product || !plan) {
+            setError('Choose an in-stock catalog item to add to your plan.');
+            return;
+        }
+        if (!isNonAlcoholic(product) && !ageConfirmed) {
+            setError('Confirm that you are 18 or older before adding alcohol to your plan.');
+            return;
+        }
+        const existing = plan.items.find(item => item.product.id === product.id);
+        const nextQuantity = (existing?.quantity || 0) + 1;
+        if (nextQuantity > product.stock) {
+            setError(`Only ${product.stock} of this item are currently in stock.`);
+            return;
+        }
+        if (planTotal(plan) + product.price > budget) {
+            setError('That item would take the plan over your budget. Increase your budget or remove another item.');
+            return;
+        }
+
+        setPlans(current => current.map(item => item.id !== selectedPlan ? item : {
+            ...item,
+            items: existing
+                ? item.items.map(planItem => planItem.product.id === product.id
+                    ? { ...planItem, quantity: nextQuantity }
+                    : planItem)
+                : [...item.items, { product, quantity: 1 }]
+        }));
+        setOverrideProductId('');
+        setAddedToCart(false);
+        setError(null);
+    };
+
+    const restoreSuggestedPlan = () => {
+        const suggested = suggestedPlans.find(plan => plan.id === selectedPlan);
+        if (!suggested) return;
+        setPlans(current => current.map(plan => plan.id === selectedPlan ? suggested : plan));
+        setAddedToCart(false);
+        setError(null);
     };
 
     const toggleTaste = (taste: Taste) => {
@@ -562,8 +705,11 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                                         <div>
                                             <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Your night, {occasion?.toLowerCase().replace('_', ' ')}</h2>
                                             <p className="mt-1 text-sm text-slate-600">{guests} {guests === 1 ? 'guest' : 'guests'} · up to {formatPrice(budget)}</p>
+                                            {randomSuggestionsEnabled && (
+                                                <p className="mt-1 text-xs font-medium text-amber-800">These picks were randomly selected from eligible products.</p>
+                                            )}
                                         </div>
-                                        <button type="button" onClick={() => { setStep(0); setPlans([]); setAddedToCart(false); }} className="text-sm font-semibold text-amber-800 underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
+                                        <button type="button" onClick={() => { setStep(0); setPlans([]); setSuggestedPlans([]); setAddedToCart(false); }} className="text-sm font-semibold text-amber-800 underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
                                             Start over
                                         </button>
                                     </div>
@@ -583,11 +729,16 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                                                     <span className="text-sm font-semibold">{plan.label}</span>
                                                     {selectedPlan === plan.id && <Check size={16} className="text-amber-800" aria-hidden="true" />}
                                                 </span>
-                                                <span className="mt-1 block min-h-10 text-xs leading-5 text-slate-600">{plan.description}</span>
+                                                <span className="mt-1 block min-h-10 text-xs leading-5 text-slate-600">{plan.description} · {plan.items.reduce((count, item) => count + item.quantity, 0)} units</span>
                                                 <span className="mt-2 block text-lg font-semibold tabular-nums">{formatPrice(planTotal(plan))}</span>
                                             </button>
                                         ))}
                                     </div>
+                                    {plans.length < 3 && (
+                                        <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                                            Some plan options are hidden because current stock and your budget do not produce a genuinely different plan.
+                                        </p>
+                                    )}
 
                                     {selected && (
                                         <div className="mt-5 space-y-3">
@@ -613,6 +764,45 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                                                 </div>
                                             ))}
                                             {selected.items.length === 0 && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">This plan is empty. Choose another option or go back to adjust your tastes.</p>}
+                                            <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/50 p-4">
+                                                <h3 className="text-sm font-semibold text-slate-900">Manual override</h3>
+                                                <p className="mt-1 text-xs leading-5 text-slate-600">Keep the usual suggested plan, or add any in-stock catalog item at its listed price. This changes only the selected plan.</p>
+                                                {suggestedPlans.some(plan => plan.id === selected.id && planSignature(plan) !== planSignature(selected)) && (
+                                                    <button type="button" onClick={restoreSuggestedPlan} className="mt-2 text-xs font-semibold text-amber-900 underline underline-offset-2">
+                                                        Restore usual suggested picks
+                                                    </button>
+                                                )}
+                                                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                                    <select
+                                                        value={overrideProductId}
+                                                        onChange={event => setOverrideProductId(event.target.value)}
+                                                        aria-label="Choose a product to manually add"
+                                                        className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                                                    >
+                                                        <option value="">Choose an in-stock item</option>
+                                                        {catalog.map(product => (
+                                                            <option key={product.id} value={product.id}>
+                                                                {product.name}{product.size ? ` · ${product.size}` : ''} · {formatPrice(product.price)} · {product.stock} in stock
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={addOverrideItem}
+                                                        disabled={!overrideProduct}
+                                                        className="h-11 shrink-0 rounded-xl border-amber-300 bg-white text-amber-900"
+                                                    >
+                                                        Add item
+                                                    </Button>
+                                                </div>
+                                                {overrideProduct && !isNonAlcoholic(overrideProduct) && !ageConfirmed && (
+                                                    <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs leading-5 text-amber-950">
+                                                        <input type="checkbox" checked={ageConfirmed} onChange={event => setAgeConfirmed(event.target.checked)} className="mt-1 accent-amber-700" />
+                                                        <span>I confirm I am 18 or older before adding alcohol.</span>
+                                                    </label>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                     <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
