@@ -298,8 +298,8 @@ export default function VendorOnboardingPage() {
     }
   };
 
-  const createInvite = async () => {
-    if (!selectedLead || selectedLead.vendor_type === 'rider' || selectedLead.stage === 'live') return;
+  const createInvite = async (): Promise<string | null> => {
+    if (!selectedLead || selectedLead.vendor_type === 'rider' || selectedLead.stage === 'live' || selectedLead.invite_application_id) return null;
     setWorking(true);
     setError(null);
     setNotice(null);
@@ -314,8 +314,10 @@ export default function VendorOnboardingPage() {
       setNotice(`A private 7-day Apex Market onboarding link was created for ${selectedLead.business_name}.`);
       await loadPipeline();
       await loadDetail(selectedLead.id);
+      return link.toString();
     } catch (inviteError) {
       setError(inviteError instanceof Error ? inviteError.message : 'Could not create the company onboarding link.');
+      return null;
     } finally {
       setWorking(false);
     }
@@ -329,6 +331,18 @@ export default function VendorOnboardingPage() {
     } catch (copyError) {
       console.error('[VendorOnboarding] Could not copy private invite link:', copyError);
       setError('Could not copy the link. Select and copy the displayed URL instead.');
+    }
+  };
+
+  const copySpecificOnboardingLink = async () => {
+    const link = inviteHref || await createInvite();
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setNotice(`Specific onboarding link copied for ${selectedLead?.business_name || 'this vendor'}.`);
+    } catch (copyError) {
+      console.error('[VendorOnboarding] Could not copy specific onboarding link:', copyError);
+      setError('The link was created, but could not be copied. Select and copy it from the link box below.');
     }
   };
 
@@ -569,6 +583,11 @@ export default function VendorOnboardingPage() {
                 </Button>
               )}
               <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Open WhatsApp</a>
+              {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && !selectedLead.invite_application_id && (
+                <Button type="button" variant="outline" disabled={working} onClick={() => void copySpecificOnboardingLink()} className="h-9 border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">
+                  <Copy className="mr-2 h-4 w-4" /> {inviteHref ? 'Copy onboarding link' : 'Create & copy link'}
+                </Button>
+              )}
               <button onClick={() => setSelectedId(null)} className="rounded-md border border-slate-300 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-900" aria-label="Close lead detail"><X className="h-4 w-4" /></button>
             </div>
           </div>

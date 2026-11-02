@@ -92,7 +92,7 @@ export async function GET(request: Request) {
     .maybeSingle();
   if (controlsError || !onboardingControls) {
     console.error('[MerchantApplications] Could not load onboarding controls:', controlsError);
-    return NextResponse.json({ error: 'Merchant onboarding is unavailable. Confirm the onboarding experience migration is installed.' }, { status: 503 });
+    return NextResponse.json({ error: 'Merchant onboarding is unavailable. Run supabase/MERCHANT_ONBOARDING_EXPERIENCE_MIGRATION.sql after MERCHANT_OPERATIONS_MIGRATION.sql.' }, { status: 503 });
   }
   const requirements = resolveMerchantDocumentRequirements(
     (data || []) as MerchantDocumentRequirement[],
@@ -284,7 +284,7 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (controlsError || !onboardingControls) {
     console.error('[MerchantApplications] Could not load onboarding controls:', controlsError);
-    return NextResponse.json({ error: 'Merchant onboarding is unavailable. Please try again later.' }, { status: 503 });
+    return NextResponse.json({ error: 'Merchant onboarding is unavailable. Run supabase/MERCHANT_ONBOARDING_EXPERIENCE_MIGRATION.sql after MERCHANT_OPERATIONS_MIGRATION.sql.' }, { status: 503 });
   }
   let offeredGoods: string[] = [];
   let verifiedOffers: Array<{ product_id: number; product_name: string; price: number; currency: 'KES' }> = [];

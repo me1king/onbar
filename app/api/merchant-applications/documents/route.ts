@@ -55,7 +55,7 @@ async function getUploadContext(token: string) {
     .maybeSingle();
   if (linkError) {
     console.error('[MerchantDocumentUpload] Could not verify secure upload link:', linkError);
-    return { error: 'Secure document upload is unavailable. Confirm the onboarding experience migration is installed.', status: 503 as const };
+    return { error: 'Secure document upload is unavailable. Run supabase/MERCHANT_ONBOARDING_EXPERIENCE_MIGRATION.sql after MERCHANT_OPERATIONS_MIGRATION.sql.', status: 503 as const };
   }
   if (!link || link.revoked_at || new Date(link.expires_at).getTime() <= Date.now()) {
     return { error: 'This document upload link is invalid, expired, or has already been completed.', status: 410 as const };

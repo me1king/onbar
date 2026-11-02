@@ -25,7 +25,7 @@ export async function GET() {
     .maybeSingle();
   if (error || !data) {
     console.error('[MerchantOnboardingControls] Could not load controls:', error);
-    return NextResponse.json({ error: 'Merchant onboarding controls are unavailable. Apply the onboarding experience migration.' }, { status: 503 });
+    return NextResponse.json({ error: 'Merchant onboarding controls are unavailable. Run supabase/MERCHANT_ONBOARDING_EXPERIENCE_MIGRATION.sql after MERCHANT_OPERATIONS_MIGRATION.sql and refresh the page.' }, { status: 503 });
   }
   return NextResponse.json({ controls: data }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
