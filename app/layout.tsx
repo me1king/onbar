@@ -29,6 +29,7 @@ import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import RootStabilityGuard from "@/components/layout/RootStabilityGuard";
 import PostHogSessionReplay from "@/components/layout/PostHogSessionReplay";
 import { Suspense } from "react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export default function RootLayout({
   children,
@@ -65,6 +66,7 @@ export default function RootLayout({
         </RootStabilityGuard>
 
         <JsonLd />
+        <SpeedInsights />
       </body>
     </html>
   );
