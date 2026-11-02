@@ -88,34 +88,30 @@ export default function ProductList({
           return;
         }
 
-        const [prodRes, tierRes] = await Promise.all([
-            supabase.from('products').select('*').order('created_at', { ascending: false }),
-            supabase.auth.getSession().then(async ({ data: { session } }) => {
-                if (!session || !supabase) return { data: null };
-                try {
-                    return await supabase.from('profiles').select('loyalty_points').eq('id', session.user.id).maybeSingle();
-                } catch {
-                    return { data: null };
-                }
-            })
-        ]);
-
-        if (prodRes.error) {
-          console.error('Supabase fetch error:', prodRes.error.message);
-          setError(`The product catalog could not be loaded: ${prodRes.error.message}`);
+        const response = await fetch('/api/catalog/products?limit=100', {
+          cache: 'force-cache',
+          signal: AbortSignal.timeout(8_000)
+        });
+        const result = await response.json() as { products?: Product[]; error?: string };
+        if (!response.ok) {
+          console.error('Catalog API error:', result.error);
+          setError(result.error || 'The product catalog could not be loaded.');
           setProducts([]);
         } else {
           setError(null);
-          setProducts((prodRes.data as Product[] || []).filter(isStorefrontProductVisible));
+          setProducts((result.products || []).filter(isStorefrontProductVisible));
         }
 
-        if (tierRes?.data) {
-            const pts = (tierRes.data as { loyalty_points?: number }).loyalty_points || 0;
-            if (pts >= 5000) setUserTier('Legend');
-            else if (pts >= 2000) setUserTier('Diamond');
-            else if (pts >= 1000) setUserTier('Gold');
-            else if (pts >= 500) setUserTier('Silver');
-        }
+        // Loyalty tier is supplementary and must never delay the catalog first paint.
+        void supabase.auth.getSession().then(async ({ data: { session } }) => {
+          if (!session) return;
+          const { data } = await supabase.from('profiles').select('loyalty_points').eq('id', session.user.id).maybeSingle();
+          const pts = Number((data as { loyalty_points?: number } | null)?.loyalty_points || 0);
+          if (pts >= 5000) setUserTier('Legend');
+          else if (pts >= 2000) setUserTier('Diamond');
+          else if (pts >= 1000) setUserTier('Gold');
+          else if (pts >= 500) setUserTier('Silver');
+        }).catch(() => undefined);
       } catch (err) {
         console.error('Error fetching products:', err);
         setError('Failed to load products');
@@ -129,16 +125,8 @@ export default function ProductList({
         fetchInitialData();
     }
 
-    if (!supabase) return;
-    const channel = supabase
-      .channel('realtime_storefront_product_list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
-        fetchInitialData();
-      })
-      .subscribe();
-    return () => {
-      if (supabase) void supabase.removeChannel(channel);
-    };
+    // The catalog API is cached and bounded. Avoid opening a realtime socket on
+    // the home page and refetching the entire catalog after every inventory edit.
   }, [initialProducts]);
 
   // Listen for Global Search Event & URL Params
