@@ -103,9 +103,10 @@ export default function ProductList({
         }
 
         // Loyalty tier is supplementary and must never delay the catalog first paint.
-        void supabase.auth.getSession().then(async ({ data: { session } }) => {
+        const client = supabase;
+        void client.auth.getSession().then(async ({ data: { session } }) => {
           if (!session) return;
-          const { data } = await supabase.from('profiles').select('loyalty_points').eq('id', session.user.id).maybeSingle();
+          const { data } = await client.from('profiles').select('loyalty_points').eq('id', session.user.id).maybeSingle();
           const pts = Number((data as { loyalty_points?: number } | null)?.loyalty_points || 0);
           if (pts >= 5000) setUserTier('Legend');
           else if (pts >= 2000) setUserTier('Diamond');
