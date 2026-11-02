@@ -13,9 +13,14 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { cn, formatPrice } from '@/lib/utils';
-import { supabase } from '@/lib/supabaseClient';
+import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+
+interface JourneyStep {
+    event: string;
+    path: string;
+    at: string;
+}
 
 interface LiveTerminalSession {
     id: string;
@@ -24,10 +29,11 @@ interface LiveTerminalSession {
     device: 'Mobile' | 'Desktop' | 'Unknown';
     location: string;
     active_time_sec: number;
-    cart_value: number;
+    has_cart: boolean;
     last_seen_at: string;
     last_action: string;
     session_status: string;
+    journey: JourneyStep[];
 }
 
 interface StreamEventItem {
@@ -54,6 +60,7 @@ function categorizeEvent(eventName: string) {
 export default function LiveBehaviorCommandCenter() {
     const router = useRouter();
     const [loading, setLoading] = React.useState(true);
+    const [lastUpdated, setLastUpdated] = React.useState<string | null>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [terminals, setTerminals] = React.useState<LiveTerminalSession[]>([]);
     const [streamEvents, setStreamEvents] = React.useState<StreamEventItem[]>([]);
@@ -71,69 +78,32 @@ export default function LiveBehaviorCommandCenter() {
     const [selectedTerminal, setSelectedTerminal] = React.useState<LiveTerminalSession | null>(null);
 
     const fetchLiveData = React.useCallback(async () => {
-        if (!supabase) {
-            setError('Supabase is not configured. Live behavior data is unavailable.');
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        setError(null);
         try {
-            const now = new Date();
-            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-            const activeSince = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
-            const [sessionsRes, eventsRes, activeRes, productViewsRes, cartsRes, checkoutsRes, ordersRes, dispatchRes] = await Promise.all([
-                supabase.from('customer_sessions').select('*').order('last_seen_at', { ascending: false }).limit(20),
-                supabase.from('analytics_events').select('id, event_name, session_id, anonymous_id, page_url, payload, created_at').order('created_at', { ascending: false }).limit(30),
-                supabase.from('customer_sessions').select('id', { count: 'exact', head: true }).gte('last_seen_at', activeSince),
-                supabase.from('analytics_events').select('id', { count: 'exact', head: true }).eq('event_name', 'PRODUCT_VIEW').gte('created_at', todayStart),
-                supabase.from('customer_sessions').select('id', { count: 'exact', head: true }).gt('cart_value', 0),
-                supabase.from('analytics_events').select('id', { count: 'exact', head: true }).eq('event_name', 'CHECKOUT_START').gte('created_at', todayStart),
-                supabase.from('orders').select('id', { count: 'exact', head: true }).gte('created_at', todayStart),
-                supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'Dispatched')
-            ]);
-
-            const queryError = sessionsRes.error || eventsRes.error || activeRes.error || productViewsRes.error || cartsRes.error || checkoutsRes.error || ordersRes.error || dispatchRes.error;
-            if (queryError) throw queryError;
-
-            const events = eventsRes.data || [];
-            setMetrics({
-                activeSessions: activeRes.count || 0,
-                productViews: productViewsRes.count || 0,
-                cartsWithItems: cartsRes.count || 0,
-                checkoutsStarted: checkoutsRes.count || 0,
-                ordersToday: ordersRes.count || 0,
-                activeDeliveries: dispatchRes.count || 0
-            });
-            setStreamEvents(events.map(event => ({
-                id: event.id,
-                timestamp: new Date(event.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                customer_code: event.session_id ? `Session ${event.session_id}` : event.anonymous_id ? `Visitor ${event.anonymous_id}` : 'Unidentified event',
-                session_id: event.session_id,
-                action_type: categorizeEvent(event.event_name),
-                description: JSON.stringify(event.payload || {}),
-                page_url: event.page_url || 'Page not recorded'
+            const response = await fetch('/api/admin/behavior/live', { cache: 'no-store' });
+            const result = await response.json() as {
+                sessions?: LiveTerminalSession[];
+                events?: Array<Omit<StreamEventItem, 'timestamp' | 'action_type'> & { timestamp: string; action_type: string }>;
+                metrics?: typeof metrics;
+                error?: string;
+                refreshedAt?: string;
+            };
+            if (!response.ok || !result.metrics) throw new Error(result.error || 'Live customer activity could not be loaded.');
+            setError(null);
+            setMetrics(result.metrics);
+            setTerminals(result.sessions || []);
+            setSelectedTerminal(current => current
+                ? result.sessions?.find(session => session.id === current.id) || null
+                : null);
+            setStreamEvents((result.events || []).map(event => ({
+                ...event,
+                timestamp: new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                action_type: categorizeEvent(event.action_type)
             })));
-            setTerminals((sessionsRes.data || []).map(session => {
-                const deviceInfo = session.device_info as { user_agent?: string; ua?: string } | null;
-                const userAgent = deviceInfo?.user_agent || deviceInfo?.ua || '';
-                const sessionEvent = events.find(event => event.session_id === session.id);
-                return {
-                    id: session.id,
-                    session_code: session.id,
-                    customer_name: `Session ${session.id}`,
-                    device: userAgent ? (/mobile/i.test(userAgent) ? 'Mobile' : 'Desktop') : 'Unknown',
-                    location: session.current_page || session.entry_page || 'Page not recorded',
-                    active_time_sec: Number(session.total_active_time_sec || 0),
-                    cart_value: Number(session.cart_value || 0),
-                    last_seen_at: session.last_seen_at,
-                    last_action: sessionEvent?.event_name || 'No recent event',
-                    session_status: session.session_status || 'Unknown',
-                };
-            }));
+            setLastUpdated(result.refreshedAt || new Date().toISOString());
         } catch (err) {
             console.error('Live behavior fetch error:', err);
             setTerminals([]);
+            setSelectedTerminal(null);
             setStreamEvents([]);
             setMetrics({ activeSessions: 0, productViews: 0, cartsWithItems: 0, checkoutsStarted: 0, ordersToday: 0, activeDeliveries: 0 });
             setError(err instanceof Error ? err.message : 'Unable to load live behavior data.');
@@ -144,15 +114,8 @@ export default function LiveBehaviorCommandCenter() {
 
     React.useEffect(() => {
         fetchLiveData();
-
-        if (supabase) {
-            const channel = supabase.channel('live_behavior_stream')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_sessions' }, fetchLiveData)
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'analytics_events' }, fetchLiveData)
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, fetchLiveData)
-                .subscribe();
-            return () => { if (supabase) supabase.removeChannel(channel); };
-        }
+        const interval = window.setInterval(() => { void fetchLiveData(); }, 10_000);
+        return () => window.clearInterval(interval);
     }, [fetchLiveData]);
 
     const filteredEvents = streamEvents.filter(evt => {
@@ -198,7 +161,10 @@ export default function LiveBehaviorCommandCenter() {
                     </Button>
                 </div>
 
-                <p className="text-sm font-medium text-slate-500">Current session activity and order metrics loaded from Supabase.</p>
+                <p className="text-sm font-medium text-slate-500">
+                    Only visitors who consented to analytics are shown. Updates every 10 seconds
+                    {lastUpdated ? ` · refreshed ${new Date(lastUpdated).toLocaleTimeString()}` : ''}.
+                </p>
             </header>
 
             {error && (
@@ -263,8 +229,8 @@ export default function LiveBehaviorCommandCenter() {
                                         <span className="w-fit shrink-0 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[8px] font-black uppercase text-indigo-700">
                                             {evt.action_type}
                                         </span>
-                                        <p title={`${evt.customer_code} · ${evt.description}`} className="col-span-2 min-w-0 break-all text-xs font-bold leading-relaxed text-foreground [overflow-wrap:anywhere] sm:line-clamp-2 sm:break-words">
-                                            <span className="text-slate-500">{evt.customer_code}</span> &bull; {evt.description}
+                                        <p title={`${evt.customer_code} · ${evt.page_url}`} className="col-span-2 min-w-0 break-all text-xs font-bold leading-relaxed text-foreground [overflow-wrap:anywhere] sm:line-clamp-2 sm:break-words">
+                                            <span className="text-slate-500">{evt.customer_code}</span> &bull; {evt.description} &bull; {evt.page_url}
                                         </p>
                                     </div>
                                     <Button
@@ -326,8 +292,8 @@ export default function LiveBehaviorCommandCenter() {
                                             <p title={t.last_action} className="line-clamp-2 break-all font-bold text-foreground">{t.last_action}</p>
                                         </div>
                                         <div className="p-2 bg-white rounded-xl border border-slate-200">
-                                            <p className="text-slate-400 uppercase text-[7px] font-sans">Cart Value</p>
-                                            <p className="font-bold text-emerald-600">{formatPrice(t.cart_value)}</p>
+                                            <p className="text-slate-400 uppercase text-[7px] font-sans">Cart</p>
+                                            <p className="font-bold text-emerald-600">{t.has_cart ? 'Has items' : 'Empty'}</p>
                                         </div>
                                     </div>
 
@@ -373,9 +339,30 @@ export default function LiveBehaviorCommandCenter() {
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-400 uppercase font-sans text-[9px] font-black">Cart Total:</span>
-                                <span className="font-bold text-primary">{formatPrice(selectedTerminal.cart_value)}</span>
+                                <span className="font-bold text-primary">{selectedTerminal.has_cart ? 'Has items' : 'Empty'}</span>
                             </div>
                         </div>
+
+                        <section aria-label="Visited pages" className="space-y-3">
+                            <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">Page journey</h3>
+                            {selectedTerminal.journey.length === 0 ? (
+                                <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">No page journey recorded yet.</p>
+                            ) : (
+                                <ol className="max-h-64 space-y-2 overflow-y-auto">
+                                    {[...selectedTerminal.journey].reverse().map((step, index) => (
+                                        <li key={`${step.at}-${index}`} className="flex min-w-0 items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                                            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="break-all text-sm font-bold text-foreground">{step.path}</p>
+                                                <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                                                    {step.event.replace(/_/g, ' ')} · {new Date(step.at).toLocaleString()}
+                                                </p>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ol>
+                            )}
+                        </section>
 
                         <div className="pt-2 flex justify-end">
                             <Button onClick={() => setSelectedTerminal(null)} className="h-12 px-8 rounded-2xl bg-primary text-white font-black uppercase text-xs">

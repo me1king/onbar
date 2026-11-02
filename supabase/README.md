@@ -42,6 +42,20 @@ The admin APIs use the server-side `SUPABASE_SERVICE_ROLE_KEY`. Keep that key
 server-only; the recovery migration denies direct browser access to its finance
 tables.
 
+## Consent-based live customer journeys
+
+After applying `FINAL_ESTABLISHMENT_SQL.sql` and
+`SECURITY_HARDENING_MIGRATION.sql`, apply
+`LIVE_CUSTOMER_JOURNEY_MIGRATION.sql`. The Admin and Owner Live Activity pages
+then load sessions and page journeys through the authenticated
+`/api/admin/behavior/live` endpoint, which requires an admin or owner session and
+returns only visitors who opted into analytics. The dashboards refresh every 10
+seconds. Private routes and URL query strings are omitted from displayed paths;
+customers who decline or revoke analytics consent are not included.
+
+Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Existing sessions default to no
+analytics consent and therefore stay hidden unless the visitor opts in again.
+
 ## Merchant order alerts
 
 After applying `FINAL_ESTABLISHMENT_SQL.sql`, `MERCHANT_OPERATIONS_MIGRATION.sql`,

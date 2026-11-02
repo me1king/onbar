@@ -68,7 +68,7 @@ export default function CookieConsentBanner() {
                             <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tighter">Privacy Protocol</h2>
                         </div>
                         <p className="text-sm font-medium text-slate-500 leading-relaxed italic md:pr-4">
-                            &quot;Session replay is optional and separately controlled. Choose Allow masked replay to explicitly opt in; form and password values are masked.&quot;
+                            Analytics records page paths and usage events only if you opt in; authorized admins can view those paths. It does not record keystrokes or screen contents. Session replay is separate and optional.
                         </p>
                     </div>
 
@@ -101,7 +101,7 @@ export default function CookieConsentBanner() {
                 {showSettings && (
                     <div className="relative z-10 pt-10 border-t border-slate-100 grid sm:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-500 text-left">
                         {[
-                            { id: 'analytics' as keyof ConsentPreferences, label: 'Analytics', desc: 'Usage metrics' },
+                            { id: 'analytics' as keyof ConsentPreferences, label: 'Analytics', desc: 'Page paths and usage metrics; visible to authorized admins' },
                             { id: 'personalization' as keyof ConsentPreferences, label: 'Personalization', desc: 'Custom menu' },
                             { id: 'marketing' as keyof ConsentPreferences, label: 'Marketing', desc: 'Promo alerts' }
                         ].map(node => (

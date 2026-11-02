@@ -5,6 +5,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { isAllowed } from './consentService';
 import { isBuiltInAnalyticsEnabled, PROVIDER_UPDATED_EVENT } from './analyticsProvider';
 
+const PRIVATE_ANALYTICS_PATHS = ['/admin', '/lord', '/merchant', '/profile', '/track', '/payment', '/rider', '/supplier', '/api', '/checkout'];
+
+function isAnalyticsPathAllowed() {
+    if (typeof window === 'undefined') return false;
+    const pathname = window.location.pathname;
+    return !PRIVATE_ANALYTICS_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`));
+}
+
 /**
  * ONLINE BAR OS: THE MASTER CONTROLLER
  * Unified interface for Identity, Events, Analytics, and Business Logic.
@@ -172,7 +180,14 @@ class OnlineBarOS {
     }
 
     private async pulsePresence() {
-        if (!this.sessionId || !supabase) return;
+        const pathname = window.location.pathname;
+        if (
+            !this.sessionId ||
+            !supabase ||
+            !isAllowed('analytics') ||
+            !isBuiltInAnalyticsEnabled() ||
+            PRIVATE_ANALYTICS_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`))
+        ) return;
 
         const now = Date.now();
         const isVisible = document.visibilityState === 'visible';
@@ -181,7 +196,7 @@ class OnlineBarOS {
         // Use RPC to update presence in one shot
         const { error } = await supabase.rpc('handle_presence_heartbeat', {
             p_session_id: this.sessionId,
-            p_page: window.location.pathname,
+            p_page: pathname,
             p_product_id: this.getCurrentProductId(),
             p_active_ms: activeMs,
             p_visible: isVisible,
@@ -266,6 +281,18 @@ class OnlineBarOS {
 
     private handleConsentUpdate = () => {
         if (!isAllowed('analytics') || !isBuiltInAnalyticsEnabled()) {
+            const previousSessionId = this.sessionId;
+            if (previousSessionId && supabase) {
+                void supabase.from('customer_sessions')
+                    .update({
+                        analytics_consent: false,
+                        analytics_consent_updated_at: new Date().toISOString()
+                    })
+                    .eq('id', previousSessionId)
+                    .then(({ error }) => {
+                        if (error) console.warn('[OB_OS] Could not update analytics consent on the session:', error.message);
+                    });
+            }
             this.eventQueue = [];
             this.persistQueuedEvents();
             this.sessionId = null;
@@ -345,7 +372,7 @@ class OnlineBarOS {
     }
 
     public trackHeatmapClick(details: Record<string, unknown>) {
-        if (!isAllowed('analytics') || !isBuiltInAnalyticsEnabled()) return;
+        if (!isAllowed('analytics') || !isBuiltInAnalyticsEnabled() || !isAnalyticsPathAllowed()) return;
         this.queueBehaviorEvent('UI_INTERACTION', details);
         if (this.eventQueue.length >= 10 && supabase) void this.flushQueue();
     }
@@ -371,7 +398,7 @@ class OnlineBarOS {
     public async track(eventType: OSEventType, payload: OSEventPayload = {}) {
         if (!supabase) return;
         const isSystemEvent = this.isSystemEvent(eventType);
-        const shouldRecordAnalytics = isAllowed('analytics') && isBuiltInAnalyticsEnabled();
+        const shouldRecordAnalytics = isAllowed('analytics') && isBuiltInAnalyticsEnabled() && isAnalyticsPathAllowed();
         if (!shouldRecordAnalytics && !isSystemEvent) return;
 
         try {
@@ -383,7 +410,7 @@ class OnlineBarOS {
             const sessId = this.sessionId || undefined;
 
             // 0. Ensure Session Record Exists (Non-blocking)
-            if (sessId) {
+            if (sessId && shouldRecordAnalytics) {
                 this.ensureSessionRecord(sessId, payload.userId, payload.anonymousId).catch(() => {});
             }
 
@@ -495,7 +522,7 @@ class OnlineBarOS {
     }
 
     private async ensureSessionRecord(sessionId: string, userId?: string, anonymousId?: string) {
-        if (!supabase || typeof window === 'undefined') return;
+        if (!supabase || typeof window === 'undefined' || !isAllowed('analytics') || !isBuiltInAnalyticsEnabled() || !isAnalyticsPathAllowed()) return;
 
         // Simple local cache to avoid redundant session inserts per page load
         const key = `ob_sess_sync_${sessionId}`;
@@ -509,6 +536,9 @@ class OnlineBarOS {
                 anonymous_id: anonymousId,
                 source_channel: document.referrer.includes('google') ? 'Search' : 'Direct',
                 entry_page: window.location.pathname,
+                current_page: window.location.pathname,
+                analytics_consent: true,
+                analytics_consent_updated_at: new Date().toISOString(),
                 device_info: { ua: userAgent }
             }, { onConflict: 'id' });
 

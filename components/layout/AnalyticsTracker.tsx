@@ -7,6 +7,20 @@ import { supabase } from '@/lib/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 import { isAllowed } from '@/lib/consentService';
 
+const PRIVATE_ANALYTICS_PATHS = ['/admin', '/lord', '/merchant', '/profile', '/track', '/payment', '/rider', '/supplier', '/api', '/checkout'];
+
+function isTrackablePath(pathname: string | null) {
+    return Boolean(pathname) && !PRIVATE_ANALYTICS_PATHS.some(path =>
+        pathname === path || pathname?.startsWith(`${path}/`)
+    );
+}
+
+function safeSearchTerm(value: string | null) {
+    const term = value?.trim().slice(0, 100) || '';
+    if (!term || /[^\s@]+@[^\s@]+\.[^\s@]{2,}/i.test(term) || /(?:\+?254|0)(?:[\s()-]*\d){9}/.test(term)) return '';
+    return term;
+}
+
 export default function AnalyticsTracker() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
@@ -26,7 +40,7 @@ export default function AnalyticsTracker() {
         if (!supabase) return;
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_IN' && session && isAllowed('analytics')) {
+            if (event === 'SIGNED_IN' && session && isAllowed('analytics') && isTrackablePath(pathname)) {
                 const activeSessId = OB_OS.getSessionId();
                 const anonId = localStorage.getItem('ob_anonymous_id');
 
@@ -49,7 +63,7 @@ export default function AnalyticsTracker() {
         });
 
         return () => subscription.unsubscribe();
-    }, []);
+    }, [pathname]);
 
     // 1. High-Fidelity Behavioral Orchestration
     useEffect(() => {
@@ -79,10 +93,11 @@ export default function AnalyticsTracker() {
         }
 
         async function trackPage() {
-            if (!supabase || !isAllowed('analytics')) return;
+            if (!supabase || !isAllowed('analytics') || !isTrackablePath(pathname)) return;
 
             try {
                 const { data: { session } } = await supabase.auth.getSession();
+                if (!isAllowed('analytics') || !isTrackablePath(pathname)) return;
 
                 // 🛡️ [IDENTITY_NODE] Instant Identity Generation
                 let anonId = null;
@@ -135,6 +150,9 @@ export default function AnalyticsTracker() {
                         user_id: session?.user?.id,
                         anonymous_id: anonId,
                         entry_page: pathname,
+                        current_page: pathname,
+                        analytics_consent: true,
+                        analytics_consent_updated_at: new Date().toISOString(),
                         source_channel: source,
                         campaign_id: campaign,
                         attribution_id: utmId,
@@ -146,6 +164,16 @@ export default function AnalyticsTracker() {
                         }
                     }, { onConflict: 'id' });
 
+                    if (!isAllowed('analytics') || !isTrackablePath(pathname)) {
+                        const { error } = await supabase.from('customer_sessions')
+                            .update({
+                                analytics_consent: false,
+                                analytics_consent_updated_at: new Date().toISOString()
+                            })
+                            .eq('id', activeSessId);
+                        if (error) console.warn('[Analytics] Could not apply revoked consent to the session:', error.message);
+                        return;
+                    }
                 }
 
                 // 1. Basic Page View
@@ -153,7 +181,6 @@ export default function AnalyticsTracker() {
                     ...commonProps,
                     details: {
                         url: pathname,
-                        search: searchParams?.toString() || '',
                         title: typeof document !== 'undefined' ? document.title : ''
                     }
                 });
@@ -169,7 +196,7 @@ export default function AnalyticsTracker() {
                     }
                 }
 
-                const query = searchParams?.get('q');
+                const query = safeSearchTerm(searchParams?.get('q') || null);
                 if (query) {
                     await OB_OS.track('SEARCH', {
                         ...commonProps,
@@ -182,7 +209,7 @@ export default function AnalyticsTracker() {
         }
 
         const handleConsentUpdate = () => {
-            if (!isAllowed('analytics')) return;
+            if (!isAllowed('analytics') || !isTrackablePath(pathname)) return;
             startTimeRef.current = Date.now();
             scrollMilestonesRef.current = new Set();
             activeTimeRef.current = 0;
@@ -212,7 +239,7 @@ export default function AnalyticsTracker() {
         if (typeof window === 'undefined') return;
 
         const handleClick = (e: MouseEvent) => {
-            if (!isAllowed('analytics')) return;
+            if (!isAllowed('analytics') || !isTrackablePath(pathname)) return;
             const target = e.target as HTMLElement;
             const now = Date.now();
 
@@ -281,7 +308,7 @@ export default function AnalyticsTracker() {
         };
 
         const handleFocus = (e: FocusEvent) => {
-            if (!isAllowed('analytics')) return;
+            if (!isAllowed('analytics') || !isTrackablePath(pathname)) return;
             const target = e.target as HTMLElement;
             const behaviorId = target.getAttribute('data-behavior-id');
             if (behaviorId && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
