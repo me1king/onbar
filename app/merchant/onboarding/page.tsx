@@ -213,7 +213,10 @@ export default function MerchantOnboarding() {
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [catalogOptions, setCatalogOptions] = useState<Array<{ id: number; name: string; category: string }>>([]);
   const [selectedGoods, setSelectedGoods] = useState<number[]>([]);
+  const [offeredGoodsPrices, setOfferedGoodsPrices] = useState<Record<number, string>>({});
+  const [goodsSearch, setGoodsSearch] = useState('');
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState('');
   const [invitation, setInvitation] = useState<CompanyInvitation | null>(null);
@@ -278,17 +281,21 @@ export default function MerchantOnboarding() {
     async function loadCatalogOptions() {
       setCatalogLoading(true);
       try {
-        const response = await fetch('/api/catalog/products?limit=80', { cache: 'no-store' });
+        const response = await fetch('/api/catalog/products?limit=500', { cache: 'no-store' });
         const payload = await readJsonResponse<{ products?: Array<{ id: number; name: string; category?: string | null }> }>(response);
         if (!response.ok || !payload.products) throw new Error('Could not load the available goods list.');
         if (!active) return;
+        setCatalogError(null);
         setCatalogOptions(payload.products.map(product => ({
           id: Number(product.id),
           name: String(product.name),
           category: product.category || 'General'
         })).filter(product => product.id > 0 && product.name.trim().length > 0));
       } catch {
-        if (active) setCatalogOptions([]);
+        if (active) {
+          setCatalogOptions([]);
+          setCatalogError('The goods list could not be loaded. You can still submit your application and update your goods with OnBar later.');
+        }
       } finally {
         if (active) setCatalogLoading(false);
       }
@@ -303,6 +310,12 @@ export default function MerchantOnboarding() {
     () => requirements.filter(requirement => requirement.required).map(requirement => requirement.type),
     [requirements]
   );
+  const filteredCatalogOptions = useMemo(() => {
+    const term = goodsSearch.trim().toLowerCase();
+    return catalogOptions.filter(option => !term
+      || option.name.toLowerCase().includes(term)
+      || option.category.toLowerCase().includes(term));
+  }, [catalogOptions, goodsSearch]);
 
   useEffect(() => {
     if (step !== 3) return;
@@ -341,14 +354,29 @@ export default function MerchantOnboarding() {
     && town.trim().length >= 2;
 
   const toggleSelectedGood = (productId: number) => {
-    setSelectedGoods(current => current.includes(productId)
-      ? current.filter(id => id !== productId)
-      : [...current, productId]);
+    setSelectedGoods(current => {
+      if (current.includes(productId)) {
+        setOfferedGoodsPrices(prices => {
+          const next = { ...prices };
+          delete next[productId];
+          return next;
+        });
+        return current.filter(id => id !== productId);
+      }
+      return [...current, productId];
+    });
   };
 
   const submitApplication = async () => {
     if (!requirementsLoaded || requirementsLoading) {
       setError('Wait for the current document checklist to load before submitting.');
+      return;
+    }
+    if (selectedGoods.some(productId => {
+      const price = offeredGoodsPrices[productId] || '';
+      return !/^\d{1,8}(\.\d{1,2})?$/.test(price) || Number(price) <= 0 || Number(price) > 10_000_000;
+    })) {
+      setError('Enter a valid KSh offer price (more than 0 and no more than 10,000,000) for every selected item.');
       return;
     }
     if (requiredDocumentTypes.some(type => !documents[type])) {
@@ -395,11 +423,11 @@ export default function MerchantOnboarding() {
     payload.set('preparationCapacity', preparationCapacity);
     payload.set('deliveryRadiusKm', deliveryRadiusKm);
     payload.set('collectionAvailable', String(collectionAvailable));
-    payload.set('offeredGoods', JSON.stringify(
-      selectedGoods
-        .map(id => catalogOptions.find(option => option.id === id)?.name)
-        .filter((name): name is string => Boolean(name))
-    ));
+    payload.set('offeredGoods', JSON.stringify(selectedGoods));
+    payload.set('offeredGoodsPricing', JSON.stringify(selectedGoods.map(productId => ({
+      productId,
+      price: Number(offeredGoodsPrices[productId])
+    }))));
     payload.set('privacyAcknowledged', String(privacyAcknowledged));
     if (inviteToken) payload.set('inviteToken', inviteToken);
     for (const [type, file] of Object.entries(documents)) {
@@ -500,7 +528,7 @@ export default function MerchantOnboarding() {
         </header>
 
         <div className="mb-5 grid grid-cols-4 gap-2" aria-label="Application progress">
-          {['Business', 'Contact & area', 'Operations', 'Documents'].map((label, index) => (
+          {['Business', 'Contact & area', 'Operations', 'Goods & docs'].map((label, index) => (
             <button
               key={label}
               type="button"
@@ -710,26 +738,63 @@ export default function MerchantOnboarding() {
                 {catalogLoading ? (
                   <p className="text-sm text-slate-600">Loading your available product mix...</p>
                 ) : catalogOptions.length === 0 ? (
-                  <p className="text-sm text-slate-600">The product list is unavailable right now. You can continue with the rest of the application and update this later.</p>
+                  <p role={catalogError ? 'alert' : undefined} className="text-sm text-slate-600">
+                    {catalogError || 'There are no goods in the product list right now. You can continue with the rest of the application and update this later.'}
+                  </p>
                 ) : (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {catalogOptions.map(option => (
-                      <label key={option.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left text-sm text-slate-700 transition hover:border-primary/50">
-                        <input
-                          type="checkbox"
-                          checked={selectedGoods.includes(option.id)}
-                          onChange={() => toggleSelectedGood(option.id)}
-                          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
-                        />
-                        <span className="min-w-0">
-                          <span className="block font-bold text-slate-900">{option.name}</span>
-                          <span className="block text-[11px] uppercase tracking-[0.12em] text-slate-500">{option.category}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                  <>
+                    <Input
+                      value={goodsSearch}
+                      onChange={event => setGoodsSearch(event.target.value)}
+                      placeholder="Search products or categories"
+                      aria-label="Search goods to offer"
+                      className="mb-3 h-11 rounded-xl bg-white"
+                    />
+                    {filteredCatalogOptions.length ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {filteredCatalogOptions.map(option => {
+                          const selected = selectedGoods.includes(option.id);
+                          return (
+                            <div key={option.id} className="rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-primary/50">
+                              <label className="flex cursor-pointer items-start gap-3 text-sm text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => toggleSelectedGood(option.id)}
+                                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                                />
+                                <span className="min-w-0">
+                                  <span className="block font-bold text-slate-900">{option.name}</span>
+                                  <span className="block text-[11px] uppercase tracking-[0.12em] text-slate-500">{option.category}</span>
+                                </span>
+                              </label>
+                              {selected && (
+                                <label className="ml-7 mt-3 block text-xs font-bold text-slate-600">
+                                  Your offer price (KSh)
+                                  <Input
+                                    type="number"
+                                    min="0.01"
+                                    max="10000000"
+                                    step="0.01"
+                                    required
+                                    value={offeredGoodsPrices[option.id] || ''}
+                                    onChange={event => setOfferedGoodsPrices(current => ({ ...current, [option.id]: event.target.value }))}
+                                    placeholder="e.g. 1,500"
+                                    className="mt-1 h-10 rounded-lg"
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-600">No products match that search. Selected goods stay saved.</p>
+                    )}
+                  </>
                 )}
               </div>
+              <p className="text-xs leading-5 text-slate-500">These are the prices you propose to offer. OnBar reviews the application before your goods or prices are activated; actual available stock is recorded in your inventory after approval.</p>
               <div>
                 <h2 className="text-xl font-black uppercase text-slate-900">Documents & compliance</h2>
                 <p className="mt-1 text-sm text-slate-500">The exact checklist depends on business type and county. Documents are private and only shared with authorized reviewers.</p>
@@ -794,7 +859,8 @@ export default function MerchantOnboarding() {
         </Card>
 
         <p className="mt-5 text-center text-xs text-slate-500">
-          Need help? Contact OnBar support. <span className="mx-1">•</span> <Link className="font-bold underline" href="/privacy">Privacy information</Link>
+          Need help? <Link className="font-bold underline" href="/contact">Contact OnBar support</Link>
+          <span className="mx-1">•</span> <Link className="font-bold underline" href="/privacy">Privacy information</Link>
         </p>
         <div className="mt-3 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">
           <Building2 className="mr-1 inline h-3 w-3" /> Applications are reviewed before activation

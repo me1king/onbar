@@ -2033,6 +2033,7 @@ CREATE TABLE IF NOT EXISTS public.merchant_applications (
     delivery_radius_km NUMERIC(6,2) CHECK (delivery_radius_km IS NULL OR delivery_radius_km BETWEEN 0 AND 500),
     collection_available BOOLEAN NOT NULL DEFAULT false,
     offered_goods JSONB NOT NULL DEFAULT '[]'::JSONB,
+    offered_goods_pricing JSONB NOT NULL DEFAULT '[]'::JSONB,
     documents JSONB NOT NULL DEFAULT '[]'::JSONB,
     privacy_notice_version TEXT NOT NULL DEFAULT 'merchant-application-v1',
     privacy_acknowledged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -2051,7 +2052,8 @@ CREATE TABLE IF NOT EXISTS public.merchant_applications (
 ALTER TABLE public.merchant_applications
     ADD COLUMN IF NOT EXISTS accepting_orders BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN IF NOT EXISTS availability_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ADD COLUMN IF NOT EXISTS offered_goods JSONB NOT NULL DEFAULT '[]'::JSONB;
+    ADD COLUMN IF NOT EXISTS offered_goods JSONB NOT NULL DEFAULT '[]'::JSONB,
+    ADD COLUMN IF NOT EXISTS offered_goods_pricing JSONB NOT NULL DEFAULT '[]'::JSONB;
 
 CREATE INDEX IF NOT EXISTS merchant_applications_status_created_idx
     ON public.merchant_applications (status, created_at DESC);
@@ -2551,6 +2553,55 @@ CREATE INDEX IF NOT EXISTS merchant_incidents_batch_idx
     ON public.merchant_incidents (batch_id);
 CREATE INDEX IF NOT EXISTS merchant_incidents_order_idx
     ON public.merchant_incidents (order_id);
+
+CREATE TABLE IF NOT EXISTS public.customer_order_complaints (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id BIGINT NOT NULL REFERENCES public.orders(id) ON DELETE RESTRICT,
+    order_item_id BIGINT REFERENCES public.order_items(id) ON DELETE RESTRICT,
+    customer_user_id UUID NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'product_quality', 'food_safety', 'missing_item', 'wrong_item', 'delivery', 'other'
+    )),
+    description TEXT NOT NULL CHECK (char_length(description) BETWEEN 10 AND 5000),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS customer_order_complaints_order_created_idx
+    ON public.customer_order_complaints (order_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS customer_order_complaints_item_idx
+    ON public.customer_order_complaints (order_item_id);
+
+CREATE OR REPLACE FUNCTION public.validate_customer_order_complaint()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF TG_OP <> 'INSERT' THEN
+        RAISE EXCEPTION 'Customer complaint records are append-only.';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.orders order_record
+        WHERE order_record.id = NEW.order_id
+          AND order_record.user_id = NEW.customer_user_id
+          AND order_record.status IN ('Delivered', 'Completed')
+    ) THEN
+        RAISE EXCEPTION 'A delivered order belonging to the reporting customer is required.';
+    END IF;
+    IF NEW.order_item_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1
+        FROM public.order_items item
+        WHERE item.id = NEW.order_item_id AND item.order_id = NEW.order_id
+    ) THEN
+        RAISE EXCEPTION 'The reported item must belong to the reported order.';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS customer_order_complaint_guard ON public.customer_order_complaints;
+CREATE TRIGGER customer_order_complaint_guard
+    BEFORE INSERT OR UPDATE OR DELETE ON public.customer_order_complaints
+    FOR EACH ROW EXECUTE FUNCTION public.validate_customer_order_complaint();
 
 CREATE OR REPLACE FUNCTION public.validate_merchant_incident_links()
 RETURNS TRIGGER
@@ -3254,6 +3305,7 @@ ALTER TABLE public.merchant_inventory_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_order_item_trace ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_fulfillment_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_order_complaints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_incident_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_batch_holds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.merchant_batch_hold_events ENABLE ROW LEVEL SECURITY;
@@ -3268,6 +3320,7 @@ REVOKE ALL ON public.merchant_applications,
     public.merchant_order_item_trace,
     public.merchant_fulfillment_events,
     public.merchant_incidents,
+    public.customer_order_complaints,
     public.merchant_incident_events,
     public.merchant_batch_holds,
     public.merchant_batch_hold_events,
@@ -3288,6 +3341,7 @@ GRANT ALL ON public.merchant_applications,
     public.merchant_batch_hold_events,
     public.merchant_trace_access_events
 TO service_role;
+GRANT SELECT, INSERT ON public.customer_order_complaints TO service_role;
 GRANT USAGE, SELECT ON SEQUENCE public.merchant_code_sequence TO service_role;
 GRANT USAGE, SELECT ON SEQUENCE public.merchant_application_events_id_seq TO service_role;
 GRANT USAGE, SELECT ON SEQUENCE public.merchant_document_requirement_events_id_seq TO service_role;

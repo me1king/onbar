@@ -98,6 +98,7 @@ type PartnerApplication = {
     delivery_radius_km: number | null;
     collection_available: boolean;
     offered_goods: string[];
+    offered_goods_pricing: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
     documents: PartnerDocument[];
     status: string;
     review_note: string | null;
@@ -1183,15 +1184,19 @@ export default function OnBarPartnerNetworkPage() {
                 {application.operating_areas.length > 0 && <p className="mt-5 border-t border-slate-100 pt-4 text-sm"><strong>Operating areas:</strong> {application.operating_areas.join(', ')}</p>}
                 <div className="mt-5 border-t border-slate-100 pt-4">
                   <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">Goods you offered</h4>
-                  {application.offered_goods.length ? (
-                    <ul className="mt-3 flex flex-wrap gap-2">
-                      {application.offered_goods.map(good => (
-                        <li key={good} className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">{good}</li>
+                  {application.offered_goods_pricing.length ? (
+                    <ul className="mt-3 space-y-2">
+                      {application.offered_goods_pricing.map(good => (
+                        <li key={good.product_id} className="flex items-center justify-between gap-3 rounded-xl bg-primary/5 px-3 py-2 text-sm">
+                          <span className="font-semibold text-slate-800">{good.product_name}</span>
+                          <span className="shrink-0 font-black text-primary">{good.currency} {Number(good.price).toLocaleString()}</span>
+                        </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-2 text-sm text-slate-500">No goods were recorded on this application.</p>
+                    <p className="mt-2 text-sm text-slate-500">{application.offered_goods.length ? application.offered_goods.join(', ') : 'No goods were recorded on this application.'}{application.offered_goods.length ? ' · Proposed prices were not recorded.' : ''}</p>
                   )}
+                  <p className="mt-3 text-xs leading-5 text-slate-500">These are your proposed application prices. OnBar must approve and configure offers before they appear to customers. Inventory batches are tracked separately.</p>
                 </div>
               </article>
               <article className="rounded-2xl bg-white p-6 shadow-sm">

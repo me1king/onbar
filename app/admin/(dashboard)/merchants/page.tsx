@@ -62,6 +62,8 @@ interface Application {
   preparation_capacity?: number | null;
   delivery_radius_km?: number | null;
   collection_available?: boolean;
+  offered_goods?: string[];
+  offered_goods_pricing?: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
   documents?: MerchantApplicationDocument[];
   requiredDocuments?: string[];
   status: MerchantApplicationStatus;
@@ -327,6 +329,9 @@ export default function MerchantApplicationsPage() {
           <Button variant="outline" onClick={() => void fetchApplications()} disabled={loading} className="h-11 rounded-xl">
             <RefreshCcw size={15} className={`mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
+          <a href="/lord/vendor-onboarding" className="inline-flex h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black uppercase text-slate-700 hover:border-primary/40 hover:text-primary">
+            Vendor pipeline
+          </a>
           <a href="/merchant/onboarding" target="_blank" rel="noreferrer" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 text-xs font-black uppercase text-white">
             Application link <ArrowUpRight size={15} className="ml-2" />
           </a>
@@ -467,6 +472,23 @@ export default function MerchantApplicationsPage() {
                 {selected.preparation_capacity && <p><span className="font-bold text-slate-500">Daily capacity:</span> {selected.preparation_capacity}</p>}
                 {selected.delivery_radius_km && <p><span className="font-bold text-slate-500">Delivery radius:</span> {selected.delivery_radius_km} km</p>}
                 <p><span className="font-bold text-slate-500">Collection:</span> {selected.collection_available ? 'Available' : 'Not listed'}</p>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 p-4">
+                <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Goods and proposed offer prices</h3>
+                {selected.offered_goods_pricing?.length ? (
+                  <ul className="mt-3 space-y-2">
+                    {selected.offered_goods_pricing.map(good => (
+                      <li key={good.product_id} className="flex items-center justify-between gap-3 rounded-xl bg-primary/5 px-3 py-2 text-sm">
+                        <span className="font-semibold text-slate-800">{good.product_name}</span>
+                        <span className="shrink-0 font-black text-primary">{good.currency} {Number(good.price).toLocaleString()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">{selected.offered_goods?.length ? `${selected.offered_goods.join(', ')} · No proposed prices recorded.` : 'No goods were selected on this application.'}</p>
+                )}
+                <p className="mt-3 text-xs text-slate-500">Proposed prices are not customer-facing until the application and offer setup are approved.</p>
               </section>
 
               <section>

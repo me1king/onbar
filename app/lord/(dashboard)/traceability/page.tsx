@@ -88,6 +88,13 @@ interface Incident {
   created_at: string;
   events: Array<{ id: number; event_type: string; actor: string; created_at: string }>;
 }
+interface CustomerComplaint {
+  id: string;
+  order_item_id: number | null;
+  category: string;
+  description: string;
+  created_at: string;
+}
 interface TraceResult {
   order?: {
     id: number;
@@ -99,6 +106,7 @@ interface TraceResult {
   };
   items?: OrderItem[];
   fulfillment?: Array<{ id: number; application_id: string; event_type: string; actor: string; occurred_at: string; details: Record<string, unknown>; merchant: Merchant | null }>;
+  customerComplaints?: CustomerComplaint[];
   incidents?: Incident[];
   batches?: Batch[];
 }
@@ -382,6 +390,28 @@ export default function MerchantTraceabilityPage() {
               </div>
             </Card>
           ))}
+
+          <section aria-label="Customer issue reports" className="space-y-3">
+            <h2 className="px-1 text-sm font-black uppercase tracking-wide text-slate-800">Customer issue reports</h2>
+            {(result.customerComplaints || []).length ? (result.customerComplaints || []).map(complaint => {
+              const item = result.items?.find(orderItem => orderItem.id === complaint.order_item_id);
+              return (
+                <Card key={complaint.id} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-black text-slate-900">{complaint.category.replaceAll('_', ' ')} · {item?.product?.name || (complaint.order_item_id ? `Order item #${complaint.order_item_id}` : 'Entire order')}</p>
+                      <p className="mt-1 text-xs text-slate-500">Report {complaint.id} · {new Date(complaint.created_at).toLocaleString()}</p>
+                    </div>
+                    {item && <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-600">Qty {item.quantity} · order item #{item.id}</span>}
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{complaint.description}</p>
+                  {item && <p className="mt-3 text-xs font-semibold text-slate-600">Use this item&apos;s batch trace above to identify its supplying merchant and recorded supplier.</p>}
+                </Card>
+              );
+            }) : (
+              <Card className="rounded-2xl border-0 p-5 shadow-sm"><p className="text-sm text-slate-500">No customer issue reports are linked to this order.</p></Card>
+            )}
+          </section>
 
           <IncidentForm applicationId={result.items?.flatMap(item => item.batches).find(trace => trace.batch)?.batch?.application_id || ''} orderId={result.order.id} description={incidentDescription} setDescription={setIncidentDescription} category={incidentCategory} setCategory={setIncidentCategory} severity={incidentSeverity} setSeverity={setIncidentSeverity} submit={reportIncident} working={working} />
           <FulfillmentForm applicationId={fulfillmentApplicationId} setApplicationId={setFulfillmentApplicationId} merchants={[...new Map((result.items || []).flatMap(item => item.batches).filter(trace => trace.batch?.merchant).map(trace => [trace.batch!.application_id, trace.batch!.merchant!])).values()]} eventType={fulfillmentEvent} setEventType={setFulfillmentEvent} note={fulfillmentNote} setNote={setFulfillmentNote} submit={addFulfillmentEvent} events={result.fulfillment || []} working={working} canRecord={result.items?.some(item => item.batches.some(trace => trace.batch)) === true} />

@@ -9,6 +9,7 @@ import {
   type MerchantDocumentRequirement,
   type MerchantApplicationDocument
 } from '@/lib/merchantApplications';
+import { isStorefrontProductVisible } from '@/lib/productVisibility';
 import {
   isValidMerchantOperatingHours,
   normalizeMerchantOperatingHours,
@@ -152,21 +153,48 @@ export async function POST(request: Request) {
   const businessName = value(form, 'businessName', 160);
   const inviteToken = value(form, 'inviteToken', 128);
   const tradingName = value(form, 'tradingName', 160);
-  let offeredGoods: string[] = [];
+  let offeredGoodsIds: number[] = [];
+  let offeredGoodsPrices: Array<{ productId: number; price: number }> = [];
   try {
     const offeredGoodsValue = value(form, 'offeredGoods', 2000);
+    const offeredGoodsPricingValue = value(form, 'offeredGoodsPricing', 5000);
     if (offeredGoodsValue) {
       const parsedGoods = JSON.parse(offeredGoodsValue) as unknown;
-      if (!Array.isArray(parsedGoods)) {
+      if (!Array.isArray(parsedGoods) || parsedGoods.length > 50
+        || !parsedGoods.every(item => Number.isSafeInteger(item) && Number(item) > 0)
+        || new Set(parsedGoods).size !== parsedGoods.length) {
         throw new Error('Invalid offered goods selection.');
       }
-      offeredGoods = parsedGoods
-        .map(item => typeof item === 'string' ? item.trim() : '')
-        .filter(item => item.length > 1 && item.length <= 120)
-        .slice(0, 50);
+      offeredGoodsIds = parsedGoods as number[];
+    }
+    if (offeredGoodsPricingValue) {
+      const parsedPricing = JSON.parse(offeredGoodsPricingValue) as unknown;
+      if (!Array.isArray(parsedPricing) || parsedPricing.length > 50
+        || !parsedPricing.every(item => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+          const offer = item as Record<string, unknown>;
+          return typeof offer.productId === 'number'
+            && Number.isSafeInteger(offer.productId)
+            && Number(offer.productId) > 0
+            && typeof offer.price === 'number'
+            && Number.isFinite(offer.price)
+            && offer.price > 0
+            && offer.price <= 10_000_000
+            && Number(offer.price.toFixed(2)) === offer.price;
+        })) {
+        throw new Error('Invalid offered goods prices.');
+      }
+      offeredGoodsPrices = parsedPricing as Array<{ productId: number; price: number }>;
+      if (offeredGoodsPrices.length !== offeredGoodsIds.length
+        || offeredGoodsPrices.some(offer => !offeredGoodsIds.includes(offer.productId))
+        || new Set(offeredGoodsPrices.map(offer => offer.productId)).size !== offeredGoodsPrices.length) {
+        throw new Error('Every selected product needs exactly one valid offer price.');
+      }
+    } else if (offeredGoodsIds.length) {
+      throw new Error('Every selected product needs an offer price.');
     }
   } catch {
-    return NextResponse.json({ error: 'Choose the goods you are willing to offer from the available product list.' }, { status: 400 });
+    return NextResponse.json({ error: 'Choose available goods and enter a valid offer price for each selected product.' }, { status: 400 });
   }
   const email = value(form, 'email', 254).toLowerCase();
   const phone = value(form, 'phone', 40);
@@ -235,6 +263,37 @@ export async function POST(request: Request) {
   const database = getDatabase();
   if (!database) {
     return NextResponse.json({ error: 'Merchant applications are temporarily unavailable. Please try again later.' }, { status: 503 });
+  }
+  let offeredGoods: string[] = [];
+  let verifiedOffers: Array<{ product_id: number; product_name: string; price: number; currency: 'KES' }> = [];
+  if (offeredGoodsIds.length) {
+    const { data: selectedProducts, error: selectedProductsError } = await database
+      .from('products')
+      .select('id, name, status, hide_product, is_available_now')
+      .in('id', offeredGoodsIds);
+    if (selectedProductsError) {
+      console.error('[MerchantApplications] Could not verify offered goods:', selectedProductsError);
+      return NextResponse.json({ error: 'The available goods list could not be verified. Refresh the application and try again.' }, { status: 503 });
+    }
+    const visibleProducts = (selectedProducts || []).filter(isStorefrontProductVisible);
+    if (visibleProducts.length !== offeredGoodsIds.length) {
+      return NextResponse.json({ error: 'One or more selected goods are no longer available. Refresh the list and submit again.' }, { status: 400 });
+    }
+    offeredGoods = visibleProducts
+      .map(product => String(product.name || '').trim())
+      .filter(name => name.length > 1 && name.length <= 120);
+    if (offeredGoods.length !== offeredGoodsIds.length) {
+      return NextResponse.json({ error: 'One or more selected goods could not be verified. Refresh the list and submit again.' }, { status: 400 });
+    }
+    verifiedOffers = offeredGoodsPrices.map(offer => {
+      const product = visibleProducts.find(candidate => Number(candidate.id) === offer.productId);
+      return {
+        product_id: offer.productId,
+        product_name: String(product?.name || '').trim(),
+        price: offer.price,
+        currency: 'KES'
+      };
+    });
   }
   let invitationLead: { id: string; business_name: string; vendor_type: string } | null = null;
   let invitationTokenHash: string | null = null;
@@ -411,6 +470,7 @@ export async function POST(request: Request) {
       delivery_radius_km: deliveryRadiusKm,
       collection_available: collectionAvailable,
       offered_goods: offeredGoods,
+      offered_goods_pricing: verifiedOffers,
       documents,
       privacy_notice_version: 'merchant-application-v1',
       privacy_acknowledged_at: new Date().toISOString(),

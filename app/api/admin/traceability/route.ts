@@ -106,7 +106,7 @@ export async function GET(request: Request) {
     }>;
     const itemIds = items.map(item => item.id);
     const productIds = [...new Set(items.map(item => item.product_id).filter((id): id is number => id !== null))];
-    const [{ data: productData, error: productsError }, { data: traceData, error: traceError }, { data: fulfillmentData, error: fulfillmentError }, { data: incidentData, error: incidentsError }] = await Promise.all([
+    const [{ data: productData, error: productsError }, { data: traceData, error: traceError }, { data: fulfillmentData, error: fulfillmentError }, { data: incidentData, error: incidentsError }, { data: complaintData, error: complaintsError }] = await Promise.all([
       productIds.length
         ? access.database.from('products').select('id, name, sku').in('id', productIds)
         : Promise.resolve({ data: [], error: null }),
@@ -114,10 +114,11 @@ export async function GET(request: Request) {
         ? access.database.from('merchant_order_item_trace').select('id, order_item_id, batch_id, quantity, created_by, created_at').in('order_item_id', itemIds)
         : Promise.resolve({ data: [], error: null }),
       access.database.from('merchant_fulfillment_events').select('id, application_id, event_type, actor, details, occurred_at').eq('order_id', orderId).order('occurred_at'),
-      access.database.from('merchant_incidents').select('id, incident_code, application_id, batch_id, category, description, status, severity, resolution_note, created_at').eq('order_id', orderId).order('created_at', { ascending: false })
+      access.database.from('merchant_incidents').select('id, incident_code, application_id, batch_id, category, description, status, severity, resolution_note, created_at').eq('order_id', orderId).order('created_at', { ascending: false }),
+      access.database.from('customer_order_complaints').select('id, order_item_id, category, description, created_at').eq('order_id', orderId).order('created_at', { ascending: false })
     ]);
-    if (productsError || traceError || fulfillmentError || incidentsError) {
-      console.error('[Traceability] Could not assemble order trace:', productsError || traceError || fulfillmentError || incidentsError);
+    if (productsError || traceError || fulfillmentError || incidentsError || complaintsError) {
+      console.error('[Traceability] Could not assemble order trace:', productsError || traceError || fulfillmentError || incidentsError || complaintsError);
       return NextResponse.json({ error: 'Traceability records could not be assembled.' }, { status: 500 });
     }
     const traces = (traceData || []) as Array<{ id: number; order_item_id: number; batch_id: string; quantity: number; created_by: string; created_at: string }>;
@@ -207,6 +208,7 @@ export async function GET(request: Request) {
         ...event,
         merchant: merchants.find(merchant => merchant.id === event.application_id) || null
       })),
+      customerComplaints: complaintData || [],
       incidents: incidentRows.map(incident => ({
         ...incident,
         events: (incidentEventsResult.data || []).filter(event => event.incident_id === incident.id)

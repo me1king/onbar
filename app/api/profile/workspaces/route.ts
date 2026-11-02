@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   });
   const [{ data: applications, error: applicationsError }, { data: profile, error: profileError }] = await Promise.all([
     database.from('merchant_applications')
-      .select('id, business_name, status, offered_goods')
+      .select('id, business_name, status, offered_goods, offered_goods_pricing')
       .eq('email', user.email.toLowerCase())
       .order('submitted_at', { ascending: false })
       .limit(25),
@@ -97,6 +97,16 @@ export async function GET(request: Request) {
       status: application.status,
       offeredGoods: Array.isArray(application.offered_goods)
         ? application.offered_goods.filter((good): good is string => typeof good === 'string')
+        : [],
+      offeredGoodsPricing: Array.isArray(application.offered_goods_pricing)
+        ? application.offered_goods_pricing.filter((offer): offer is { product_id: number; product_name: string; price: number; currency: string } =>
+          typeof offer === 'object'
+          && offer !== null
+          && typeof offer.product_id === 'number'
+          && typeof offer.product_name === 'string'
+          && typeof offer.price === 'number'
+          && typeof offer.currency === 'string'
+        )
         : []
     })),
     riderApproved

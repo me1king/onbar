@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, type FormEvent } from 'react';
 import { type User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { useCart, type CartItem } from '@/context/CartContext';
@@ -113,6 +113,12 @@ interface Order {
   total_price: number;
   created_at: string;
   payment_method: string;
+  order_items?: Array<{
+    id: number;
+    product_id: number | null;
+    quantity: number;
+    products: { name: string } | null;
+  }>;
 }
 
 interface ReferralNetworkStats {
@@ -125,7 +131,13 @@ interface ReferralNetworkStats {
 interface WorkspaceAccess {
   loading: boolean;
   error: string | null;
-  merchantApplications: Array<{ id: string; businessName: string; status: string; offeredGoods: string[] }>;
+  merchantApplications: Array<{
+    id: string;
+    businessName: string;
+    status: string;
+    offeredGoods: string[];
+    offeredGoodsPricing: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
+  }>;
   riderApproved: boolean;
 }
 
@@ -188,6 +200,13 @@ export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [complaintOrderId, setComplaintOrderId] = useState<number | null>(null);
+  const [complaintItemId, setComplaintItemId] = useState('');
+  const [complaintCategory, setComplaintCategory] = useState('product_quality');
+  const [complaintDescription, setComplaintDescription] = useState('');
+  const [complaintError, setComplaintError] = useState<string | null>(null);
+  const [complaintMessage, setComplaintMessage] = useState<string | null>(null);
+  const [submittingComplaint, setSubmittingComplaint] = useState(false);
   const [achievements, setAchievements] = useState<Record<string, unknown>[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [notifications, setNotifications] = useState<NotificationNode[]>([]);
@@ -315,7 +334,7 @@ export default function ProfilePage() {
 
         let orderData = [];
         try {
-            const { data } = await supabase.from('orders').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+            const { data } = await supabase.from('orders').select('*, order_items(id, product_id, quantity, products(name))').eq('user_id', session.user.id).order('created_at', { ascending: false });
             orderData = data || [];
         } catch {}
 
@@ -432,6 +451,45 @@ export default function ProfilePage() {
   }, [router]);
 
   const memberId = user?.id;
+
+  const submitOrderComplaint = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || complaintOrderId === null) return;
+    setSubmittingComplaint(true);
+    setComplaintError(null);
+    setComplaintMessage(null);
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session?.access_token) throw new Error('Sign in again before reporting this issue.');
+      const response = await fetch('/api/customer/order-complaints', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          orderId: complaintOrderId,
+          orderItemId: complaintItemId || null,
+          category: complaintCategory,
+          description: complaintDescription
+        })
+      });
+      const payload = await response.json() as { error?: string; complaint?: { id: string; created_at: string } };
+      if (!response.ok || !payload.complaint) {
+        throw new Error(payload.error || 'Your report could not be saved.');
+      }
+      setComplaintMessage(`Report saved as ${payload.complaint.id}. Support can trace it to the order and its recorded supply details.`);
+      setComplaintOrderId(null);
+      setComplaintDescription('');
+      setComplaintItemId('');
+    } catch (error) {
+      setComplaintError(error instanceof Error ? error.message : 'Your report could not be saved.');
+    } finally {
+      setSubmittingComplaint(false);
+    }
+  };
+
   useEffect(() => {
     const client = supabase;
     if (!memberId || !client) return;
@@ -900,9 +958,16 @@ export default function ProfilePage() {
                                             <Store size={15} /> {application.businessName} workspace
                                         </Link>
                                         <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Goods offered</p>
-                                        <p className="mt-1 text-sm text-slate-700">
-                                            {application.offeredGoods.length ? application.offeredGoods.join(', ') : 'No goods selected on this application.'}
-                                        </p>
+                                        {application.offeredGoodsPricing.length ? (
+                                            <ul className="mt-2 space-y-1">
+                                                {application.offeredGoodsPricing.map(good => (
+                                                    <li key={good.product_id} className="flex justify-between gap-3 text-sm text-slate-700">
+                                                        <span>{good.product_name}</span>
+                                                        <strong className="shrink-0">{good.currency} {Number(good.price).toLocaleString()}</strong>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : <p className="mt-1 text-sm text-slate-700">{application.offeredGoods.length ? `${application.offeredGoods.join(', ')} · Proposed prices not recorded.` : 'No goods selected on this application.'}</p>}
                                     </div>
                                 ) : (
                                     <div key={application.id} className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
@@ -910,9 +975,16 @@ export default function ProfilePage() {
                                             Merchant application for <strong>{application.businessName}</strong>: {application.status.replaceAll('_', ' ')}.
                                         </p>
                                         <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Goods offered</p>
-                                        <p className="mt-1 text-sm text-slate-700">
-                                            {application.offeredGoods.length ? application.offeredGoods.join(', ') : 'No goods selected on this application.'}
-                                        </p>
+                                        {application.offeredGoodsPricing.length ? (
+                                            <ul className="mt-2 space-y-1">
+                                                {application.offeredGoodsPricing.map(good => (
+                                                    <li key={good.product_id} className="flex justify-between gap-3 text-sm text-slate-700">
+                                                        <span>{good.product_name}</span>
+                                                        <strong className="shrink-0">{good.currency} {Number(good.price).toLocaleString()}</strong>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : <p className="mt-1 text-sm text-slate-700">{application.offeredGoods.length ? `${application.offeredGoods.join(', ')} · Proposed prices not recorded.` : 'No goods selected on this application.'}</p>}
                                     </div>
                                 ))}
                                 {workspaceAccess.riderApproved && (
@@ -939,6 +1011,7 @@ export default function ProfilePage() {
                 <span className="text-[10px] font-black uppercase text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-100">{orders.length} Total Orders</span>
             </div>
             <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden text-left">
+                {complaintMessage && <p role="status" className="m-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">{complaintMessage}</p>}
                 {orders.length === 0 ? (
                     <div className="p-16 text-center text-slate-300 space-y-4">
                         <Package className="h-12 w-12 mx-auto opacity-20 animate-bounce" />
@@ -950,36 +1023,94 @@ export default function ProfilePage() {
                 ) : (
                     <div className="divide-y divide-slate-50">
                         {orders.map(o => (
-                            <div key={o.id} className="p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group hover:bg-slate-50 transition-all">
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                                        <Truck size={22} />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-3">
-                                            <p className="text-sm font-black text-foreground uppercase tracking-tight">Order #{o.id}</p>
-                                            <span className={cn(
-                                                "px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border",
-                                                o.status === 'Delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
-                                                o.status === 'Dispatched' ? "bg-amber-50 text-amber-600 border-amber-200" :
-                                                "bg-primary/10 text-primary border-primary/20"
-                                            )}>{o.status}</span>
+                            <div key={o.id} className="p-6 sm:p-8 group hover:bg-slate-50 transition-all">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                    <div className="flex items-center gap-4 min-w-0">
+                                        <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                            <Truck size={22} />
                                         </div>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                            {new Date(o.created_at).toLocaleDateString()} &bull; {o.payment_method || 'Paystack'} &bull; <span className="text-primary font-black">{formatPrice(o.total_price)}</span>
-                                        </p>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3">
+                                                <p className="text-sm font-black text-foreground uppercase tracking-tight">Order #{o.id}</p>
+                                                <span className={cn(
+                                                    "px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border",
+                                                    o.status === 'Delivered' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                                                    o.status === 'Dispatched' ? "bg-amber-50 text-amber-600 border-amber-200" :
+                                                    "bg-primary/10 text-primary border-primary/20"
+                                                )}>{o.status}</span>
+                                            </div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                                {new Date(o.created_at).toLocaleDateString()} &bull; {o.payment_method || 'Paystack'} &bull; <span className="text-primary font-black">{formatPrice(o.total_price)}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
+                                        <Link href={`/track?id=${o.id}`}>
+                                            <Button variant="outline" className="h-11 px-4 rounded-xl border-slate-200 text-foreground font-black uppercase text-[9px] tracking-widest hover:bg-slate-100">
+                                                Track Dispatch
+                                            </Button>
+                                        </Link>
+                                        <Button onClick={() => handleDownloadReceipt(o)} className="h-11 px-4 rounded-xl bg-primary text-white font-black uppercase text-[9px] tracking-widest shadow-md shadow-primary/20">
+                                            Receipt <Download className="h-3 w-3 ml-1.5" />
+                                        </Button>
+                                        {['Delivered', 'Completed'].includes(o.status) && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => {
+                                                    setComplaintOrderId(complaintOrderId === o.id ? null : o.id);
+                                                    setComplaintError(null);
+                                                    setComplaintMessage(null);
+                                                    setComplaintDescription('');
+                                                    setComplaintItemId('');
+                                                }}
+                                                className="h-11 rounded-xl border-primary/20 px-4 text-[9px] font-black uppercase tracking-widest text-primary"
+                                            >
+                                                Report issue
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 self-end sm:self-center">
-                                    <Link href={`/track?id=${o.id}`}>
-                                        <Button variant="outline" className="h-11 px-4 rounded-xl border-slate-200 text-foreground font-black uppercase text-[9px] tracking-widest hover:bg-slate-100">
-                                            Track Dispatch
-                                        </Button>
-                                    </Link>
-                                    <Button onClick={() => handleDownloadReceipt(o)} className="h-11 px-4 rounded-xl bg-primary text-white font-black uppercase text-[9px] tracking-widest shadow-md shadow-primary/20">
-                                        Receipt <Download className="h-3 w-3 ml-1.5" />
-                                    </Button>
-                                </div>
+                                {complaintOrderId === o.id && (
+                                    <form onSubmit={submitOrderComplaint} className="mt-5 space-y-3 rounded-2xl border border-slate-100 bg-white p-4 sm:p-5">
+                                        <div>
+                                            <h3 className="text-sm font-black uppercase tracking-wide text-foreground">Report an order issue</h3>
+                                            <p className="mt-1 text-xs text-slate-500">Your report is linked to this order. Choose the exact item so support can trace its merchant and supply lot.</p>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <label className="space-y-1 text-xs font-bold text-slate-600">
+                                                Item
+                                                <select value={complaintItemId} onChange={event => setComplaintItemId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium">
+                                                    <option value="">Entire order / not sure</option>
+                                                    {(o.order_items || []).map(item => (
+                                                        <option key={item.id} value={item.id}>
+                                                            {item.products?.name || `Product #${item.product_id || 'unknown'}`} · Qty {item.quantity}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <label className="space-y-1 text-xs font-bold text-slate-600">
+                                                Issue type
+                                                <select value={complaintCategory} onChange={event => setComplaintCategory(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium">
+                                                    <option value="product_quality">Product quality</option>
+                                                    <option value="food_safety">Food safety</option>
+                                                    <option value="missing_item">Missing item</option>
+                                                    <option value="wrong_item">Wrong item</option>
+                                                    <option value="delivery">Delivery</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                            </label>
+                                        </div>
+                                        <Textarea required minLength={10} maxLength={5000} value={complaintDescription} onChange={event => setComplaintDescription(event.target.value)} rows={4} placeholder="Tell us what happened (10 to 5,000 characters)." className="resize-y rounded-xl border-slate-200" />
+                                        {complaintError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{complaintError}</p>}
+                                        <div className="flex justify-end gap-2">
+                                            <Button type="button" variant="ghost" onClick={() => setComplaintOrderId(null)} className="rounded-xl">Cancel</Button>
+                                            <Button type="submit" disabled={submittingComplaint || complaintDescription.trim().length < 10} className="rounded-xl bg-primary text-white">
+                                                {submittingComplaint ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save report'}
+                                            </Button>
+                                        </div>
+                                    </form>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -1626,14 +1757,12 @@ export default function ProfilePage() {
                                     {order.status === 'Delivered' && (
                                         <button
                                             onClick={() => {
-                                                const complaint = prompt("Please describe the quality issue with your order:");
-                                                if (complaint && supabase) {
-                                                    supabase.from('warranty_cases').insert([{
-                                                        order_id: order.id,
-                                                        customer_complaint: complaint,
-                                                        status: 'Pending_Pickup'
-                                                    }]).then(() => alert("Quality Mission Initialized."));
-                                                }
+                                                setComplaintOrderId(order.id);
+                                                setComplaintError(null);
+                                                setComplaintMessage(null);
+                                                setComplaintDescription('');
+                                                setComplaintItemId('');
+                                                document.getElementById('orders')?.scrollIntoView({ behavior: 'smooth' });
                                             }}
                                             className="text-[7px] font-black uppercase text-primary underline"
                                         >
