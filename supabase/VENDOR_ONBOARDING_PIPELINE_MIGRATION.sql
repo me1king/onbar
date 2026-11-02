@@ -475,4 +475,6 @@ GRANT EXECUTE ON FUNCTION public.update_vendor_onboarding_lead(UUID, TEXT, TEXT,
 GRANT EXECUTE ON FUNCTION public.record_vendor_onboarding_checkin(UUID, NUMERIC, NUMERIC, TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_vendor_onboarding_launch_checks(UUID, TEXT, BOOLEAN, TEXT) TO service_role;
 
+NOTIFY pgrst, 'reload schema';
+
 COMMIT;

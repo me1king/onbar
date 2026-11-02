@@ -185,6 +185,103 @@ export async function POST(request: Request) {
             }
         }
 
+        if (ticketReference && ['charge.success', 'charge.failed'].includes(event.event)) {
+            const { data: riderAttempt, error: riderAttemptError } = await database
+                .from('rider_delivery_payment_attempts')
+                .select('id,order_id,rider_phone,amount_ksh,status,provider_reference')
+                .eq('provider', 'paystack')
+                .eq('provider_reference', ticketReference)
+                .maybeSingle();
+
+            if (riderAttemptError && !['42P01', 'PGRST205'].includes(riderAttemptError.code || '')) {
+                console.error('[RiderPaystack] Could not look up delivery payment attempt:', riderAttemptError);
+                return NextResponse.json({ error: 'Delivery payment lookup failed.' }, { status: 503 });
+            }
+            if (!riderAttemptError && riderAttempt) {
+                if (riderAttempt.status === 'paid') {
+                    return NextResponse.json({ received: true, message: 'Delivery payment already recorded.' });
+                }
+                if (event.event === 'charge.failed') {
+                    const { error: failureError } = await database
+                        .from('rider_delivery_payment_attempts')
+                        .update({
+                            status: 'failed',
+                            error_message: 'Paystack reported that the scan-to-pay transaction failed.',
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', riderAttempt.id)
+                        .eq('status', 'pending');
+                    if (failureError) {
+                        console.error('[RiderPaystack] Could not record failed delivery payment:', failureError);
+                        return NextResponse.json({ error: 'Delivery payment failure could not be recorded.' }, { status: 503 });
+                    }
+                    return NextResponse.json({ received: true, message: 'Delivery payment failure recorded.' });
+                }
+
+                try {
+                    const transaction = await verifyPaystackTicketTransaction(ticketReference);
+                    const eventData = event.data as {
+                        reference?: string;
+                        amount?: number;
+                        currency?: string;
+                        status?: string;
+                    };
+                    const expectedAmountMinor = Number(riderAttempt.amount_ksh) * 100;
+                    if (transaction.status !== 'success'
+                        || transaction.reference !== riderAttempt.provider_reference
+                        || transaction.currency !== 'KES'
+                        || transaction.amount !== expectedAmountMinor
+                        || eventData.reference !== riderAttempt.provider_reference
+                        || Number(eventData.amount) !== expectedAmountMinor
+                        || eventData.currency !== 'KES'
+                        || eventData.status !== 'success') {
+                        console.error('[RiderPaystack] Provider transaction did not match the delivery attempt:', ticketReference);
+                        return NextResponse.json({ received: true, message: 'Payment details require reconciliation.' });
+                    }
+
+                    const { data: savedAttempt, error: saveError } = await database
+                        .from('rider_delivery_payment_attempts')
+                        .update({
+                            status: 'paid',
+                            error_message: null,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', riderAttempt.id)
+                        .eq('status', 'pending')
+                        .select('id')
+                        .maybeSingle();
+                    if (saveError) throw saveError;
+                    if (!savedAttempt) {
+                        const { data: currentAttempt, error: currentError } = await database
+                            .from('rider_delivery_payment_attempts')
+                            .select('status')
+                            .eq('id', riderAttempt.id)
+                            .maybeSingle();
+                        if (currentError || currentAttempt?.status !== 'paid') {
+                            throw new Error('Verified scan-to-pay funds could not be recorded against this order.');
+                        }
+                        return NextResponse.json({ received: true, message: 'Delivery payment already recorded.' });
+                    }
+                    const { error: auditError } = await database.from('delivery_events').insert({
+                        order_id: riderAttempt.order_id,
+                        from_status: 'Out for Delivery',
+                        to_status: 'Scan-to-pay confirmed',
+                        actor_type: 'payment',
+                        actor_id: 'Paystack',
+                        metadata: {
+                            amount_ksh: riderAttempt.amount_ksh,
+                            reference: riderAttempt.provider_reference
+                        }
+                    });
+                    if (auditError) throw auditError;
+                    return NextResponse.json({ received: true, message: 'Delivery payment confirmed.' });
+                } catch (deliveryPaymentError) {
+                    console.error('[RiderPaystack] Could not verify and record delivery payment:', deliveryPaymentError);
+                    return NextResponse.json({ error: 'Delivery payment confirmation failed.' }, { status: 503 });
+                }
+            }
+        }
+
         // 1.5 Log the event for Anomaly Detection
         if (event.data) {
             const { reference, amount, customer } = event.data;

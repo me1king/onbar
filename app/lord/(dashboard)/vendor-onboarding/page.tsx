@@ -86,6 +86,12 @@ interface LeadEvent {
 
 const typeLabel = (type: VendorType) => types.find(item => item.id === type)?.label || type;
 const stageLabel = (stage: Stage) => stages.find(item => item.id === stage)?.label || stage;
+const applicationStageLabel = (stage: string) => ({
+  business: 'Business identity',
+  contact_area: 'Contact & area',
+  operations: 'Operations',
+  goods_docs: 'Goods & documents'
+}[stage] || stage);
 
 function formatDate(value: string | null) {
   if (!value) return '—';
@@ -209,6 +215,53 @@ export default function VendorOnboardingPage() {
   }, [selectedId, loadDetail]);
 
   const selectedLead = leads.find(lead => lead.id === selectedId) || null;
+  const journeyStats = useMemo(() => {
+    const journeyEvents = events.filter(event =>
+      event.event_type.startsWith('onboarding_')
+      && typeof event.details.session_id === 'string'
+    );
+    const sessionId = journeyEvents[0]?.details.session_id;
+    if (typeof sessionId !== 'string') return null;
+    const sessionEvents = journeyEvents.filter(event => event.details.session_id === sessionId);
+    const stageNames = [
+      { id: 'business', label: 'Business identity' },
+      { id: 'contact_area', label: 'Contact & area' },
+      { id: 'operations', label: 'Operations' },
+      { id: 'goods_docs', label: 'Goods & documents' }
+    ];
+    const durations = stageNames.map(stage => {
+      const values = sessionEvents
+        .filter(event => event.event_type === 'onboarding_stage_exited'
+          && event.details.stage === stage.id
+          && typeof event.details.duration_ms === 'number')
+        .map(event => Number(event.details.duration_ms));
+      return {
+        ...stage,
+        visits: values.length,
+        averageMs: values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null,
+        rageClicks: sessionEvents.filter(event => event.event_type === 'onboarding_rage_click' && event.details.stage === stage.id).length
+      };
+    });
+    const latestStageEntry = sessionEvents.find(event => event.event_type === 'onboarding_stage_entered');
+    const completed = sessionEvents.some(event => event.event_type === 'onboarding_application_submitted');
+    const mostRepeatedClicks = [...durations].sort((first, second) => second.rageClicks - first.rageClicks)[0];
+    const longestStage = [...durations]
+      .filter(stage => stage.averageMs !== null)
+      .sort((first, second) => (second.averageMs || 0) - (first.averageMs || 0))[0];
+    return {
+      durations,
+      rageClicks: sessionEvents.filter(event => event.event_type === 'onboarding_rage_click').length,
+      improvementSignal: mostRepeatedClicks?.rageClicks
+        ? `Review ${mostRepeatedClicks.label} first; it had the most repeated-click signals.`
+        : longestStage
+          ? `Review ${longestStage.label} first; it had the longest average completion time.`
+          : 'More completed step visits are needed before we can identify a friction point.',
+      latestStage: typeof latestStageEntry?.details.stage === 'string'
+        ? stageNames.find(stage => stage.id === latestStageEntry.details.stage)?.label || String(latestStageEntry.details.stage)
+        : 'Unknown',
+      completed
+    };
+  }, [events]);
   const agents = useMemo(() => [...new Set(leads.map(lead => lead.agent).filter(Boolean))].sort(), [leads]);
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -525,6 +578,38 @@ export default function VendorOnboardingPage() {
               </div>
             </div>
           )}
+          <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="font-medium text-slate-900">Applicant onboarding experience</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-600">Opt-in analytics show time per step and repeated clicks. Typed values and document contents are never recorded.</p>
+              </div>
+              {journeyStats && <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">{journeyStats.completed ? 'Application submitted' : `Last active step: ${journeyStats.latestStage}`}</span>}
+            </div>
+            {journeyStats ? (
+              <>
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {journeyStats.durations.map(stage => (
+                    <div key={stage.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                      <p className="text-[11px] font-semibold text-slate-800">{stage.label}</p>
+                      <p className="mt-2 text-sm font-bold text-slate-950">
+                        {stage.averageMs === null ? '—' : stage.averageMs < 60_000
+                          ? `${Math.max(1, Math.round(stage.averageMs / 1000))} sec`
+                          : `${Math.round(stage.averageMs / 60_000)} min`}
+                      </p>
+                      <p className="mt-1 text-[10px] text-slate-500">{stage.visits} completed visit(s) · {stage.rageClicks} repeated-click signal(s)</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs font-semibold text-slate-700">Repeated-click signals: {journeyStats.rageClicks}</p>
+                <p className="mt-2 rounded-lg bg-white p-3 text-xs leading-5 text-slate-700"><strong>Suggested review:</strong> {journeyStats.improvementSignal}</p>
+              </>
+            ) : (
+              <p className="mt-3 rounded-lg bg-white p-3 text-xs text-slate-600">
+                No opt-in journey data yet. Applicants only share timing and repeated-click counts when they choose the optional analytics checkbox on their private onboarding link.
+              </p>
+            )}
+          </section>
           <div className="mt-5 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section>
               <div className="flex items-center justify-between gap-3">
@@ -596,10 +681,10 @@ export default function VendorOnboardingPage() {
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <h3 className="text-sm font-medium text-slate-900">Agent & notes</h3>
                 <div className="mt-3 space-y-2">
-                  <Input value={agentDraft} onChange={event => setAgentDraft(event.target.value)} aria-label="Assigned agent" className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
-                  <textarea value={notesDraft} onChange={event => setNotesDraft(event.target.value)} rows={3} placeholder="Call notes, visit details…"
+                  <Input value={agentDraft} onChange={event => setAgentDraft(event.target.value)} maxLength={160} aria-label="Assigned agent" className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+                  <textarea value={notesDraft} onChange={event => setNotesDraft(event.target.value)} rows={3} maxLength={2000} placeholder="Call notes, visit details…"
                     className="w-full rounded-md border border-slate-300 bg-white p-2 text-sm text-slate-900 placeholder:text-slate-400" />
-                  <Button size="sm" variant="outline" disabled={working} onClick={() => void saveAction({ action: 'edit', agent: agentDraft, notes: notesDraft }, 'Lead notes saved.')} className="border-slate-300 bg-white text-slate-700 hover:bg-slate-100">Save details</Button>
+                  <Button size="sm" variant="outline" disabled={working || !agentDraft.trim()} onClick={() => void saveAction({ action: 'edit', agent: agentDraft, notes: notesDraft }, 'Lead notes saved.')} className="border-slate-300 bg-white text-slate-700 hover:bg-slate-100">Save details</Button>
                 </div>
               </div>
               <div>
@@ -617,7 +702,12 @@ export default function VendorOnboardingPage() {
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               {events.map(event => <div key={event.id} className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs">
                 <div className="flex justify-between gap-3 text-slate-700"><span>{event.event_type.replaceAll('_', ' ')}</span><span>{formatDate(event.created_at)}</span></div>
-                <div className="mt-1 text-slate-500">{event.actor}{typeof event.details.stage === 'string' ? ` · ${stageLabel(event.details.stage as Stage)}` : ''}</div>
+                <div className="mt-1 text-slate-500">
+                  {event.actor}
+                  {typeof event.details.stage === 'string' ? ` · ${event.event_type.startsWith('onboarding_') ? applicationStageLabel(event.details.stage) : stageLabel(event.details.stage as Stage)}` : ''}
+                  {typeof event.details.duration_ms === 'number' ? ` · ${Math.max(1, Math.round(event.details.duration_ms / 1000))} sec` : ''}
+                  {typeof event.details.control_type === 'string' ? ` · repeated ${event.details.control_type} clicks` : ''}
+                </div>
               </div>)}
               {!events.length && <p className="text-xs text-slate-500">No activity recorded yet.</p>}
             </div>

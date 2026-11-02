@@ -33,6 +33,49 @@ export async function GET(request: Request) {
   }
 
   const tokenHash = createHash('sha256').update(token).digest('hex');
+  const { data: branchInvite, error: branchInviteError } = await database
+    .from('merchant_business_branch_invites')
+    .select('business_id,expires_at')
+    .eq('token_hash', tokenHash)
+    .gt('expires_at', new Date().toISOString())
+    .is('used_application_id', null)
+    .maybeSingle();
+  if (branchInviteError && !['42P01', 'PGRST205'].includes(branchInviteError.code || '')) {
+    console.error('[MerchantOnboardingInvite] Could not verify branch link:', branchInviteError);
+    return NextResponse.json({ error: 'Branch onboarding could not be loaded.' }, { status: 503 });
+  }
+  if (branchInvite) {
+    const { data: business, error: businessError } = await database.from('merchant_businesses')
+      .select('business_name,business_type')
+      .eq('id', branchInvite.business_id)
+      .maybeSingle();
+    if (businessError) {
+      console.error('[MerchantOnboardingInvite] Could not load branch business:', businessError);
+      return NextResponse.json({ error: 'Branch onboarding could not be loaded.' }, { status: 503 });
+    }
+    if (!business || !['bar', 'food_vendor', 'supplier'].includes(business.business_type)) {
+      return invalidLink();
+    }
+    const vendorType = business.business_type === 'bar'
+      ? 'retailer'
+      : business.business_type === 'supplier'
+        ? 'wholesaler'
+        : 'street_food';
+    return NextResponse.json({
+      invitation: {
+        businessName: business.business_name,
+        vendorType,
+        businessType: business.business_type,
+        expiresAt: branchInvite.expires_at
+      }
+    }, {
+      headers: {
+        'Cache-Control': 'private, no-store, max-age=0',
+        'Referrer-Policy': 'no-referrer'
+      }
+    });
+  }
+
   const { data, error } = await database.from('vendor_onboarding_leads')
     .select('business_name,vendor_type,invite_expires_at')
     .eq('invite_token_hash', tokenHash)

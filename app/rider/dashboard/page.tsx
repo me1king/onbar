@@ -1,7 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import QRCode from 'qrcode';
+import Image from 'next/image';
 import {
     Truck,
     LogOut,
@@ -13,12 +15,17 @@ import {
     MessageCircle,
     Zap,
     Search,
-    Bell
+    Bell,
+    Check,
+    Clock3,
+    MapPin,
+    Store,
+    Palette,
+    AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -26,7 +33,7 @@ import EarningsCenter from '@/components/rider/EarningsCenter';
 import PerformanceHub from '@/components/rider/PerformanceHub';
 import { authenticateBiometrics } from '@/lib/biometricService';
 
-const GoogleMap = dynamic(() => import('@/components/admin/dispatch/LiveDispatchMap'), {
+const RiderDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
     ssr: false,
     loading: () => <div className="h-full w-full bg-slate-50 flex items-center justify-center animate-pulse rounded-[3rem] border border-slate-100"><Loader2 className="h-10 w-10 text-primary animate-spin" /></div>
 });
@@ -35,13 +42,47 @@ interface Mission {
     id: number;
     customer_name: string;
     customer_phone: string;
+    customer_email?: string | null;
     status: string;
     total_price: number;
     payment_method: string;
+    payment_verified_at?: string | null;
     note: string;
     created_at: string;
     latitude?: number;
     longitude?: number;
+    delivery_address?: string | null;
+    delivery_area?: string | null;
+    delivery_landmark?: string | null;
+    rider_offer_status?: 'pending' | 'accepted' | 'declined' | 'expired' | null;
+    rider_offer_expires_at?: string | null;
+    rider_pickup_arrived_at?: string | null;
+    rider_handover_verified_at?: string | null;
+    items?: Array<{ id: number; name: string; quantity: number }>;
+    merchants?: Array<{
+        id: string;
+        name: string;
+        phone: string | null;
+        items: Array<{ name: string; quantity: number }>;
+    }>;
+}
+
+const RIDER_ACCENT_DEFAULT = '#39D98A';
+const RIDER_ACCENT_PRESETS = ['#39D98A', '#21C8A8', '#4E9BFF', '#A78BFA', '#FF8A4C', '#F05D6C'];
+
+function isCashOrder(method: string) {
+    return ['cash', 'cash on delivery', 'cod'].includes(method.trim().toLowerCase());
+}
+
+function formatKsh(value: number) {
+    return `KSh ${Number(value || 0).toLocaleString('en-KE')}`;
+}
+
+function riderAuthHeaders(token: string, json = false): HeadersInit {
+    return {
+        Authorization: 'Bearer ' + token,
+        ...(json ? { 'Content-Type': 'application/json' } : {})
+    };
 }
 
 function decodeVapidKey(value: string): ArrayBuffer {
@@ -61,6 +102,7 @@ function RiderDashboardContent() {
     const [pin, setPin] = useState('');
     const [sessionToken, setSessionToken] = useState('');
     const [gpsMessage, setGpsMessage] = useState<string | null>(null);
+    const [riderPosition, setRiderPosition] = useState<{ latitude: number; longitude: number } | null>(null);
     const [isIdentified, setIsIdentified] = useState(false);
     const [loading, setLoading] = useState(false);
     const [missions, setMissions] = useState<Mission[]>([]);
@@ -68,8 +110,27 @@ function RiderDashboardContent() {
     const [pushEnabled, setPushEnabled] = useState(false);
     const [pushBusy, setPushBusy] = useState(false);
     const [pushMessage, setPushMessage] = useState<string | null>(null);
-    const [deliveryPin, setDeliveryPin] = useState('');
     const [customerIdVerified, setCustomerIdVerified] = useState(false);
+    const [checkedItemIds, setCheckedItemIds] = useState<number[]>([]);
+    const [handoverCode, setHandoverCode] = useState('');
+    const [handoverBusy, setHandoverBusy] = useState(false);
+    const [handoverMessage, setHandoverMessage] = useState<string | null>(null);
+    const [paymentBusy, setPaymentBusy] = useState(false);
+    const [paymentStatus, setPaymentStatus] = useState<'unpaid' | 'pending' | 'paid'>('unpaid');
+    const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
+    const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
+    const [paymentQr, setPaymentQr] = useState<string | null>(null);
+    const paymentQrUrl = useRef('');
+    const [accentColor, setAccentColor] = useState(RIDER_ACCENT_DEFAULT);
+    const [accentSaveMessage, setAccentSaveMessage] = useState<string | null>(null);
+    const [offerSeconds, setOfferSeconds] = useState(0);
+    const [arrivalMessage, setArrivalMessage] = useState<string | null>(null);
+    const [arrivalBusy, setArrivalBusy] = useState(false);
+    const [issueType, setIssueType] = useState('');
+    const [issueDetails, setIssueDetails] = useState('');
+    const [issueMessage, setIssueMessage] = useState<string | null>(null);
+    const seenOffers = useRef<Set<number>>(new Set());
+    const offerTimerRunning = useRef(false);
 
     // Online Bar Pro States
     const [isOnline, setIsOnline] = useState(false);
@@ -135,7 +196,14 @@ function RiderDashboardContent() {
 
             // AUTO-SELECT ACTIVE MISSION
             const currentMissions = missionData.missions || [];
-            const dispatched = currentMissions.find(m => ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(m.status));
+            for (const mission of currentMissions) {
+                if (mission.rider_offer_status === 'pending') seenOffers.current.add(mission.id);
+            }
+            const dispatched = currentMissions.find(m =>
+                ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(m.status)
+                && m.rider_offer_status !== 'declined'
+                && m.rider_offer_status !== 'expired'
+            );
             if (dispatched) setActiveMission(dispatched);
 
             localStorage.setItem('ob_rider_phone', canonicalPhone);
@@ -147,12 +215,287 @@ function RiderDashboardContent() {
             setMissions(currentMissions);
             setIsIdentified(true);
             setIsOnline(sessionData.rider.status === 'Idle' || sessionData.rider.status === 'Delivering');
+            const savedAccent = localStorage.getItem(`ob_rider_accent_${canonicalPhone}`);
+            if (savedAccent && /^#[0-9A-Fa-f]{6}$/.test(savedAccent)) setAccentColor(savedAccent);
+            void fetch('/api/rider/preferences', {
+                headers: riderAuthHeaders(activeToken),
+                cache: 'no-store'
+            }).then(async response => {
+                const result = await response.json() as { accentColor?: string; error?: string };
+                if (!response.ok || !result.accentColor) throw new Error(result.error || 'Rider appearance could not be loaded.');
+                setAccentColor(result.accentColor);
+                localStorage.setItem(`ob_rider_accent_${canonicalPhone}`, result.accentColor);
+            }).catch(error => {
+                console.error('[RiderDashboard] Rider theme could not be loaded:', error);
+                setAccentSaveMessage(error instanceof Error ? error.message : 'Rider theme could not be loaded.');
+            });
         } catch (error) {
             setAuthError(error instanceof Error ? error.message : 'Rider sign-in failed.');
         } finally {
             setLoading(false);
         }
     }, []);
+
+    const respondToOffer = useCallback(async (orderId: number, responseValue: 'accepted' | 'declined', timedOut = false) => {
+        if (!sessionToken) return;
+        setAuthError(null);
+        setLoading(true);
+        try {
+            const response = await fetch('/api/rider/offers/respond', {
+                method: 'POST',
+                headers: riderAuthHeaders(sessionToken, true),
+                body: JSON.stringify({ orderId, response: responseValue }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as { response?: string; status?: string; error?: string };
+            if (!response.ok || !result.response) throw new Error(result.error || 'Offer response could not be saved.');
+            if (result.response === 'accepted') {
+                setActiveMission(current => current?.id === orderId
+                    ? { ...current, rider_offer_status: 'accepted' }
+                    : current);
+                setMissions(current => current.map(mission => mission.id === orderId
+                    ? { ...mission, rider_offer_status: 'accepted' }
+                    : mission));
+                setPushMessage(`Order #${orderId} accepted. Head to the merchant pickup.`);
+                return;
+            }
+            setActiveMission(current => current?.id === orderId ? null : current);
+            setMissions(current => current.map(mission => mission.id === orderId
+                ? { ...mission, rider_offer_status: result.response as Mission['rider_offer_status'], status: result.status || mission.status }
+                : mission));
+            setPushMessage(result.response === 'expired' || timedOut
+                ? `Offer #${orderId} expired and was returned to dispatch.`
+                : `Offer #${orderId} declined and returned to dispatch.`);
+        } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'Offer response could not be saved.');
+        } finally {
+            setLoading(false);
+        }
+    }, [sessionToken]);
+
+    const saveAccentColor = useCallback(async (color: string) => {
+        setAccentColor(color);
+        setAccentSaveMessage(null);
+        localStorage.setItem(`ob_rider_accent_${phone}`, color);
+        if (!sessionToken) return;
+        try {
+            const response = await fetch('/api/rider/preferences', {
+                method: 'PATCH',
+                headers: riderAuthHeaders(sessionToken, true),
+                body: JSON.stringify({ accentColor: color }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as { accentColor?: string; error?: string };
+            if (!response.ok || !result.accentColor) throw new Error(result.error || 'Rider theme could not be saved.');
+            setAccentColor(result.accentColor);
+            localStorage.setItem(`ob_rider_accent_${phone}`, result.accentColor);
+            setAccentSaveMessage('Theme saved to rider profile.');
+        } catch (error) {
+            setAccentSaveMessage(error instanceof Error ? error.message : 'Theme could not be saved to rider profile.');
+        }
+    }, [phone, sessionToken]);
+
+    const markPickupArrival = useCallback(async (orderId: number) => {
+        if (!sessionToken) return;
+        setLoading(true);
+        setAuthError(null);
+        try {
+            const response = await fetch('/api/rider/pickup-arrived', {
+                method: 'POST',
+                headers: riderAuthHeaders(sessionToken, true),
+                body: JSON.stringify({ orderId }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as { arrivedAt?: string; warning?: string; error?: string };
+            if (!response.ok || !result.arrivedAt) throw new Error(result.error || 'Pickup arrival could not be recorded.');
+            setActiveMission(current => current?.id === orderId
+                ? { ...current, rider_pickup_arrived_at: result.arrivedAt }
+                : current);
+            setMissions(current => current.map(mission => mission.id === orderId
+                ? { ...mission, rider_pickup_arrived_at: result.arrivedAt }
+                : mission));
+            setPushMessage(result.warning || 'Merchant arrival saved. Check each item before pickup.');
+        } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'Pickup arrival could not be recorded.');
+        } finally {
+            setLoading(false);
+        }
+    }, [sessionToken]);
+
+    const notifyCustomerArriving = useCallback(async (orderId: number) => {
+        if (!sessionToken) return;
+        setArrivalBusy(true);
+        setArrivalMessage(null);
+        try {
+            const response = await fetch('/api/rider/arriving', {
+                method: 'POST',
+                headers: riderAuthHeaders(sessionToken, true),
+                body: JSON.stringify({ orderId }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as { sent?: boolean; alreadySent?: boolean; error?: string };
+            if (!response.ok || !result.sent) throw new Error(result.error || 'Customer arrival message could not be sent.');
+            setArrivalMessage(result.alreadySent
+                ? 'The customer already has an active handover code on WhatsApp.'
+                : 'Arrival and a fresh four-digit handover code were sent to the customer’s WhatsApp.');
+        } catch (error) {
+            setArrivalMessage(error instanceof Error ? error.message : 'Customer arrival message could not be sent.');
+        } finally {
+            setArrivalBusy(false);
+        }
+    }, [sessionToken]);
+
+    const verifyHandoverCode = useCallback(async (orderId: number) => {
+        if (!sessionToken || !/^\d{4}$/.test(handoverCode)) return;
+        setHandoverBusy(true);
+        setHandoverMessage(null);
+        try {
+            const response = await fetch('/api/rider/handover', {
+                method: 'POST',
+                headers: riderAuthHeaders(sessionToken, true),
+                body: JSON.stringify({ orderId, code: handoverCode }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as { verified?: boolean; error?: string };
+            if (!response.ok || !result.verified) throw new Error(result.error || 'The handover code could not be verified.');
+            const verifiedAt = new Date().toISOString();
+            setActiveMission(current => current?.id === orderId
+                ? { ...current, rider_handover_verified_at: verifiedAt }
+                : current);
+            setMissions(current => current.map(mission => mission.id === orderId
+                ? { ...mission, rider_handover_verified_at: verifiedAt }
+                : mission));
+            setHandoverCode('');
+            setHandoverMessage('Code verified. Confirm ID and record the customer’s payment before completion.');
+        } catch (error) {
+            setHandoverMessage(error instanceof Error ? error.message : 'The handover code could not be verified.');
+        } finally {
+            setHandoverBusy(false);
+        }
+    }, [handoverCode, sessionToken]);
+
+    const collectDeliveryPayment = useCallback(async (orderId: number, method: 'cash' | 'mpesa' | 'qr') => {
+        if (!sessionToken || !customerIdVerified) return;
+        setPaymentBusy(true);
+        setPaymentMessage(null);
+        try {
+            const response = await fetch('/api/rider/delivery-payment', {
+                method: 'POST',
+                headers: riderAuthHeaders(sessionToken, true),
+                body: JSON.stringify({ orderId, method, customerIdVerified }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as {
+                status?: 'unpaid' | 'pending' | 'paid';
+                paymentMethod?: string | null;
+                checkoutUrl?: string | null;
+                warning?: string | null;
+                error?: string;
+            };
+            if (!response.ok || !result.status) throw new Error(result.error || 'Payment could not be started.');
+            setPaymentStatus(result.status);
+            setPaymentMethod(result.paymentMethod || method);
+            if (result.checkoutUrl) {
+                paymentQrUrl.current = result.checkoutUrl;
+                setPaymentQr(await QRCode.toDataURL(result.checkoutUrl, { width: 240, margin: 1 }));
+            }
+            const message = result.status === 'paid'
+                ? `Payment confirmed${result.paymentMethod ? ` (${result.paymentMethod})` : ''}.`
+                : method === 'mpesa'
+                    ? 'M-Pesa prompt sent. Wait for the provider-verified payment confirmation.'
+                    : 'Secure payment QR is ready. Ask the customer to scan it and complete checkout.';
+            setPaymentMessage([message, result.warning].filter(Boolean).join(' '));
+        } catch (error) {
+            setPaymentMessage(error instanceof Error ? error.message : 'Payment could not be started.');
+        } finally {
+            setPaymentBusy(false);
+        }
+    }, [customerIdVerified, sessionToken]);
+
+    const reportDeliveryIssue = useCallback(async (orderId: number) => {
+        if (!sessionToken || !issueType) return;
+        setLoading(true);
+        setIssueMessage(null);
+        try {
+            const response = await fetch('/api/rider/delivery-issue', {
+                method: 'POST',
+                headers: riderAuthHeaders(sessionToken, true),
+                body: JSON.stringify({ orderId, issue: issueType, details: issueDetails }),
+                cache: 'no-store'
+            });
+            const result = await response.json() as { recorded?: boolean; error?: string };
+            if (!response.ok || !result.recorded) throw new Error(result.error || 'Delivery issue could not be recorded.');
+            setIssueMessage(['no_valid_id', 'underage_customer', 'intoxicated_customer', 'customer_refused'].includes(issueType)
+                ? 'Safety issue recorded. Do not hand over; dispatch review is required.'
+                : 'Issue recorded for dispatch review.');
+            setIssueType('');
+            setIssueDetails('');
+        } catch (error) {
+            setIssueMessage(error instanceof Error ? error.message : 'Delivery issue could not be recorded.');
+        } finally {
+            setLoading(false);
+        }
+    }, [issueDetails, issueType, sessionToken]);
+
+    useEffect(() => {
+        setCustomerIdVerified(false);
+        setHandoverCode('');
+        setHandoverMessage(null);
+        setArrivalMessage(null);
+    }, [activeMission?.id]);
+
+    useEffect(() => {
+        const orderId = activeMission?.id;
+        const handoverVerified = Boolean(activeMission?.rider_handover_verified_at);
+        if (!orderId || activeMission?.status !== 'Out for Delivery' || !handoverVerified || !sessionToken) {
+            if (!handoverVerified) {
+                setPaymentStatus('unpaid');
+                setPaymentMethod(null);
+                setPaymentMessage(null);
+                setPaymentQr(null);
+                paymentQrUrl.current = '';
+            }
+            return;
+        }
+
+        let active = true;
+        const refreshPayment = async () => {
+            try {
+                const response = await fetch(`/api/rider/delivery-payment?orderId=${orderId}`, {
+                    headers: riderAuthHeaders(sessionToken),
+                    cache: 'no-store'
+                });
+                const result = await response.json() as {
+                    status?: 'unpaid' | 'pending' | 'paid';
+                    paymentMethod?: string | null;
+                    checkoutUrl?: string | null;
+                    message?: string | null;
+                    error?: string;
+                };
+                if (!response.ok || !result.status) throw new Error(result.error || 'Payment status could not be refreshed.');
+                if (!active) return;
+                setPaymentStatus(result.status);
+                setPaymentMethod(result.paymentMethod || null);
+                if (result.checkoutUrl && paymentQrUrl.current !== result.checkoutUrl) {
+                    paymentQrUrl.current = result.checkoutUrl;
+                    setPaymentQr(await QRCode.toDataURL(result.checkoutUrl, { width: 240, margin: 1 }));
+                }
+                if (result.status === 'paid') {
+                    setPaymentMessage('Payment confirmed by the payment provider or recorded cash collection.');
+                } else if (result.message) {
+                    setPaymentMessage(result.message);
+                }
+            } catch (error) {
+                if (active) setPaymentMessage(error instanceof Error ? error.message : 'Payment status could not be refreshed.');
+            }
+        };
+        void refreshPayment();
+        const timer = window.setInterval(() => { void refreshPayment(); }, 4000);
+        return () => {
+            active = false;
+            window.clearInterval(timer);
+        };
+    }, [activeMission?.id, activeMission?.rider_handover_verified_at, activeMission?.status, sessionToken]);
 
     useEffect(() => {
         if (!isIdentified || !sessionToken || !('serviceWorker' in navigator)) return;
@@ -200,14 +543,36 @@ function RiderDashboardContent() {
                 if (!response.ok) throw new Error(result.error || 'Rider missions could not be refreshed.');
                 if (!active) return;
                 const refreshedMissions = result.missions || [];
+                const newOffers = refreshedMissions.filter(mission =>
+                    mission.rider_offer_status === 'pending' && !seenOffers.current.has(mission.id)
+                );
+                for (const mission of refreshedMissions) {
+                    if (mission.rider_offer_status === 'pending') seenOffers.current.add(mission.id);
+                }
+                if (newOffers.length > 0) {
+                    if ('vibrate' in navigator) navigator.vibrate([300, 120, 300, 120, 600]);
+                    setPushMessage(`New delivery offer${newOffers.length > 1 ? 's' : ''}: ${newOffers.map(item => `#${item.id}`).join(', ')}`);
+                    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                        new Notification('New delivery offer', {
+                            body: `Order #${newOffers[0].id} is waiting for your response.`,
+                            icon: '/favicon.svg',
+                            tag: `rider-offer-${newOffers[0].id}`
+                        });
+                    }
+                }
                 setMissions(refreshedMissions);
                 if (result.wallet) setWallet(result.wallet);
                 setActiveMission(current => {
                     const activeStatuses = ['Dispatched', 'Picked Up', 'Out for Delivery'];
                     const currentMission = current && refreshedMissions.find(mission =>
-                        mission.id === current.id && activeStatuses.includes(mission.status));
+                        mission.id === current.id
+                        && activeStatuses.includes(mission.status)
+                        && mission.rider_offer_status !== 'declined'
+                        && mission.rider_offer_status !== 'expired');
                     return currentMission
-                        || refreshedMissions.find(mission => activeStatuses.includes(mission.status))
+                        || refreshedMissions.find(mission => activeStatuses.includes(mission.status)
+                            && mission.rider_offer_status !== 'declined'
+                            && mission.rider_offer_status !== 'expired')
                         || null;
                 });
             } catch (error) {
@@ -219,6 +584,27 @@ function RiderDashboardContent() {
             window.clearInterval(timer);
         };
     }, [isIdentified, sessionToken]);
+
+    useEffect(() => {
+        const mission = activeMission;
+        if (!mission || mission.rider_offer_status !== 'pending' || !mission.rider_offer_expires_at) {
+            setOfferSeconds(0);
+            return;
+        }
+        const updateRemaining = () => {
+            const remaining = Math.max(0, Math.ceil((new Date(mission.rider_offer_expires_at!).getTime() - Date.now()) / 1000));
+            setOfferSeconds(remaining);
+            if (remaining === 0 && !offerTimerRunning.current) {
+                offerTimerRunning.current = true;
+                void respondToOffer(mission.id, 'declined', true).finally(() => {
+                    offerTimerRunning.current = false;
+                });
+            }
+        };
+        updateRemaining();
+        const timer = window.setInterval(updateRemaining, 1000);
+        return () => window.clearInterval(timer);
+    }, [activeMission, respondToOffer]);
 
     useEffect(() => {
         const orderId = Number(searchParams?.get('orderId'));
@@ -281,6 +667,7 @@ function RiderDashboardContent() {
 
     const handleAdvanceMission = useCallback(async (orderId: number) => {
         if (!sessionToken) return;
+        const mission = activeMission;
         const nextStatus = activeMission?.id === orderId
             ? activeMission.status === 'Dispatched'
                 ? 'Picked Up'
@@ -288,8 +675,22 @@ function RiderDashboardContent() {
                     ? 'Out for Delivery'
                     : 'Delivered'
             : '';
-        if (nextStatus === 'Delivered' && (!customerIdVerified || !/^\d{6}$/.test(deliveryPin.trim()))) {
-            setAuthError('Check the customer’s ID and enter the six-digit delivery PIN before handover.');
+        if (nextStatus === 'Picked Up'
+            && (mission?.items?.length || 0) > 0
+            && mission?.items?.some(item => !checkedItemIds.includes(item.id))) {
+            setAuthError('Check every item in the order before confirming pickup.');
+            return;
+        }
+        if (nextStatus === 'Picked Up' && !mission?.rider_pickup_arrived_at) {
+            setAuthError('Record your arrival at the merchant before confirming pickup.');
+            return;
+        }
+        if (nextStatus === 'Delivered' && (!customerIdVerified || !mission?.rider_handover_verified_at)) {
+            setAuthError('Check the customer’s ID and verify their four-digit handover code before completion.');
+            return;
+        }
+        if (nextStatus === 'Delivered' && paymentStatus !== 'paid') {
+            setAuthError('Record a confirmed payment before completing delivery.');
             return;
         }
         setLoading(true);
@@ -300,8 +701,8 @@ function RiderDashboardContent() {
                 body: JSON.stringify({
                     orderId,
                     nextStatus,
-                    deliveryPin: nextStatus === 'Delivered' ? deliveryPin.trim() : null,
-                    customerIdVerified: nextStatus === 'Delivered' && customerIdVerified
+                    customerIdVerified: nextStatus === 'Delivered' && customerIdVerified,
+                    checkedItemIds: nextStatus === 'Picked Up' ? checkedItemIds : []
                 }),
                 cache: 'no-store'
             });
@@ -317,19 +718,27 @@ function RiderDashboardContent() {
             if (result.wallet) setWallet(result.wallet);
             if (result.status === 'Delivered') {
                 setActiveMission(null);
-                setDeliveryPin('');
                 setCustomerIdVerified(false);
-                alert(result.warning || 'Mission accomplished. The order and rider commission are saved.');
+                setHandoverCode('');
+                setHandoverMessage(null);
+                setPaymentStatus('unpaid');
+                setPaymentMethod(null);
+                setPaymentMessage(null);
+                setPaymentQr(null);
+                paymentQrUrl.current = '';
+                setCheckedItemIds([]);
+                alert(result.warning || 'Mission complete. Payment, delivery, customer notification, and rider earnings have been recorded.');
             } else {
                 setActiveMission(prev => prev?.id === orderId ? { ...prev, status: result.status! } : prev);
             }
+            setArrivalMessage(null);
             if (result.warning) setAuthError(result.warning);
         } catch (error) {
             setAuthError(error instanceof Error ? error.message : 'Delivery status could not be updated.');
         } finally {
             setLoading(false);
         }
-    }, [activeMission, customerIdVerified, deliveryPin, sessionToken]);
+    }, [activeMission, checkedItemIds, customerIdVerified, paymentStatus, sessionToken]);
 
     useEffect(() => {
         const savedPhone = localStorage.getItem('ob_rider_phone');
@@ -344,7 +753,10 @@ function RiderDashboardContent() {
     }, [phoneParam, verifyAndFetch]);
 
     useEffect(() => {
-        if (!isOnline || !sessionToken) return;
+        if (!isOnline || !sessionToken) {
+            setRiderPosition(null);
+            return;
+        }
         if (!navigator.geolocation) {
             setGpsMessage('This device does not support GPS; pickup distance will be unavailable.');
             return;
@@ -355,6 +767,10 @@ function RiderDashboardContent() {
         const watchId = navigator.geolocation.watchPosition(async position => {
             if (!active || Date.now() - lastSentAt < (hasActiveMission ? 10_000 : 30_000)) return;
             lastSentAt = Date.now();
+            setRiderPosition({
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+            });
             try {
                 const response = await fetch('/api/rider/sync-location', {
                     method: 'POST',
@@ -483,189 +899,343 @@ function RiderDashboardContent() {
         );
     }
 
+    const isOffer = activeMission?.rider_offer_status === 'pending';
+    const isAssignedMission = !!activeMission && !isOffer;
+    const statusSteps = ['Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'];
+    const currentStep = activeMission ? statusSteps.indexOf(activeMission.status) : -1;
+    const merchantGroups = activeMission?.merchants || [];
+    const deliveryDestination = isAssignedMission
+        && typeof activeMission?.latitude === 'number' && Number.isFinite(activeMission.latitude)
+        && typeof activeMission.longitude === 'number' && Number.isFinite(activeMission.longitude)
+        ? { latitude: activeMission.latitude, longitude: activeMission.longitude }
+        : null;
+    const accentStyle = { color: accentColor, borderColor: `${accentColor}66` };
+    const riderName = typeof rider?.name === 'string' ? rider.name : 'Rider';
+
     return (
-        <div className="min-h-screen bg-slate-50 text-left selection:bg-primary/20 flex flex-col">
-            <div className="h-[55dvh] relative">
-                <GoogleMap riders={rider ? [{
-                    id: (rider as { id: string }).id || 'anon',
-                    rider_name: (rider as { rider_name: string }).rider_name || 'Runner',
-                    status: (rider as { status: string }).status || 'Idle',
-                    battery_level: (rider as { battery_level: number }).battery_level || 100
-                }] : []} />
-
-                <div className="absolute top-6 left-6 right-6 z-[1000] flex justify-between items-start">
-                    <Card className="p-4 rounded-3xl bg-white/90 backdrop-blur shadow-2xl border border-slate-100 flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-2xl bg-primary flex items-center justify-center text-white font-black text-sm shadow-xl">
-                            {phone.slice(-2)}
+        <main className="min-h-screen bg-[#080c0b] text-white selection:bg-emerald-400/30">
+            <header className="sticky top-0 z-30 border-b border-white/10 bg-[#080c0b]/95 px-4 py-3 backdrop-blur sm:px-7">
+                <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/5 font-black" style={{ color: accentColor }}>
+                            <Truck className="h-5 w-5" />
                         </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <Star className="h-3 w-3 text-amber-500 fill-current" />
-                                <span className="text-xs font-black text-foreground">{stats.rating}</span>
-                            </div>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{stats.tier} Operator</p>
-                        </div>
-                    </Card>
-
-                    <button onClick={handleLogout} className="h-14 w-14 rounded-2xl bg-white/90 backdrop-blur shadow-2xl flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all active:scale-95 border border-slate-100">
-                        <LogOut className="h-6 w-6" />
-                    </button>
-                </div>
-
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000]">
-                    <Button
-                        onClick={handleToggleOnline}
-                        className={cn(
-                            "h-20 px-12 rounded-full font-black uppercase tracking-[0.3em] text-xs shadow-[0_0_50px_rgba(245,160,0,0.2)] transition-all active:scale-90",
-                            isOnline ? "bg-white text-rose-500 border-4 border-rose-50" : "bg-primary text-white border-4 border-white animate-pulse"
-                        )}
-                    >
-                        {isOnline ? "Go Offline" : "Go Online"}
-                    </Button>
-                    {isOnline && (
-                        <p className="mt-3 max-w-[18rem] rounded-xl bg-white/95 px-3 py-2 text-center text-xs font-semibold text-slate-700 shadow" role="status">
-                            {gpsMessage || 'Waiting for a fresh GPS fix to rank pickup distance…'}
-                        </p>
-                    )}
-                </div>
-            </div>
-
-            <div className="flex-1 bg-white rounded-t-[3.5rem] -mt-10 relative z-[1001] shadow-[0_-20px_50px_rgba(0,0,0,0.3)] p-8 sm:p-12 overflow-y-auto no-scrollbar">
-                <div className="w-16 h-1.5 bg-slate-100 rounded-full mx-auto mb-10 cursor-grab active:cursor-grabbing" />
-
-                <div className="mb-8 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-3">
-                        <Bell className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                        <div>
-                            <p className="text-sm font-bold text-slate-900">
-                                {pushEnabled ? 'Mission alerts enabled' : 'Enable mission alerts'}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-600">
-                                Get an immediate push when assigned, plus an SMS reminder after 10 seconds when the worker is running.
-                            </p>
-                            {pushMessage && <p role="status" className="mt-2 text-xs font-semibold text-slate-700">{pushMessage}</p>}
+                        <div className="min-w-0">
+                            <p className="truncate text-xs font-black uppercase tracking-[0.2em]">Rider terminal</p>
+                            <p className="truncate text-xs text-white/50">{riderName} · {phone}</p>
                         </div>
                     </div>
-                    {!pushEnabled && (
-                        <Button type="button" onClick={() => void enableMissionAlerts()} disabled={pushBusy} className="shrink-0">
-                            {pushBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />}
-                            Enable push
+                    <div className="flex items-center gap-2">
+                        <span className="hidden items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-wider sm:flex">
+                            <span className={`h-2 w-2 rounded-full ${isOnline ? 'animate-pulse bg-emerald-400' : 'bg-white/30'}`} />
+                            {isOnline ? 'Online' : 'Offline'}
+                        </span>
+                        <Button onClick={handleToggleOnline} disabled={loading} className="h-10 rounded-lg px-4 text-xs font-black uppercase" style={{ backgroundColor: isOnline ? '#202725' : accentColor, color: isOnline ? 'white' : '#08100c' }}>
+                            {isOnline ? 'Go offline' : 'Go online'}
                         </Button>
-                    )}
+                        <button aria-label="Log out" onClick={handleLogout} className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-white/60 hover:text-rose-300">
+                            <LogOut className="h-4 w-4" />
+                        </button>
+                    </div>
                 </div>
+                {gpsMessage && <p role="status" className="mx-auto mt-2 max-w-7xl text-[11px] text-white/50">{gpsMessage}</p>}
+            </header>
 
-                {activeMission ? (
-                    <div className="space-y-10 animate-in slide-in-from-bottom-12 duration-1000 ease-in-out text-left">
-                        <div className="flex justify-between items-start">
-                            <div className="space-y-2">
-                                <p className="text-[10px] font-black text-primary uppercase tracking-[0.5em] flex items-center gap-3">
-                                    <span className="relative flex h-3 w-3">
-                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                                      <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
-                                    </span>
-                                    Tactical Mission
+            <div className="mx-auto grid max-w-7xl gap-5 p-4 sm:p-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.85fr)]">
+                <section className="space-y-5">
+                    <div className="relative h-[288px] overflow-hidden rounded-2xl border border-white/10 bg-[#101614] sm:h-[340px]">
+                        {riderPosition ? (
+                            <RiderDeliveryMap rider={riderPosition} destination={deliveryDestination} />
+                        ) : (
+                            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-white/55">
+                                <Navigation className="h-6 w-6" style={{ color: accentColor }} />
+                                <p className="text-xs font-bold">Waiting for live GPS</p>
+                                <p className="max-w-xs text-[10px]">Go online and allow location access to show your position.</p>
+                            </div>
+                        )}
+                        <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-white/10 bg-[#080c0b]/90 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white/70">
+                            <MapPin className="mr-1 inline h-3 w-3" /> Live mission map
+                        </div>
+                    </div>
+
+                    <section className="rounded-2xl border bg-[#101614] p-4 sm:p-6" style={{ borderColor: `${accentColor}66` }}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: accentColor }}>
+                                    {isOffer ? 'New delivery offer' : isAssignedMission ? 'Active delivery' : 'Dispatch status'}
                                 </p>
-                                <h2 className="text-4xl font-black uppercase tracking-tighter text-foreground leading-[0.9]">Deliver to <br/><span className="text-primary">{activeMission.customer_name}</span></h2>
+                                <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
+                                    {isOffer ? `Order #${activeMission.id}` : isAssignedMission ? `Order #${activeMission.id}` : isOnline ? 'Ready for offers' : 'You are offline'}
+                                </h1>
+                                <p className="mt-1 text-sm text-white/55">
+                                    {isOffer
+                                        ? `Offer expires in ${offerSeconds}s`
+                                        : isAssignedMission
+                                            ? `${activeMission.customer_name} · ${activeMission.delivery_address || activeMission.delivery_area || 'Delivery location'}`
+                                            : isOnline ? 'Keep the app open and alerts enabled.' : 'Go online to receive delivery offers.'}
+                                </p>
                             </div>
-                            <div className="h-20 w-20 rounded-[2.5rem] bg-slate-50 flex flex-col items-center justify-center text-foreground border-2 border-slate-100 shadow-inner">
-                                <p className="text-[8px] font-black uppercase text-slate-400">UNIT</p>
-                                <p className="text-2xl font-black tabular-nums">{activeMission.id}</p>
-                            </div>
+                            {activeMission && (
+                                <span className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold" style={accentStyle}>
+                                    {activeMission.payment_method || 'Payment pending'} · {formatKsh(activeMission.total_price)}
+                                </span>
+                            )}
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <Button
-                                onClick={() => window.open(`tel:${activeMission.customer_phone}`, '_self')}
-                                className="group h-20 rounded-3xl bg-slate-50 hover:bg-slate-100 text-foreground border border-slate-100 shadow-sm transition-all"
-                            >
-                                <MessageCircle className="h-5 w-5 mr-2" /> Chat
-                            </Button>
-                            <Button
-                                onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${activeMission.latitude},${activeMission.longitude}`, '_blank')}
-                                className="group h-20 rounded-3xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-100 shadow-sm transition-all"
-                            >
-                                <Navigation className="h-5 w-5 mr-2" /> Guide
-                            </Button>
-                        </div>
-
-                        {activeMission.status === 'Out for Delivery' && (
-                            <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-                                <label className="flex items-start gap-3 text-sm font-semibold text-slate-800">
-                                    <input
-                                        type="checkbox"
-                                        checked={customerIdVerified}
-                                        onChange={event => setCustomerIdVerified(event.target.checked)}
-                                        className="mt-1 h-4 w-4 accent-amber-600"
-                                    />
-                                    I checked the customer’s valid photo ID in person.
-                                </label>
-                                <Input
-                                    value={deliveryPin}
-                                    onChange={event => setDeliveryPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                                    inputMode="numeric"
-                                    autoComplete="one-time-code"
-                                    maxLength={6}
-                                    placeholder="Customer’s 6-digit delivery PIN"
-                                    aria-label="Customer's six-digit delivery PIN"
-                                    className="h-12 rounded-xl border-amber-200 bg-white text-center text-lg font-black tracking-[0.4em]"
-                                />
-                                <p className="text-xs text-slate-600">Delivery is recorded only after the ID check and correct customer PIN.</p>
+                        {isOffer && activeMission && (
+                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                                <Button onClick={() => void respondToOffer(activeMission.id, 'accepted')} disabled={loading || offerSeconds <= 0} className="h-14 rounded-xl text-sm font-black uppercase tracking-widest" style={{ backgroundColor: accentColor, color: '#08100c' }}>
+                                    <Check className="mr-2 h-4 w-4" /> Accept offer
+                                </Button>
+                                <Button onClick={() => void respondToOffer(activeMission.id, 'declined')} disabled={loading} variant="outline" className="h-14 rounded-xl border-white/15 bg-white/5 text-sm font-black uppercase tracking-widest text-white hover:bg-rose-500/10 hover:text-rose-300">
+                                    Decline
+                                </Button>
                             </div>
                         )}
 
-                        <div className="pt-8 border-t border-slate-50 space-y-6">
-                            <Button
-                                onClick={() => handleAdvanceMission(activeMission.id)}
-                                disabled={loading || (activeMission.status === 'Out for Delivery'
-                                    && (!customerIdVerified || !/^\d{6}$/.test(deliveryPin.trim())))}
-                                className="w-full h-24 rounded-[2.5rem] bg-primary hover:bg-primary/90 text-white font-black uppercase text-sm tracking-[0.5em] shadow-[0_20px_40px_-10px_rgba(255,107,0,0.3)] active:scale-95 transition-all relative overflow-hidden"
-                            >
-                                {loading ? 'Updating...' : activeMission.status === 'Dispatched'
-                                    ? 'Confirm Pickup'
-                                    : activeMission.status === 'Picked Up'
-                                        ? 'Start Delivery'
-                                        : 'Secure Handover'}
-                            </Button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="space-y-16">
-                        <div className="text-center space-y-8 py-12 relative overflow-hidden group">
-                            <div className="relative z-10 space-y-6">
-                                <div className="h-24 w-24 rounded-[2.5rem] bg-slate-50 flex items-center justify-center mx-auto shadow-inner group-hover:scale-105 transition-transform duration-500">
-                                    <Search className={cn("h-10 w-10 text-slate-200 transition-all", isOnline && "animate-pulse text-primary")} />
+                        {isAssignedMission && activeMission && (
+                            <>
+                                <ol aria-label="Delivery progress" className="mt-6 grid grid-cols-4 gap-2">
+                                    {['Merchant', 'Pickup', 'On route', 'Handover'].map((step, index) => (
+                                        <li key={step} className="min-w-0">
+                                            <div className="mb-2 h-1.5 rounded-full bg-white/10">
+                                                <div className="h-full rounded-full transition-all" style={{ width: currentStep >= index ? '100%' : '0%', backgroundColor: accentColor }} />
+                                            </div>
+                                            <p className={`truncate text-[9px] font-bold uppercase tracking-wide ${currentStep >= index ? 'text-white' : 'text-white/35'}`}>{step}</p>
+                                        </li>
+                                    ))}
+                                </ol>
+                                <div className="mt-6 flex flex-wrap gap-2">
+                                    {activeMission.customer_phone && (
+                                        <a href={`tel:${activeMission.customer_phone}`} className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/80 hover:bg-white/5">
+                                            <PhoneCall className="h-4 w-4" /> Call customer
+                                        </a>
+                                    )}
+                                    {activeMission.latitude && activeMission.longitude && (
+                                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${activeMission.latitude},${activeMission.longitude}`} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/80 hover:bg-white/5">
+                                            <Navigation className="h-4 w-4" /> Navigate
+                                        </a>
+                                    )}
+                                    {activeMission.status === 'Dispatched' && !activeMission.rider_pickup_arrived_at && (
+                                        <Button onClick={() => void markPickupArrival(activeMission.id)} disabled={loading} variant="outline" className="h-10 border-white/10 bg-white/5 text-xs font-bold text-white hover:bg-white/10">
+                                            <MapPin className="mr-2 h-4 w-4" /> I&apos;ve arrived
+                                        </Button>
+                                    )}
                                 </div>
-                                <div className="space-y-2">
-                                    <h3 className="text-3xl font-black uppercase tracking-tighter text-foreground leading-none">
-                                        {isOnline ? "Scanning Grid" : "Link Terminated"}
-                                    </h3>
-                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest px-10 leading-relaxed">
-                                        {isOnline
-                                            ? "High demand detected in Central Hub. Maintain tactical position."
-                                            : "Establish secure link to enter the mission queue."
-                                        }
-                                    </p>
-                                </div>
+                                {merchantGroups.length > 0 ? (
+                                    <div className="mt-6 space-y-3">
+                                        <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/60"><Store className="h-4 w-4" /> Merchant pickups</h2>
+                                        {merchantGroups.map(merchant => (
+                                            <article key={merchant.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <p className="font-bold">{merchant.name}</p>
+                                                    <div className="flex gap-2">
+                                                        {merchant.phone && <a aria-label={`Call ${merchant.name}`} href={`tel:${merchant.phone}`} className="rounded-md border border-white/10 p-2 text-white/65 hover:text-white"><PhoneCall className="h-4 w-4" /></a>}
+                                                        {merchant.phone && <a aria-label={`WhatsApp ${merchant.name}`} href={`https://wa.me/${merchant.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="rounded-md border border-white/10 p-2 text-white/65 hover:text-white"><MessageCircle className="h-4 w-4" /></a>}
+                                                    </div>
+                                                </div>
+                                                <ul className="mt-3 space-y-1 text-xs text-white/60">
+                                                    {merchant.items.map((item, index) => <li key={`${item.name}-${index}`}>{item.quantity} × {item.name}</li>)}
+                                                </ul>
+                                            </article>
+                                        ))}
+                                    </div>
+                                ) : <p className="mt-5 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-200/80">Merchant pickup details are unavailable for this order. Check the order items with dispatch before leaving.</p>}
+
+                                {activeMission.items && activeMission.items.length > 0 && activeMission.status === 'Dispatched' && (
+                                    <div className="mt-6 rounded-xl border border-white/10 p-4">
+                                        <h2 className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-white/60">Pickup checklist</h2>
+                                        <div className="space-y-3">
+                                            {activeMission.items.map(item => (
+                                                <label key={item.id} className="flex cursor-pointer items-center gap-3 text-sm text-white/85">
+                                                    <input type="checkbox" checked={checkedItemIds.includes(item.id)} onChange={event => setCheckedItemIds(current => event.target.checked ? [...new Set([...current, item.id])] : current.filter(id => id !== item.id))} className="h-4 w-4 rounded accent-emerald-400" />
+                                                    <span>{item.quantity} × {item.name}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeMission.status === 'Out for Delivery' && (
+                                    <div className="mt-6 space-y-4 rounded-xl border border-amber-300/25 bg-amber-300/5 p-4">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-bold">Customer handover</p>
+                                                <p className="mt-1 text-xs text-white/50">Notify the customer, verify their one-time code, then record payment.</p>
+                                            </div>
+                                            <Button type="button" onClick={() => void notifyCustomerArriving(activeMission.id)} disabled={arrivalBusy} variant="outline" className="h-10 border-white/15 bg-white/5 text-xs font-bold text-white hover:bg-white/10">
+                                                {arrivalBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />} I&apos;m outside
+                                            </Button>
+                                        </div>
+                                        {arrivalMessage && <p role="status" className="text-xs text-white/65">{arrivalMessage}</p>}
+                                        {handoverMessage && <p role="status" className="text-xs text-white/65">{handoverMessage}</p>}
+                                        {!activeMission.rider_handover_verified_at ? (
+                                            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                                                <Input value={handoverCode} onChange={event => setHandoverCode(event.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" autoComplete="one-time-code" maxLength={4} placeholder="Customer’s 4-digit code" aria-label="Customer's four-digit handover code" className="h-12 border-white/10 bg-black/30 text-center text-lg font-black tracking-[0.4em] text-white placeholder:text-white/25" />
+                                                <Button type="button" onClick={() => void verifyHandoverCode(activeMission.id)} disabled={handoverBusy || !/^\d{4}$/.test(handoverCode)} variant="outline" className="h-12 border-white/15 bg-white/5 text-xs font-black uppercase tracking-wide text-white">
+                                                    {handoverBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Confirm code
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3 text-xs font-bold text-emerald-200">One-time customer code verified.</p>
+                                        )}
+                                        {activeMission.rider_handover_verified_at && (
+                                            <>
+                                                <label className="flex items-start gap-3 text-sm text-white/85">
+                                                    <input type="checkbox" checked={customerIdVerified} onChange={event => setCustomerIdVerified(event.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-300" />
+                                                    I checked the customer&apos;s valid photo ID in person.
+                                                </label>
+                                                <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-xs font-black uppercase tracking-wider text-white/80">Payment</p>
+                                                        <p className="text-sm font-black" style={{ color: accentColor }}>{formatKsh(activeMission.total_price)}</p>
+                                                    </div>
+                                                    <p role="status" className={`mt-2 text-xs ${paymentStatus === 'paid' ? 'text-emerald-200' : 'text-white/55'}`}>
+                                                        {paymentStatus === 'paid'
+                                                            ? `Paid${paymentMethod ? ` · ${paymentMethod}` : ''}`
+                                                            : paymentStatus === 'pending'
+                                                                ? 'Waiting for verified payment confirmation…'
+                                                                : isCashOrder(activeMission.payment_method)
+                                                                    ? 'Choose how the customer will pay at the door.'
+                                                                    : 'Waiting for confirmation of the online checkout.'}
+                                                    </p>
+                                                    {paymentMessage && <p className="mt-2 text-xs text-white/55">{paymentMessage}</p>}
+                                                    {paymentStatus === 'unpaid' && isCashOrder(activeMission.payment_method) && (
+                                                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                            <Button type="button" onClick={() => void collectDeliveryPayment(activeMission.id, 'mpesa')} disabled={!customerIdVerified || paymentBusy} className="h-11 rounded-lg text-[10px] font-black uppercase" style={{ backgroundColor: accentColor, color: '#08100c' }}>
+                                                                {paymentBusy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Zap className="mr-1 h-4 w-4" />} M-Pesa prompt
+                                                            </Button>
+                                                            <Button type="button" onClick={() => void collectDeliveryPayment(activeMission.id, 'qr')} disabled={!customerIdVerified || paymentBusy || !activeMission.customer_email} variant="outline" className="h-11 rounded-lg border-white/15 bg-white/5 text-[10px] font-black uppercase text-white">
+                                                                <MessageCircle className="mr-1 h-4 w-4" /> Scan to pay
+                                                            </Button>
+                                                            <Button type="button" onClick={() => void collectDeliveryPayment(activeMission.id, 'cash')} disabled={!customerIdVerified || paymentBusy} variant="outline" className="h-11 rounded-lg border-white/15 bg-white/5 text-[10px] font-black uppercase text-white">
+                                                                <Check className="mr-1 h-4 w-4" /> Cash collected
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                    {!activeMission.customer_email && isCashOrder(activeMission.payment_method) && paymentStatus === 'unpaid' && (
+                                                        <p className="mt-2 text-[10px] text-amber-200/75">Scan-to-pay needs a checkout email. M-Pesa prompt and cash are available.</p>
+                                                    )}
+                                                    {paymentQr && paymentStatus === 'pending' && paymentMethod === 'qr' && (
+                                                        <div className="mt-4 flex flex-col items-center gap-2 rounded-lg bg-white p-3">
+                                                            <Image src={paymentQr} alt="Scan to securely pay for this order" width={240} height={240} unoptimized />
+                                                            <p className="text-center text-xs font-bold text-slate-900">Customer scans and completes the secure checkout.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                {activeMission.status !== 'Out for Delivery' && (
+                                    <Button onClick={() => void handleAdvanceMission(activeMission.id)} disabled={loading || (activeMission.status === 'Dispatched' && (!activeMission.rider_pickup_arrived_at || !activeMission.items?.length || activeMission.items.some(item => !checkedItemIds.includes(item.id))))} className="mt-6 h-14 w-full rounded-xl text-sm font-black uppercase tracking-widest" style={{ backgroundColor: accentColor, color: '#08100c' }}>
+                                        {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                                        {activeMission.status === 'Dispatched' ? 'Confirm items & pickup' : 'Start delivery'}
+                                    </Button>
+                                )}
+                                {activeMission.status === 'Out for Delivery' && (
+                                    <Button onClick={() => void handleAdvanceMission(activeMission.id)} disabled={loading || !customerIdVerified || !activeMission.rider_handover_verified_at || paymentStatus !== 'paid'} className="mt-4 h-14 w-full rounded-xl text-sm font-black uppercase tracking-widest" style={{ backgroundColor: accentColor, color: '#08100c' }}>
+                                        {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} Complete secure handover
+                                    </Button>
+                                )}
+                            </>
+                        )}
+
+                        {!activeMission && (
+                            <div className="mt-7 flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-4">
+                                <Search className={`h-5 w-5 ${isOnline ? 'animate-pulse' : ''}`} style={{ color: accentColor }} />
+                                <p className="text-sm text-white/60">{isOnline ? 'Standing by for the next dispatch offer.' : 'Go online when you are ready to receive offers.'}</p>
                             </div>
+                        )}
+
+                        {(authError || issueMessage) && (
+                            <p role="alert" className="mt-4 rounded-lg border border-rose-400/20 bg-rose-400/5 p-3 text-xs text-rose-200">{authError || issueMessage}</p>
+                        )}
+                        {pushMessage && <p role="status" className="mt-3 text-xs text-white/50">{pushMessage}</p>}
+                    </section>
+
+                    {isAssignedMission && activeMission && (
+                        <details className="rounded-2xl border border-white/10 bg-[#101614] p-4">
+                            <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/70">
+                                <AlertTriangle className="h-4 w-4 text-amber-300" /> Report a delivery issue
+                            </summary>
+                            <div className="mt-4 space-y-3">
+                                <select value={issueType} onChange={event => setIssueType(event.target.value)} className="h-11 w-full rounded-lg border border-white/10 bg-[#080c0b] px-3 text-sm text-white">
+                                    <option value="">Choose an issue</option>
+                                    <option value="merchant_unavailable">Merchant unavailable</option>
+                                    <option value="item_unavailable">Item missing or unavailable</option>
+                                    <option value="customer_unavailable">Customer unavailable</option>
+                                    <option value="no_valid_id">No valid ID / age verification failed</option>
+                                    <option value="underage_customer">Customer may be underage</option>
+                                    <option value="intoxicated_customer">Customer appears intoxicated</option>
+                                    <option value="customer_refused">Customer refused handover</option>
+                                    <option value="other">Other delivery issue</option>
+                                </select>
+                                <Input value={issueDetails} onChange={event => setIssueDetails(event.target.value)} maxLength={500} placeholder="Optional details for dispatch" className="border-white/10 bg-black/20 text-white placeholder:text-white/30" />
+                                <Button type="button" onClick={() => void reportDeliveryIssue(activeMission.id)} disabled={!issueType || loading} variant="outline" className="w-full border-white/10 bg-white/5 text-xs font-bold text-white hover:bg-white/10">Save issue to delivery record</Button>
+                                {issueMessage && <p role="status" className="text-xs text-white/60">{issueMessage}</p>}
+                            </div>
+                        </details>
+                    )}
+                </section>
+
+                <aside className="space-y-5">
+                    <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Rider profile</h2>
+                            <span className="flex items-center gap-1 text-xs font-bold text-amber-300"><Star className="h-3.5 w-3.5 fill-current" /> {stats.rating}</span>
                         </div>
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                            <div className="rounded-xl bg-black/20 p-3"><p className="text-[9px] uppercase tracking-widest text-white/40">Tier</p><p className="mt-1 font-bold">{stats.tier}</p></div>
+                            <div className="rounded-xl bg-black/20 p-3"><p className="text-[9px] uppercase tracking-widest text-white/40">Wallet</p><p className="mt-1 font-bold">{formatKsh(wallet.balance)}</p></div>
+                        </div>
+                        <PerformanceHub tier={stats.tier} rating={stats.rating} acceptance={stats.acceptance} maintenanceStatus={stats.maintenance} />
+                        <div className="mt-5 border-t border-white/10 pt-4">
+                            <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-white/65"><Palette className="h-4 w-4" /> Terminal color</div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {RIDER_ACCENT_PRESETS.map(color => (
+                                    <button key={color} type="button" aria-label={`Choose ${color} accent`} aria-pressed={accentColor === color} onClick={() => void saveAccentColor(color)} className={`h-8 w-8 rounded-full border-2 ${accentColor === color ? 'border-white' : 'border-transparent'}`} style={{ backgroundColor: color }} />
+                                ))}
+                                <label aria-label="Choose custom accent color" className="relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10">
+                                    <Palette className="h-4 w-4 text-white/70" />
+                                    <input type="color" value={accentColor} onChange={event => void saveAccentColor(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                                </label>
+                            </div>
+                            {accentSaveMessage && <p role="status" className="mt-2 text-[11px] text-white/50">{accentSaveMessage}</p>}
+                        </div>
+                    </section>
 
-                        <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-100 to-transparent" />
+                    <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/70"><Bell className="h-4 w-4" /> Offer alerts</h2>
+                            {pushEnabled && <span className="text-[10px] font-bold uppercase" style={{ color: accentColor }}>Enabled</span>}
+                        </div>
+                        <p className="mt-2 text-xs leading-relaxed text-white/45">Push notification, vibration, and foreground alert for new assignments.</p>
+                        {pushMessage && <p role="status" className="mt-2 text-[11px] text-white/55">{pushMessage}</p>}
+                        {!pushEnabled && <Button type="button" onClick={() => void enableMissionAlerts()} disabled={pushBusy} className="mt-4 h-10 w-full rounded-lg text-xs font-black uppercase" style={{ backgroundColor: accentColor, color: '#08100c' }}>
+                            {pushBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />} Enable push alerts
+                        </Button>}
+                    </section>
 
-                        <PerformanceHub
-                            tier={stats.tier}
-                            rating={stats.rating}
-                            acceptance={stats.acceptance}
-                            maintenanceStatus={stats.maintenance}
-                        />
-                        <EarningsCenter
-                            balance={wallet.balance}
-                            totalEarned={wallet.total_earned}
-                            orders={missions}
-                        />
-                    </div>
-                )}
+                    <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
+                        <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/70"><Clock3 className="h-4 w-4" /> Recent missions</h2>
+                        <div className="mt-4 space-y-2">
+                            {missions.slice(0, 5).map(mission => (
+                                <div key={mission.id} className="flex items-center justify-between gap-3 rounded-lg bg-black/20 px-3 py-2.5">
+                                    <div className="min-w-0"><p className="truncate text-xs font-bold">Order #{mission.id}</p><p className="truncate text-[10px] text-white/40">{mission.customer_name}</p></div>
+                                    <span className="shrink-0 text-[10px] font-bold" style={{ color: mission.status === 'Delivered' ? accentColor : 'rgba(255,255,255,.55)' }}>{mission.status}</span>
+                                </div>
+                            ))}
+                            {missions.length === 0 && <p className="text-xs text-white/40">Completed and assigned orders will show here.</p>}
+                        </div>
+                    </section>
+
+                    <EarningsCenter balance={wallet.balance} totalEarned={wallet.total_earned} orders={missions} />
+                    <Link href="/rider/onboarding" className="block rounded-xl border border-white/10 px-4 py-3 text-center text-xs font-bold text-white/45 hover:text-white">Rider account and onboarding</Link>
+                </aside>
             </div>
-        </div>
+        </main>
     );
 }
 

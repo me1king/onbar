@@ -7,8 +7,12 @@ import { isPublicSiteLocked, parsePublicLaunchGate } from '@/lib/publicLaunchGat
 const ticketingPublicPaths = [
   '/tickets',
   '/merchant/onboarding',
+  '/merchant/documents',
   '/api/merchant-applications',
   '/api/merchant-onboarding-invite',
+  '/rider',
+  '/api/rider',
+  '/api/mpesa/rider-delivery-callback',
   '/scanner',
   '/launch-countdown',
   '/api/settings',
@@ -137,7 +141,8 @@ export async function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next();
-  if (pathname === '/merchant/onboarding' && request.nextUrl.searchParams.has('invite')) {
+  if ((pathname === '/merchant/onboarding' && request.nextUrl.searchParams.has('invite'))
+    || pathname === '/merchant/documents') {
     response.headers.set('Referrer-Policy', 'no-referrer');
   }
   return response;

@@ -40,6 +40,19 @@ export interface MerchantApplicationDocument {
   expiresAt: string | null;
 }
 
+export function getMissingMerchantDocumentTypes(
+  requiredTypes: string[],
+  documents: Pick<MerchantApplicationDocument, 'type' | 'expiresAt'>[],
+  today = new Date().toISOString().slice(0, 10)
+): string[] {
+  return requiredTypes.filter(type => {
+    const document = documents.find(item => item.type === type);
+    if (!document) return true;
+    if ((type === 'liquor_licence' || type === 'wholesale_licence') && !document.expiresAt) return true;
+    return Boolean(document.expiresAt && document.expiresAt < today);
+  });
+}
+
 export interface MerchantDocumentRequirement {
   id: string;
   business_type: string;

@@ -9,6 +9,12 @@ const allowedTransitions: Record<string, string> = {
   'Picked Up': 'Out for Delivery',
   'Out for Delivery': 'Delivered'
 };
+const handoverBlockingIssues = [
+  'Issue reported: No valid ID',
+  'Issue reported: Possible underage customer',
+  'Issue reported: Customer appears intoxicated',
+  'Issue reported: Customer refused handover'
+];
 
 export async function POST(request: Request) {
   const session = verifyRiderSession(request.headers.get('authorization')?.replace(/^Bearer\s+/i, ''));
@@ -17,8 +23,8 @@ export async function POST(request: Request) {
   let body: {
     orderId?: unknown;
     nextStatus?: unknown;
-    deliveryPin?: unknown;
     customerIdVerified?: unknown;
+    checkedItemIds?: unknown;
   };
   try {
     body = await request.json() as typeof body;
@@ -31,11 +37,9 @@ export async function POST(request: Request) {
     || !['Picked Up', 'Out for Delivery', 'Delivered'].includes(nextStatus)) {
     return NextResponse.json({ error: 'A valid order ID and delivery status are required.' }, { status: 400 });
   }
-  const deliveryPin = typeof body.deliveryPin === 'string' ? body.deliveryPin.trim() : '';
-  if (nextStatus === 'Delivered'
-    && (body.customerIdVerified !== true || !/^\d{6}$/.test(deliveryPin))) {
+  if (nextStatus === 'Delivered' && body.customerIdVerified !== true) {
     return NextResponse.json({
-      error: 'Check the customer’s ID and enter the six-digit delivery PIN before handover.'
+      error: 'Check the customer’s ID and verify their one-time handover code before completion.'
     }, { status: 400 });
   }
 
@@ -63,12 +67,16 @@ export async function POST(request: Request) {
 
   const { data: order, error: orderError } = await database
     .from('orders')
-    .select('id, status, rider_phone')
+    .select('id, status, rider_phone, payment_method, rider_pickup_arrived_at')
     .eq('id', orderId)
     .maybeSingle();
   if (orderError) {
     console.error('[RiderDelivery] Could not load order:', orderError);
-    return NextResponse.json({ error: 'Order status could not be verified.' }, { status: 503 });
+    return NextResponse.json({
+      error: /rider_pickup_arrived_at|schema cache/i.test(orderError.message)
+        ? 'Rider pickup workflow is not installed. Apply supabase/RIDER_TERMINAL_WORKFLOW_MIGRATION.sql.'
+        : 'Order status could not be verified.'
+    }, { status: 503 });
   }
   if (!order || order.rider_phone !== session.phone) {
     return NextResponse.json({ error: 'This order is not assigned to your rider account.' }, { status: 404 });
@@ -76,37 +84,92 @@ export async function POST(request: Request) {
   if (allowedTransitions[order.status] !== nextStatus && order.status !== nextStatus) {
     return NextResponse.json({ error: `This order cannot advance from ${order.status} to ${nextStatus}.` }, { status: 409 });
   }
-
+  if (nextStatus === 'Picked Up' && !order.rider_pickup_arrived_at) {
+    return NextResponse.json({ error: 'Record arrival at the merchant before confirming pickup.' }, { status: 409 });
+  }
   if (nextStatus === 'Delivered') {
-    const { data: allowed, error: rateLimitError } = await database.rpc('allow_rider_login_attempt', {
-      identity_input: `delivery-pin:${orderId}:${session.phone}`
-    });
-    if (rateLimitError) {
-      console.error('[RiderDelivery] Could not check handover PIN rate limit:', rateLimitError);
-      return NextResponse.json({ error: 'Delivery PIN verification is temporarily unavailable.' }, { status: 503 });
+    const { data: handoverIssue, error: issueError } = await database.from('delivery_events')
+      .select('id')
+      .eq('order_id', orderId)
+      .in('to_status', handoverBlockingIssues)
+      .limit(1)
+      .maybeSingle();
+    if (issueError) {
+      console.error('[RiderDelivery] Could not verify handover issues:', issueError);
+      return NextResponse.json({ error: 'Handover safety issues could not be verified.' }, { status: 503 });
     }
-    if (!allowed) {
-      return NextResponse.json({ error: 'Too many PIN attempts. Try again in 15 minutes.' }, { status: 429 });
+    if (handoverIssue) {
+      return NextResponse.json({
+        error: 'Handover is blocked because an ID, age, intoxication, or refusal issue was reported. Contact dispatch for review.'
+      }, { status: 409 });
     }
   }
 
-  const { data: updatedStatus, error: transitionError } = await database.rpc('advance_rider_delivery', {
-    p_order_id: orderId,
-    p_rider_phone: session.phone,
-    p_next_status: nextStatus,
-    p_delivery_pin: nextStatus === 'Delivered' ? deliveryPin : null,
-    p_customer_id_verified: nextStatus === 'Delivered' && body.customerIdVerified === true
-  });
+  let checkedItemIds: number[] = [];
+  if (nextStatus === 'Picked Up') {
+    if (!Array.isArray(body.checkedItemIds)
+      || body.checkedItemIds.some(id => typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) {
+      return NextResponse.json({ error: 'Check every order item before confirming pickup.' }, { status: 400 });
+    }
+    const { data: orderItems, error: itemsError } = await database.from('order_items')
+      .select('id')
+      .eq('order_id', orderId);
+    if (itemsError) {
+      console.error('[RiderDelivery] Could not verify pickup items:', itemsError);
+      return NextResponse.json({ error: 'The order items could not be verified.' }, { status: 503 });
+    }
+    const requiredIds = (orderItems || []).map(item => Number(item.id));
+    checkedItemIds = [...new Set(body.checkedItemIds as number[])];
+    if (requiredIds.length === 0 || requiredIds.some(id => !checkedItemIds.includes(id))) {
+      return NextResponse.json({ error: 'Confirm every item in the order before pickup.' }, { status: 400 });
+    }
+  }
+
+  const { data: updatedStatus, error: transitionError } = nextStatus === 'Delivered'
+    ? await database.rpc('complete_rider_delivery', {
+      p_order_id: orderId,
+      p_rider_phone: session.phone,
+      p_customer_id_verified: body.customerIdVerified === true
+    })
+    : await database.rpc('advance_rider_delivery', {
+      p_order_id: orderId,
+      p_rider_phone: session.phone,
+      p_next_status: nextStatus,
+      p_delivery_pin: null,
+      p_customer_id_verified: false
+    });
   if (transitionError) {
     console.error('[RiderDelivery] Could not advance delivery:', transitionError);
-    const conflict = /cannot advance|not assigned|invalid delivery status|delivery PIN|customer ID/i.test(transitionError.message);
+    const conflict = /cannot advance|not assigned|invalid delivery status|handover|payment|customer ID|safety issue|blocked/i.test(transitionError.message);
     return NextResponse.json({
       error: conflict
-        ? 'Delivery status changed elsewhere or this transition is not allowed. Refresh the mission.'
-        : /advance_rider_delivery|schema cache/i.test(transitionError.message)
+        ? 'Delivery status, secure handover, or payment changed. Refresh the mission and confirm everything again.'
+        : /complete_rider_delivery/i.test(transitionError.message)
+          ? 'Delivery completion is not installed. Apply supabase/RIDER_DOORSTEP_PAYMENT_MIGRATION.sql after the rider safety migrations.'
+          : /advance_rider_delivery|schema cache/i.test(transitionError.message)
           ? 'Delivery safety migration is missing. Run supabase/RIDER_DELIVERY_SAFETY_MIGRATION.sql after the delivery and dispatch migrations.'
           : 'Delivery status and commission could not be saved.'
     }, { status: conflict ? 409 : 503 });
+  }
+
+  const auditEvents = [];
+  if (nextStatus === 'Picked Up') {
+    auditEvents.push({
+      order_id: orderId,
+      from_status: order.status,
+      to_status: 'Rider pickup items checked',
+      actor_type: 'rider',
+      actor_id: session.phone,
+      metadata: { checked_item_ids: checkedItemIds }
+    });
+  }
+  let auditWarning: string | undefined;
+  if (auditEvents.length > 0) {
+    const { error: auditError } = await database.from('delivery_events').insert(auditEvents);
+    if (auditError) {
+      console.error('[RiderDelivery] Status saved but pickup audit could not be recorded:', auditError);
+      auditWarning = 'Delivery status was saved, but the pickup audit could not be recorded.';
+    }
   }
 
   const { data: wallet, error: walletError } = await database
@@ -146,10 +209,11 @@ export async function POST(request: Request) {
   return NextResponse.json({
     status: updatedStatus,
     wallet: wallet || undefined,
-    ...((walletError || notificationWarning) ? {
+    ...((walletError || notificationWarning || auditWarning) ? {
       warning: [
         walletError ? 'Delivery status is saved, but wallet totals could not be refreshed.' : null,
-        notificationWarning
+        notificationWarning,
+        auditWarning
       ].filter(Boolean).join(' ')
     } : {})
   }, { headers: { 'Cache-Control': 'no-store' } });

@@ -33,8 +33,9 @@ async function authorize() {
 }
 
 function migrationMissing(error: { code?: string; message?: string }) {
-  return error.code === '42P01' || error.code === 'PGRST202' || error.code === 'PGRST205'
-    || /vendor_onboarding/i.test(error.message || '');
+  return ['42P01', 'PGRST202', 'PGRST205'].includes(error.code || '')
+    || /relation ["']?(?:public\.)?vendor_onboarding_(?:leads|events|checklist)["']? does not exist/i.test(error.message || '')
+    || /could not find the function public\.(?:advance_vendor_onboarding_lead|issue_vendor_onboarding_invite|set_vendor_onboarding_checklist_item|record_vendor_onboarding_checkin|schedule_vendor_onboarding_visit|set_vendor_onboarding_launch_checks|update_vendor_onboarding_lead)/i.test(error.message || '');
 }
 
 function migrationResponse() {
@@ -275,7 +276,7 @@ export async function PATCH(request: Request) {
   if (error) {
     if (migrationMissing(error)) return migrationResponse();
     const message = error.message || '';
-    const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|second-person review|future visit date|after phone approval|schedule a (?:future )?visit|already completed onboarding|only available for vendor companies/i.test(message);
+    const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|second-person review|second person must complete the launch review|future visit date|after phone approval|schedule a (?:future )?visit|already completed onboarding|only available for vendor companies|agent and notes are outside the allowed length/i.test(message);
     const notFound = /not found/i.test(message);
     if (!stageConflict && !notFound) console.error('[VendorOnboarding] Update failed:', error);
     return NextResponse.json({
@@ -283,7 +284,9 @@ export async function PATCH(request: Request) {
         ? message
         : notFound
           ? 'Onboarding lead or checklist item not found.'
-          : 'Could not save the onboarding update.'
+          : error.code === '42501'
+            ? 'The database denied this onboarding update. Check that the onboarding RPC grants and service-role configuration are current.'
+            : `Could not save the onboarding update${error.code ? ` (database error ${error.code})` : ''}. Check the admin server log for the underlying database error.`
     }, { status: notFound ? 404 : stageConflict ? 409 : 503 });
   }
   if (!result) return NextResponse.json({ error: 'Onboarding lead not found.' }, { status: 404 });

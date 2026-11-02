@@ -22,9 +22,10 @@ const SUPPORTED_TEMPLATE_VARIABLES = new Set([
   'customer_name',
   'order_id',
   'total',
+  'payment_method',
+  'payment_receipt',
   'rider_name',
   'rider_phone',
-  'delivery_pin',
   'eta',
   'tracking_link'
 ]);
@@ -48,10 +49,12 @@ function renderTemplate(
     rider_name: string | null;
     rider_phone: string | null;
     delivery_eta_minutes: number | null;
+    payment_method: string | null;
   },
   trackingUrl: string,
   status: CustomerNotificationStatus,
-  deliveryPin: string | null = null
+  paymentReceipt = '',
+  paymentMethod = order.payment_method || ''
 ) {
   const amount = Number(order.total_price);
   const variables: Record<string, string> = {
@@ -64,9 +67,10 @@ function renderTemplate(
     total: Number.isFinite(amount)
       ? `KES ${amount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : '',
+    payment_method: paymentMethod,
+    payment_receipt: paymentReceipt,
     rider_name: order.rider_name || '',
     rider_phone: maskPhone(order.rider_phone || ''),
-    delivery_pin: deliveryPin || '',
     eta: order.delivery_eta_minutes == null ? '' : `${order.delivery_eta_minutes} mins`,
     tracking_link: trackingUrl
   };
@@ -227,7 +231,7 @@ export async function POST(request: Request) {
 
   const { data: order, error: orderError } = await database
     .from('orders')
-    .select('id, user_id, customer_email, customer_name, customer_phone, status, total_price, rider_name, rider_phone, delivery_eta_minutes, notification_sms_opt_in, notification_whatsapp_opt_in')
+    .select('id, user_id, customer_email, customer_name, customer_phone, status, total_price, payment_method, checkout_request_id, rider_name, rider_phone, delivery_eta_minutes, notification_sms_opt_in, notification_whatsapp_opt_in')
     .eq('id', orderId)
     .maybeSingle();
   if (orderError) {
@@ -238,21 +242,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The order does not currently have that status.' }, { status: 409 });
   }
 
-  let deliveryPin: string | null = null;
-  if (status === 'Out for Delivery') {
-    const { data: safetyData, error: safetyError } = await database.from('orders')
-      .select('delivery_pin')
-      .eq('id', orderId)
+  let paymentReceipt = typeof order.checkout_request_id === 'string' ? order.checkout_request_id : '';
+  let paymentMethod = order.payment_method || '';
+  if (status === 'Delivered') {
+    const { data: payment, error: paymentError } = await database.from('rider_delivery_payment_attempts')
+      .select('payment_method,receipt_number,provider_reference')
+      .eq('order_id', orderId)
+      .eq('status', 'paid')
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
-    if (safetyError) {
-      console.error('[CustomerNotification] Could not load the handover PIN:', safetyError);
+    if (paymentError) {
+      console.error('[CustomerNotification] Could not load the completed-order receipt:', paymentError);
       return NextResponse.json({
-        error: /delivery_pin|schema cache/i.test(safetyError.message)
-          ? 'Delivery safety migration is missing. Apply supabase/RIDER_DELIVERY_SAFETY_MIGRATION.sql.'
-          : 'The handover PIN could not be loaded.'
+        error: /rider_delivery_payment_attempts|schema cache/i.test(paymentError.message)
+          ? 'Doorstep payment records are not installed. Apply supabase/RIDER_DOORSTEP_PAYMENT_MIGRATION.sql.'
+          : 'The completed-order receipt could not be loaded.'
       }, { status: 503 });
     }
-    deliveryPin = typeof safetyData?.delivery_pin === 'string' ? safetyData.delivery_pin : null;
+    paymentReceipt = payment?.receipt_number || payment?.provider_reference || paymentReceipt;
+    paymentMethod = payment?.payment_method || paymentMethod;
   }
 
   const email = (order.customer_email || '').trim();
@@ -298,13 +307,10 @@ export async function POST(request: Request) {
     : allowedChannels;
   const trackingUrl = `${getPublicBaseUrl()}/track?id=${encodeURIComponent(String(orderId))}`;
   const name = order.customer_name || 'there';
-  const subject = renderTemplate(rule.subject, name, order, trackingUrl, status as CustomerNotificationStatus, deliveryPin);
-  const handoverPinNote = deliveryPin
-    ? `\nYour delivery PIN is ${deliveryPin}. Share it with the rider only at handover after checking your order.`
-    : '';
-  const message = `${renderTemplate(rule.message, name, order, trackingUrl, status as CustomerNotificationStatus, deliveryPin)}${handoverPinNote && !rule.message.includes('{delivery_pin}') ? handoverPinNote : ''}`;
+  const subject = renderTemplate(rule.subject, name, order, trackingUrl, status as CustomerNotificationStatus, paymentReceipt, paymentMethod);
+  const message = renderTemplate(rule.message, name, order, trackingUrl, status as CustomerNotificationStatus, paymentReceipt, paymentMethod);
   const smsTemplate = rule.smsMessage || rule.message;
-  const smsMessage = `${renderTemplate(smsTemplate, name, order, trackingUrl, status as CustomerNotificationStatus, deliveryPin)}${handoverPinNote && !smsTemplate.includes('{delivery_pin}') ? handoverPinNote : ''}`;
+  const smsMessage = renderTemplate(smsTemplate, name, order, trackingUrl, status as CustomerNotificationStatus, paymentReceipt, paymentMethod);
   const results: { channel: CustomerNotificationChannel; status: string; error?: string }[] = [];
 
   for (const channel of channels) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -31,6 +31,11 @@ import {
   type MerchantOperatingHours,
   type MerchantWeekday
 } from '@/lib/merchantAvailability';
+import {
+  compressMerchantDocumentIfNeeded,
+  MAX_MERCHANT_DOCUMENT_FILE_SIZE,
+  MAX_MERCHANT_DOCUMENT_TOTAL_SIZE
+} from '@/lib/merchantDocuments';
 
 type DocumentType =
   | 'business_registration'
@@ -104,8 +109,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   }
 }
 
-const MAX_DOCUMENT_FILE_SIZE = 5 * 1024 * 1024;
-const MAX_TOTAL_DOCUMENT_SIZE = 15 * 1024 * 1024;
+const onboardingStages = ['business', 'contact_area', 'operations', 'goods_docs'] as const;
 
 function formatFriendlyUploadError(message: string | null | undefined): string {
   const fallback = 'Your application could not be submitted.';
@@ -116,61 +120,6 @@ function formatFriendlyUploadError(message: string | null | undefined): string {
   }
 
   return message || fallback;
-}
-
-async function compressDocumentIfNeeded(file: File): Promise<File> {
-  if (file.type === 'application/pdf' || file.size <= MAX_DOCUMENT_FILE_SIZE || !file.type.startsWith('image/')) {
-    return file;
-  }
-
-  try {
-    const imageBitmap = await createImageBitmap(file);
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (!context) {
-      imageBitmap.close?.();
-      return file;
-    }
-
-    const maxDimension = 2200;
-    let width = imageBitmap.width;
-    let height = imageBitmap.height;
-    const scale = Math.min(1, maxDimension / Math.max(width, height));
-
-    if (scale < 1) {
-      width = Math.max(1, Math.round(width * scale));
-      height = Math.max(1, Math.round(height * scale));
-    }
-
-    canvas.width = width;
-    canvas.height = height;
-    context.drawImage(imageBitmap, 0, 0, width, height);
-    imageBitmap.close?.();
-
-    const qualitySteps = [0.72, 0.56, 0.4];
-    for (const quality of qualitySteps) {
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((candidate) => {
-          if (!candidate) {
-            reject(new Error('Image compression failed.'));
-            return;
-          }
-          resolve(candidate);
-        }, 'image/jpeg', quality);
-      });
-
-      if (blob.size <= MAX_DOCUMENT_FILE_SIZE) {
-        return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
-          type: 'image/jpeg',
-          lastModified: Date.now()
-        });
-      }
-    }
-  } catch {
-    return file;
-  }
-
-  return file;
 }
 
 export default function MerchantOnboarding() {
@@ -207,6 +156,7 @@ export default function MerchantOnboarding() {
   const [requirements, setRequirements] = useState<DocumentRequirement[]>([]);
   const [requirementsLoading, setRequirementsLoading] = useState(false);
   const [requirementsLoaded, setRequirementsLoaded] = useState(false);
+  const [documentsMayBeDeferred, setDocumentsMayBeDeferred] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submittedApplicationId, setSubmittedApplicationId] = useState('');
@@ -219,6 +169,8 @@ export default function MerchantOnboarding() {
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState('');
+  const [journeyAnalyticsEnabled, setJourneyAnalyticsEnabled] = useState(false);
+  const [journeySessionId, setJourneySessionId] = useState('');
   const [invitation, setInvitation] = useState<CompanyInvitation | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -256,18 +208,124 @@ export default function MerchantOnboarding() {
     return () => controller.abort();
   }, []);
 
+  const sendJourneyEvent = useCallback(async (
+    eventType: 'onboarding_stage_entered' | 'onboarding_stage_exited' | 'onboarding_rage_click' | 'onboarding_application_submitted' | 'onboarding_analytics_consent',
+    stage: typeof onboardingStages[number],
+    details: { durationMs?: number; controlType?: string } = {}
+  ) => {
+    if (!journeyAnalyticsEnabled || !inviteToken || !journeySessionId) return;
+    try {
+      const response = await fetch('/api/merchant-applications/onboarding-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: inviteToken,
+          sessionId: journeySessionId,
+          eventType,
+          stage,
+          ...details
+        }),
+        keepalive: true
+      });
+      if (!response.ok) {
+        const result = await readJsonResponse<{ error?: string }>(response);
+        console.warn('[MerchantOnboarding] Journey analytics were not saved:', result.error || response.statusText);
+      }
+    } catch (analyticsError) {
+      console.warn('[MerchantOnboarding] Journey analytics could not be sent:', analyticsError);
+    }
+  }, [inviteToken, journeyAnalyticsEnabled, journeySessionId]);
+
+  useEffect(() => {
+    if (journeyAnalyticsEnabled && journeySessionId) {
+      void sendJourneyEvent('onboarding_analytics_consent', onboardingStages[0]);
+    }
+  }, [journeyAnalyticsEnabled, journeySessionId, sendJourneyEvent]);
+
+  useEffect(() => {
+    if (!journeyAnalyticsEnabled || !inviteToken) {
+      setJourneySessionId('');
+      return;
+    }
+    setJourneySessionId(crypto.randomUUID());
+  }, [journeyAnalyticsEnabled, inviteToken]);
+
+  const lastStageRef = useRef<number | null>(null);
+  const stageEnteredAtRef = useRef(0);
+  useEffect(() => {
+    if (!journeyAnalyticsEnabled || !inviteToken || !journeySessionId) {
+      lastStageRef.current = null;
+      return;
+    }
+    const now = Date.now();
+    const previousStep = lastStageRef.current;
+    if (previousStep !== null && previousStep !== step && stageEnteredAtRef.current > 0) {
+      void sendJourneyEvent('onboarding_stage_exited', onboardingStages[previousStep], {
+        durationMs: Math.max(0, now - stageEnteredAtRef.current)
+      });
+    }
+    lastStageRef.current = step;
+    stageEnteredAtRef.current = now;
+    void sendJourneyEvent('onboarding_stage_entered', onboardingStages[step]);
+  }, [step, inviteToken, journeyAnalyticsEnabled, journeySessionId, sendJourneyEvent]);
+
+  useEffect(() => {
+    if (!journeyAnalyticsEnabled || !inviteToken || !journeySessionId) return;
+    const recordLastStep = () => {
+      if (stageEnteredAtRef.current <= 0) return;
+      const currentStage = onboardingStages[lastStageRef.current ?? step];
+      void sendJourneyEvent('onboarding_stage_exited', currentStage, {
+        durationMs: Math.max(0, Date.now() - stageEnteredAtRef.current)
+      });
+      stageEnteredAtRef.current = 0;
+    };
+    window.addEventListener('pagehide', recordLastStep);
+    return () => window.removeEventListener('pagehide', recordLastStep);
+  }, [inviteToken, journeyAnalyticsEnabled, journeySessionId, sendJourneyEvent, step]);
+
+  useEffect(() => {
+    if (!journeyAnalyticsEnabled || !inviteToken || !journeySessionId) return;
+    let lastTarget: Element | null = null;
+    let clickCount = 0;
+    let firstClickAt = 0;
+    const trackRepeatedClick = (event: MouseEvent) => {
+      const target = event.target instanceof Element
+        ? event.target.closest('button,input,select,textarea')
+        : null;
+      if (!target) return;
+      const now = Date.now();
+      if (target !== lastTarget || now - firstClickAt > 2_000) {
+        lastTarget = target;
+        firstClickAt = now;
+        clickCount = 1;
+        return;
+      }
+      clickCount += 1;
+      if (clickCount >= 5) {
+        const tag = target.tagName.toLowerCase();
+        if (['button', 'input', 'select', 'textarea'].includes(tag)) {
+          void sendJourneyEvent('onboarding_rage_click', onboardingStages[step], { controlType: tag });
+        }
+        clickCount = 0;
+        firstClickAt = now;
+      }
+    };
+    document.addEventListener('click', trackRepeatedClick, true);
+    return () => document.removeEventListener('click', trackRepeatedClick, true);
+  }, [inviteToken, journeyAnalyticsEnabled, journeySessionId, sendJourneyEvent, step]);
+
   const handleDocumentSelect = async (type: DocumentType, file?: File) => {
     if (!file) {
       setDocuments(current => ({ ...current, [type]: undefined }));
       return;
     }
 
-    const candidate = await compressDocumentIfNeeded(file);
+    const candidate = await compressMerchantDocumentIfNeeded(file);
     const totalBytes = Object.values({ ...documents, [type]: candidate })
       .filter((item): item is File => Boolean(item) && item instanceof File)
       .reduce((sum, item) => sum + item.size, 0);
 
-    if (candidate.size > MAX_DOCUMENT_FILE_SIZE || totalBytes > MAX_TOTAL_DOCUMENT_SIZE) {
+    if (candidate.size > MAX_MERCHANT_DOCUMENT_FILE_SIZE || totalBytes > MAX_MERCHANT_DOCUMENT_TOTAL_SIZE) {
       setError('Each document must be 5 MB or smaller and the total upload must stay under 15 MB. Please compress the files and try again.');
       return;
     }
@@ -326,7 +384,11 @@ export default function MerchantOnboarding() {
     const params = new URLSearchParams({ businessType, county, vendorType: businessType === 'delivery_partner' ? '' : vendorType });
     fetch(`/api/merchant-applications?${params}`, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
-        const payload = await readJsonResponse<{ requirements?: Array<{ type: string; label: string; required: boolean }>; error?: string }>(response);
+        const payload = await readJsonResponse<{
+          requirements?: Array<{ type: string; label: string; required: boolean }>;
+          documentsMayBeDeferred?: boolean;
+          error?: string;
+        }>(response);
         if (!response.ok || !payload.requirements) throw new Error(payload.error || 'Document checklist could not be loaded.');
         const configured = payload.requirements.filter((requirement): requirement is DocumentRequirement =>
           Object.prototype.hasOwnProperty.call(documentLabels, requirement.type)
@@ -334,6 +396,7 @@ export default function MerchantOnboarding() {
           && typeof requirement.required === 'boolean'
         ).map(requirement => ({ ...requirement, type: requirement.type as DocumentType }));
         setRequirements(configured);
+        setDocumentsMayBeDeferred(payload.documentsMayBeDeferred === true);
         setRequirementsLoaded(true);
       })
       .catch(loadError => {
@@ -379,13 +442,13 @@ export default function MerchantOnboarding() {
       setError('Enter a valid KSh offer price (more than 0 and no more than 10,000,000) for every selected item.');
       return;
     }
-    if (requiredDocumentTypes.some(type => !documents[type])) {
+    if (!documentsMayBeDeferred && requiredDocumentTypes.some(type => !documents[type])) {
       setError('Upload all required documents before submitting.');
       return;
     }
-    if (requiredDocumentTypes.some(type =>
+    if (Object.keys(documents).some(type =>
       (type === 'liquor_licence' || type === 'wholesale_licence')
-      && !expiryDates[type]
+      && !expiryDates[type as DocumentType]
     )) {
       setError('Enter the expiry date for your alcohol licence before submitting.');
       return;
@@ -395,7 +458,7 @@ export default function MerchantOnboarding() {
       .filter((item): item is File => Boolean(item) && item instanceof File)
       .reduce((sum, item) => sum + item.size, 0);
 
-    if (totalDocumentBytes > MAX_TOTAL_DOCUMENT_SIZE) {
+    if (totalDocumentBytes > MAX_MERCHANT_DOCUMENT_TOTAL_SIZE) {
       setError('The combined document upload is too large. Please compress the files or upload smaller documents before submitting.');
       return;
     }
@@ -440,6 +503,13 @@ export default function MerchantOnboarding() {
       const response = await fetch('/api/merchant-applications', { method: 'POST', body: payload });
       const result = await readJsonResponse<{ id?: string; error?: string }>(response);
       if (!response.ok) throw new Error(result.error || 'Your application could not be submitted.');
+      if (journeyAnalyticsEnabled && journeySessionId) {
+        await sendJourneyEvent('onboarding_stage_exited', onboardingStages[step], {
+          durationMs: Math.max(0, Date.now() - stageEnteredAtRef.current)
+        });
+        stageEnteredAtRef.current = 0;
+        await sendJourneyEvent('onboarding_application_submitted', onboardingStages[step]);
+      }
       const currentUrl = new URL(window.location.href);
       currentUrl.searchParams.delete('invite');
       window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
@@ -464,7 +534,9 @@ export default function MerchantOnboarding() {
           <p className="mb-2 text-xs font-black uppercase tracking-[0.25em] text-emerald-700">Application received</p>
           <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900">Review is now in progress</h1>
           <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
-            OnBar will review your business details and documents. A merchant ID is assigned after approval. Your business will not become active automatically.
+            {documentsMayBeDeferred && requiredDocumentTypes.some(type => !documents[type])
+              ? 'Your business details are with OnBar. The team will send you a secure link to upload the remaining documents; approval and activation wait until verification is complete.'
+              : 'OnBar will review your business details and documents. A merchant ID is assigned after approval. Your business will not become active automatically.'}
           </p>
           {submittedApplicationId && <p className="mt-4 text-xs font-semibold text-slate-500">Application reference: {submittedApplicationId}</p>}
           {invitation ? (
@@ -525,6 +597,11 @@ export default function MerchantOnboarding() {
           <p className="mx-auto mt-3 max-w-xl text-sm text-slate-600">
             Submit your business for verification. Requirements vary by business type; approval and activation require an OnBar review.
           </p>
+          {!invitation && (
+            <p className="mt-3 text-xs text-slate-500">
+              Already approved and adding branches? <Link href="/merchant/business" className="font-bold text-primary underline">Manage business locations</Link>
+            </p>
+          )}
         </header>
 
         <div className="mb-5 grid grid-cols-4 gap-2" aria-label="Application progress">
@@ -600,6 +677,19 @@ export default function MerchantOnboarding() {
                   <Input value={businessName} onChange={event => setBusinessName(event.target.value)} maxLength={160} placeholder="Registered business name *" className="h-12 rounded-xl" />
                   <Input value={tradingName} onChange={event => setTradingName(event.target.value)} maxLength={160} placeholder="Trading name (if different)" className="h-12 rounded-xl" />
                 </>
+              )}
+              {invitation && (
+                <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={journeyAnalyticsEnabled}
+                    onChange={event => setJourneyAnalyticsEnabled(event.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <span>
+                    Help us improve this form by sharing step timing and repeated-click counts with the OnBar team. We do not record what you type. This is optional and does not affect your application.
+                  </span>
+                </label>
               )}
               <Button disabled={!invitation && businessName.trim().length < 2} onClick={() => setStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
                 Continue <ArrowRight size={16} className="ml-2" />
@@ -799,6 +889,11 @@ export default function MerchantOnboarding() {
                 <h2 className="text-xl font-black uppercase text-slate-900">Documents & compliance</h2>
                 <p className="mt-1 text-sm text-slate-500">The exact checklist depends on business type and county. Documents are private and only shared with authorized reviewers.</p>
               </div>
+              {documentsMayBeDeferred && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                  Document upload is temporarily optional. You can submit now and upload outstanding documents later using a secure link from the OnBar team. Your merchant account cannot be approved or activated until all required documents are verified.
+                </div>
+              )}
               {requirementsLoading && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">Loading the checklist for this business type and county...</p>}
               {!requirementsLoading && requirementsLoaded && requirements.length === 0 && <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">No documents are configured for this application. Contact OnBar before submitting.</p>}
               {requirements.map(requirement => {
@@ -809,7 +904,7 @@ export default function MerchantOnboarding() {
                       <span className="flex items-center gap-3">
                         <FileText size={19} className={documents[type] ? 'text-emerald-600' : 'text-slate-400'} />
                         <span>
-                          <span className="block text-sm font-bold text-slate-800">{requirement.label}{requirement.required ? ' *' : ''}</span>
+                          <span className="block text-sm font-bold text-slate-800">{requirement.label}{requirement.required && !documentsMayBeDeferred ? ' *' : ''}</span>
                           <span className="block text-xs text-slate-500">{documents[type]?.name || 'PDF, JPG or PNG; maximum 5 MB'}</span>
                         </span>
                       </span>
@@ -829,6 +924,7 @@ export default function MerchantOnboarding() {
                         Expiry date {type === 'liquor_licence' || type === 'wholesale_licence' ? '*' : '(if applicable)'}
                         <Input
                           type="date"
+                          min={new Date().toISOString().slice(0, 10)}
                           required={type === 'liquor_licence' || type === 'wholesale_licence'}
                           value={expiryDates[type] || ''}
                           onChange={event => setExpiryDates(current => ({ ...current, [type]: event.target.value }))}
@@ -844,12 +940,12 @@ export default function MerchantOnboarding() {
               </div>
               <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4 text-xs leading-5 text-slate-600">
                 <input type="checkbox" checked={privacyAcknowledged} onChange={event => setPrivacyAcknowledged(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-primary" />
-                <span>I have read the <Link href="/privacy" target="_blank" className="font-bold underline">privacy notice</Link> and understand that OnBar will use these business details and documents to assess this application, communicate about verification, and maintain necessary compliance records. This is not consent to marketing.</span>
+                <span>I have read the <Link href="/privacy" target="_blank" className="font-bold underline">privacy notice</Link> and understand that OnBar will use these business details and documents to assess this application, communicate about verification, and maintain necessary compliance records. {journeyAnalyticsEnabled && invitation ? 'I also chose to share onboarding step timing and repeated-click counts; field values are not recorded. ' : ''}This is not consent to marketing.</span>
               </label>
               {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
               <div className="flex gap-3">
                 <Button variant="outline" disabled={loading} onClick={() => setStep(2)} className="h-12 rounded-xl"><ArrowLeft size={16} className="mr-2" /> Back</Button>
-                <Button disabled={loading || requirementsLoading || !requirementsLoaded || !requirements.length || !privacyAcknowledged || requiredDocumentTypes.some(type => !documents[type])} onClick={submitApplication} className="h-12 flex-1 rounded-xl font-black uppercase">
+                <Button disabled={loading || requirementsLoading || !requirementsLoaded || !requirements.length || !privacyAcknowledged || (!documentsMayBeDeferred && requiredDocumentTypes.some(type => !documents[type]))} onClick={submitApplication} className="h-12 flex-1 rounded-xl font-black uppercase">
                   {loading ? <Loader2 size={17} className="mr-2 animate-spin" /> : <ShieldCheck size={17} className="mr-2" />}
                   Submit for review
                 </Button>

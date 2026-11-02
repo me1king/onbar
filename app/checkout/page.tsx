@@ -406,7 +406,10 @@ function CheckoutContent() {
       const firstMissingInput = !customerName.trim() ? customerNameInputRef.current : customerPhoneInputRef.current;
       firstMissingInput?.scrollIntoView({ behavior: "smooth", block: "center" });
       requestAnimationFrame(() => firstMissingInput?.focus({ preventScroll: true }));
-      OB_OS.track('FORM_VALIDATION_FAILED', { details: { reason: 'MISSING_REQUIRED_FIELDS' } });
+      OB_OS.track('FORM_VALIDATION_FAILED', {
+        userId: user?.id,
+        details: { reason: 'MISSING_REQUIRED_FIELDS', field: !customerName.trim() ? 'customer_name' : 'customer_phone' }
+      });
       return;
     }
 
@@ -414,6 +417,10 @@ function CheckoutContent() {
       setShowCustomerErrors(true);
       customerEmailInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       requestAnimationFrame(() => customerEmailInputRef.current?.focus({ preventScroll: true }));
+      OB_OS.track('FORM_VALIDATION_FAILED', {
+        userId: user?.id,
+        details: { reason: 'INVALID_EMAIL', field: 'customer_email' }
+      });
       return;
     }
 
@@ -489,6 +496,7 @@ function CheckoutContent() {
         if (!orderResult.reference) throw new Error('The payment reference could not be created. Please try again.');
         if (!window.PaystackPop) {
             setCheckoutStatus({ type: "error", message: "Payment system failing to load. Please check your connection." });
+            OB_OS.track('PAYMENT_FAIL', { userId: user?.id, orderId, details: { reason: 'PAYMENT_WINDOW_UNAVAILABLE' } });
             setIsPlacingOrder(false);
             return;
         }
@@ -529,6 +537,7 @@ function CheckoutContent() {
                 }
             },
             onClose: async () => {
+                OB_OS.track('PAYMENT_FAIL', { userId: user?.id, orderId, details: { reason: 'PAYMENT_PROMPT_CLOSED' } });
                 setIsPlacingOrder(false);
                 setCheckoutStatus({
                     type: "error",
@@ -675,17 +684,17 @@ function CheckoutContent() {
             <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label htmlFor="checkout-customer-name" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Full Name *</label>
-                  <Input id="checkout-customer-name" ref={customerNameInputRef} autoComplete="name" required aria-invalid={showCustomerErrors && !customerName.trim()} aria-describedby={showCustomerErrors && !customerName.trim() ? "checkout-customer-name-error" : undefined} placeholder="Patron Name" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && !customerName.trim() ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={isPlacingOrder} />
+                  <Input id="checkout-customer-name" data-behavior-id="checkout.customer_name" ref={customerNameInputRef} autoComplete="name" required aria-invalid={showCustomerErrors && !customerName.trim()} aria-describedby={showCustomerErrors && !customerName.trim() ? "checkout-customer-name-error" : undefined} placeholder="Patron Name" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && !customerName.trim() ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={isPlacingOrder} />
                   {showCustomerErrors && !customerName.trim() && <p id="checkout-customer-name-error" role="alert" className="text-xs font-semibold text-rose-600">Enter your full name to continue.</p>}
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="checkout-customer-phone" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Phone Number *</label>
-                  <Input id="checkout-customer-phone" ref={customerPhoneInputRef} type="tel" autoComplete="tel" inputMode="tel" required aria-invalid={showCustomerErrors && !customerPhone.trim()} aria-describedby={showCustomerErrors && !customerPhone.trim() ? "checkout-customer-phone-error" : undefined} placeholder="07XXXXXXXX" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && !customerPhone.trim() ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} disabled={isPlacingOrder} />
+                  <Input id="checkout-customer-phone" data-behavior-id="checkout.customer_phone" ref={customerPhoneInputRef} type="tel" autoComplete="tel" inputMode="tel" required aria-invalid={showCustomerErrors && !customerPhone.trim()} aria-describedby={showCustomerErrors && !customerPhone.trim() ? "checkout-customer-phone-error" : undefined} placeholder="07XXXXXXXX" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && !customerPhone.trim() ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} disabled={isPlacingOrder} />
                   {showCustomerErrors && !customerPhone.trim() && <p id="checkout-customer-phone-error" role="alert" className="text-xs font-semibold text-rose-600">Enter your phone number to continue.</p>}
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <label htmlFor="checkout-customer-email" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Address {paymentMethod === "M-Pesa" ? "(Required for Paystack)" : "(For PDF Receipt)"}</label>
-                  <Input id="checkout-customer-email" ref={customerEmailInputRef} type="email" autoComplete="email" required={paymentMethod === "M-Pesa"} aria-invalid={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())} aria-describedby={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "checkout-customer-email-error" : undefined} placeholder="you@example.com" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} disabled={isPlacingOrder} />
+                  <Input id="checkout-customer-email" data-behavior-id="checkout.customer_email" ref={customerEmailInputRef} type="email" autoComplete="email" required={paymentMethod === "M-Pesa"} aria-invalid={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())} aria-describedby={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "checkout-customer-email-error" : undefined} placeholder="you@example.com" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} disabled={isPlacingOrder} />
                   {showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && <p id="checkout-customer-email-error" role="alert" className="text-xs font-semibold text-rose-600">Enter a valid email address for Paystack.</p>}
                 </div>
             </div>
@@ -701,7 +710,11 @@ function CheckoutContent() {
                 {regions.map((r) => (
                     <button
                         key={r.id}
-                        onClick={() => setShippingRegionId(r.id)}
+                        data-behavior-id="checkout.delivery_region"
+                        onClick={() => {
+                            setShippingRegionId(r.id);
+                            OB_OS.track('UI_INTERACTION', { userId: user?.id, details: { id: 'checkout.delivery_region' } });
+                        }}
                         className={`p-4 sm:p-6 rounded-3xl border-2 text-left transition-all active:scale-95 ${currentRegion.id === r.id ? 'border-primary bg-white shadow-xl scale-105' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}
                     >
                         <p className="font-black uppercase tracking-tight text-foreground text-[10px] sm:text-sm">{r.label}</p>
@@ -780,11 +793,11 @@ function CheckoutContent() {
             <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Building / Estate (Optional)</label>
-                    <Input value={deliveryBuilding} onChange={event => setDeliveryBuilding(event.target.value)} maxLength={120} placeholder="Building or estate name" disabled={isPlacingOrder} className="h-14 rounded-2xl border-slate-100 bg-slate-50/50" />
+                    <Input data-behavior-id="checkout.delivery_building" value={deliveryBuilding} onChange={event => setDeliveryBuilding(event.target.value)} maxLength={120} placeholder="Building or estate name" disabled={isPlacingOrder} className="h-14 rounded-2xl border-slate-100 bg-slate-50/50" />
                 </div>
                 <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Landmark (Optional)</label>
-                    <Input value={deliveryLandmark} onChange={event => setDeliveryLandmark(event.target.value)} maxLength={120} placeholder="Nearby landmark" disabled={isPlacingOrder} className="h-14 rounded-2xl border-slate-100 bg-slate-50/50" />
+                    <Input data-behavior-id="checkout.delivery_landmark" value={deliveryLandmark} onChange={event => setDeliveryLandmark(event.target.value)} maxLength={120} placeholder="Nearby landmark" disabled={isPlacingOrder} className="h-14 rounded-2xl border-slate-100 bg-slate-50/50" />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                     <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Delivery Instructions (Optional)</label>
@@ -876,12 +889,18 @@ function CheckoutContent() {
                 <h2 className="text-xl font-black uppercase tracking-tighter">Payment Mode</h2>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <button onClick={() => setPaymentMethod("M-Pesa")} className={`p-6 rounded-3xl border-2 text-left transition-all ${paymentMethod === 'M-Pesa' ? 'border-primary bg-white shadow-xl' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}>
+                  <button data-behavior-id="checkout.payment_method" onClick={() => {
+                    setPaymentMethod("M-Pesa");
+                    OB_OS.track('UI_INTERACTION', { userId: user?.id, details: { id: 'checkout.payment_method', method: 'M-Pesa' } });
+                  }} className={`p-6 rounded-3xl border-2 text-left transition-all ${paymentMethod === 'M-Pesa' ? 'border-primary bg-white shadow-xl' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}>
                     <p className="font-black uppercase tracking-tight text-foreground text-lg">M-Pesa</p>
                     <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Direct STK Push</p>
                   </button>
 
-                  <button onClick={() => setPaymentMethod("COD")} className={`p-6 rounded-3xl border-2 text-left transition-all ${paymentMethod === 'COD' ? 'border-primary bg-white shadow-xl' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}>
+                  <button data-behavior-id="checkout.payment_method" onClick={() => {
+                    setPaymentMethod("COD");
+                    OB_OS.track('UI_INTERACTION', { userId: user?.id, details: { id: 'checkout.payment_method', method: 'COD' } });
+                  }} className={`p-6 rounded-3xl border-2 text-left transition-all ${paymentMethod === 'COD' ? 'border-primary bg-white shadow-xl' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}>
                     <p className="font-black uppercase tracking-tight text-foreground text-lg">Cash on Delivery</p>
                     <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Pay to Rider</p>
                   </button>

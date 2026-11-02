@@ -72,6 +72,27 @@ reliable looping lock-screen alarm; native Android alert support remains a
 separate rollout step. Test on staging with real devices and provider accounts
 before launch.
 
+## Merchant business accounts and branches
+
+After applying `MERCHANT_OPERATIONS_MIGRATION.sql`,
+`MERCHANT_ONBOARDING_EXPERIENCE_MIGRATION.sql`,
+`VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql`, and
+`ONBOARDING_INVITES_MIGRATION.sql`, apply
+`MERCHANT_BUSINESS_BRANCHES_MIGRATION.sql`. A merchant signs in with a verified
+account email that exactly matches an already-approved primary merchant
+application, then opens `/merchant/business` to create the owner account.
+Owners can generate single-use branch onboarding links; every branch completes
+the normal goods, hours, location, and compliance flow and remains pending
+review until approved. Owners can pause or resume orders for approved branches.
+The branch overview counts distinct orders with fulfillment events in the last
+seven days; it does not calculate branch revenue or payout allocation.
+
+The branch onboarding link is a bearer credential: share it only with the
+intended branch manager and regenerate it if it is exposed. It expires after
+seven days and can be used once. Location PINs, manager accounts, KRA data,
+payout credentials, and revenue sharing are intentionally not part of this
+release; do not treat the owner account as an accounting or settlement system.
+
 ## Rider assignment alerts
 
 After applying `DISPATCH_MIGRATION.sql`, apply
@@ -99,6 +120,38 @@ tracking, and requires the rider to confirm the customer ID check and enter the
 matching PIN before the delivery transition and commission are committed.
 Apply this migration after legacy all-in-one or delivery migrations so the older
 three-argument delivery RPC cannot bypass the handover checks.
+
+## Rider doorstep handover and payments
+
+After applying `RIDER_DELIVERY_SAFETY_MIGRATION.sql` and
+`RIDER_TERMINAL_WORKFLOW_MIGRATION.sql`, apply
+`RIDER_DOORSTEP_PAYMENT_MIGRATION.sql`. It adds a hashed, single-use four-digit
+handover code that expires after ten minutes, attempt lockout, and audited
+cash/M-Pesa/scan-to-pay records. Rider completion is atomic: the code, in-person
+ID confirmation, payment, delivery status, and existing rider commission must
+all pass server-side checks. The old assignment PIN is no longer returned by
+customer tracking or delivery notifications.
+
+Configure `RIDER_HANDOVER_CODE_SECRET` with a stable, private random secret and
+create an approved Meta WhatsApp template named by
+`WHATSAPP_DELIVERY_CODE_TEMPLATE_NAME`. The template must include four body
+parameters in this order: customer name, order number, one-time code, and
+tracking URL. The customer must have WhatsApp delivery notifications enabled.
+Do not include the code in ordinary status notifications.
+
+M-Pesa prompts use Safaricom Daraja STK Push and require
+`MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_PASSKEY`,
+`MPESA_SHORTCODE`, and `MPESA_ENVIRONMENT` (`sandbox` or `production`), plus
+the public HTTPS origin in `NEXT_PUBLIC_BASE_URL`. A successful callback is
+checked against the saved order, amount, phone, checkout request, and a
+Safaricom STK query before it is recorded as paid. Scan-to-pay displays a QR
+for a Paystack-hosted checkout link; Paystack must have its webhook configured
+for `/api/paystack/webhook`. The checkout requires a customer email and offers
+the payment channels enabled for the Paystack account. Cash is recorded as a
+rider-confirmed physical collection; it is not provider-verified.
+
+Test all provider callbacks and receipt notifications in staging before
+production. Do not mark an M-Pesa or QR attempt paid manually in the database.
 
 ## Owner order-flow timeline
 

@@ -1,7 +1,10 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
+import { getPublicBaseUrl } from '@/lib/utils';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 import {
   isMerchantApplicationStatus,
   resolveMerchantDocumentRequirements,
@@ -28,6 +31,7 @@ const applicationListFields = [
   'town',
   'operating_areas',
   'status',
+  'documents_deferred',
   'submitted_at',
   'reviewed_at',
   'reviewed_by'
@@ -53,6 +57,16 @@ async function getAuthorizedDatabase() {
 
 function isUuid(value: string | null): value is string {
   return value !== null && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character] || character);
 }
 
 export async function GET(request: Request) {
@@ -210,6 +224,12 @@ export async function GET(request: Request) {
       application.business_type,
       application.county
     ).filter(requirement => requirement.is_required).map(requirement => requirement.document_type);
+    if (application.vendor_type === 'retailer' && !requiredDocuments.includes('liquor_licence')) {
+      requiredDocuments.push('liquor_licence');
+    }
+    if (application.vendor_type === 'wholesaler' && !requiredDocuments.includes('wholesale_licence')) {
+      requiredDocuments.push('wholesale_licence');
+    }
     return NextResponse.json({ application: { ...application, requiredDocuments }, events: [accessEvent, ...(events || [])] }, {
       headers: { 'Cache-Control': 'private, no-store, max-age=0' }
     });
@@ -283,4 +303,94 @@ export async function PATCH(request: Request) {
     }, { status: isNotFound ? 404 : invalidTransition || complianceError ? 409 : 503 });
   }
   return NextResponse.json({ application: data });
+}
+
+export async function POST(request: Request) {
+  const access = await getAuthorizedDatabase();
+  if ('response' in access) return access.response;
+
+  let body: { action?: unknown; id?: unknown };
+  try {
+    body = await request.json() as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'A valid document request is required.' }, { status: 400 });
+  }
+  if (body.action !== 'create_document_upload_link' || typeof body.id !== 'string' || !isUuid(body.id)) {
+    return NextResponse.json({ error: 'Choose a valid application to request documents for.' }, { status: 400 });
+  }
+
+  const { data: application, error: applicationError } = await access.database.from('merchant_applications')
+    .select('id, business_name, email, status')
+    .eq('id', body.id)
+    .maybeSingle();
+  if (applicationError) {
+    console.error('[MerchantAdmin] Could not load application for document request:', applicationError);
+    return NextResponse.json({ error: 'Merchant application could not be loaded.' }, { status: 503 });
+  }
+  if (!application) return NextResponse.json({ error: 'Merchant application not found.' }, { status: 404 });
+  if (!['submitted', 'under_review', 'information_requested'].includes(application.status)) {
+    return NextResponse.json({ error: 'Document upload links are only available for applications under review.' }, { status: 409 });
+  }
+
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { error: revokeError } = await access.database.from('merchant_document_upload_links')
+    .update({ revoked_at: new Date().toISOString() })
+    .eq('application_id', application.id)
+    .is('revoked_at', null);
+  if (revokeError) {
+    console.error('[MerchantAdmin] Could not rotate prior document upload links:', revokeError);
+    return NextResponse.json({ error: 'A secure document upload link could not be created.' }, { status: 503 });
+  }
+  const { error: linkError } = await access.database.from('merchant_document_upload_links').insert({
+    application_id: application.id,
+    token_hash: tokenHash,
+    expires_at: expiresAt,
+    created_by: access.actor
+  });
+  if (linkError) {
+    console.error('[MerchantAdmin] Could not save document upload link:', linkError);
+    return NextResponse.json({ error: 'A secure document upload link could not be saved.' }, { status: 503 });
+  }
+  const { error: eventError } = await access.database.from('merchant_application_events').insert({
+    application_id: application.id,
+    event_type: 'document_upload_link_issued',
+    actor: access.actor,
+    details: { expires_at: expiresAt }
+  });
+  if (eventError) {
+    console.error('[MerchantAdmin] Could not audit document upload link issuance:', eventError);
+    const { error: revokeError } = await access.database.from('merchant_document_upload_links')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('token_hash', tokenHash);
+    if (revokeError) console.error('[MerchantAdmin] Could not revoke unaudited document upload link:', revokeError);
+    return NextResponse.json({ error: 'The upload link could not be safely audited and was not retained.' }, { status: 503 });
+  }
+  const uploadUrl = `${getPublicBaseUrl()}/merchant/documents?token=${encodeURIComponent(token)}`;
+  const emailConfig = getTransactionalEmailConfig();
+  let emailSent = false;
+  let emailWarning: string | undefined;
+  if (!application.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(application.email)) {
+    emailWarning = 'The secure link is ready, but this application has no valid email address.';
+  } else if (!emailConfig.configured) {
+    emailWarning = 'The secure link is ready, but email alerts are not configured. Copy the link and send it to the merchant.';
+  } else {
+    try {
+      await sendTransactionalEmail({
+        from: emailConfig.from,
+        to: application.email,
+        subject: `Documents needed to complete ${application.business_name}'s OnBar application`,
+        text: `Please securely upload the remaining documents for ${application.business_name} using this link. It expires in 30 days: ${uploadUrl}`,
+        html: `<p>Please securely upload the remaining documents for <strong>${escapeHtml(application.business_name)}</strong> using the link below. It expires in 30 days.</p><p><a href="${escapeHtml(uploadUrl)}">Upload documents securely</a></p>`,
+        idempotencyKey: `merchant-document-upload-${application.id}-${tokenHash.slice(0, 16)}`
+      });
+      emailSent = true;
+    } catch (emailError) {
+      console.error('[MerchantAdmin] Secure upload link saved, but email failed:', emailError);
+      emailWarning = 'The secure link is ready, but the email could not be sent. Copy the link and send it to the merchant.';
+    }
+  }
+
+  return NextResponse.json({ url: uploadUrl, expiresAt, emailSent, emailWarning }, { status: 201 });
 }

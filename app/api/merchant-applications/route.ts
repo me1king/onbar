@@ -5,6 +5,7 @@ import {
   isMerchantBusinessType,
   isMerchantVendorType,
   merchantVendorTypeForBusinessType,
+  getMissingMerchantDocumentTypes,
   resolveMerchantDocumentRequirements,
   type MerchantDocumentRequirement,
   type MerchantApplicationDocument
@@ -84,6 +85,15 @@ export async function GET(request: Request) {
     console.error('[MerchantApplications] Could not load document requirements:', error);
     return NextResponse.json({ error: 'Document requirements are unavailable. Confirm the merchant operations migration is installed.' }, { status: 503 });
   }
+  const { data: onboardingControls, error: controlsError } = await database
+    .from('merchant_onboarding_controls')
+    .select('allow_document_deferral')
+    .eq('id', true)
+    .maybeSingle();
+  if (controlsError || !onboardingControls) {
+    console.error('[MerchantApplications] Could not load onboarding controls:', controlsError);
+    return NextResponse.json({ error: 'Merchant onboarding is unavailable. Confirm the onboarding experience migration is installed.' }, { status: 503 });
+  }
   const requirements = resolveMerchantDocumentRequirements(
     (data || []) as MerchantDocumentRequirement[],
     businessType,
@@ -103,7 +113,10 @@ export async function GET(request: Request) {
       requirements.push(categoryDocument);
     }
   }
-  return NextResponse.json({ requirements }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  return NextResponse.json({
+    requirements,
+    documentsMayBeDeferred: onboardingControls.allow_document_deferral
+  }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
 export async function POST(request: Request) {
@@ -264,6 +277,15 @@ export async function POST(request: Request) {
   if (!database) {
     return NextResponse.json({ error: 'Merchant applications are temporarily unavailable. Please try again later.' }, { status: 503 });
   }
+  const { data: onboardingControls, error: controlsError } = await database
+    .from('merchant_onboarding_controls')
+    .select('allow_document_deferral')
+    .eq('id', true)
+    .maybeSingle();
+  if (controlsError || !onboardingControls) {
+    console.error('[MerchantApplications] Could not load onboarding controls:', controlsError);
+    return NextResponse.json({ error: 'Merchant onboarding is unavailable. Please try again later.' }, { status: 503 });
+  }
   let offeredGoods: string[] = [];
   let verifiedOffers: Array<{ product_id: number; product_name: string; price: number; currency: 'KES' }> = [];
   if (offeredGoodsIds.length) {
@@ -296,6 +318,7 @@ export async function POST(request: Request) {
     });
   }
   let invitationLead: { id: string; business_name: string; vendor_type: string } | null = null;
+  let branchInvite: { business_id: string; business_name: string; business_type: string } | null = null;
   let invitationTokenHash: string | null = null;
   if (inviteToken) {
     if (!/^[A-Za-z0-9_-]{40,64}$/.test(inviteToken)) {
@@ -318,21 +341,45 @@ export async function POST(request: Request) {
       console.error('[MerchantApplications] Could not verify the company invitation:', inviteError);
       return NextResponse.json({ error: 'The company invitation could not be verified.' }, { status: 503 });
     }
-    if (!lead || !['retailer', 'wholesaler', 'street_food'].includes(lead.vendor_type)) {
-      return NextResponse.json({ error: 'This company onboarding link is invalid, expired, or already used.' }, { status: 410 });
+    if (lead && ['retailer', 'wholesaler', 'street_food'].includes(lead.vendor_type)) {
+      const invitedBusinessType = lead.vendor_type === 'retailer'
+        ? 'bar'
+        : lead.vendor_type === 'wholesaler'
+          ? 'supplier'
+          : 'food_vendor';
+      if (businessTypeValue !== invitedBusinessType
+        || businessName.trim().toLowerCase() !== lead.business_name.trim().toLowerCase()) {
+        return NextResponse.json({
+          error: 'This invitation is limited to the named company and its assigned partner category.'
+        }, { status: 400 });
+      }
+      invitationLead = lead;
+    } else {
+      const { data: branch, error: branchError } = await database
+        .from('merchant_business_branch_invites')
+        .select('business_id,business:merchant_businesses(business_name,business_type)')
+        .eq('token_hash', invitationTokenHash)
+        .gt('expires_at', new Date().toISOString())
+        .is('used_application_id', null)
+        .maybeSingle();
+      if (branchError) {
+        console.error('[MerchantApplications] Could not verify business branch link:', branchError);
+        return NextResponse.json({
+          error: 'Branch onboarding is not configured. Contact the business owner or OnBar support.'
+        }, { status: 503 });
+      }
+      const branchBusiness = Array.isArray(branch?.business) ? branch.business[0] : branch?.business;
+      if (!branch || !branchBusiness
+        || branchBusiness.business_type !== businessTypeValue
+        || branchBusiness.business_name.trim().toLowerCase() !== businessName.trim().toLowerCase()) {
+        return NextResponse.json({ error: 'This branch link is invalid, expired, or not for this business.' }, { status: 410 });
+      }
+      branchInvite = {
+        business_id: branch.business_id,
+        business_name: branchBusiness.business_name,
+        business_type: branchBusiness.business_type
+      };
     }
-    const invitedBusinessType = lead.vendor_type === 'retailer'
-      ? 'bar'
-      : lead.vendor_type === 'wholesaler'
-        ? 'supplier'
-        : 'food_vendor';
-    if (businessTypeValue !== invitedBusinessType
-      || businessName.trim().toLowerCase() !== lead.business_name.trim().toLowerCase()) {
-      return NextResponse.json({
-        error: 'This invitation is limited to the named company and its assigned partner category.'
-      }, { status: 400 });
-    }
-    invitationLead = lead;
   }
   const { data: configuredRequirements, error: requirementsError } = await database
     .from('merchant_document_requirements')
@@ -401,14 +448,14 @@ export async function POST(request: Request) {
     fileEntries.push({ type, file: entry, expiresAt: expiryValue || null });
   }
 
-  if (requiredTypes.some(type => !fileEntries.some(document => document.type === type))) {
+  const missingRequiredTypes = getMissingMerchantDocumentTypes(requiredTypes, fileEntries);
+  if (missingRequiredTypes.length && !onboardingControls.allow_document_deferral) {
     const applicableRequirements = resolveMerchantDocumentRequirements(
       (configuredRequirements || []) as MerchantDocumentRequirement[],
       businessTypeValue,
       county
     );
-    const missingLabels = requiredTypes
-      .filter(type => !fileEntries.some(document => document.type === type))
+    const missingLabels = missingRequiredTypes
       .map(type => {
         const requirement = applicableRequirements.find(item => item.document_type === type);
         if (type === 'liquor_licence') return 'Alcohol retail licence';
@@ -472,6 +519,7 @@ export async function POST(request: Request) {
       offered_goods: offeredGoods,
       offered_goods_pricing: verifiedOffers,
       documents,
+      documents_deferred: missingRequiredTypes.length > 0,
       privacy_notice_version: 'merchant-application-v1',
       privacy_acknowledged_at: new Date().toISOString(),
       status: 'submitted'
@@ -486,7 +534,12 @@ export async function POST(request: Request) {
       application_id: applicationId,
       event_type: 'submitted',
       actor: 'applicant',
-      details: { business_type: businessTypeValue, document_count: documents.length }
+      details: {
+        business_type: businessTypeValue,
+        document_count: documents.length,
+        documents_deferred: missingRequiredTypes.length > 0,
+        deferred_document_types: missingRequiredTypes
+      }
     });
     if (eventError) throw new Error(`Could not record application audit history: ${eventError.message}`);
     if (invitationLead && invitationTokenHash) {
@@ -495,6 +548,13 @@ export async function POST(request: Request) {
         p_application_id: applicationId
       });
       if (completionError) throw new Error(`Could not complete the company invitation: ${completionError.message}`);
+    }
+    if (branchInvite && invitationTokenHash) {
+      const { error: completionError } = await database.rpc('complete_merchant_business_branch_invite', {
+        p_token_hash: invitationTokenHash,
+        p_application_id: applicationId
+      });
+      if (completionError) throw new Error(`Could not link the branch application to its business account: ${completionError.message}`);
     }
     return NextResponse.json({ id: applicationId, status: 'submitted' }, { status: 201 });
   } catch (error) {
@@ -505,7 +565,7 @@ export async function POST(request: Request) {
     }
     const { error: applicationCleanupError } = await database.from('merchant_applications').delete().eq('id', applicationId);
     if (applicationCleanupError) console.error('[MerchantApplications] Could not remove incomplete application:', applicationCleanupError);
-    if (error instanceof Error && /onboarding_lead_id|complete_vendor_onboarding_invite|vendor_onboarding_leads/i.test(error.message)) {
+    if (error instanceof Error && /onboarding_lead_id|complete_vendor_onboarding_invite|vendor_onboarding_leads|complete_merchant_business_branch_invite|merchant_business_branch_invites/i.test(error.message)) {
       return NextResponse.json({
         error: 'Private onboarding setup is incomplete. Apply supabase/ONBOARDING_INVITES_MIGRATION.sql, then retry with a newly issued company link.'
       }, { status: 503 });

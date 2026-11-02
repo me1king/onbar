@@ -17,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { isFoodBusinessType, merchantBusinessTypes, type MerchantApplicationDocument, type MerchantApplicationStatus, type MerchantBusinessType } from '@/lib/merchantApplications';
+import { getMissingMerchantDocumentTypes, isFoodBusinessType, merchantBusinessTypes, type MerchantApplicationDocument, type MerchantApplicationStatus, type MerchantBusinessType } from '@/lib/merchantApplications';
 
 interface Requirement {
   id: string;
@@ -63,6 +63,7 @@ interface Application {
   delivery_radius_km?: number | null;
   collection_available?: boolean;
   documents?: MerchantApplicationDocument[];
+  documents_deferred?: boolean;
   requiredDocuments?: string[];
   status: MerchantApplicationStatus;
   review_note?: string | null;
@@ -88,6 +89,8 @@ const labels: Record<string, string> = {
   delivery_partner: 'Delivery partner',
   business_registration: 'Business registration',
   county_license: 'County licence',
+  liquor_licence: 'Alcohol retail licence',
+  wholesale_licence: 'Alcohol wholesale licence',
   food_hygiene: 'Food hygiene',
   tax_document: 'Tax / business info',
   premises_document: 'Premises documentation',
@@ -116,6 +119,10 @@ function requiredDocs(application: Application) {
     : ['business_registration', 'county_license'];
 }
 
+function missingRequiredDocs(application: Application) {
+  return getMissingMerchantDocumentTypes(requiredDocs(application), application.documents || []);
+}
+
 export default function MerchantApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -140,6 +147,11 @@ export default function MerchantApplicationsPage() {
     required: false,
     active: true
   });
+  const [documentDeferralAllowed, setDocumentDeferralAllowed] = useState(false);
+  const [documentPolicyLoading, setDocumentPolicyLoading] = useState(true);
+  const [savingDocumentPolicy, setSavingDocumentPolicy] = useState(false);
+  const [documentUploadUrl, setDocumentUploadUrl] = useState('');
+  const [requestingDocumentLink, setRequestingDocumentLink] = useState(false);
 
   const fetchApplications = useCallback(async () => {
     setLoading(true);
@@ -176,6 +188,22 @@ export default function MerchantApplicationsPage() {
 
   useEffect(() => { void fetchApplications(); }, [fetchApplications]);
 
+  const fetchDocumentPolicy = useCallback(async () => {
+    setDocumentPolicyLoading(true);
+    try {
+      const response = await fetch('/api/admin/merchant-onboarding-controls', { cache: 'no-store' });
+      const result = await response.json() as { controls?: { allow_document_deferral: boolean }; error?: string };
+      if (!response.ok || !result.controls) throw new Error(result.error || 'Document upload policy could not be loaded.');
+      setDocumentDeferralAllowed(result.controls.allow_document_deferral);
+    } catch (policyError) {
+      setError(policyError instanceof Error ? policyError.message : 'Document upload policy could not be loaded.');
+    } finally {
+      setDocumentPolicyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void fetchDocumentPolicy(); }, [fetchDocumentPolicy]);
+
   useEffect(() => {
     fetch('/api/admin/merchant-applications?compliance=1', { cache: 'no-store' })
       .then(async response => {
@@ -185,6 +213,53 @@ export default function MerchantApplicationsPage() {
       })
       .catch(loadError => setError(loadError instanceof Error ? loadError.message : 'Compliance expiry data could not be loaded.'));
   }, []);
+
+  const updateDocumentPolicy = async (allowDocumentDeferral: boolean) => {
+    setSavingDocumentPolicy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/admin/merchant-onboarding-controls', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowDocumentDeferral })
+      });
+      const result = await response.json() as { controls?: { allow_document_deferral: boolean }; error?: string };
+      if (!response.ok || !result.controls) throw new Error(result.error || 'Document upload policy could not be saved.');
+      setDocumentDeferralAllowed(result.controls.allow_document_deferral);
+      setMessage(allowDocumentDeferral
+        ? 'Applicants may now defer document uploads. Approval remains blocked until required documents are verified.'
+        : 'Required document uploads are now enforced during application submission.');
+    } catch (policyError) {
+      setError(policyError instanceof Error ? policyError.message : 'Document upload policy could not be saved.');
+    } finally {
+      setSavingDocumentPolicy(false);
+    }
+  };
+
+  const requestMissingDocuments = async () => {
+    if (!selected) return;
+    setRequestingDocumentLink(true);
+    setDocumentUploadUrl('');
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/admin/merchant-applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_document_upload_link', id: selected.id })
+      });
+      const result = await response.json() as { url?: string; emailSent?: boolean; emailWarning?: string; error?: string };
+      if (!response.ok || !result.url) throw new Error(result.error || 'A secure document upload link could not be created.');
+      setDocumentUploadUrl(result.url);
+      setMessage(result.emailSent ? `Secure upload link emailed to ${selected.email}.` : result.emailWarning || 'Secure upload link created.');
+      await fetchDetail(selected.id);
+    } catch (linkError) {
+      setError(linkError instanceof Error ? linkError.message : 'A secure document upload link could not be created.');
+    } finally {
+      setRequestingDocumentLink(false);
+    }
+  };
 
   const filteredApplications = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -351,6 +426,28 @@ export default function MerchantApplicationsPage() {
         ) : <p className="mt-2 text-xs text-amber-900">No document expiry dates within the next 30 days are recorded.</p>}
       </Card>
 
+      <Card className="mb-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Application document uploads</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+            {documentDeferralAllowed
+              ? 'Temporary deferral is on. Applicants can submit without documents; approval stays blocked until every required document is current and verified.'
+              : 'Required documents must be uploaded before applicants can submit. You can turn on a temporary deferral when a merchant needs more time.'}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={documentDeferralAllowed ? 'outline' : 'default'}
+          disabled={documentPolicyLoading || savingDocumentPolicy}
+          onClick={() => void updateDocumentPolicy(!documentDeferralAllowed)}
+          className="shrink-0 rounded-xl"
+          aria-pressed={documentDeferralAllowed}
+        >
+          {savingDocumentPolicy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {documentPolicyLoading ? 'Loading policy...' : documentDeferralAllowed ? 'Turn deferral off' : 'Allow document deferral'}
+        </Button>
+      </Card>
+
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: 'New', value: count('submitted'), Icon: Clock3 },
@@ -429,6 +526,7 @@ export default function MerchantApplicationsPage() {
                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${statusClass(application.status)}`}>{labels[application.status]}</span>
                   </div>
                   <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Submitted {new Date(application.submitted_at).toLocaleDateString()}</p>
+                  {application.documents_deferred && <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[9px] font-black uppercase text-amber-900">Documents pending</span>}
                 </button>
                 <Link
                   href={`/lord/merchants/${encodeURIComponent(application.id)}`}
@@ -468,6 +566,32 @@ export default function MerchantApplicationsPage() {
                 {selected.delivery_radius_km && <p><span className="font-bold text-slate-500">Delivery radius:</span> {selected.delivery_radius_km} km</p>}
                 <p><span className="font-bold text-slate-500">Collection:</span> {selected.collection_available ? 'Available' : 'Not listed'}</p>
               </section>
+
+              {(selected.documents_deferred || missingRequiredDocs(selected).length > 0) && ['submitted', 'under_review', 'information_requested'].includes(selected.status) && (
+                <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs leading-5 text-amber-900">{selected.documents_deferred ? 'This application was submitted while document deferral was enabled.' : 'Required documents are missing or expired.'} It cannot be approved until required documents are uploaded and verified.</p>
+                    <Button type="button" onClick={() => void requestMissingDocuments()} disabled={requestingDocumentLink} className="rounded-xl">
+                      {requestingDocumentLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                      {requestingDocumentLink ? 'Preparing secure link...' : 'Request missing documents'}
+                    </Button>
+                  </div>
+                  {documentUploadUrl && (
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="text-xs font-bold text-emerald-900">Secure upload link</p>
+                      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                        <input readOnly value={documentUploadUrl} aria-label="Secure merchant document upload link" className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs" />
+                        <Button type="button" variant="outline" className="rounded-lg" onClick={() => {
+                          void navigator.clipboard.writeText(documentUploadUrl).then(() => setMessage('Secure document upload link copied.')).catch(copyError => {
+                            console.error('[MerchantOnboarding] Could not copy secure upload link:', copyError);
+                            setError('Could not copy the link. Select and copy it manually.');
+                          });
+                        }}>Copy link</Button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
 
               <section>
                 <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-800">Compliance checklist</h3>

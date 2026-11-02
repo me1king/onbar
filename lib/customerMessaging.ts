@@ -68,8 +68,8 @@ export const DEFAULT_CUSTOMER_NOTIFICATION_CONFIG: CustomerNotificationConfig = 
     enabled: true,
     channels: ['email', 'sms', 'push'],
     subject: 'Your order #{orderId} has been delivered',
-    message: 'Hi {name}, order #{orderId} has been delivered. We hope you enjoy your order!',
-    smsMessage: 'Hi {name}, order #{orderId} has been delivered. We hope you enjoy your order!'
+    message: 'Hi {name}, order #{orderId} has been delivered. Receipt: {total} paid via {payment_method}. Payment reference: {payment_receipt}. We hope you enjoy your order!',
+    smsMessage: 'Hi {name}, order #{orderId} has been delivered. Receipt: {total} via {payment_method}. Ref: {payment_receipt}.'
   }
 };
 

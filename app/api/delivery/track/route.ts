@@ -4,6 +4,7 @@ import {
   createDeliveryTrackingSession,
   verifyDeliveryTrackingSession
 } from '@/lib/deliveryTrackingSession.server';
+import { routingEngine } from '@/lib/engines/routingEngine';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,7 @@ async function loadTrackingOrder(orderId: number) {
 
   const { data: order, error } = await database
     .from('orders')
-    .select('id, status, customer_name, customer_phone, total_price, created_at, payment_method, rider_name, rider_phone, delivery_eta_minutes, delivery_eta_updated_at, delivered_at, delivery_pin, latitude, longitude')
+    .select('id, status, customer_name, customer_phone, total_price, created_at, payment_method, rider_name, rider_phone, delivery_eta_minutes, delivery_eta_updated_at, delivered_at, latitude, longitude')
     .eq('id', orderId)
     .maybeSingle();
   if (error) {
@@ -48,6 +49,13 @@ async function loadTrackingOrder(orderId: number) {
   let riderLocation: { latitude: number; longitude: number; updatedAt: string } | null = null;
   let riderLocationMessage: string | null = null;
   let riderVehicle: { type: string | null; registration: string | null; rating: number | null } | null = null;
+  let roadRoute: {
+    provider: string;
+    distance_km: number;
+    duration_minutes: number;
+    encoded_polyline: string;
+  } | null = null;
+  let roadRouteMessage: string | null = null;
   if (order.status === 'Out for Delivery' && order.rider_phone) {
     const { data: rider, error: riderError } = await database
       .from('rider_status')
@@ -85,10 +93,39 @@ async function loadTrackingOrder(orderId: number) {
       && longitude !== null && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180
     ) {
       riderLocation = {
-        latitude: Math.round(latitude * 1000) / 1000,
-        longitude: Math.round(longitude * 1000) / 1000,
+        latitude: Math.round(latitude * 10000) / 10000,
+        longitude: Math.round(longitude * 10000) / 10000,
         updatedAt: updatedAt.toISOString()
       };
+    }
+  }
+
+  const destination = order.latitude !== null && order.longitude !== null
+    && Number.isFinite(Number(order.latitude)) && Number(order.latitude) >= -90 && Number(order.latitude) <= 90
+    && Number.isFinite(Number(order.longitude)) && Number(order.longitude) >= -180 && Number(order.longitude) <= 180
+    ? { latitude: Number(order.latitude), longitude: Number(order.longitude) }
+    : null;
+
+  if (order.status === 'Out for Delivery' && riderLocation && destination) {
+    if (!routingEngine.hasOsrmProvider() && !process.env.GOOGLE_MAPS_API_KEY?.trim()) {
+      roadRouteMessage = 'Road routing is not configured. Showing a direct guide instead.';
+    } else {
+      try {
+        const route = await routingEngine.computeFastestRoute(riderLocation, destination);
+        if (route.encodedPolyline) {
+          roadRoute = {
+            provider: route.provider,
+            distance_km: Number(route.distanceKm.toFixed(2)),
+            duration_minutes: Math.ceil(route.durationMinutes),
+            encoded_polyline: route.encodedPolyline
+          };
+        } else {
+          roadRouteMessage = 'A road route is not available for this area. Showing a direct guide instead.';
+        }
+      } catch (error) {
+        console.error('[DeliveryTracking] Could not calculate road route:', error);
+        roadRouteMessage = 'The road route is temporarily unavailable. Showing a direct guide instead.';
+      }
     }
   }
 
@@ -103,9 +140,6 @@ async function loadTrackingOrder(orderId: number) {
       delivery_eta_minutes: order.delivery_eta_minutes,
       delivery_eta_updated_at: order.delivery_eta_updated_at,
       delivered_at: order.delivered_at,
-      delivery_pin: ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status)
-        ? order.delivery_pin
-        : null,
       rider_name: order.status === 'Dispatched' || order.status === 'Picked Up' || order.status === 'Out for Delivery'
         ? order.rider_name
         : null,
@@ -115,11 +149,9 @@ async function loadTrackingOrder(orderId: number) {
       rider_vehicle: riderVehicle,
       rider_location: riderLocation,
       rider_location_message: riderLocationMessage,
-      delivery_location: order.latitude !== null && order.longitude !== null
-        && Number.isFinite(Number(order.latitude)) && Number(order.latitude) >= -90 && Number(order.latitude) <= 90
-        && Number.isFinite(Number(order.longitude)) && Number(order.longitude) >= -180 && Number(order.longitude) <= 180
-        ? { latitude: Number(order.latitude), longitude: Number(order.longitude) }
-        : null
+      road_route: roadRoute,
+      road_route_message: roadRouteMessage,
+      delivery_location: destination
     }
   };
 }

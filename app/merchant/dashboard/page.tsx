@@ -413,7 +413,10 @@ export default function MerchantDashboardPage() {
     <>
       <header className="mm-header">
         <Link className="mm-brand" href="/market">MIDNIGHT <span>MARKET</span></Link>
-        <nav className="mm-nav"><Link href="/merchant/register">Seller application</Link></nav>
+        <nav className="mm-nav">
+          <Link href="/merchant/business">Business locations</Link>
+          <Link href="/merchant/register">Seller application</Link>
+        </nav>
       </header>
       <main className="mm-page mm-merchant-register">
         <Link className="mm-text-link" href="/market"><ArrowLeft size={14} /> Back to Market</Link>

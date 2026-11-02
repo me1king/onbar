@@ -33,6 +33,11 @@ function phoneVariants(value: string): string[] {
   return Array.from(variants).filter(Boolean);
 }
 
+function schemaUnavailable(error: { code?: string; message?: string }) {
+  return ['42P01', '42703', 'PGRST200', 'PGRST204', 'PGRST205'].includes(error.code || '')
+    || /relation .* does not exist|column .* does not exist|schema cache/i.test(error.message || '');
+}
+
 async function authorize(request?: Request, mutation = false) {
   const session = await getAdminSession();
   if (!session) {
@@ -152,11 +157,30 @@ export async function GET(
     const audits = auditResult.data || [];
     const notifications = notificationsResult.data || [];
     const orders = (ordersResult.data || []).filter(order => normalizePhone(order.customer_phone || '') === phoneKey);
+    const complaintResult = orders.length
+      ? await access.database.from('customer_order_complaints')
+        .select('id,order_id,category,description,created_at')
+        .in('order_id', orders.map(order => order.id))
+        .order('created_at', { ascending: false })
+      : { data: [], error: null };
+    const warnings: string[] = [];
+    if (complaintResult.error) {
+      console.error('[CustomerCRM] Could not load customer complaints:', complaintResult.error);
+      warnings.push('Complaint history could not be loaded. Check the merchant operations database migration.');
+    }
     const activity = [
       ...notes.map(note => ({ id: `note-${note.id}`, type: 'note', created_at: note.created_at, actor: note.author_email, summary: note.body })),
       ...followups.map(followup => ({ id: `followup-${followup.id}`, type: 'followup', created_at: followup.created_at, actor: followup.created_by, summary: followup.title, details: followup })),
       ...audits.map(entry => ({ id: `audit-${entry.id}`, type: 'update', created_at: entry.created_at, actor: entry.actor_email, summary: entry.action.replaceAll('_', ' '), details: entry.details })),
       ...notifications.map(notification => ({ id: `notification-${notification.id}`, type: 'communication', created_at: notification.created_at, actor: 'Online Bar', summary: notification.title, details: { message: notification.message, is_read: notification.is_read } })),
+      ...(complaintResult.error ? [] : (complaintResult.data || []).map(complaint => ({
+        id: `complaint-${complaint.id}`,
+        type: 'complaint',
+        created_at: complaint.created_at,
+        actor: 'Online Bar Support',
+        summary: `Order #${complaint.order_id} · ${complaint.category.replaceAll('_', ' ')}`,
+        details: { message: complaint.description }
+      }))),
       ...orders.map(order => ({ id: `order-${order.id}`, type: 'order', created_at: order.created_at, actor: 'Online Bar', summary: `Order #${order.id} · ${order.status || 'Unknown status'}`, details: { amount: order.total_price } }))
     ].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()).slice(0, 150);
 
@@ -180,10 +204,22 @@ export async function GET(
       communications: notifications,
       notes,
       followups,
-      activity
+      activity,
+      warnings
     }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
   } catch (error) {
     console.error('[CustomerCRM] Could not load customer workspace:', error);
+    const databaseError = error && typeof error === 'object'
+      ? {
+        code: 'code' in error && typeof error.code === 'string' ? error.code : '',
+        message: 'message' in error && typeof error.message === 'string' ? error.message : ''
+      }
+      : {};
+    if (schemaUnavailable(databaseError)) {
+      return NextResponse.json({
+        error: 'Customer CRM tables are not ready. Apply supabase/CUSTOMER_CRM_MIGRATION.sql, then retry.'
+      }, { status: 503 });
+    }
     return NextResponse.json({ error: 'Customer CRM data could not be loaded.' }, { status: 500 });
   }
 }

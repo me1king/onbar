@@ -39,7 +39,7 @@ interface CrmFollowup {
 
 interface CrmActivity {
   id: string;
-  type: 'note' | 'followup' | 'update' | 'order' | 'communication';
+  type: 'note' | 'followup' | 'update' | 'order' | 'communication' | 'complaint';
   created_at: string;
   actor: string;
   summary: string;
@@ -60,6 +60,7 @@ interface CrmResponse {
   notes: CrmNote[];
   followups: CrmFollowup[];
   activity: CrmActivity[];
+  warnings: string[];
   error?: string;
 }
 
@@ -195,6 +196,9 @@ export default function CustomerCrmPanel({ phone }: { phone: string }) {
 
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
       {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+      {data.warnings.length > 0 && (
+        <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{data.warnings.join(' ')}</p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <article className="rounded-2xl border border-slate-100 p-4">

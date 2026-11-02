@@ -27,7 +27,6 @@ interface OrderDetails {
   created_at: string;
   payment_method: string;
   delivered_at?: string | null;
-  delivery_pin?: string | null;
   rider_name?: string | null;
   rider_phone?: string | null;
   rider_vehicle?: { type: string | null; registration: string | null; rating: number | null } | null;
@@ -35,6 +34,13 @@ interface OrderDetails {
   delivery_eta_updated_at?: string | null;
   rider_location?: { latitude: number; longitude: number; updatedAt: string } | null;
   rider_location_message?: string | null;
+  road_route?: {
+    provider: string;
+    distance_km: number;
+    duration_minutes: number;
+    encoded_polyline: string;
+  } | null;
+  road_route_message?: string | null;
   delivery_location?: { latitude: number; longitude: number } | null;
 }
 
@@ -169,6 +175,8 @@ function TrackingContent() {
   const etaIsCurrent = etaUpdatedAt > 0 && Date.now() >= etaUpdatedAt && Date.now() - etaUpdatedAt <= 60 * 60 * 1000;
   const liveEtaLabel = order?.status === 'Delivered'
     ? 'Delivered'
+    : order?.road_route
+      ? `About ${order.road_route.duration_minutes} min`
     : order?.delivery_eta_minutes != null && etaIsCurrent
       ? `About ${order.delivery_eta_minutes} min`
       : 'ETA not available';
@@ -359,11 +367,11 @@ function TrackingContent() {
                   </div>
                 )}
 
-                {order.delivery_pin && ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status) && (
+                {order.status === 'Out for Delivery' && (
                   <div className="mt-4 rounded-3xl border border-amber-200 bg-amber-50 p-6 text-center">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">Private handover PIN</p>
-                    <p className="mt-2 text-4xl font-black tracking-[0.35em] text-slate-950">{order.delivery_pin}</p>
-                    <p className="mt-2 text-xs text-slate-600">Show this code to your rider at delivery. Keep it private until you receive the order.</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">Secure handover</p>
+                    <p className="mt-2 text-sm font-bold text-slate-900">Your one-time code will be sent by WhatsApp when your rider arrives.</p>
+                    <p className="mt-2 text-xs text-slate-600">Keep it private and share it only after the order is at your door.</p>
                   </div>
                 )}
 
@@ -371,10 +379,10 @@ function TrackingContent() {
                   <div className="mt-4 rounded-[2rem] border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_24px_60px_-30px_rgba(15,23,42,0.9)]">
                     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Live rider position</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Live route to you</p>
                         <p className="mt-1 text-xs text-slate-300">
                           {order.rider_location
-                            ? `Last GPS update ${new Date(order.rider_location.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Location is approximate.`
+                          ? `The rider pin updates with fresh GPS. Last update ${new Date(order.rider_location.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
                             : order.rider_location_message || 'Waiting for the rider’s next GPS update.'}
                         </p>
                       </div>
@@ -392,8 +400,20 @@ function TrackingContent() {
 
                     {order.rider_location ? (
                       <>
-                        <CustomerDeliveryMap rider={order.rider_location} destination={order.delivery_location || null} />
-                        {order.delivery_location && <p className="mt-2 text-[10px] text-slate-500">The dashed line is a straight-line guide, not a road route.</p>}
+                        <CustomerDeliveryMap
+                          rider={order.rider_location}
+                          destination={order.delivery_location || null}
+                          roadRoute={order.road_route || null}
+                        />
+                        {order.road_route ? (
+                          <p className="mt-2 text-[10px] text-slate-400">
+                            Follow the arrows toward your pin · {order.road_route.distance_km} road km · {order.road_route.duration_minutes} min estimate
+                          </p>
+                        ) : order.delivery_location ? (
+                          <p className="mt-2 text-[10px] text-slate-400">
+                            {order.road_route_message || 'Showing a direct guide, not a road route.'}
+                          </p>
+                        ) : null}
                       </>
                     ) : (
                       <div className="flex h-40 items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-5 text-center text-sm text-slate-400">
@@ -405,7 +425,9 @@ function TrackingContent() {
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Dispatch ETA</p>
                         <p className="mt-2 text-3xl font-black uppercase tracking-tighter text-white">{liveEtaLabel}</p>
-                        <p className="mt-1 text-[10px] text-slate-500">Shown only when a current estimate is on file.</p>
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          {order.road_route ? 'Estimated from the latest rider location; traffic may change the actual arrival time.' : 'Shown when a current dispatch estimate is available.'}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         {riderCallHref && (
