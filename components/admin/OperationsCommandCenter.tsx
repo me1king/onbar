@@ -6,6 +6,12 @@ import { Activity, ArrowRight, ClipboardList, FileCheck2, RefreshCcw, ShoppingBa
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import dynamic from 'next/dynamic';
+
+const LiveDispatchMap = dynamic(() => import('@/components/admin/dispatch/LiveDispatchMap'), {
+  ssr: false,
+  loading: () => <div className="flex h-full items-center justify-center rounded-2xl bg-slate-100 text-xs font-black uppercase tracking-widest text-slate-400">Loading live fleet map...</div>
+});
 
 type LiveData = {
   metrics?: {
@@ -16,6 +22,21 @@ type LiveData = {
   };
   orders?: Array<{ id: number; status: string; customer_name: string | null; created_at: string }>;
   error?: string;
+};
+
+type DispatchMapRider = {
+  id: number | string;
+  lat?: number | null;
+  lng?: number | null;
+  status: string;
+  rider_name: string;
+  battery_level: number;
+  current_speed?: number;
+};
+
+type DispatchMapData = {
+  riders: DispatchMapRider[];
+  demandZones: Array<{ lat: number; lng: number; intensity: number }>;
 };
 
 const modules = [
@@ -32,18 +53,38 @@ const modules = [
 
 export default function OperationsCommandCenter() {
   const [data, setData] = React.useState<LiveData>({});
+  const [dispatchMap, setDispatchMap] = React.useState<DispatchMapData>({ riders: [], demandZones: [] });
+  const [dispatchError, setDispatchError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/behavior/live', { cache: 'no-store' });
-      const result = await response.json() as LiveData;
-      if (!response.ok) throw new Error(result.error || 'Live operations data could not be loaded.');
+      const [liveResponse, dispatchResponse] = await Promise.all([
+        fetch('/api/admin/behavior/live', { cache: 'no-store' }),
+        fetch('/api/admin/dispatch', { cache: 'no-store' })
+      ]);
+      const result = await liveResponse.json() as LiveData;
+      const dispatchResult = await dispatchResponse.json() as {
+        error?: string;
+        riders?: DispatchMapRider[];
+        demandZones?: DispatchMapData['demandZones'];
+      };
+      if (!liveResponse.ok) throw new Error(result.error || 'Live operations data could not be loaded.');
       setData(result);
+      if (!dispatchResponse.ok) {
+        setDispatchError(dispatchResult.error || 'Live fleet map data could not be loaded.');
+      } else {
+        setDispatchError(null);
+        setDispatchMap({
+          riders: dispatchResult.riders || [],
+          demandZones: dispatchResult.demandZones || []
+        });
+      }
     } catch (error) {
       console.error('[Operations] Could not load live operations:', error);
       setData({ error: error instanceof Error ? error.message : 'Live operations data could not be loaded.' });
+      setDispatchError(error instanceof Error ? error.message : 'Live fleet map data could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -111,6 +152,23 @@ export default function OperationsCommandCenter() {
               const Icon = module.icon;
               return <Link key={module.href} href={module.href} className="flex items-center gap-3 rounded-xl border border-white/10 p-3 transition hover:bg-white/10"><Icon className="h-4 w-4 text-amber-300" /><span className="min-w-0 flex-1"><strong className="block text-xs font-black uppercase">{module.title}</strong><small className="block truncate text-[10px] text-white/50">{module.description}</small></span><ArrowRight className="h-3 w-3 text-white/40" /></Link>;
             })}
+          </div>
+        </Card>
+      </section>
+
+      <section className="mt-5">
+        <Card className="rounded-2xl border-slate-100 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-primary">Current operational map</p>
+              <h2 className="mt-1 text-xl font-black uppercase tracking-tight">Fleet position and demand</h2>
+              <p className="mt-1 text-xs text-slate-500">The same verified rider GPS and demand zones used by Fleet Command.</p>
+            </div>
+            <Link href="/lord/dispatch" className="text-xs font-black uppercase text-primary">Open Fleet Command <ArrowRight className="ml-1 inline h-3 w-3" /></Link>
+          </div>
+          {dispatchError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">{dispatchError}</p>}
+          <div className="mt-5 h-[420px] overflow-hidden rounded-2xl">
+            <LiveDispatchMap riders={dispatchMap.riders} demandZones={dispatchMap.demandZones} showDemand />
           </div>
         </Card>
       </section>
