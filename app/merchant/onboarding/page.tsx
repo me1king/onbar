@@ -8,6 +8,7 @@ import {
   Building2,
   CheckCircle2,
   FileText,
+  ImageIcon,
   Loader2,
   MapPin,
   ShieldCheck,
@@ -18,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import Image from 'next/image';
 import {
   isFoodBusinessType,
   merchantVendorTypeForBusinessType,
@@ -170,7 +172,16 @@ export default function MerchantOnboarding() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedApplicationId, setSubmittedApplicationId] = useState('');
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
-  const [catalogOptions, setCatalogOptions] = useState<Array<{ id: number; name: string; category: string }>>([]);
+  const [catalogOptions, setCatalogOptions] = useState<Array<{
+    id: number;
+    name: string;
+    category: string;
+    imageUrl: string;
+    brand: string;
+    cataloguePrice: number;
+    stock: number;
+    sizes: string[];
+  }>>([]);
   const [selectedGoods, setSelectedGoods] = useState<number[]>([]);
   const [offeredGoodsPrices, setOfferedGoodsPrices] = useState<Record<number, string>>({});
   const [goodsSearch, setGoodsSearch] = useState('');
@@ -362,14 +373,30 @@ export default function MerchantOnboarding() {
       setCatalogLoading(true);
       try {
         const response = await fetch('/api/catalog/products?limit=500', { cache: 'no-store' });
-        const payload = await readJsonResponse<{ products?: Array<{ id: number; name: string; category?: string | null }> }>(response);
+        const payload = await readJsonResponse<{
+          products?: Array<{
+            id: number;
+            name: string;
+            category?: string | null;
+            brand?: string | null;
+            image_url?: string | null;
+            price?: number | string | null;
+            stock?: number | null;
+            sizes?: string[] | null;
+          }>
+        }>(response);
         if (!response.ok || !payload.products) throw new Error('Could not load the available goods list.');
         if (!active) return;
         setCatalogError(null);
         setCatalogOptions(payload.products.map(product => ({
           id: Number(product.id),
           name: String(product.name),
-          category: product.category || 'General'
+          category: product.category || 'General',
+          imageUrl: product.image_url || '',
+          brand: product.brand || '',
+          cataloguePrice: Number(product.price || 0),
+          stock: Number(product.stock || 0),
+          sizes: Array.isArray(product.sizes) ? product.sizes : []
         })).filter(product => product.id > 0 && product.name.trim().length > 0));
       } catch {
         if (active) {
@@ -863,37 +890,43 @@ export default function MerchantOnboarding() {
                       className="mb-3 h-11 rounded-xl bg-white"
                     />
                     {filteredCatalogOptions.length ? (
-                      <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="grid gap-4 sm:grid-cols-2">
                         {filteredCatalogOptions.map(option => {
                           const selected = selectedGoods.includes(option.id);
                           return (
-                            <div key={option.id} className="rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-primary/50">
-                              <label className="flex cursor-pointer items-start gap-3 text-sm text-slate-700">
-                                <input
-                                  type="checkbox"
-                                  checked={selected}
-                                  onChange={() => toggleSelectedGood(option.id)}
-                                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
-                                />
-                                <span className="min-w-0">
-                                  <span className="block font-bold text-slate-900">{option.name}</span>
-                                  <span className="block text-[11px] uppercase tracking-[0.12em] text-slate-500">{option.category}</span>
-                                </span>
-                              </label>
+                            <div key={option.id} className={`overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all ${selected ? 'border-primary ring-2 ring-primary/15 shadow-primary/10' : 'border-slate-200 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md'}`}>
+                              <div role="button" tabIndex={0} onClick={() => toggleSelectedGood(option.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') toggleSelectedGood(option.id); }} className="block w-full cursor-pointer text-left">
+                                <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-slate-100 via-white to-amber-50">
+                                  {option.imageUrl ? (
+                                    <Image src={option.imageUrl} alt={option.name} fill sizes="(max-width: 640px) 100vw, 50vw" className="object-cover transition-transform duration-500 hover:scale-105" unoptimized />
+                                  ) : (
+                                    <div className="flex h-full items-center justify-center text-slate-300"><ImageIcon className="h-10 w-10" /></div>
+                                  )}
+                                  <span className={`absolute left-3 top-3 rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-widest ${selected ? 'bg-primary text-white' : 'bg-white/90 text-slate-600'}`}>
+                                    {selected ? 'Selected' : 'Choose item'}
+                                  </span>
+                                  <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/75 px-3 py-1 text-[10px] font-black text-white">
+                                    {option.stock > 0 ? `${option.stock} in catalogue` : 'Stock to be confirmed'}
+                                  </span>
+                                </div>
+                                <div className="space-y-2 p-4">
+                                  <div className="flex items-start gap-3">
+                                    <input type="checkbox" checked={selected} onChange={() => toggleSelectedGood(option.id)} onClick={event => event.stopPropagation()} className="mt-1 h-4 w-4 shrink-0 accent-primary" aria-label={`Select ${option.name}`} />
+                                    <span className="min-w-0">
+                                      <span className="block font-black text-slate-900">{option.name}</span>
+                                      <span className="mt-1 block text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">{option.brand || option.category}</span>
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                    <span className="rounded-lg bg-slate-50 px-3 py-2 font-bold text-slate-600">Catalogue {option.cataloguePrice > 0 ? `KSh ${option.cataloguePrice.toLocaleString()}` : 'Price on review'}</span>
+                                    <span className="rounded-lg bg-slate-50 px-3 py-2 font-bold text-slate-600">{option.sizes.length ? option.sizes.join(' · ') : 'Standard size'}</span>
+                                  </div>
+                                </div>
+                              </div>
                               {selected && (
-                                <label className="ml-7 mt-3 block text-xs font-bold text-slate-600">
+                                <label className="block border-t border-primary/10 bg-primary/[0.03] p-4 text-xs font-black uppercase tracking-widest text-slate-600">
                                   Your offer price (KSh)
-                                  <Input
-                                    type="number"
-                                    min="0.01"
-                                    max="10000000"
-                                    step="0.01"
-                                    required
-                                    value={offeredGoodsPrices[option.id] || ''}
-                                    onChange={event => setOfferedGoodsPrices(current => ({ ...current, [option.id]: event.target.value }))}
-                                    placeholder="e.g. 1,500"
-                                    className="mt-1 h-10 rounded-lg"
-                                  />
+                                  <Input type="number" min="0.01" max="10000000" step="0.01" required value={offeredGoodsPrices[option.id] || ''} onChange={event => setOfferedGoodsPrices(current => ({ ...current, [option.id]: event.target.value }))} placeholder="e.g. 1,500" className="mt-2 h-11 rounded-xl bg-white text-base font-bold normal-case tracking-normal" />
                                 </label>
                               )}
                             </div>
