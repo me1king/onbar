@@ -24,6 +24,7 @@ import JsonLd from "@/components/seo/JsonLd";
 import AnalyticsSwitcher from "@/components/layout/AnalyticsSwitcher";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import InstallAppWidget from "@/components/layout/InstallAppWidget";
+import RoleAppInstaller from "@/components/layout/RoleAppInstaller";
 import ExperienceNotificationHost from "@/components/layout/ExperienceNotificationHost";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import RootStabilityGuard from "@/components/layout/RootStabilityGuard";
@@ -57,6 +58,7 @@ export default function RootLayout({
 
                         <Suspense fallback={null}>
                             <InstallAppWidget />
+                            <RoleAppInstaller />
                             <ExperienceNotificationHost />
                             <MobileBottomNav />
                         </Suspense>

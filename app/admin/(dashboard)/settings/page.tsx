@@ -201,6 +201,10 @@ export default function AdminSettingsPage() {
         fraud_shield_enabled: true,
         analytics_provider: 'app'
     });
+    const [appInstallAccess, setAppInstallAccess] = useState({
+        rider_app_install_enabled: false,
+        merchant_app_install_enabled: false
+    });
 
     const [expandedIntegration, setExpandedIntegration] = useState<string | null>(null);
     const [promotionSyncMessage, setPromotionSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -287,6 +291,12 @@ export default function AdminSettingsPage() {
                             ? item.value.analytics_provider
                             : 'app'
                     } as typeof features);
+                    if (item.key === 'rider_app_install_enabled') {
+                        setAppInstallAccess(previous => ({ ...previous, rider_app_install_enabled: (item.value as unknown) === true }));
+                    }
+                    if (item.key === 'merchant_app_install_enabled') {
+                        setAppInstallAccess(previous => ({ ...previous, merchant_app_install_enabled: (item.value as unknown) === true }));
+                    }
                 });
             }
 
@@ -445,11 +455,13 @@ export default function AdminSettingsPage() {
         try {
             await saveSettings([
                 { key: 'contact', value: contact, is_published: true },
-                { key: 'shipping', value: shipping, is_published: true }
+                { key: 'shipping', value: shipping, is_published: true },
+                { key: 'rider_app_install_enabled', value: appInstallAccess.rider_app_install_enabled, is_published: true },
+                { key: 'merchant_app_install_enabled', value: appInstallAccess.merchant_app_install_enabled, is_published: true }
             ]);
 
-            await logAuditAction(email, 'UPDATE_SETTINGS', { keys: ['contact', 'shipping'], published: true });
-            setMessage({ type: 'success', text: 'Contact and delivery prices are live at checkout.' });
+            await logAuditAction(email, 'UPDATE_SETTINGS', { keys: ['contact', 'shipping', 'rider_app_install_enabled', 'merchant_app_install_enabled'], published: true });
+            setMessage({ type: 'success', text: 'Operations settings and approved app access are live.' });
             setTimeout(() => setMessage(null), 5000);
         } catch (err) {
             console.error('Operations settings save failed:', err);
@@ -1411,6 +1423,25 @@ export default function AdminSettingsPage() {
                             <div className="mt-8">
                                 <DeliveryAreaManager />
                             </div>
+
+                            <Card className="rounded-[3rem] border border-primary/20 p-10 bg-primary/[0.03] shadow-sm space-y-6 mt-8 text-left">
+                                <div>
+                                    <h2 className="text-xl font-black text-foreground uppercase">Approved mini-app access</h2>
+                                    <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                                        Install prompts only appear when this switch is enabled and the person has a verified rider session or approved merchant account. Turning access off stops new prompts; it does not delete apps already installed.
+                                    </p>
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-border bg-card p-5">
+                                        <span><strong className="block text-sm font-black uppercase">Rider Terminal</strong><small className="text-xs text-muted-foreground">Verified riders only</small></span>
+                                        <input type="checkbox" className="h-5 w-5 accent-primary" checked={appInstallAccess.rider_app_install_enabled} onChange={event => setAppInstallAccess({ ...appInstallAccess, rider_app_install_enabled: event.target.checked })} />
+                                    </label>
+                                    <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-border bg-card p-5">
+                                        <span><strong className="block text-sm font-black uppercase">Merchant Hub</strong><small className="text-xs text-muted-foreground">Approved merchants only</small></span>
+                                        <input type="checkbox" className="h-5 w-5 accent-primary" checked={appInstallAccess.merchant_app_install_enabled} onChange={event => setAppInstallAccess({ ...appInstallAccess, merchant_app_install_enabled: event.target.checked })} />
+                                    </label>
+                                </div>
+                            </Card>
 
                             <Card className="rounded-[3rem] border border-border p-10 bg-card shadow-sm space-y-8 mt-8 text-left">
                                 <div className="flex justify-between items-center text-left">

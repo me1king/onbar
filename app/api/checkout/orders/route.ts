@@ -72,6 +72,22 @@ type ProductRow = {
   gift_packaging_fee?: number | string | null;
 };
 
+class StockUnavailableError extends Error {
+  readonly stockIssue: {
+    productId: number;
+    productName: string;
+    size: string;
+    availableStock: number;
+    requestedQuantity: number;
+  };
+
+  constructor(stockIssue: StockUnavailableError['stockIssue']) {
+    super(`${stockIssue.productName} (${stockIssue.size}) is out of stock.`);
+    this.name = 'StockUnavailableError';
+    this.stockIssue = stockIssue;
+  }
+}
+
 function getDatabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -391,7 +407,13 @@ export async function POST(request: Request) {
       const product = item.product;
       const availableStock = Number(product.variant_stock?.[item.size] ?? product.stock ?? 0);
       if (!Number.isFinite(availableStock) || availableStock < item.quantity) {
-        throw new Error(`${product.name} (${item.size}) has insufficient stock. Refresh your cart.`);
+        throw new StockUnavailableError({
+          productId: product.id,
+          productName: product.name,
+          size: item.size,
+          availableStock: Number.isFinite(availableStock) ? Math.max(0, availableStock) : 0,
+          requestedQuantity: item.quantity
+        });
       }
       const variantPrices = getStoredVariantPrices(product.variant_prices, product.beverage_specs);
       const basePrice = Number(variantPrices?.[item.size] ?? product.price);
@@ -434,7 +456,13 @@ export async function POST(request: Request) {
       const product = productById.get(Number(productId))!;
       const availableStock = Number(product.variant_stock?.[size] ?? product.stock ?? 0);
       if (availableStock < quantity) {
-        throw new Error(`${product.name} (${size}) has insufficient stock. Refresh your cart.`);
+        throw new StockUnavailableError({
+          productId: product.id,
+          productName: product.name,
+          size,
+          availableStock: Number.isFinite(availableStock) ? Math.max(0, availableStock) : 0,
+          requestedQuantity: quantity
+        });
       }
     }
 
@@ -720,6 +748,13 @@ export async function POST(request: Request) {
       currency: 'KES'
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
+    if (error instanceof StockUnavailableError) {
+      return NextResponse.json({
+        error: error.message,
+        code: 'STOCK_UNAVAILABLE',
+        stockIssue: error.stockIssue
+      }, { status: 409 });
+    }
     if (error instanceof Error) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }

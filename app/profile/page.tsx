@@ -336,14 +336,14 @@ export default function ProfilePage() {
             notificationsResult,
             gameConfigResult
         ] = await Promise.all([
-            supabase.from('abandoned_carts').select('*').eq('customer_phone', session.user.email || '').maybeSingle().then(result => result.data).catch(() => null),
-            supabase.from('orders').select('*, order_items(id, product_id, quantity, products(name))').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || []).catch(() => []),
-            supabase.from('user_devices').select('*').eq('user_id', session.user.id).then(result => result.data || []).catch(() => []),
-            supabase.from('user_achievements').select('*').eq('user_id', session.user.id).then(result => result.data || []).catch(() => []),
-            supabase.from('warranties').select('*').eq('user_id', session.user.id).then(result => result.data || []).catch(() => []),
-            supabase.from('support_tickets').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || []).catch(() => []),
-            supabase.from('user_notifications').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || []).catch(() => []),
-            supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle().then(result => result.data?.value || null).catch(() => null)
+            supabase.from('abandoned_carts').select('*').eq('customer_phone', session.user.email || '').maybeSingle().then(result => result.data, () => null),
+            supabase.from('orders').select('*, order_items(id, product_id, quantity, products(name))').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || [], () => []),
+            supabase.from('user_devices').select('*').eq('user_id', session.user.id).then(result => result.data || [], () => []),
+            supabase.from('user_achievements').select('*').eq('user_id', session.user.id).then(result => result.data || [], () => []),
+            supabase.from('warranties').select('*').eq('user_id', session.user.id).then(result => result.data || [], () => []),
+            supabase.from('support_tickets').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || [], () => []),
+            supabase.from('user_notifications').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || [], () => []),
+            supabase.from('settings').select('*').eq('key', 'gamification').maybeSingle().then(result => result.data?.value || null, () => null)
         ]);
         const abandonedData = abandonedResult;
         const orderData = ordersResult;

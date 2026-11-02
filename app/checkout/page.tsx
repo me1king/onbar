@@ -21,6 +21,7 @@ import { OB_OS } from "@/lib/onlineBarOS";
 import { v4 as uuidv4 } from 'uuid';
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import { DeliveryArea, findDeliveryArea, parseDeliveryAreas } from "@/lib/deliveryAreas";
+import DeliveryPushPreferences from "@/components/profile/DeliveryPushPreferences";
 
 const LocationPicker = dynamic(() => import("@/components/profile/LocationPicker"), {
     ssr: false,
@@ -59,7 +60,7 @@ declare global {
 
 
 function CheckoutContent() {
-  const { cart, clearCart } = useCart();
+  const { cart, clearCart, removeFromCart } = useCart();
   const { settings } = useSettings();
 
   const [customerName, setCustomerName] = useState("");
@@ -113,6 +114,13 @@ function CheckoutContent() {
   });
   const [placedOrderId, setPlacedOrderId] = useState<number | null>(null);
   const [isSystemLockdown, setIsSystemLockdown] = useState(false);
+  const [unavailableItem, setUnavailableItem] = useState<{
+    productId: number;
+    productName: string;
+    size: string;
+    availableStock: number;
+    requestedQuantity: number;
+  } | null>(null);
 
   useEffect(() => {
     try {
@@ -480,12 +488,23 @@ function CheckoutContent() {
       });
       const orderResult = await orderResponse.json() as {
           error?: string;
+          code?: string;
+          stockIssue?: {
+            productId: number;
+            productName: string;
+            size: string;
+            availableStock: number;
+            requestedQuantity: number;
+          };
           orderId?: number;
           reference?: string | null;
           total?: number;
           currency?: string;
       };
       if (!orderResponse.ok || !orderResult.orderId || typeof orderResult.total !== 'number') {
+          if (orderResult.code === 'STOCK_UNAVAILABLE' && orderResult.stockIssue) {
+            setUnavailableItem(orderResult.stockIssue);
+          }
           throw new Error(orderResult.error || 'The order could not be created.');
       }
       const orderId = orderResult.orderId;
@@ -548,12 +567,16 @@ function CheckoutContent() {
 
         handler.openIframe();
       } else {
+        await new Promise(resolve => window.setTimeout(resolve, 3000));
         finalizeOrder(orderId, authoritativeTotal);
       }
     } catch (error: unknown) {
         const err = error as Error;
         console.error("Checkout Error:", err);
-        setCheckoutStatus({ type: "error", message: err.message || "An unexpected error occurred." });
+        const message = err instanceof TypeError && /fetch/i.test(err.message)
+          ? "We could not reach the order service. Check your connection and try again."
+          : err.message || "An unexpected error occurred.";
+        setCheckoutStatus({ type: "error", message });
         setIsPlacingOrder(false);
     }
   };
@@ -627,6 +650,7 @@ function CheckoutContent() {
   return (
     <div className="container mx-auto px-4 py-12 max-w-7xl text-left min-h-screen">
       <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
+      <DeliveryPushPreferences />
       {isPickingLocation && (
           <LocationPicker
             initialLat={coords.lat ?? undefined}
@@ -1107,22 +1131,45 @@ function CheckoutContent() {
                                 <Shield className="h-8 w-8" />
                               </div>
                           </div>
-                          <h3 className="text-2xl font-black uppercase tracking-tighter mb-4">Protocol Conflict</h3>
+                          <h3 className="text-2xl font-black uppercase tracking-tighter mb-4">
+                            {unavailableItem ? "Item unavailable" : "Checkout needs attention"}
+                          </h3>
                           <p className="mb-12 text-sm font-medium text-slate-600 italic leading-relaxed max-w-xs mx-auto">&quot;{checkoutStatus.message}&quot;</p>
 
                           <div className="flex flex-col gap-4">
-                              <Button
-                                onClick={handlePlaceOrder}
-                                className="h-18 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all border-none"
-                              >
-                                  Retry M-Pesa Protocol
-                              </Button>
+                              {unavailableItem ? (
+                                <>
+                                  <Button
+                                    onClick={() => {
+                                      removeFromCart(unavailableItem.productId);
+                                      setUnavailableItem(null);
+                                      setCheckoutStatus({ type: "idle", message: "" });
+                                    }}
+                                    className="h-18 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all border-none"
+                                  >
+                                    Remove unavailable item
+                                  </Button>
+                                  <Button asChild variant="outline" className="h-16 rounded-2xl border-2 border-slate-300 bg-white text-slate-600 font-black uppercase text-[10px] tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95">
+                                    <Link href="/shop">Browse available drinks</Link>
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  onClick={handlePlaceOrder}
+                                  className="h-18 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all border-none"
+                                >
+                                    Try checkout again
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
-                                onClick={() => { setPaymentMethod("COD"); setCheckoutStatus({ type: "idle", message: "" }); }}
+                                onClick={() => {
+                                  setUnavailableItem(null);
+                                  setCheckoutStatus({ type: "idle", message: "" });
+                                }}
                                 className="h-16 rounded-2xl border-2 border-slate-300 bg-white text-slate-600 font-black uppercase text-[10px] tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
                               >
-                                  Switch to Cash on Delivery
+                                  Edit cart
                               </Button>
                           </div>
                       </div>

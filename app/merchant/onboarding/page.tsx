@@ -50,12 +50,21 @@ type DocumentType =
   | 'other_permit';
 
 const businessTypeLabels: Record<MerchantBusinessType, string> = {
-  bar: 'Bar / Venue',
-  kitchen: 'Kitchen',
+  bar: 'Alcohol seller / venue',
+  kitchen: 'Kitchen / prepared food',
   restaurant: 'Restaurant',
-  food_vendor: 'Food Vendor',
-  supplier: 'Supplier',
-  delivery_partner: 'Delivery Partner'
+  food_vendor: 'Street-food vendor',
+  supplier: 'Alcohol supplier / wholesaler',
+  delivery_partner: 'Delivery partner'
+};
+
+const businessTypeDescriptions: Record<MerchantBusinessType, string> = {
+  bar: 'Bars, lounges, bottle shops, and licensed alcohol retailers.',
+  kitchen: 'Prepared meals, bites, snacks, and ready-to-serve food.',
+  restaurant: 'Restaurants offering a full food menu for delivery or collection.',
+  food_vendor: 'Street-food sellers, food trucks, grills, and pop-up vendors.',
+  supplier: 'Wholesale alcohol and beverage supply partners.',
+  delivery_partner: 'Approved delivery operators supporting order fulfilment.'
 };
 
 const vendorTypeLabels: Record<MerchantVendorType, string> = {
@@ -592,10 +601,10 @@ export default function MerchantOnboarding() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/10 text-primary">
             <Store size={30} />
           </div>
-          <p className="text-xs font-black uppercase tracking-[0.3em] text-primary">OnBar Merchant Network</p>
-          <h1 className="mt-2 text-3xl font-black uppercase tracking-tight text-slate-900 sm:text-4xl">Partner application</h1>
+          <p className="text-xs font-black uppercase tracking-[0.3em] text-primary">OnBar Partner Network</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Apply to sell or fulfil with OnBar</h1>
           <p className="mx-auto mt-3 max-w-xl text-sm text-slate-600">
-            Submit your business for verification. Requirements vary by business type; approval and activation require an OnBar review.
+            Choose the partner lane that matches what you actually offer: alcohol, prepared food, street food, wholesale supply, or delivery. We review your documents before activation.
           </p>
           {!invitation && (
             <p className="mt-3 text-xs text-slate-500">
@@ -643,12 +652,12 @@ export default function MerchantOnboarding() {
                         const category = merchantVendorTypeForBusinessType(type);
                         if (category) setVendorType(category);
                       }}
-                      className={`flex min-h-16 items-center gap-3 rounded-2xl border p-4 text-left text-sm font-bold transition ${
+                      className={`flex min-h-20 items-start gap-3 rounded-2xl border p-4 text-left transition ${
                         businessType === type ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 hover:border-primary/50'
                       }`}
                     >
-                      {isFoodBusinessType(type) ? <Utensils size={18} /> : type === 'delivery_partner' ? <Truck size={18} /> : <Store size={18} />}
-                      {businessTypeLabels[type]}
+                      <span className="mt-0.5 shrink-0">{isFoodBusinessType(type) ? <Utensils size={18} /> : type === 'delivery_partner' ? <Truck size={18} /> : <Store size={18} />}</span>
+                      <span><strong className="block text-sm font-extrabold">{businessTypeLabels[type]}</strong><small className="mt-1 block text-xs font-medium leading-5 text-slate-500">{businessTypeDescriptions[type]}</small></span>
                     </button>
                   ))}
                 </div>
@@ -666,7 +675,7 @@ export default function MerchantOnboarding() {
                 </div>
               ) : businessType !== 'delivery_partner' && (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-800">
-                  Vendor category: {vendorTypeLabels[vendorType]}
+                Marketplace partner lane: {vendorTypeLabels[vendorType]}
                   <span className="mt-1 block text-xs font-normal text-slate-500">
                     This category matches your business type and determines its performance targets and compliance checks.
                   </span>

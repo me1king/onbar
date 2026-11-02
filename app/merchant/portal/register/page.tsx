@@ -51,6 +51,11 @@ export default function MarketSellerAccountRegistrationPage() {
           <div className="mm-eyebrow">Private seller access</div>
           <h1>Create a Market seller account.</h1>
           <p className="mm-register-copy">This account is separate from customer sign-in. Creating one does not approve a shop or grant selling access.</p>
+          <div className="mm-partner-bridge">
+            <strong>Need to apply as an OnBar operating partner?</strong>
+            <span>Use the partner application for alcohol, prepared food, street food, wholesale supply, or delivery operations.</span>
+            <Link className="mm-text-link" href="/merchant/onboarding">Open OnBar Partner Application</Link>
+          </div>
           <form className="mm-form" onSubmit={createAccount}>
             <label>Full name<input required autoComplete="name" minLength={2} maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
             <label>Email<input required type="email" autoComplete="email" maxLength={254} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>

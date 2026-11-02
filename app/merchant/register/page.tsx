@@ -125,6 +125,11 @@ export default function MerchantRegistrationPage() {
           <div className="mm-eyebrow">Merchant Studio</div>
           <h1>Bring your boutique into the night.</h1>
           <p className="mm-register-copy">This private seller application uses a separate Market account. We confirm your email and phone before a shop can be approved to list products.</p>
+          <div className="mm-partner-bridge">
+            <strong>Applying as an OnBar partner?</strong>
+            <span>Alcohol sellers, bars, kitchens, restaurants, street-food vendors, wholesalers, and delivery partners should use the verified partner application.</span>
+            <Link className="mm-text-link" href="/merchant/onboarding">Open OnBar Partner Application <ArrowLeft size={14} className="rotate-180" /></Link>
+          </div>
           {loading
             ? <div className="mm-state">Checking your seller account…</div>
             : application && application.status !== 'information_requested'

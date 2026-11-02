@@ -55,7 +55,7 @@ type PartnerOrder = {
   customer_phone: string;
   customer_email: string | null;
   created_at: string;
-  items: Array<{ product_name: string; quantity: number; merchant_quantity: number; unit_price: number; size: string | null }>;
+  items: Array<{ product_name: string; quantity: number; merchant_quantity: number; unit_price: number; listed_price: number; selling_price: number; spread: number; size: string | null }>;
   fulfillment: FulfillmentEvent[];
 };
 type PartnerIncident = {
@@ -98,7 +98,7 @@ type PartnerApplication = {
     delivery_radius_km: number | null;
     collection_available: boolean;
     offered_goods: string[];
-    offered_goods_pricing: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
+    offered_goods_pricing: Array<{ product_id: number; product_name: string; price: number; currency: string; listed_price: number; selling_price: number; spread: number; margin_percent: number | null }>;
     documents: PartnerDocument[];
     status: string;
     review_note: string | null;
@@ -988,7 +988,7 @@ export default function OnBarPartnerNetworkPage() {
                 </div>
               </section>
             </div>
-            <p className="rounded-xl border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-500">This workspace shows verified application, inventory traceability and fulfillment records. It does not display payments, settlements, or revenue because those workflows are not connected to this merchant system.</p>
+            <p className="rounded-xl border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-500">This workspace shows verified application, inventory traceability, fulfillment records, and the per-item spread between the platform listed price and your approved selling price. It does not manage payouts or settlements.</p>
           </div>
         )}
 
@@ -1013,7 +1013,7 @@ export default function OnBarPartnerNetworkPage() {
                   <span className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase ${statusClass(latest || 'pending')}`}>{fulfillmentLabels[latest] || 'Awaiting response'}</span>
                 </div>
                 <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4 md:grid-cols-[1fr_auto]">
-                  <div className="space-y-2">{order.items.map((item, index) => <p key={`${item.product_name}-${index}`} className="text-sm text-slate-700"><strong>{item.merchant_quantity} × {item.product_name}</strong>{item.size ? ` · ${item.size}` : ''}</p>)}
+                  <div className="space-y-2">{order.items.map((item, index) => <div key={`${item.product_name}-${index}`} className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><p><strong>{item.merchant_quantity} × {item.product_name}</strong>{item.size ? ` · ${item.size}` : ''}</p><p className="mt-1 text-xs text-slate-500">Listed KSh {Number(item.listed_price).toLocaleString()} · Selling KSh {Number(item.selling_price).toLocaleString()} · <span className={item.spread >= 0 ? 'font-bold text-emerald-700' : 'font-bold text-rose-700'}>Spread {item.spread >= 0 ? '+' : ''}KSh {Number(item.spread).toLocaleString()} each</span></p></div>)}
                     <p className="mt-3 text-xs text-slate-500">Customer: <a className="font-semibold text-primary underline" href={`tel:${order.customer_phone}`}>{order.customer_phone}</a>{order.customer_email && <> · <a className="font-semibold text-primary underline" href={`mailto:${order.customer_email}`}>Email</a></>}</p>
                   </div>
                   <div className="flex flex-wrap gap-2 md:max-w-sm md:justify-end">
@@ -1189,14 +1189,17 @@ export default function OnBarPartnerNetworkPage() {
                       {application.offered_goods_pricing.map(good => (
                         <li key={good.product_id} className="flex items-center justify-between gap-3 rounded-xl bg-primary/5 px-3 py-2 text-sm">
                           <span className="font-semibold text-slate-800">{good.product_name}</span>
-                          <span className="shrink-0 font-black text-primary">{good.currency} {Number(good.price).toLocaleString()}</span>
+                          <span className="shrink-0 text-right">
+                            <strong className="block font-black text-primary">Sell {good.currency} {Number(good.selling_price).toLocaleString()}</strong>
+                            <small className={good.spread >= 0 ? 'text-emerald-700' : 'text-rose-700'}>Listed {good.currency} {Number(good.listed_price).toLocaleString()} · Spread {good.spread >= 0 ? '+' : ''}{good.currency} {Number(good.spread).toLocaleString()}</small>
+                          </span>
                         </li>
                       ))}
                     </ul>
                   ) : (
                     <p className="mt-2 text-sm text-slate-500">{application.offered_goods.length ? application.offered_goods.join(', ') : 'No goods were recorded on this application.'}{application.offered_goods.length ? ' · Proposed prices were not recorded.' : ''}</p>
                   )}
-                  <p className="mt-3 text-xs leading-5 text-slate-500">These are your proposed application prices. OnBar must approve and configure offers before they appear to customers. Inventory batches are tracked separately.</p>
+                  <p className="mt-3 text-xs leading-5 text-slate-500">Sell is your proposed partner price. Listed is the current platform catalog price. Spread is the difference per unit; OnBar must approve and configure offers before they appear to customers.</p>
                 </div>
               </article>
               <article className="rounded-2xl bg-white p-6 shadow-sm">

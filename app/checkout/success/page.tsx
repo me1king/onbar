@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, PackageCheck, Smartphone, MessageSquare, ArrowRight, Truck, ShieldCheck, Heart, Zap, Clock3 } from "lucide-react";
+import { CheckCircle2, PackageCheck, Smartphone, MessageSquare, ArrowRight, Truck, ShieldCheck, Heart, Zap, Clock3, MapPin } from "lucide-react";
 import Link from "next/link";
 import { formatPrice, getReferralLink } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
@@ -41,7 +41,13 @@ function SuccessContent() {
     const [loading, setLoading] = useState(true);
     const [loyaltyNotice, setLoyaltyNotice] = useState('');
     const [statusError, setStatusError] = useState('');
+    const [showArrivalAnimation, setShowArrivalAnimation] = useState(false);
     const { settings } = useSettings();
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => setShowArrivalAnimation(true), 250);
+        return () => window.clearTimeout(timer);
+    }, []);
 
     useEffect(() => {
         const client = supabase;
@@ -243,8 +249,8 @@ function SuccessContent() {
     return (
         <div className="container mx-auto px-4 py-12 max-w-2xl text-center">
             <div className="mb-12 flex flex-col items-center">
-                <div className={`h-24 w-24 rounded-full ${isPaymentPending ? 'bg-amber-100 text-amber-700' : 'bg-primary/10 text-primary'} flex items-center justify-center mb-6`}>
-                    {isPaymentPending ? <Clock3 className="h-12 w-12" /> : <CheckCircle2 className="h-12 w-12" />}
+                <div className={`relative h-24 w-24 rounded-full ${isPaymentPending ? 'bg-amber-100 text-amber-700' : 'bg-primary/10 text-primary'} flex items-center justify-center mb-6`}>
+                    {isPaymentPending ? <Clock3 className="h-12 w-12" /> : <CheckCircle2 className="h-12 w-12 animate-in zoom-in duration-500" />}
                 </div>
                 <h1 className="text-5xl font-black uppercase tracking-tighter text-foreground mb-2">
                     {isConfirmed ? 'Order Confirmed' : isPaymentPending ? 'Confirming Payment' : order ? 'Order Received' : 'Order Status'}
@@ -260,6 +266,24 @@ function SuccessContent() {
                 </p>
                 {statusError && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{statusError}</p>}
             </div>
+
+            {order && !isPaymentPending && (
+                <div className="mb-10 overflow-hidden rounded-[2.5rem] border border-primary/10 bg-gradient-to-r from-amber-50 via-white to-primary/5 p-6 shadow-lg">
+                    <div className="relative h-24">
+                        <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary/15" />
+                        <div className={`absolute top-1/2 -translate-y-1/2 text-primary transition-all duration-[2500ms] ease-out ${showArrivalAnimation ? 'left-[82%]' : 'left-[5%]'}`}>
+                            <Truck className="h-10 w-10 -rotate-6 drop-shadow-lg" />
+                        </div>
+                        <div className="absolute left-0 top-1/2 flex -translate-y-1/2 flex-col items-center text-[9px] font-black uppercase tracking-widest text-slate-400">
+                            <CheckCircle2 className="mb-1 h-5 w-5 text-emerald-500" /> Order received
+                        </div>
+                        <div className="absolute right-0 top-1/2 flex -translate-y-1/2 flex-col items-center text-[9px] font-black uppercase tracking-widest text-primary">
+                            <MapPin className="mb-1 h-5 w-5" /> On its way
+                        </div>
+                    </div>
+                    <p className="mt-2 text-center text-xs font-bold text-slate-500">Your rider is moving toward your delivery location.</p>
+                </div>
+            )}
 
             <Card className="rounded-[2.5rem] border-slate-100 shadow-2xl shadow-slate-200/50 overflow-hidden mb-10">
                 <CardContent className="p-0">

@@ -174,6 +174,7 @@ export default function AdminLayoutClient({
       { name: 'App Widgets', href: '/lord/experience/mobile-widgets', icon: Smartphone, permission: 'can_manage_settings' },
     ]},
     { group: 'OPERATIONS', items: [
+      { name: 'Operations Control Room', href: '/lord/operations', icon: Activity, minRole: 'viewer' },
       { name: 'Ticketing', href: '/lord/ticketing', icon: Ticket, minRole: 'admin' },
       { name: 'Live Runners', href: '/lord/dispatch', icon: Truck, permission: 'can_manage_orders' },
       { name: 'The Buzz Hub', href: '/lord/buzz', icon: Flame, permission: 'can_manage_marketing' },

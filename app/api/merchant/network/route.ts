@@ -112,7 +112,13 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
 
   const batchRows = batches || [];
   const batchIds = batchRows.map(batch => batch.id);
-  const productIds = [...new Set(batchRows.map(batch => batch.product_id))];
+  const applicationOffers = Array.isArray(application.offered_goods_pricing)
+    ? application.offered_goods_pricing as Array<Record<string, unknown>>
+    : [];
+  const offeredProductIds = applicationOffers
+    .map(offer => Number(offer.product_id))
+    .filter(Number.isSafeInteger);
+  const productIds = [...new Set([...batchRows.map(batch => batch.product_id), ...offeredProductIds])];
   const [
     { data: products, error: productsError },
     { data: movements, error: movementsError },
@@ -120,7 +126,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     { data: traces, error: tracesError }
   ] = await Promise.all([
     productIds.length
-      ? database.from('products').select('id, name, sku, category').in('id', productIds)
+      ? database.from('products').select('id, name, sku, category, price').in('id', productIds)
       : Promise.resolve({ data: [], error: null }),
     batchIds.length
       ? database.from('merchant_inventory_movements')
@@ -187,6 +193,9 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
       .map(item => ({
         ...item,
         product_name: productRows.find(product => product.id === item.product_id)?.name || 'Product',
+        listed_price: Number(productRows.find(product => product.id === item.product_id)?.price || 0),
+        selling_price: Number(item.unit_price || 0),
+        spread: Number(item.unit_price || 0) - Number(productRows.find(product => product.id === item.product_id)?.price || 0),
         merchant_quantity: Math.max(0,
           traceRows
             .filter(trace => Number(trace.order_item_id) === Number(item.id))
@@ -215,6 +224,18 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   return {
     application: {
       ...application,
+      offered_goods_pricing: applicationOffers.map(offer => {
+        const product = productRows.find(row => Number(row.id) === Number(offer.product_id));
+        const sellingPrice = Number(offer.price || 0);
+        const listedPrice = Number(product?.price || 0);
+        return {
+          ...offer,
+          listed_price: listedPrice,
+          selling_price: sellingPrice,
+          spread: sellingPrice - listedPrice,
+          margin_percent: listedPrice > 0 ? ((sellingPrice - listedPrice) / listedPrice) * 100 : null
+        };
+      }),
       documents: Array.isArray(application.documents)
         ? (application.documents as Array<Record<string, unknown>>).map(document => ({
           id: document.id,

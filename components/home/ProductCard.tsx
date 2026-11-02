@@ -302,7 +302,9 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
                             ? (isLocked ? 'Locked' : !isBiteOpen ? 'Closed' : 'Sold out')
                             : justAdded
                                 ? 'Added'
-                                : product.is_bite || product.is_snack
+                                : product.stock === 0
+                                    ? 'Out of stock'
+                                    : product.is_bite || product.is_snack
                                     ? 'Buy'
                                     : <><span className="sm:hidden">Buy</span><span className="hidden sm:inline">Add to cart</span></>}
                     </span>
