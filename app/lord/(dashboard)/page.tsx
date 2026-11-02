@@ -5,6 +5,7 @@ import Image from 'next/image';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
   History as HistoryIcon,
+  Activity,
   Send,
   ShieldCheck,
   Loader2,
@@ -243,6 +244,11 @@ export default function AdminDashboard() {
               </div>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
+              <Link href="/lord/operations" className="w-full sm:w-auto">
+                  <Button variant="outline" className="w-full h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl border-primary/30 bg-white text-primary font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-sm hover:bg-primary/5 transition-all">
+                      <Activity className="h-4 w-4 mr-2" /> Operations Command
+                  </Button>
+              </Link>
               <Link href="/lord/forge" className="w-full sm:w-auto">
                   <Button className="w-full h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl bg-primary text-white font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-xl hover:bg-primary/90 transition-all">
                       <Package className="h-4 w-4 mr-2" /> Manage Products

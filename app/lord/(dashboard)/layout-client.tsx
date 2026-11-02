@@ -157,6 +157,7 @@ export default function AdminLayoutClient({
   const allNavItems = [
     { group: 'SHIFT CONTROL', items: [
       { name: 'Shift Console', href: '/lord', icon: LayoutDashboard, minRole: 'viewer' },
+      { name: 'Operations Command Center', href: '/lord/operations', icon: Activity, permission: 'can_manage_orders' },
     ]},
     { group: 'INVENTORY', items: [
       { name: 'Cellar Hub', href: '/lord/upload', icon: Wine, permission: 'can_manage_inventory' },
