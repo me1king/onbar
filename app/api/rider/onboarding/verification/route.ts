@@ -63,6 +63,41 @@ export async function GET(request: Request) {
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
+export async function PATCH(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+  }
+
+  let body: { phone?: unknown; biometricKey?: unknown };
+  try {
+    body = await request.json() as { phone?: unknown; biometricKey?: unknown };
+  } catch {
+    return NextResponse.json({ error: 'Submit a valid biometric registration.' }, { status: 400 });
+  }
+
+  const phone = normalizePhone(typeof body.phone === 'string' ? body.phone : '');
+  const biometricKey = body.biometricKey;
+  if (!phone || !biometricKey || typeof biometricKey !== 'object' || Array.isArray(biometricKey)) {
+    return NextResponse.json({ error: 'A valid rider phone number and biometric credential are required.' }, { status: 400 });
+  }
+
+  const database = getDatabase();
+  if (!database) return NextResponse.json({ error: 'Rider verification is not configured on the server.' }, { status: 503 });
+
+  const { data, error } = await database.from('rider_status')
+    .update({ biometric_key: biometricKey })
+    .eq('rider_phone', phone)
+    .select('rider_phone')
+    .maybeSingle();
+  if (error) {
+    console.error('[RiderOnboarding] Could not save biometric credential:', error);
+    return NextResponse.json({ error: 'Biometric registration could not be saved.' }, { status: 503 });
+  }
+  if (!data) return NextResponse.json({ error: 'Submit identity verification before registering biometrics.' }, { status: 409 });
+
+  return NextResponse.json({ saved: true });
+}
+
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) {
     return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });

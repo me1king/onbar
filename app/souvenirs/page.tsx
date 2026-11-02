@@ -27,7 +27,7 @@ interface SouvenirItem {
     category: string;
     material?: string;
     finish?: string;
-    capacity_oz?: number;
+    capacity_ml?: number;
     weight_grams?: number;
     is_souvenir?: boolean;
     price: number;
@@ -249,9 +249,9 @@ export default function SouvenirPalacePage() {
                                         {/* Image Stage */}
                                         <div className="relative aspect-square w-full min-w-0 rounded-xl sm:rounded-[2.5rem] bg-slate-50/80 border border-slate-100 overflow-hidden flex items-center justify-center p-2 sm:p-6 shadow-inner group-hover:scale-105 transition-transform duration-700">
                                             <DecodedImage src={normalizeImage(img)} alt={item.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-contain p-2 sm:p-4" />
-                                            {item.capacity_oz ? (
+                                            {item.capacity_ml ? (
                                                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full border border-slate-200/80 shadow-sm text-[9px] font-black uppercase text-foreground">
-                                                    {item.capacity_oz} oz
+                                                    {item.capacity_ml} ml
                                                 </div>
                                             ) : null}
                                         </div>

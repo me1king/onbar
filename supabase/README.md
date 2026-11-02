@@ -112,7 +112,10 @@ release; do not treat the owner account as an accounting or settlement system.
 After applying `DISPATCH_MIGRATION.sql`, apply
 `RIDER_ORDER_ALERTS_MIGRATION.sql`. Riders must enable push notifications in
 Rider Command while signed in. On an admin-confirmed assignment, the server
-sends a web push immediately and queues a Twilio SMS reminder after 10 seconds.
+sends a web push immediately, queues a Twilio SMS escalation after 20 seconds,
+and escalates to voice at 45 seconds. If no approved merchant accepts within
+60 seconds, the server redistributes the paid order and the admin dispatch
+queue can take control of rider scheduling.
 The existing `worker:merchant-alerts` process handles both merchant escalations
 and rider SMS. Redis, Twilio, VAPID keys, and an always-running worker are
 required for those channels.

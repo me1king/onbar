@@ -242,8 +242,8 @@ export default function BiteCommandPage() {
             )}
 
             {/* HERO SECTION */}
-            <header className="bg-white border-b border-slate-200/80 py-16 px-4 sm:px-6 lg:px-8 relative overflow-hidden shadow-sm">
-                <div className="max-w-7xl mx-auto relative z-10 space-y-6">
+            <header className="bg-white border-b border-slate-200/80 py-8 sm:py-10 px-4 sm:px-6 lg:px-8 relative overflow-hidden shadow-sm">
+                <div className="max-w-7xl mx-auto relative z-10 space-y-4">
                     <Link href="/shop" className="inline-flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 hover:text-primary transition-colors">
                         <ArrowLeft size={16} /> Return to Main Menu
                     </Link>
@@ -266,7 +266,7 @@ export default function BiteCommandPage() {
 
             {/* CATEGORY TABS */}
             <div className="sticky top-16 bg-white/95 backdrop-blur-xl z-40 border-b border-slate-200/80 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3">
                     <label htmlFor="bite-category" className="sr-only">Filter food by category</label>
                     <select
                         id="bite-category"
@@ -294,23 +294,23 @@ export default function BiteCommandPage() {
             </div>
 
             {/* BITES GRID */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-12">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
                 {addError && (
                     <p role="alert" className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
                         {addError}
                     </p>
                 )}
                 {loading ? (
-                    <div className="py-2 sm:py-32 flex flex-col items-center justify-center gap-4">
+                    <div className="py-10 sm:py-16 flex flex-col items-center justify-center gap-4">
                         <Loader2 className="animate-spin text-primary" size={48} />
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Loading the street-food menu...</p>
                     </div>
                 ) : error ? (
-                    <div role="alert" className="px-4 py-0 sm:py-32 text-center text-rose-600">
+                    <div role="alert" className="px-4 py-10 sm:py-16 text-center text-rose-600">
                         <p className="text-xs sm:text-sm font-black uppercase tracking-wide sm:tracking-widest break-words">{error}</p>
                     </div>
                 ) : filteredBites.length === 0 ? (
-                    <div className="px-4 py-0 sm:py-32 text-center text-slate-400 space-y-4">
+                    <div className="px-4 py-10 sm:py-16 text-center text-slate-400 space-y-4">
                         <Utensils size={56} className="mx-auto opacity-30" />
                         <p className="text-sm font-black uppercase tracking-widest italic">
                             {bites.length === 0

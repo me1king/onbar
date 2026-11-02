@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import ProductCard from '@/components/home/ProductCard';
 import { Cookie, ArrowRight, Utensils } from 'lucide-react';
 import Link from 'next/link';
@@ -31,28 +30,16 @@ export default function AllProductsPage() {
       setLoading(true);
       setLoadError(null);
 
-      if (!supabase) {
-        if (active) {
-          setProducts([]);
-          setLoadError('The product catalogue is not configured. Please contact support.');
-          setLoading(false);
-        }
-        return;
-      }
-
       try {
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .abortSignal(AbortSignal.timeout(10_000));
-
-        if (error) {
-          throw error;
-        }
+        const response = await fetch('/api/catalog/products?limit=200', {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(8_000)
+        });
+        const result = await response.json() as { products?: Product[]; error?: string };
+        if (!response.ok) throw new Error(result.error || 'The product catalogue could not be loaded.');
 
         if (active) {
-          setProducts((data || []).filter(isStorefrontProductVisible) as Product[]);
+          setProducts((result.products || []).filter(isStorefrontProductVisible));
           setLoadError(null);
         }
       } catch (err) {
@@ -61,7 +48,7 @@ export default function AllProductsPage() {
           setProducts([]);
           setLoadError(
             err instanceof Error && err.name === 'TimeoutError'
-              ? 'The catalogue request timed out after 10 seconds. Check the database connection and try again.'
+              ? 'The catalogue request timed out after 8 seconds. Please try again.'
               : 'The catalogue could not be loaded. Check the database connection and try again.'
           );
         }
@@ -71,14 +58,8 @@ export default function AllProductsPage() {
     }
     void loadInventory();
 
-    const channel = supabase?.channel('realtime_storefront_shop')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
-        void loadInventory();
-      })
-      .subscribe();
     return () => {
       active = false;
-      if (supabase && channel) void supabase.removeChannel(channel);
     };
   }, [retryCount]);
 

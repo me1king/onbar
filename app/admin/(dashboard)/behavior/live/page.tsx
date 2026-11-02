@@ -46,6 +46,16 @@ interface StreamEventItem {
     page_url: string;
 }
 
+interface LiveOrder {
+    id: number;
+    status: string;
+    customer_name: string | null;
+    total_price: number | string | null;
+    created_at: string;
+    rider_name: string | null;
+    rider_phone: string | null;
+}
+
 function categorizeEvent(eventName: string) {
     const name = eventName.toUpperCase();
     if (name.includes('PRODUCT')) return 'PRODUCTS';
@@ -64,6 +74,7 @@ export default function LiveBehaviorCommandCenter() {
     const [error, setError] = React.useState<string | null>(null);
     const [terminals, setTerminals] = React.useState<LiveTerminalSession[]>([]);
     const [streamEvents, setStreamEvents] = React.useState<StreamEventItem[]>([]);
+    const [orders, setOrders] = React.useState<LiveOrder[]>([]);
     const [activeEventFilter, setActiveEventFilter] = React.useState<string>('ALL');
     const [metrics, setMetrics] = React.useState({
         activeSessions: 0,
@@ -86,6 +97,7 @@ export default function LiveBehaviorCommandCenter() {
                 metrics?: typeof metrics;
                 error?: string;
                 refreshedAt?: string;
+                orders?: LiveOrder[];
             };
             if (!response.ok || !result.metrics) throw new Error(result.error || 'Live customer activity could not be loaded.');
             setError(null);
@@ -99,12 +111,14 @@ export default function LiveBehaviorCommandCenter() {
                 timestamp: new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 action_type: categorizeEvent(event.action_type)
             })));
+            setOrders(result.orders || []);
             setLastUpdated(result.refreshedAt || new Date().toISOString());
         } catch (err) {
             console.error('Live behavior fetch error:', err);
             setTerminals([]);
             setSelectedTerminal(null);
             setStreamEvents([]);
+            setOrders([]);
             setMetrics({ activeSessions: 0, productViews: 0, cartsWithItems: 0, checkoutsStarted: 0, ordersToday: 0, activeDeliveries: 0 });
             setError(err instanceof Error ? err.message : 'Unable to load live behavior data.');
         } finally {
@@ -131,6 +145,16 @@ export default function LiveBehaviorCommandCenter() {
         { label: 'Orders Today', value: metrics.ordersToday },
         { label: 'Active Deliveries', value: metrics.activeDeliveries }
     ];
+
+    const orderColumns = [
+        { label: 'Placed', statuses: ['pending', 'placed', 'paid'] },
+        { label: 'Accepted', statuses: ['accepted', 'preparing', 'ready'] },
+        { label: 'Rider assigned', statuses: ['assigned', 'dispatched'] },
+        { label: 'On the way', statuses: ['out for delivery', 'picked_up', 'arriving'] },
+        { label: 'Delivered', statuses: ['delivered', 'completed'] }
+    ];
+
+    const normalizedStatus = (status: string) => status.trim().toLowerCase().replace(/_/g, ' ');
 
     return (
         <div className="min-h-screen space-y-6 bg-slate-50 p-3 pb-32 text-left selection:bg-primary/20 animate-in fade-in duration-700 sm:space-y-10 sm:p-6 sm:pb-40 lg:p-8">
@@ -202,6 +226,36 @@ export default function LiveBehaviorCommandCenter() {
             <div className="grid min-w-0 gap-5 text-left lg:grid-cols-12 lg:gap-8">
 
                 <div className="min-w-0 lg:col-span-7">
+
+                    <Card className="mb-5 min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-md sm:rounded-[2.5rem] sm:p-6">
+                        <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-4">
+                            <div>
+                                <h2 className="text-xl font-black uppercase tracking-tight text-foreground italic sm:text-2xl">Live Order Flow</h2>
+                                <p className="text-[10px] font-bold uppercase text-slate-400">All orders today · refreshes every 10 seconds</p>
+                            </div>
+                            <span className="rounded-full bg-primary/10 px-3 py-1 text-[9px] font-black uppercase text-primary">{orders.length} orders</span>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-5">
+                            {orderColumns.map(column => {
+                                const columnOrders = orders.filter(order => column.statuses.includes(normalizedStatus(order.status)));
+                                return (
+                                    <div key={column.label} className="min-w-0 rounded-2xl bg-slate-50 p-3">
+                                        <h3 className="mb-3 text-[9px] font-black uppercase tracking-wider text-slate-500">{column.label} ({columnOrders.length})</h3>
+                                        <div className="space-y-2">
+                                            {columnOrders.slice(0, 8).map(order => (
+                                                <div key={order.id} className="rounded-xl border border-slate-200 bg-white p-2.5">
+                                                    <p className="text-[10px] font-black text-foreground">#{order.id} · {order.customer_name || 'Customer'}</p>
+                                                    <p className="mt-1 text-[9px] font-bold text-slate-500">KSh {Number(order.total_price || 0).toLocaleString('en-KE')}</p>
+                                                    {order.rider_name && <p className="mt-1 truncate text-[8px] font-bold text-primary">Rider {order.rider_name}</p>}
+                                                </div>
+                                            ))}
+                                            {!columnOrders.length && <p className="py-4 text-center text-[9px] font-bold text-slate-400">None</p>}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </Card>
 
                     {/* 2. REAL-TIME INTERACTION STREAM */}
                     <Card className="min-w-0 space-y-5 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-md sm:space-y-6 sm:rounded-[2.5rem] sm:p-6 lg:rounded-[3.5rem] lg:p-8">

@@ -25,7 +25,7 @@ interface SouvenirProduct {
     category: string;
     material?: string;
     finish?: string;
-    capacity_oz?: number;
+    capacity_ml?: number;
     weight_grams?: number;
     price: number;
     old_price?: number;
@@ -55,7 +55,7 @@ export default function SouvenirForgePage() {
         brand: '',
         material: '',
         finish: '',
-        capacity_oz: '',
+        capacity_ml: '',
         weight_grams: '',
         stock: '',
         price: '',
@@ -177,7 +177,7 @@ export default function SouvenirForgePage() {
         const price = Number(formData.price);
         const stock = Number(formData.stock);
         const oldPrice = formData.old_price ? Number(formData.old_price) : null;
-        const capacity = formData.capacity_oz ? Number(formData.capacity_oz) : null;
+        const capacity = formData.capacity_ml ? Number(formData.capacity_ml) : null;
         const weight = formData.weight_grams ? Number(formData.weight_grams) : null;
         if (
             !formData.name.trim() || !formData.category ||
@@ -219,7 +219,7 @@ export default function SouvenirForgePage() {
                 brand: formData.brand.trim() || null,
                 material: formData.material.trim() || null,
                 finish: formData.finish.trim() || null,
-                capacity_oz: capacity,
+                capacity_ml: capacity,
                 weight_grams: weight,
                 price,
                 old_price: oldPrice,
@@ -243,7 +243,7 @@ export default function SouvenirForgePage() {
             setIsAddModalOpen(false);
             setImageFile(null);
             setFormData({
-                name: '', category: '', brand: '', material: '', finish: '', capacity_oz: '',
+                name: '', category: '', brand: '', material: '', finish: '',                 capacity_ml: '',
                 weight_grams: '', stock: '', price: '', old_price: '', description: '',
                 story: '', drink_pairings: ''
             });
@@ -543,14 +543,14 @@ export default function SouvenirForgePage() {
                                 </div>
 
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase text-slate-400">Capacity (oz)</label>
+                                    <label className="text-[10px] font-black uppercase text-slate-400">Capacity (ml)</label>
                                     <Input
                                         type="number"
                                         min="0.01"
                                         step="any"
-                                        value={formData.capacity_oz}
-                                        onChange={e => setFormData({ ...formData, capacity_oz: e.target.value })}
-                                        placeholder="8"
+                                        value={formData.capacity_ml}
+                                        onChange={e => setFormData({ ...formData, capacity_ml: e.target.value })}
+                                        placeholder="250"
                                         className="rounded-xl h-12 bg-slate-50 border-none"
                                     />
                                 </div>

@@ -82,7 +82,7 @@ async function claimDelivery(
     application_id: string;
     contact_id: string | null;
     channel: 'push' | 'sms' | 'voice' | 'timeout';
-    step: 'push' | 'sms_20s' | 'voice_60s' | 'timeout_90s' | 'test';
+    step: 'push' | 'sms_20s' | 'voice_45s' | 'timeout_60s' | 'test';
     recipient_key: string;
     status: string;
   }
@@ -143,7 +143,7 @@ async function pushToDevice(
           tag: `merchant-order-${input.orderId}`,
           orderId: input.orderId,
           requireInteraction: true,
-          expiresAt: new Date(Date.now() + 90_000).toISOString()
+          expiresAt: new Date(Date.now() + 60_000).toISOString()
         },
       input.orderId === null ? 300 : 90
     );
@@ -187,7 +187,7 @@ async function scheduleEscalation(input: OrderAlertJob) {
     });
     await targetQueue.add('voice', input, {
       jobId: `voice-${input.orderId}-${input.applicationId}`,
-      delay: 60_000,
+      delay: 45_000,
       attempts: 4,
       backoff: { type: 'exponential', delay: 5000 },
       removeOnComplete: 1000,
@@ -195,7 +195,7 @@ async function scheduleEscalation(input: OrderAlertJob) {
     });
     await targetQueue.add('timeout', input, {
       jobId: `timeout-${input.orderId}-${input.applicationId}`,
-      delay: 90_000,
+      delay: 60_000,
       attempts: 4,
       backoff: { type: 'exponential', delay: 5000 },
       removeOnComplete: 1000,
@@ -296,7 +296,7 @@ export async function alertAllocatedMerchants(database: SupabaseClient, orderId:
         application_id: application.id,
         contact_id: null,
         channel: 'timeout',
-        step: 'timeout_90s',
+        step: 'timeout_60s',
         recipient_key: 'scheduler',
         status: 'failed'
       });

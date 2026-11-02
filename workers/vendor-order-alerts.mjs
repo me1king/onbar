@@ -182,7 +182,7 @@ async function callContact(contact, job) {
     applicationId: job.applicationId,
     contactId: contact.id,
     channel: 'voice',
-    step: 'voice_60s',
+    step: 'voice_45s',
     recipientKey: contact.id
   });
   if (!alertId) return;
@@ -228,7 +228,7 @@ async function callContact(contact, job) {
 
 async function processChannel(job, channel) {
   const responseState = await getOrderResponse(job.orderId, job.applicationId);
-  const step = channel === 'sms' ? 'sms_20s' : 'voice_60s';
+  const step = channel === 'sms' ? 'sms_20s' : 'voice_45s';
   const contacts = await loadContactRecipients(job.applicationId, channel);
   if (responseState) {
     for (const contact of contacts) {
@@ -277,7 +277,7 @@ async function processTimeout(job) {
     application_id: job.applicationId,
     contact_id: null,
     channel: 'timeout',
-    step: 'timeout_90s',
+    step: 'timeout_60s',
     recipient_key: 'scheduler',
     status: state === 'missed' ? 'missed' : state === 'already_answered' ? 'stopped' : 'failed',
     error: state === 'missed' ? null : `Timeout was not applied: ${state}`,

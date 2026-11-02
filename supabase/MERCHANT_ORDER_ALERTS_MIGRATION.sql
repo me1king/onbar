@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS public.merchant_order_alert_log (
   application_id UUID NOT NULL REFERENCES public.merchant_applications(id) ON DELETE CASCADE,
   contact_id UUID REFERENCES public.merchant_alert_contacts(id) ON DELETE SET NULL,
   channel TEXT NOT NULL CHECK (channel IN ('push', 'sms', 'voice', 'timeout')),
-  step TEXT NOT NULL CHECK (step IN ('push', 'sms_20s', 'voice_60s', 'timeout_90s', 'test')),
+  step TEXT NOT NULL CHECK (step IN ('push', 'sms_20s', 'voice_45s', 'timeout_60s', 'test')),
   recipient_key TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('sending', 'sent', 'delivered', 'opened', 'accepted', 'failed', 'no_device', 'stopped', 'missed')),
   provider_id TEXT,
@@ -50,6 +50,21 @@ CREATE TABLE IF NOT EXISTS public.merchant_order_alert_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (order_id, application_id, channel, step, recipient_key)
 );
+
+ALTER TABLE public.merchant_order_alert_log
+  DROP CONSTRAINT IF EXISTS merchant_order_alert_log_step_check;
+
+UPDATE public.merchant_order_alert_log
+SET step = CASE step
+  WHEN 'voice_60s' THEN 'voice_45s'
+  WHEN 'timeout_90s' THEN 'timeout_60s'
+  ELSE step
+END
+WHERE step IN ('voice_60s', 'timeout_90s');
+
+ALTER TABLE public.merchant_order_alert_log
+  ADD CONSTRAINT merchant_order_alert_log_step_check
+  CHECK (step IN ('push', 'sms_20s', 'voice_45s', 'timeout_60s', 'test'));
 
 CREATE TABLE IF NOT EXISTS public.merchant_alert_worker_heartbeats (
   worker_key TEXT PRIMARY KEY,
@@ -223,7 +238,7 @@ BEGIN
   SET status = 'missed'
   WHERE order_id = p_order_id
     AND application_id = p_application_id
-    AND step = 'timeout_90s'
+    AND step = 'timeout_60s'
     AND status IN ('sending', 'sent', 'delivered');
 
   RETURN jsonb_build_object('status', 'missed', 'redistribution', redistribution);

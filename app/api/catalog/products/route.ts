@@ -4,7 +4,7 @@ import { isStorefrontProductVisible } from '@/lib/productVisibility';
 
 export const dynamic = 'force-dynamic';
 
-const publicProductColumns = 'id,name,price,old_price,description,short_description,image_url,images,sizes,size_label,category,sub_category,brand,stock,variant_stock,variant_prices,status,hide_product,is_available_now,is_featured,is_bite,is_snack,is_souvenir,material,finish,capacity_oz,weight_grams,story,drink_pairings,created_at,pairing_suggestions,bought_together_ids,engraving_enabled,engraving_fee,gift_packaging_fee';
+const publicProductColumns = 'id,name,price,old_price,description,short_description,image_url,images,sizes,size_label,category,sub_category,brand,stock,variant_stock,variant_prices,status,hide_product,is_available_now,is_featured,is_bite,is_snack,is_souvenir,material,finish,capacity_ml,capacity_oz,weight_grams,story,drink_pairings,created_at,pairing_suggestions,bought_together_ids,engraving_enabled,engraving_fee,gift_packaging_fee';
 const legacyPublicProductColumns = 'id,name,price,old_price,description,short_description,image_url,images,sizes,size_label,category,sub_category,brand,stock,variant_stock,variant_prices,status,hide_product,is_available_now,is_featured,is_bite,is_snack,is_souvenir,material,finish,capacity_oz,weight_grams,story,drink_pairings,created_at,pairing_suggestions,bought_together_ids';
 
 type PublicCatalogProduct = {
@@ -43,10 +43,10 @@ export async function GET(request: Request) {
   if (inStockOnly) query = query.gt('stock', 0);
 
   let { data, error } = await query.returns<PublicCatalogProduct[]>();
-  const missingEngravingColumns = Boolean(error
+  const missingOptionalColumns = Boolean(error
     && ['42703', 'PGRST204'].includes(error.code || '')
-    && /engraving_enabled|engraving_fee|gift_packaging_fee/i.test(error.message));
-  if (missingEngravingColumns) {
+    && /capacity_ml|engraving_enabled|engraving_fee|gift_packaging_fee/i.test(error.message));
+  if (missingOptionalColumns) {
     let legacyQuery = database.from('products')
       .select(legacyPublicProductColumns)
       .order('created_at', { ascending: false })
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     if (inStockOnly) legacyQuery = legacyQuery.gt('stock', 0);
     ({ data, error } = await legacyQuery.returns<PublicCatalogProduct[]>());
     if (!error) {
-      console.error('[PublicCatalog] Engraving migration is not applied; catalog is serving products without engraving.');
+      console.error('[PublicCatalog] Optional product columns are not installed; catalog is serving legacy product data.');
     }
   }
   if (error) {
@@ -69,6 +69,7 @@ export async function GET(request: Request) {
     .filter(product => !inStockOnly || Number(product.stock || 0) > 0)
     .map(product => ({
       ...product,
+      capacity_ml: Number(product.capacity_ml || (Number(product.capacity_oz || 0) * 29.5735).toFixed(2)) || null,
       price: Number(product.price),
       stock: Number(product.stock || 0),
       image_url: product.image_url || '',

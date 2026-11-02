@@ -147,9 +147,21 @@ export async function GET() {
     page_url: safePath(event.page_url)
   }));
 
+  const { data: recentOrders, error: recentOrdersError } = await database
+    .from('orders')
+    .select('id,status,customer_name,total_price,created_at,rider_name,rider_phone')
+    .gte('created_at', dayStart)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (recentOrdersError) {
+    console.error('[LiveBehavior] Could not load live order flow:', recentOrdersError);
+    return NextResponse.json({ error: 'Live order flow could not be loaded.' }, { status: 503 });
+  }
+
   return NextResponse.json({
     sessions,
     events,
+    orders: recentOrders || [],
     metrics: {
       activeSessions: activeResult.count || 0,
       productViews: productResult.count || 0,

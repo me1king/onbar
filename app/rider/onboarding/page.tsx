@@ -233,7 +233,16 @@ export default function RiderOnboarding() {
         setError(null);
         try {
             const normalized = normalizePhone(phone);
-            await registerBiometrics(normalized);
+            const biometricKey = await registerBiometrics(normalized);
+            if (biometricKey) {
+                const biometricResponse = await fetch('/api/rider/onboarding/verification', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: normalized, biometricKey })
+                });
+                const biometricResult = await biometricResponse.json() as { error?: string };
+                if (!biometricResponse.ok) throw new Error(biometricResult.error || 'Biometric registration could not be saved.');
+            }
             const response = await fetch(`/api/rider/onboarding/verification?phone=${encodeURIComponent(normalized)}`, {
                 cache: 'no-store'
             });
@@ -241,7 +250,8 @@ export default function RiderOnboarding() {
             if (!response.ok) throw new Error(result.error || 'Rider verification status could not be loaded.');
             if (result.verificationStatus === 'Verified') setStep('success');
             else await saveProgress('pending');
-        } catch {
+        } catch (biometricError) {
+            setError(biometricError instanceof Error ? biometricError.message : 'Biometric registration could not be saved.');
             await saveProgress('pending');
         } finally {
             setLoading(false);
