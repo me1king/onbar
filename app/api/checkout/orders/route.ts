@@ -721,22 +721,23 @@ export async function POST(request: Request) {
 
     const notificationSecret = process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
     if (notificationSecret) {
-      try {
-        const notificationResponse = await fetch(new URL('/api/admin/notify-customer', getPublicBaseUrl()), {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${notificationSecret}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ orderId: order.id, status: 'Pending' }),
-          cache: 'no-store'
+      void fetch(new URL('/api/admin/notify-customer', getPublicBaseUrl()), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${notificationSecret}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ orderId: order.id, status: 'Pending' }),
+        cache: 'no-store'
+      })
+        .then((notificationResponse) => {
+          if (!notificationResponse.ok) {
+            console.error('[CheckoutOrder] Order was created, but its placed notification failed:', notificationResponse.status);
+          }
+        })
+        .catch((notificationError: unknown) => {
+          console.error('[CheckoutOrder] Order was created, but its placed notification could not be sent:', notificationError);
         });
-        if (!notificationResponse.ok) {
-          console.error('[CheckoutOrder] Order was created, but its placed notification failed:', notificationResponse.status);
-        }
-      } catch (notificationError) {
-        console.error('[CheckoutOrder] Order was created, but its placed notification could not be sent:', notificationError);
-      }
     } else {
       console.error('[CheckoutOrder] Order was created, but INTERNAL_API_SECRET is not configured for placed notifications.');
     }
