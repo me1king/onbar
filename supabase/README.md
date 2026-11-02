@@ -177,6 +177,12 @@ for `/api/paystack/webhook`. The checkout requires a customer email and offers
 the payment channels enabled for the Paystack account. Cash is recorded as a
 rider-confirmed physical collection; it is not provider-verified.
 
+The customer checkout offers online payment or Cash on Delivery. The latter is
+deliberately a single checkout choice: the verified rider presents the
+available doorstep options after ID and one-time handover-code checks
+(cash, M-Pesa prompt, or scan-to-pay). This keeps the customer order record
+consistent while preserving an auditable payment method at the door.
+
 Test all provider callbacks and receipt notifications in staging before
 production. Do not mark an M-Pesa or QR attempt paid manually in the database.
 

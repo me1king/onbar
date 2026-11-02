@@ -1015,7 +1015,7 @@ export default function ProductDetailClient({
                 {(product.faq_data || [
                     { q: "What is the delivery timeline?", a: "Online Bar Nairobi mission protocol ensures most orders reach your grid coordinates within 20-45 minutes. Chilled dispatch is standard." },
                     { q: "Is this product authentic?", a: "Affirmative. Every node in our cellar is 100% genuine, sourced directly from authorized Kenyan distributors and bonded warehouses." },
-                    { q: "Can I pay on delivery?", a: "Negative. To maintain operational speed and rider security, we primarily support M-Pesa and Card authorization before dispatch." },
+                    { q: "Can I pay on delivery?", a: "Yes, where Cash on Delivery is available. At handover, a verified rider checks your ID and one-time code, then can record cash, send an M-Pesa prompt, or open a secure scan-to-pay checkout." },
                     { q: "What if my drink is warm?", a: "Chilled delivery is our prime directive. If your beverage arrives above 8°C, our dispatch hub will issue a tactical replacement." }
                 ]).map((faq, i) => (
                     <Card key={i} className="p-10 rounded-[3rem] bg-white border border-slate-100 hover:shadow-2xl transition-all group border-none">

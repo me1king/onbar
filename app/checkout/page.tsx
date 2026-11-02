@@ -888,13 +888,18 @@ function CheckoutContent() {
                 <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><CreditCard className="h-5 w-5" /></div>
                 <h2 className="text-xl font-black uppercase tracking-tighter">Payment Mode</h2>
             </div>
+            <p className="text-sm leading-6 text-slate-500">
+                Choose online payment now, or choose Cash on Delivery. For pay-on-delivery
+                orders, the verified rider can collect cash, send an M-Pesa prompt, or open
+                a secure scan-to-pay checkout after your ID and handover code are confirmed.
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <button data-behavior-id="checkout.payment_method" onClick={() => {
                     setPaymentMethod("M-Pesa");
                     OB_OS.track('UI_INTERACTION', { userId: user?.id, details: { id: 'checkout.payment_method', method: 'M-Pesa' } });
                   }} className={`p-6 rounded-3xl border-2 text-left transition-all ${paymentMethod === 'M-Pesa' ? 'border-primary bg-white shadow-xl' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}>
                     <p className="font-black uppercase tracking-tight text-foreground text-lg">M-Pesa</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Direct STK Push</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Pay now by M-Pesa or card</p>
                   </button>
 
                   <button data-behavior-id="checkout.payment_method" onClick={() => {
@@ -902,7 +907,7 @@ function CheckoutContent() {
                     OB_OS.track('UI_INTERACTION', { userId: user?.id, details: { id: 'checkout.payment_method', method: 'COD' } });
                   }} className={`p-6 rounded-3xl border-2 text-left transition-all ${paymentMethod === 'COD' ? 'border-primary bg-white shadow-xl' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}>
                     <p className="font-black uppercase tracking-tight text-foreground text-lg">Cash on Delivery</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Pay to Rider</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Cash, M-Pesa prompt, or secure scan at handover</p>
                   </button>
             </div>
           </section>
