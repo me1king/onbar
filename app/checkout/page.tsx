@@ -432,7 +432,7 @@ function CheckoutContent() {
     }
 
     setIsPlacingOrder(true);
-    setCheckoutStatus({ type: "processing", message: "Verifying prices and beverage availability..." });
+    setCheckoutStatus({ type: "processing", message: "Submitting your order..." });
 
     try {
       const client = supabase;

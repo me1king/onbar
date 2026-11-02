@@ -214,8 +214,13 @@ export async function alertAllocatedMerchants(database: SupabaseClient, orderId:
     .eq('id', orderId)
     .maybeSingle();
   if (orderError) throw orderError;
-  if (!order || String(order.status).toLowerCase() !== 'paid'
-    || !order.payment_verified_at || String(order.payment_method).toLowerCase() !== 'paystack') {
+  const paymentMethod = String(order?.payment_method || '').toLowerCase();
+  const isPaystackOrder = paymentMethod === 'paystack'
+    && String(order?.status || '').toLowerCase() === 'paid'
+    && Boolean(order?.payment_verified_at);
+  const isCodOrder = paymentMethod === 'cod'
+    && ['pending', 'placed', 'confirmed'].includes(String(order?.status || '').toLowerCase());
+  if (!order || (!isPaystackOrder && !isCodOrder)) {
     return { applications: 0, pushSent: 0, escalationQueued: false };
   }
 

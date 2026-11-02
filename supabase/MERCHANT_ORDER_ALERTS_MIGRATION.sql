@@ -119,9 +119,17 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Order not found';
   END IF;
-  IF lower(coalesce(target_order.status, '')) <> 'paid'
-    OR target_order.payment_verified_at IS NULL
-    OR lower(coalesce(target_order.payment_method, '')) <> 'paystack' THEN
+  IF NOT (
+    (
+      lower(coalesce(target_order.payment_method, '')) = 'cod'
+      AND lower(coalesce(target_order.status, '')) IN ('pending', 'placed', 'confirmed')
+    )
+    OR (
+      lower(coalesce(target_order.status, '')) = 'paid'
+      AND target_order.payment_verified_at IS NOT NULL
+      AND lower(coalesce(target_order.payment_method, '')) = 'paystack'
+    )
+  ) THEN
     RAISE EXCEPTION 'Only a verified paid order can be accepted';
   END IF;
   IF NOT EXISTS (
@@ -201,8 +209,16 @@ BEGIN
   IF NOT FOUND THEN
     RETURN jsonb_build_object('status', 'order_not_found');
   END IF;
-  IF lower(coalesce(target_order.status, '')) <> 'paid'
-    OR target_order.payment_verified_at IS NULL
+  IF NOT (
+      lower(coalesce(target_order.status, '')) IN ('pending', 'placed', 'confirmed', 'paid')
+      AND (
+        lower(coalesce(target_order.payment_method, '')) = 'cod'
+        OR (
+          lower(coalesce(target_order.payment_method, '')) = 'paystack'
+          AND target_order.payment_verified_at IS NOT NULL
+        )
+      )
+    )
     OR target_order.rider_phone IS NOT NULL THEN
     RETURN jsonb_build_object('status', 'order_not_open');
   END IF;

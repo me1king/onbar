@@ -855,9 +855,17 @@ BEGIN
     FROM public.orders
     WHERE id = parent_order_id;
     IF NOT FOUND
-       OR lower(coalesce(parent_order.status, '')) <> 'paid'
-       OR parent_order.payment_verified_at IS NULL
-       OR lower(coalesce(parent_order.payment_method, '')) <> 'paystack'
+       OR NOT (
+           (
+               lower(coalesce(parent_order.payment_method, '')) = 'cod'
+               AND lower(coalesce(parent_order.status, '')) IN ('pending', 'placed', 'confirmed')
+           )
+           OR (
+               lower(coalesce(parent_order.status, '')) = 'paid'
+               AND parent_order.payment_verified_at IS NOT NULL
+               AND lower(coalesce(parent_order.payment_method, '')) = 'paystack'
+           )
+       )
        OR parent_order.latitude IS NULL
        OR parent_order.longitude IS NULL
        OR to_regclass('public.payment_confirmations') IS NULL THEN
@@ -1030,9 +1038,17 @@ BEGIN
     WHERE orders.id = NEW.order_id;
 
     IF NOT FOUND
-       OR lower(coalesce(parent_order.status, '')) <> 'paid'
-       OR parent_order.payment_verified_at IS NULL
-       OR lower(coalesce(parent_order.payment_method, '')) <> 'paystack'
+       OR NOT (
+           (
+               lower(coalesce(parent_order.payment_method, '')) = 'cod'
+               AND lower(coalesce(parent_order.status, '')) IN ('pending', 'placed', 'confirmed')
+           )
+           OR (
+               lower(coalesce(parent_order.status, '')) = 'paid'
+               AND parent_order.payment_verified_at IS NOT NULL
+               AND lower(coalesce(parent_order.payment_method, '')) = 'paystack'
+           )
+       )
        OR to_regclass('public.payment_confirmations') IS NULL THEN
         RETURN NEW;
     END IF;

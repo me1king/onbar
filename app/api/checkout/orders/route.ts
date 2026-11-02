@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
 import { findDeliveryArea, parseDeliveryAreas } from '@/lib/deliveryAreas';
 import { getStoredVariantPrices } from '@/lib/productPricing';
 import { getPublicBaseUrl } from '@/lib/utils';
@@ -652,6 +653,18 @@ export async function POST(request: Request) {
         }, { status: 503 });
       }
       return NextResponse.json({ error: 'The order items could not be saved. Please try again.' }, { status: 503 });
+    }
+
+    if (body.paymentMethod === 'COD') {
+      void alertAllocatedMerchants(database, Number(order.id))
+        .then((alertResult) => {
+          if (alertResult.applications === 0) {
+            console.warn('[CheckoutOrder] COD order was created without an allocated merchant alert:', order.id);
+          }
+        })
+        .catch((alertError: unknown) => {
+          console.error('[CheckoutOrder] COD order was created, but merchant alerting failed:', alertError);
+        });
     }
 
     if (pointsRedeemed > 0 && userId) {

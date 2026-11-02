@@ -77,9 +77,17 @@ BEGIN
     WHERE orders.id = NEW.order_id;
 
     IF NOT FOUND
-       OR lower(coalesce(parent_order.status, '')) <> 'paid'
-       OR parent_order.payment_verified_at IS NULL
-       OR lower(coalesce(parent_order.payment_method, '')) <> 'paystack'
+       OR NOT (
+           (
+               lower(coalesce(parent_order.payment_method, '')) = 'cod'
+               AND lower(coalesce(parent_order.status, '')) IN ('pending', 'placed', 'confirmed')
+           )
+           OR (
+               lower(coalesce(parent_order.status, '')) = 'paid'
+               AND parent_order.payment_verified_at IS NOT NULL
+               AND lower(coalesce(parent_order.payment_method, '')) = 'paystack'
+           )
+       )
        OR parent_order.latitude IS NULL
        OR parent_order.longitude IS NULL THEN
         RETURN NEW;
@@ -254,9 +262,17 @@ AS $$
 DECLARE
     item_record RECORD;
 BEGIN
-    IF lower(coalesce(NEW.status, '')) <> 'paid'
-       OR NEW.payment_verified_at IS NULL
-       OR lower(coalesce(NEW.payment_method, '')) <> 'paystack'
+    IF NOT (
+        (
+            lower(coalesce(NEW.payment_method, '')) = 'cod'
+            AND lower(coalesce(NEW.status, '')) IN ('pending', 'placed', 'confirmed')
+        )
+        OR (
+            lower(coalesce(NEW.status, '')) = 'paid'
+            AND NEW.payment_verified_at IS NOT NULL
+            AND lower(coalesce(NEW.payment_method, '')) = 'paystack'
+        )
+    )
        OR (
            OLD.status IS NOT DISTINCT FROM NEW.status
            AND OLD.payment_verified_at IS NOT DISTINCT FROM NEW.payment_verified_at
@@ -391,22 +407,30 @@ BEGIN
     IF NOT FOUND THEN
         RETURN jsonb_build_object('success', false, 'code', 'ORDER_NOT_FOUND', 'error', 'Order not found.');
     END IF;
-    IF lower(coalesce(target_order.status, '')) <> 'paid'
-       OR target_order.payment_verified_at IS NULL
-       OR lower(coalesce(target_order.payment_method, '')) <> 'paystack'
-       OR target_order.checkout_request_id IS NULL
-       OR NOT EXISTS (
-           SELECT 1 FROM public.payment_confirmations confirmation
-           WHERE confirmation.order_id = target_order.id
-             AND confirmation.provider = 'Paystack'
-             AND confirmation.reference = target_order.checkout_request_id
-             AND confirmation.amount_kobo = round(target_order.total_price * 100)::BIGINT
-             AND confirmation.currency = 'KES'
-       ) THEN
+    IF NOT (
+       (
+         lower(coalesce(target_order.payment_method, '')) = 'cod'
+         AND lower(coalesce(target_order.status, '')) IN ('pending', 'placed', 'confirmed')
+       )
+       OR (
+         lower(coalesce(target_order.status, '')) = 'paid'
+         AND target_order.payment_verified_at IS NOT NULL
+         AND lower(coalesce(target_order.payment_method, '')) = 'paystack'
+         AND target_order.checkout_request_id IS NOT NULL
+         AND EXISTS (
+             SELECT 1 FROM public.payment_confirmations confirmation
+             WHERE confirmation.order_id = target_order.id
+               AND confirmation.provider = 'Paystack'
+               AND confirmation.reference = target_order.checkout_request_id
+               AND confirmation.amount_kobo = round(target_order.total_price * 100)::BIGINT
+               AND confirmation.currency = 'KES'
+         )
+       )
+    ) THEN
         RETURN jsonb_build_object(
             'success', false,
-            'code', 'PAYMENT_NOT_CONFIRMED',
-            'error', 'Retry is limited to orders with a matching server-verified Paystack payment.'
+            'code', 'ORDER_NOT_ELIGIBLE',
+            'error', 'Only an active COD order or a server-verified Paystack order can be redistributed.'
         );
     END IF;
     IF target_order.rider_phone IS NOT NULL
