@@ -38,6 +38,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
   const [imageError, setImageError] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const { addToCart } = useCart();
   const { isInWishlist, addToWishlist, removeFromWishlist } = useWishlist();
@@ -107,7 +108,8 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
     const variantPrice = getVariantPrice(product.price, variantPrices, variant);
 
     setIsAdding(true);
-    addToCart({
+    setAddError(null);
+    const result = await addToCart({
       id: product.id,
       name: product.name,
       price: variantPrice,
@@ -120,6 +122,10 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
       wholesale_min_qty: product.wholesale_min_qty
     });
     setIsAdding(false);
+    if (!result.ok) {
+      setAddError(result.error || 'This item is currently unavailable.');
+      return;
+    }
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 2000);
   };
@@ -321,6 +327,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
                 </button>
                 <button onClick={handleToggleLike} className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-100 transition-all sm:h-10 sm:w-10 sm:rounded-xl", isInWishlist(product.id) ? "bg-rose-50 text-rose-500 border-rose-100" : "bg-slate-50 text-slate-300 hover:text-rose-500")}><Heart size={16} fill={isInWishlist(product.id) ? "currentColor" : "none"} /></button>
             </div>
+            {addError && <p role="alert" className="mt-2 text-[9px] font-bold leading-4 text-rose-600">{addError}</p>}
         </CardContent>
       </Card>
     </>

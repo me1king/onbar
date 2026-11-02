@@ -35,12 +35,17 @@ export interface CartItem {
 interface CartContextProps {
   cart: CartItem[];
   compareList: Product[];
-  addToCart: (item: CartItem) => void;
+  addToCart: (item: CartItem) => Promise<AddToCartResult>;
   addBundleToCart: (items: CartItem[]) => void;
   toggleCompare: (item: Product) => void;
   removeFromCart: (id: number, cartKey?: string) => void;
   clearCart: () => void;
   updateQuantity: (id: number, quantity: number, cartKey?: string) => void;
+}
+
+export interface AddToCartResult {
+  ok: boolean;
+  error?: string;
 }
 
 function getCartKey(item: CartItem) {
@@ -81,7 +86,45 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem("cart", JSON.stringify(cart));
   }, [cart]);
 
-  const addToCart = async (item: CartItem) => {
+  const addToCart = async (item: CartItem): Promise<AddToCartResult> => {
+    if (!supabase) {
+      return { ok: false, error: 'Product availability could not be checked. Please refresh and try again.' };
+    }
+
+    const { data: liveProduct, error: availabilityError } = await supabase
+      .from('products')
+      .select('name, stock, variant_stock, is_bite, is_snack, is_available_now, operating_hours')
+      .eq('id', item.id)
+      .maybeSingle();
+
+    if (availabilityError || !liveProduct) {
+      console.error('[Cart] Could not verify live product availability:', availabilityError);
+      return { ok: false, error: 'Product availability could not be checked. Please refresh and try again.' };
+    }
+
+    const stock = Number(
+      (liveProduct.variant_stock as Record<string, number> | null)?.[item.size || 'Standard']
+      ?? liveProduct.stock
+      ?? 0
+    );
+    const requestedQuantity = Math.max(1, Number(item.quantity || 1));
+    const existingQuantity = cart
+      .filter(cartItem => getCartKey(cartItem) === getCartKey(item))
+      .reduce((total, cartItem) => total + cartItem.quantity, 0);
+
+    if (!Number.isFinite(stock) || stock < existingQuantity + requestedQuantity) {
+      return {
+        ok: false,
+        error: stock > 0
+          ? `Only ${stock} ${liveProduct.name || item.name} ${item.size ? `(${item.size}) ` : ''}available.`
+          : `${liveProduct.name || item.name} is currently unavailable.`
+      };
+    }
+
+    if ((liveProduct.is_bite || liveProduct.is_snack) && liveProduct.is_available_now === false) {
+      return { ok: false, error: `${liveProduct.name || item.name} is not available right now.` };
+    }
+
     // Meta Tracking
     const win = window as unknown as Window & { fbq?: (...args: unknown[]) => void };
     if (typeof window !== 'undefined' && win.fbq) {
@@ -129,6 +172,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         quantity: qty
       }];
     });
+    return { ok: true };
   };
 
   const addBundleToCart = (items: CartItem[]) => {

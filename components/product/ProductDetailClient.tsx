@@ -114,6 +114,7 @@ export default function ProductDetailClient({
     (product.sizes && product.sizes.length > 0) ? product.sizes[0] : 'Standard'
   );
   const [isAdding, setIsAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [is3DMode, setIs3DMode] = useState(false);
@@ -244,11 +245,12 @@ export default function ProductDetailClient({
     0
   );
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     setIsAdding(true);
+    setAddError(null);
     const selectedAddons = foodAddons.filter(addon => selectedFoodAddonIds.includes(addon.id));
     const addonTotal = selectedAddons.reduce((sum, addon) => sum + Number(addon.price), 0);
-    addToCart({
+    const result = await addToCart({
       id: product.id,
       name: product.name,
       price: selectedVariantPrice + addonTotal,
@@ -262,11 +264,13 @@ export default function ProductDetailClient({
       addons: selectedAddons.map(addon => ({ ...addon, price: Number(addon.price) }))
     });
 
-    setTimeout(() => {
-        setIsAdding(false);
-        setJustAdded(true);
-        setTimeout(() => setJustAdded(false), 2000);
-    }, 500);
+    setIsAdding(false);
+    if (!result.ok) {
+      setAddError(result.error || 'This item is currently unavailable.');
+      return;
+    }
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 2000);
   };
 
   const handleWhatsAppOrder = () => {
@@ -801,6 +805,7 @@ export default function ProductDetailClient({
                             <Share2 size={16} className="mr-2" /> Share
                         </Button>
                     </div>
+                    {addError && <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold leading-5 text-rose-700">{addError}</p>}
                 </div>
 
                 {!isFoodProduct && (
