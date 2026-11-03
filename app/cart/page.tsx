@@ -40,13 +40,13 @@ export default function Cart() {
         </Button>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-10">
+      <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+        <div className="min-w-0 space-y-10">
           <CartItemList />
           <SnackCrossSell />
         </div>
 
-        <div className="lg:col-span-1">
+        <div className="min-w-0">
           <OrderSummary />
         </div>
       </div>
