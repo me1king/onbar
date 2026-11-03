@@ -578,7 +578,6 @@ function CheckoutContent() {
 
         handler.openIframe();
       } else {
-        await new Promise(resolve => window.setTimeout(resolve, 3000));
         finalizeOrder(orderId, authoritativeTotal);
       }
     } catch (error: unknown) {
@@ -613,19 +612,20 @@ function CheckoutContent() {
         });
     }
 
-    // Awarding happens server-side once payment succeeds or delivery is confirmed.
+    // Keep post-order bookkeeping off the redirect-critical path.
     const client = supabase;
     if (user && client) {
-        try {
-            await runPostCheckoutAudit(user.id, orderTotal);
-        } catch (err) {
+        void runPostCheckoutAudit(user.id, orderTotal).catch(err => {
             console.error("Loyalty update error:", err);
-        }
+        });
     }
 
     // 2. Clear abandoned record on success
     if (client && customerPhone) {
-        await client.from('abandoned_carts').delete().eq('customer_phone', customerPhone);
+        void client.from('abandoned_carts').delete().eq('customer_phone', customerPhone)
+            .then(({ error }) => {
+                if (error) console.error("Abandoned cart cleanup error:", error);
+            });
     }
 
     clearCart();
