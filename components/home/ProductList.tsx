@@ -37,6 +37,22 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
     extras: Zap
 };
 
+const CATEGORY_COLORS = [
+  { ids: ['wine', 'wines', 'vintages'], inactive: 'border-rose-200 bg-rose-50 text-rose-800 hover:border-rose-300 hover:bg-rose-100', active: 'border-rose-600 bg-rose-600 text-white shadow-rose-600/25', icon: 'bg-rose-100 text-rose-700' },
+  { ids: ['spirits', 'whiskey', 'whisky'], inactive: 'border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-300 hover:bg-violet-100', active: 'border-violet-600 bg-violet-600 text-white shadow-violet-600/25', icon: 'bg-violet-100 text-violet-700' },
+  { ids: ['snacks', 'munchies', 'food'], inactive: 'border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300 hover:bg-orange-100', active: 'border-orange-600 bg-orange-600 text-white shadow-orange-600/25', icon: 'bg-orange-100 text-orange-700' },
+  { ids: ['beer', 'beers'], inactive: 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300 hover:bg-sky-100', active: 'border-sky-600 bg-sky-600 text-white shadow-sky-600/25', icon: 'bg-sky-100 text-sky-700' },
+  { ids: ['mixers', 'extras'], inactive: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100', active: 'border-emerald-600 bg-emerald-600 text-white shadow-emerald-600/25', icon: 'bg-emerald-100 text-emerald-700' }
+] as const;
+
+const FALLBACK_CATEGORY_COLORS = [
+  { inactive: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:border-fuchsia-300 hover:bg-fuchsia-100', active: 'border-fuchsia-600 bg-fuchsia-600 text-white shadow-fuchsia-600/25', icon: 'bg-fuchsia-100 text-fuchsia-700' },
+  { inactive: 'border-cyan-200 bg-cyan-50 text-cyan-800 hover:border-cyan-300 hover:bg-cyan-100', active: 'border-cyan-600 bg-cyan-600 text-white shadow-cyan-600/25', icon: 'bg-cyan-100 text-cyan-700' },
+  { inactive: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100', active: 'border-amber-600 bg-amber-600 text-white shadow-amber-600/25', icon: 'bg-amber-100 text-amber-700' },
+  { inactive: 'border-indigo-200 bg-indigo-50 text-indigo-800 hover:border-indigo-300 hover:bg-indigo-100', active: 'border-indigo-600 bg-indigo-600 text-white shadow-indigo-600/25', icon: 'bg-indigo-100 text-indigo-700' },
+  { inactive: 'border-lime-200 bg-lime-50 text-lime-800 hover:border-lime-300 hover:bg-lime-100', active: 'border-lime-600 bg-lime-600 text-white shadow-lime-600/25', icon: 'bg-lime-100 text-lime-700' }
+] as const;
+
 export default function ProductList({
   initialProducts,
   kicker,
@@ -296,25 +312,40 @@ export default function ProductList({
       {/* 1. Category Tabs & Quick Munchies */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 px-4">
           <div className="flex overflow-x-auto pb-2 gap-2.5 sm:gap-4 scrollbar-hide no-scrollbar -mx-4 px-4 flex-1">
-              {categories.map((cat) => (
+              {categories.map((cat, index) => {
+                  const color = cat.id === 'all'
+                    ? {
+                        inactive: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100',
+                        active: 'border-amber-500 bg-amber-500 text-white shadow-amber-500/25',
+                        icon: 'bg-amber-100 text-amber-700'
+                      }
+                    : CATEGORY_COLORS.find(group => group.ids.includes(cat.id as typeof group.ids[number]))
+                      || FALLBACK_CATEGORY_COLORS[(index - 1) % FALLBACK_CATEGORY_COLORS.length];
+                  const isActive = activeCategory === cat.id;
+                  return (
                   <button
                     key={cat.id}
+                    type="button"
+                    aria-pressed={isActive}
                     onClick={() => {
                         setActiveCategory(cat.id);
                         setSearchQuery(''); // Reset search when switching categories
                         setSelectedBrand('all'); // Reset brand
                     }}
                     className={cn(
-                        "flex items-center gap-2.5 px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all duration-300 shrink-0 border whitespace-nowrap",
-                        activeCategory === cat.id
-                            ? "bg-primary text-white border-primary shadow-xl shadow-primary/20 scale-105"
-                            : "bg-white text-slate-400 border-slate-100 hover:border-slate-200"
+                        "flex items-center gap-2.5 px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all duration-200 shrink-0 border whitespace-nowrap shadow-sm hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary",
+                        isActive
+                            ? `${color.active} shadow-lg scale-[1.03]`
+                            : `${color.inactive} hover:shadow-md`
                     )}
                   >
-                      <cat.icon className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4", activeCategory === cat.id ? "text-white" : "text-slate-300")} />
+                      <span className={cn("flex h-7 w-7 items-center justify-center rounded-full transition-colors", isActive ? "bg-white/20" : color.icon)}>
+                        <cat.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      </span>
                       {cat.label}
                   </button>
-              ))}
+                  );
+              })}
           </div>
       </div>
 
