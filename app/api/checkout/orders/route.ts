@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
-import { findDeliveryArea, parseDeliveryAreas } from '@/lib/deliveryAreas';
+import { findDeliveryZone, parseDeliveryAreas } from '@/lib/deliveryAreas';
 import { getStoredVariantPrices } from '@/lib/productPricing';
 import { getPublicBaseUrl } from '@/lib/utils';
 
@@ -344,31 +344,34 @@ export async function POST(request: Request) {
     const regionSettings = {
       'nairobi-cbd': {
         fee: readNumber(shipping.nairobi_cbd, 0),
-        label: typeof shipping.nairobi_cbd_label === 'string' ? shipping.nairobi_cbd_label : 'Nairobi CBD / Local'
+        label: typeof shipping.nairobi_cbd_label === 'string' ? shipping.nairobi_cbd_label : 'Local delivery'
       },
       'nairobi-outskirts': {
         fee: readNumber(shipping.nairobi_outskirts, 300),
-        label: typeof shipping.nairobi_outskirts_label === 'string' ? shipping.nairobi_outskirts_label : 'Nairobi Outskirts'
+        label: typeof shipping.nairobi_outskirts_label === 'string' ? shipping.nairobi_outskirts_label : 'Extended delivery'
       },
       upcountry: {
         fee: readNumber(shipping.upcountry, 500),
-        label: typeof shipping.upcountry_label === 'string' ? shipping.upcountry_label : 'Upcountry / Major Towns'
+        label: typeof shipping.upcountry_label === 'string' ? shipping.upcountry_label : 'Outside local zones'
       }
     };
     const selectedRegion = regionSettings[body.shippingRegionId as keyof typeof regionSettings];
     const rawAreas = settingsByKey.get('free_delivery_areas') ?? [];
-    let freeAreas: ReturnType<typeof parseDeliveryAreas>;
+    let deliveryZones: ReturnType<typeof parseDeliveryAreas>;
     try {
-      freeAreas = parseDeliveryAreas(rawAreas);
+      deliveryZones = parseDeliveryAreas(rawAreas);
     } catch (error) {
-      console.error('[CheckoutOrder] Free-delivery areas are invalid:', error);
+      console.error('[CheckoutOrder] Delivery zones are invalid:', error);
       return NextResponse.json({ error: 'Delivery coverage settings are invalid. Please contact support.' }, { status: 503 });
     }
-    const matchedArea = body.coordinates
-      ? findDeliveryArea(body.coordinates.lat, body.coordinates.lng, freeAreas)
-      : null;
-    const deliveryFee = matchedArea ? 0 : selectedRegion.fee || regionSettings['nairobi-outskirts'].fee;
-    const deliveryLabel = matchedArea?.name || selectedRegion.label;
+    if (!body.coordinates) {
+      return NextResponse.json({ error: 'Set and confirm your delivery location before placing the order.' }, { status: 400 });
+    }
+    const matchedZone = findDeliveryZone(body.coordinates.lat, body.coordinates.lng, deliveryZones);
+    const deliveryFee = matchedZone
+      ? matchedZone.fee ?? (matchedZone.free_delivery ? 0 : selectedRegion.fee)
+      : selectedRegion.fee;
+    const deliveryLabel = matchedZone?.name || selectedRegion.label;
 
     const products = (productsData || []) as ProductRow[];
     const productById = new Map(products.map((product) => [Number(product.id), product]));
@@ -542,7 +545,7 @@ export async function POST(request: Request) {
     const reference = body.paymentMethod === 'Paystack' ? `OB-${crypto.randomUUID()}` : null;
     const noteParts = [
       `Region: ${selectedRegion.label}`,
-      matchedArea ? `Free delivery area: ${matchedArea.name}` : null,
+      matchedZone ? `Delivery zone: ${matchedZone.name}` : null,
       couponCode ? `Coupon: ${couponCode}` : null,
       pointsRedeemed > 0 ? `Used ${pointsRedeemed} points` : null,
       referralCode ? `Referred by ${referralCode}` : null,

@@ -23,6 +23,7 @@ export default function DeliveryAreaManager() {
     const [areas, setAreas] = React.useState<DeliveryArea[]>([]);
     const [draftPoints, setDraftPoints] = React.useState<[number, number][]>([]);
     const [name, setName] = React.useState('');
+    const [fee, setFee] = React.useState('0');
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [message, setMessage] = React.useState<string | null>(null);
@@ -81,18 +82,21 @@ export default function DeliveryAreaManager() {
     };
 
     const addArea = async () => {
-        if (!name.trim() || draftPoints.length < 3) {
-            setMessage('Enter an area name and mark at least three points on the map.');
+        const numericFee = Number(fee);
+        if (!name.trim() || draftPoints.length < 3 || !Number.isSafeInteger(numericFee) || numericFee < 0) {
+            setMessage('Enter a zone name, a whole-number fee of zero or more, and at least three map points.');
             return;
         }
         const next = [...areas, {
             id: crypto.randomUUID(),
             name: name.trim(),
-            free_delivery: true,
+            free_delivery: Number(fee) === 0,
+            fee: numericFee,
             points: draftPoints
         }];
         if (await persistAreas(next)) {
             setName('');
+            setFee('0');
             setDraftPoints([]);
         }
     };
@@ -101,12 +105,23 @@ export default function DeliveryAreaManager() {
         void persistAreas(areas.filter(area => area.id !== id));
     };
 
+    const updateAreaFee = async (id: string, value: string) => {
+        const numericFee = Number(value);
+        if (!Number.isSafeInteger(numericFee) || numericFee < 0) {
+            setMessage('Delivery fees must be whole numbers of zero or more.');
+            return;
+        }
+        await persistAreas(areas.map(area => area.id === id
+            ? { ...area, fee: numericFee, free_delivery: numericFee === 0 }
+            : area));
+    };
+
     return (
         <Card className="space-y-5 p-4 sm:p-6">
             <div>
-                <h2 className="text-lg font-black uppercase text-foreground">Free-delivery areas</h2>
+                <h2 className="text-lg font-black uppercase text-foreground">Delivery zones</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Name each covered area, then click at least three boundary points on the map. Customers are checked against these saved boundaries.
+                    Draw delivery zones on the map and set each zone&apos;s fee. Customers are matched to the zone containing their confirmed pin.
                 </p>
             </div>
             {message && <p role="status" className="rounded-lg bg-secondary p-3 text-sm text-foreground">{message}</p>}
@@ -124,8 +139,12 @@ export default function DeliveryAreaManager() {
                 </div>
                 <div className="space-y-4">
                     <label className="block space-y-1 text-sm font-semibold">
-                        <span>Area name</span>
+                        <span>Zone name</span>
                         <Input value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Nairobi CBD" maxLength={80} />
+                    </label>
+                    <label className="block space-y-1 text-sm font-semibold">
+                        <span>Delivery fee (KSh)</span>
+                        <Input type="number" min="0" step="1" value={fee} onChange={event => setFee(event.target.value)} />
                     </label>
                     <p className="text-xs text-muted-foreground">{draftPoints.length} boundary points marked (minimum 3).</p>
                     <div className="flex flex-wrap gap-2">
@@ -135,23 +154,37 @@ export default function DeliveryAreaManager() {
                         <Button onClick={() => setDraftPoints([])} variant="outline" disabled={!draftPoints.length}>Clear</Button>
                     </div>
                     <Button onClick={addArea} disabled={saving || loading} className="w-full">
-                        <Plus className="mr-2 h-4 w-4" /> Add free-delivery area
+                        <Plus className="mr-2 h-4 w-4" /> Add delivery zone
                     </Button>
                     {loading ? <p className="text-xs text-muted-foreground">Loading saved areas…</p> : (
                         <ul className="space-y-2">
                             {areas.map(area => (
-                                <li key={area.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
+                                <li key={area.id} className="grid grid-cols-[minmax(0,1fr)_5rem_auto_auto] items-center gap-2 rounded-xl border border-border p-3">
                                     <span className="min-w-0 truncate text-sm font-semibold">{area.name}</span>
+                                    <Input
+                                        aria-label={`Fee for ${area.name}`}
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        defaultValue={area.fee ?? (area.free_delivery ? 0 : '')}
+                                        onBlur={event => {
+                                            if (String(event.target.value) !== String(area.fee ?? (area.free_delivery ? 0 : ''))) {
+                                                void updateAreaFee(area.id, event.target.value);
+                                            }
+                                        }}
+                                        className="h-9 px-2 text-xs"
+                                    />
+                                    <span className="text-[10px] font-bold text-muted-foreground">KSh</span>
                                     <Button variant="ghost" size="icon" aria-label={`Remove ${area.name}`} disabled={saving} onClick={() => removeArea(area.id)}>
                                         <Trash2 className="h-4 w-4 text-rose-600" />
                                     </Button>
                                 </li>
                             ))}
-                            {!areas.length && <li className="text-sm text-muted-foreground">No free-delivery areas configured.</li>}
+                            {!areas.length && <li className="text-sm text-muted-foreground">No delivery zones configured.</li>}
                         </ul>
                     )}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Save className="h-4 w-4" /> Saved area boundaries are used at checkout.
+                        <Save className="h-4 w-4" /> Saved zones control the checkout delivery fee.
                     </div>
                 </div>
             </div>

@@ -241,11 +241,11 @@ export const DEFAULT_SETTINGS: StoreSettings = {
         navigation: DEFAULT_CATALOG_NAVIGATION.map(item => ({ ...item }))
     },
     shipping: {
-        nairobi_cbd_label: "Nairobi CBD / Local",
+        nairobi_cbd_label: "Local delivery",
         nairobi_cbd: 0,
-        nairobi_outskirts_label: "Nairobi Outskirts",
+        nairobi_outskirts_label: "Extended delivery",
         nairobi_outskirts: 300,
-        upcountry_label: "Upcountry / Major Towns",
+        upcountry_label: "Outside local zones",
         upcountry: 500
     },
     logistics: {
