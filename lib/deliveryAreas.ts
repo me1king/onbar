@@ -1,3 +1,5 @@
+import { approximateArea } from '@/lib/locationCatalog';
+
 export interface DeliveryArea {
     id: string;
     name: string;
@@ -8,6 +10,70 @@ export interface DeliveryArea {
 
 export interface DeliveryPricing {
     free_delivery_over: number;
+}
+
+export interface LegacyShippingPricing {
+    nairobi_cbd_label?: unknown;
+    nairobi_cbd?: unknown;
+    nairobi_outskirts_label?: unknown;
+    nairobi_outskirts?: unknown;
+    upcountry_label?: unknown;
+    upcountry?: unknown;
+}
+
+export interface LegacyDeliveryQuote {
+    id: string;
+    name: string;
+    label: string;
+    fee: number;
+    free_delivery: boolean;
+    points: [number, number][];
+}
+
+export const DELIVERY_AREA_COLORS = ['#2563eb', '#16a34a', '#9333ea', '#ea580c', '#0891b2', '#db2777'] as const;
+
+export function getDeliveryAreaColor(index: number): string {
+    return DELIVERY_AREA_COLORS[index % DELIVERY_AREA_COLORS.length];
+}
+
+export function resolveLegacyDeliveryQuote(
+    latitude: number,
+    longitude: number,
+    value: unknown
+): LegacyDeliveryQuote | null {
+    const area = approximateArea(latitude, longitude);
+    if (!area) return null;
+
+    const saved = typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? value as LegacyShippingPricing
+        : {};
+    const tier = area.county === 'Nairobi'
+        ? area.area.toLowerCase() === 'cbd' ? 'nairobi_cbd' : 'nairobi_outskirts'
+        : 'upcountry';
+    const defaults = {
+        nairobi_cbd: { label: 'Local delivery', fee: 0 },
+        nairobi_outskirts: { label: 'Extended delivery', fee: 300 },
+        upcountry: { label: 'Outside local zones', fee: 500 }
+    } as const;
+    const defaultTier = defaults[tier];
+    const rawFee = saved[tier];
+    const fee = rawFee === undefined || rawFee === null || rawFee === ''
+        ? defaultTier.fee
+        : Number(rawFee);
+    if (!Number.isSafeInteger(fee) || fee < 0) return null;
+    const rawLabel = saved[`${tier}_label` as keyof LegacyShippingPricing];
+    const label = typeof rawLabel === 'string' && rawLabel.trim()
+        ? rawLabel.trim()
+        : defaultTier.label;
+
+    return {
+        id: `legacy_${tier}`,
+        name: area.area,
+        label,
+        fee,
+        free_delivery: fee === 0,
+        points: []
+    };
 }
 
 export function parseDeliveryPricing(value: unknown): DeliveryPricing {
@@ -67,7 +133,16 @@ export function findDeliveryZone(
     longitude: number,
     areas: DeliveryArea[]
 ): DeliveryArea | null {
-    return areas.find(area => {
+    const matches = findDeliveryZones(latitude, longitude, areas);
+    return matches.length === 1 ? matches[0] : null;
+}
+
+export function findDeliveryZones(
+    latitude: number,
+    longitude: number,
+    areas: DeliveryArea[]
+): DeliveryArea[] {
+    return areas.filter(area => {
         if (area.points.length < 3) return false;
         let inside = false;
         for (let i = 0, j = area.points.length - 1; i < area.points.length; j = i++) {
@@ -78,5 +153,5 @@ export function findDeliveryZone(
             if (crosses) inside = !inside;
         }
         return inside;
-    }) || null;
+    });
 }

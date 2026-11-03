@@ -20,7 +20,7 @@ import dynamic from "next/dynamic";
 import { OB_OS } from "@/lib/onlineBarOS";
 import { v4 as uuidv4 } from 'uuid';
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
-import { DeliveryArea, findDeliveryZone, parseDeliveryAreas, parseDeliveryPricing } from "@/lib/deliveryAreas";
+import { DeliveryArea, findDeliveryZone, findDeliveryZones, parseDeliveryAreas, parseDeliveryPricing, resolveLegacyDeliveryQuote } from "@/lib/deliveryAreas";
 import DeliveryPushPreferences from "@/components/profile/DeliveryPushPreferences";
 
 const LocationPicker = dynamic(() => import("@/components/profile/LocationPicker"), {
@@ -73,7 +73,7 @@ declare global {
 
 function CheckoutContent() {
   const { cart, clearCart, removeFromCart } = useCart();
-  const { settings } = useSettings();
+  const { settings, loading: storeSettingsLoading } = useSettings();
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -380,7 +380,21 @@ function CheckoutContent() {
                 setDeliveryLandmark(typeof savedDraft.deliveryLandmark === 'string' ? savedDraft.deliveryLandmark : "");
                 setDeliveryInstructions(typeof savedDraft.deliveryInstructions === 'string' ? savedDraft.deliveryInstructions : "");
                 setSelectedDeliveryZoneId(typeof savedDraft.deliveryZoneId === 'string' ? savedDraft.deliveryZoneId : "");
-                if (profileData?.latitude != null && profileData.longitude != null) {
+                let hasDevicePin = false;
+                try {
+                    const savedPin = localStorage.getItem('ob_delivery_location');
+                    if (savedPin) {
+                        const parsedPin: unknown = JSON.parse(savedPin);
+                        hasDevicePin = typeof parsedPin === 'object' && parsedPin !== null
+                            && 'lat' in parsedPin && typeof parsedPin.lat === 'number' && Number.isFinite(parsedPin.lat)
+                            && parsedPin.lat >= -90 && parsedPin.lat <= 90
+                            && 'lng' in parsedPin && typeof parsedPin.lng === 'number' && Number.isFinite(parsedPin.lng)
+                            && parsedPin.lng >= -180 && parsedPin.lng <= 180;
+                    }
+                } catch (error) {
+                    console.warn('Could not check the saved device delivery pin:', error);
+                }
+                if (!hasDevicePin && profileData?.latitude != null && profileData.longitude != null) {
                     setCoords({ lat: profileData.latitude, lng: profileData.longitude });
                 }
             } catch (error) {
@@ -456,16 +470,21 @@ function CheckoutContent() {
     profile?.address
   ]);
 
-  const gpsDeliveryZone = coords.lat != null && coords.lng != null
-    ? findDeliveryZone(coords.lat, coords.lng, freeDeliveryAreas)
+  const gpsDeliveryZoneMatches = coords.lat != null && coords.lng != null
+    ? findDeliveryZones(coords.lat, coords.lng, freeDeliveryAreas)
     : null;
+  const gpsDeliveryZone = gpsDeliveryZoneMatches?.length === 1 ? gpsDeliveryZoneMatches[0] : null;
+  const legacyDeliveryQuote = !storeSettingsLoading && freeDeliveryAreas.length === 0
+    && coords.lat != null && coords.lng != null
+      ? resolveLegacyDeliveryQuote(coords.lat, coords.lng, settings.shipping)
+      : null;
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const manuallySelectedZone = freeDeliveryAreas.find(area => area.id === selectedDeliveryZoneId) || null;
-  const selectedZone = coords.lat != null && coords.lng != null
-    ? gpsDeliveryZone || manuallySelectedZone
+  const hasGpsPin = coords.lat != null && coords.lng != null;
+  const selectedZone = hasGpsPin
+    ? freeDeliveryAreas.length > 0 ? gpsDeliveryZone : legacyDeliveryQuote
     : manuallySelectedZone;
-  const gpsPinOutsideSelectedZone = coords.lat != null && coords.lng != null
-    && !gpsDeliveryZone && (manuallySelectedZone?.points.length || 0) >= 3;
+  const gpsPinOutsideSelectedZone = hasGpsPin && freeDeliveryAreas.length > 0 && !gpsDeliveryZone;
   const hasConfirmedLocation = Boolean(selectedZone);
   const zoneFee = selectedZone
     ? selectedZone.fee ?? (selectedZone.free_delivery ? 0 : null)
@@ -604,19 +623,14 @@ function CheckoutContent() {
     if (!deliveryFeeReady) {
       setCheckoutStatus({
         type: "error",
-        message: "Choose your estate or set a map/GPS pin in a delivery zone before placing the order."
+        message: gpsPinOutsideSelectedZone
+          ? gpsDeliveryZoneMatches && gpsDeliveryZoneMatches.length > 1
+            ? "Your GPS pin falls inside overlapping delivery zones. The store needs to correct the mapped boundaries before checkout."
+            : "Your GPS pin is not inside a mapped delivery zone yet. Please update the pin or contact the store to map this area."
+          : "Choose your estate or set a map/GPS pin in a delivery zone before placing the order."
       });
       document.getElementById('checkout-delivery-location')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       window.setTimeout(() => deliveryZoneSelectRef.current?.focus({ preventScroll: true }), 350);
-      return;
-    }
-
-    if (gpsPinOutsideSelectedZone) {
-      setCheckoutStatus({
-        type: "error",
-        message: `Your GPS pin is outside ${selectedZone?.name}. Move the pin into this delivery zone so we can confirm the correct delivery fee.`
-      });
-      document.getElementById('checkout-delivery-location')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
@@ -885,6 +899,7 @@ function CheckoutContent() {
             initialLat={coords.lat ?? undefined}
             initialLng={coords.lng ?? undefined}
             autoDetect
+            deliveryAreas={freeDeliveryAreas}
             onConfirm={async (lat, lng) => {
                 setCoords({ lat, lng });
                 setCheckoutStatus({ type: 'idle', message: '' });
@@ -958,21 +973,35 @@ function CheckoutContent() {
                 <h2 className="text-lg sm:text-xl font-black uppercase tracking-tighter">Delivery location</h2>
             </div>
             <label className="block space-y-2">
-                <span className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Estate / delivery area</span>
-                <select
-                    ref={deliveryZoneSelectRef}
-                    value={selectedDeliveryZoneId}
-                    disabled={!deliveryAreasLoaded || isPlacingOrder || Boolean(gpsDeliveryZone)}
-                    onChange={event => {
-                        const zoneId = event.target.value;
-                        setSelectedDeliveryZoneId(zoneId);
-                        setCheckoutStatus({ type: 'idle', message: '' });
-                    }}
-                    className="h-14 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
-                >
-                    <option value="">Choose estate or area…</option>
-                    {freeDeliveryAreas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
-                </select>
+                {freeDeliveryAreas.length > 0 ? (
+                    <>
+                        <span className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Estate / delivery area</span>
+                        <select
+                            ref={deliveryZoneSelectRef}
+                            value={hasGpsPin ? gpsDeliveryZone?.id || '' : selectedDeliveryZoneId}
+                            disabled={!deliveryAreasLoaded || isPlacingOrder || hasGpsPin}
+                            onChange={event => {
+                                const zoneId = event.target.value;
+                                setSelectedDeliveryZoneId(zoneId);
+                                setCheckoutStatus({ type: 'idle', message: '' });
+                            }}
+                            className="h-14 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
+                        >
+                            <option value="">Choose estate or area…</option>
+                            {freeDeliveryAreas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
+                        </select>
+                    </>
+                ) : (
+                    <span className="block rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
+                        {legacyDeliveryQuote
+                            ? `Using your saved GPS location · ${legacyDeliveryQuote.name}`
+                            : storeSettingsLoading
+                                ? 'Checking the delivery rate for your saved GPS location…'
+                            : coords.lat != null && coords.lng != null
+                                ? 'Your saved GPS location could not be matched to a delivery-rate area.'
+                                : 'Delivery zones are not configured. Add a saved GPS pin so we can use the configured local delivery rate.'}
+                    </span>
+                )}
                 {gpsDeliveryZone && (
                     <span className="block px-1 text-xs font-medium text-emerald-700">
                         Your confirmed GPS pin matched {gpsDeliveryZone.name}; its delivery fee is applied automatically.
@@ -1039,14 +1068,18 @@ function CheckoutContent() {
                 <p role="status" className="relative z-10 text-sm font-semibold">
                     {deliveryAreasError
                         ? deliveryAreasError
-                        : !deliveryAreasLoaded
+                        : !deliveryAreasLoaded || storeSettingsLoading
                         ? 'Checking delivery zone settings…'
                             : !freeDeliveryAreas.length
-                                ? 'Delivery areas are not configured yet. Please contact the store.'
+                                ? legacyDeliveryQuote
+                                    ? `${legacyDeliveryQuote.name} · ${legacyDeliveryQuote.label}: ${legacyDeliveryQuote.fee === 0 ? 'free delivery' : `${formatPrice(legacyDeliveryQuote.fee)} delivery fee`}${freeDeliveryOver > 0 ? ` · free over ${formatPrice(freeDeliveryOver)}` : ''}. Your saved GPS pin will be sent with the order.`
+                                    : coords.lat != null && coords.lng != null
+                                        ? 'Your saved GPS pin is outside the configured delivery-rate coverage. Contact the store to confirm delivery.'
+                                        : 'Delivery zones are not configured yet. Add a GPS pin or contact the store.'
                                 : gpsPinOutsideSelectedZone
-                                    ? `This pin is outside ${selectedZone?.name}. Move the pin into that delivery zone to confirm the fee.`
-                                    : coords.lat !== null && coords.lng !== null && !gpsDeliveryZone && !selectedZone
-                                        ? 'This pin is outside configured delivery areas. Choose your estate or move the pin.'
+                                    ? gpsDeliveryZoneMatches && gpsDeliveryZoneMatches.length > 1
+                                        ? 'This pin is inside overlapping mapped zones. The store needs to correct the boundaries before a GPS price can be confirmed.'
+                                        : 'This pin is not inside a mapped delivery zone yet. Update the pin or contact the store to map this area.'
                                     : !selectedZone
                                         ? 'Choose your estate or delivery area to see the exact fee.'
                                         : !deliveryFeeReady

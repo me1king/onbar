@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
-import { findDeliveryZone, parseDeliveryAreas, parseDeliveryPricing } from '@/lib/deliveryAreas';
+import { findDeliveryZones, parseDeliveryAreas, parseDeliveryPricing, resolveLegacyDeliveryQuote } from '@/lib/deliveryAreas';
 import { getStoredVariantPrices } from '@/lib/productPricing';
 import { getPublicBaseUrl } from '@/lib/utils';
 
@@ -299,7 +299,7 @@ export async function POST(request: Request) {
     }
 
     const { database } = configuration;
-    const settingKeys = ['system_lockdown', 'free_delivery_areas', 'delivery_pricing'];
+    const settingKeys = ['system_lockdown', 'free_delivery_areas', 'delivery_pricing', 'shipping'];
     const [settingsResult, customizedProductsResult] = await Promise.all([
       database.from('settings').select('key, value').in('key', settingKeys),
       database.from('products')
@@ -345,21 +345,33 @@ export async function POST(request: Request) {
       console.error('[CheckoutOrder] Delivery zones are invalid:', error);
       return NextResponse.json({ error: 'Delivery coverage settings are invalid. Please contact support.' }, { status: 503 });
     }
-    const selectedZone = body.deliveryZoneId
+    let selectedZone = body.deliveryZoneId
       ? deliveryZones.find(zone => zone.id === body.deliveryZoneId) || null
       : null;
+    if (body.coordinates && deliveryZones.length > 0) {
+      const matches = findDeliveryZones(body.coordinates.lat, body.coordinates.lng, deliveryZones);
+      if (matches.length > 1) {
+        return NextResponse.json({ error: 'The GPS pin falls inside overlapping delivery zones. Please contact the store to correct its mapped boundaries.' }, { status: 400 });
+      }
+      if (matches.length === 0) {
+        return NextResponse.json({ error: 'The GPS pin is not inside a mapped delivery zone yet. Please update the pin or contact the store to map this area.' }, { status: 400 });
+      }
+      if (selectedZone && selectedZone.id !== matches[0].id) {
+        return NextResponse.json({ error: 'The selected delivery zone does not match the GPS pin. Refresh checkout and try again.' }, { status: 400 });
+      }
+      selectedZone = matches[0];
+    } else if (!selectedZone && deliveryZones.length === 0 && body.coordinates) {
+      selectedZone = resolveLegacyDeliveryQuote(
+        body.coordinates.lat,
+        body.coordinates.lng,
+        settingsByKey.get('shipping')
+      );
+    }
     if (!selectedZone) {
       return NextResponse.json({ error: 'Choose a configured estate or delivery area before placing the order.' }, { status: 400 });
     }
     if (!body.coordinates && !body.deliveryBuilding) {
       return NextResponse.json({ error: 'Enter a building or house name, or provide a GPS pin for delivery.' }, { status: 400 });
-    }
-    if (body.coordinates) {
-      const matchedZone = findDeliveryZone(body.coordinates.lat, body.coordinates.lng, deliveryZones);
-      if ((matchedZone && matchedZone.id !== selectedZone.id)
-        || (!matchedZone && selectedZone.points.length >= 3)) {
-        return NextResponse.json({ error: 'The GPS pin is outside the selected estate. Update the pin or choose its matching estate.' }, { status: 400 });
-      }
     }
     const zoneFee = selectedZone.fee ?? (selectedZone.free_delivery ? 0 : null);
     if (zoneFee === null) {

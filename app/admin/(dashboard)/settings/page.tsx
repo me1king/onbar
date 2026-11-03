@@ -1398,10 +1398,16 @@ export default function AdminSettingsPage() {
 
                             <Card className="rounded-[3rem] border border-border p-10 bg-card shadow-sm space-y-8 mt-8 text-left">
                                 <div className="flex justify-between items-center text-left">
-                                    <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><MapPin className="h-5 w-5 text-primary" /> Delivery Zones</h2>
-                                    <Button onClick={() => setLogistics({ ...logistics, dispatch_zones: [...logistics.dispatch_zones, ''] })} variant="outline" className="h-10 rounded-xl text-[8px] font-black uppercase"><Plus className="h-3 w-3 mr-2" /> Add Zone</Button>
+                                    <div>
+                                        <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><MapPin className="h-5 w-5 text-primary" /> Rider dispatch labels</h2>
+                                        <p className="mt-1 text-xs text-muted-foreground">These labels help dispatchers sort orders; they do not set customer delivery fees.</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <a href="#estate-delivery-pricing" className="inline-flex h-10 items-center rounded-xl bg-primary px-4 text-[9px] font-black uppercase text-primary-foreground">Set delivery prices</a>
+                                        <Button onClick={() => setLogistics({ ...logistics, dispatch_zones: [...logistics.dispatch_zones, ''] })} variant="outline" className="h-10 rounded-xl text-[8px] font-black uppercase"><Plus className="h-3 w-3 mr-2" /> Add Label</Button>
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 text-left">
                                     {logistics.dispatch_zones.map((zone, idx) => (
                                         <div key={idx} className="relative group text-left">
                                             <Input
@@ -1411,11 +1417,12 @@ export default function AdminSettingsPage() {
                                                     newZones[idx] = e.target.value;
                                                     setLogistics({ ...logistics, dispatch_zones: newZones });
                                                 }}
-                                                className="h-12 rounded-xl bg-secondary border-border pr-10 font-bold text-[10px] text-foreground"
+                                                className="h-12 w-full min-w-0 rounded-xl bg-secondary border-border px-4 pr-11 font-bold text-sm text-foreground"
                                             />
                                             <button
                                                 onClick={() => setLogistics({ ...logistics, dispatch_zones: logistics.dispatch_zones.filter((_, i) => i !== idx) })}
-                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                aria-label={`Remove dispatch label ${zone || idx + 1}`}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-rose-500 opacity-100 transition-all"
                                             >
                                                 <Trash2 className="h-3 w-3" />
                                             </button>

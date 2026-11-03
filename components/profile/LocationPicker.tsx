@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polygon, Tooltip, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button } from '@/components/ui/button';
 import { MapPin, Navigation, CheckCircle2, Loader2, X } from 'lucide-react';
 import { getCartoVoyagerTileUrl } from '@/lib/cartoMaps';
+import { DeliveryArea, findDeliveryZones, getDeliveryAreaColor } from '@/lib/deliveryAreas';
 
 // 🛡️ Fix for Leaflet default icon issues in Next.js
 const fixLeafletIcons = () => {
@@ -23,6 +24,7 @@ interface LocationPickerProps {
     initialLat?: number;
     initialLng?: number;
     autoDetect?: boolean;
+    deliveryAreas?: DeliveryArea[];
     onConfirm: (lat: number, lng: number) => void;
     onClose: () => void;
 }
@@ -42,12 +44,19 @@ function ChangeView({ center }: { center: [number, number] }) {
     return null;
 }
 
-export default function LocationPicker({ initialLat, initialLng, autoDetect = false, onConfirm, onClose }: LocationPickerProps) {
+function getDeliveryFeeLabel(area: DeliveryArea): string {
+    const fee = area.fee ?? (area.free_delivery ? 0 : null);
+    if (fee === null) return 'Delivery fee not set';
+    return fee === 0 ? 'Free delivery' : `Delivery fee KSh ${fee.toLocaleString()}`;
+}
+
+export default function LocationPicker({ initialLat, initialLng, autoDetect = false, deliveryAreas = [], onConfirm, onClose }: LocationPickerProps) {
     const [pos, setPos] = useState<[number, number]>(
         initialLat != null && initialLng != null ? [initialLat, initialLng] : [-1.286389, 36.817223]
     );
     const [detecting, setDetecting] = useState(false);
     const [locationMessage, setLocationMessage] = useState<string | null>(null);
+    const matchingZones = findDeliveryZones(pos[0], pos[1], deliveryAreas);
 
     useEffect(() => {
         fixLeafletIcons();
@@ -137,6 +146,20 @@ export default function LocationPicker({ initialLat, initialLng, autoDetect = fa
                             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                             url={getCartoVoyagerTileUrl()}
                         />
+                        {deliveryAreas.map((area, index) => area.points.length >= 3 && (
+                            <Polygon
+                                key={area.id}
+                                positions={area.points}
+                                pathOptions={{
+                                    color: getDeliveryAreaColor(index),
+                                    fillColor: getDeliveryAreaColor(index),
+                                    fillOpacity: 0.12,
+                                    weight: 3
+                                }}
+                            >
+                                <Tooltip sticky>{area.name} · {getDeliveryFeeLabel(area)}</Tooltip>
+                            </Polygon>
+                        ))}
                         <Marker position={pos} />
                         <MapEvents onLocationSelect={(lat, lng) => setPos([lat, lng])} />
                         <ChangeView center={pos} />
@@ -180,6 +203,19 @@ export default function LocationPicker({ initialLat, initialLng, autoDetect = fa
                                 <p className="text-[7px] sm:text-[8px] font-black uppercase text-slate-400 tracking-[0.2em]">Latitude</p>
                                 <p className="text-xs sm:text-sm font-mono font-bold text-foreground">{pos[0].toFixed(6)}</p>
                             </div>
+                            {deliveryAreas.length > 0 && (
+                                <p role="status" className={`rounded-xl border p-3 text-xs font-semibold ${
+                                    matchingZones.length === 1
+                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                        : 'border-amber-200 bg-amber-50 text-amber-900'
+                                }`}>
+                                    {matchingZones.length === 1
+                                        ? `${matchingZones[0].name} · ${getDeliveryFeeLabel(matchingZones[0])}`
+                                        : matchingZones.length > 1
+                                            ? 'This pin overlaps multiple delivery zones. The store must correct the map before a fee can be confirmed.'
+                                            : 'This pin is not inside a mapped delivery zone. Move it into a colored zone to confirm the delivery fee.'}
+                                </p>
+                            )}
                             <div className="space-y-1">
                                 <p className="text-[7px] sm:text-[8px] font-black uppercase text-slate-400 tracking-[0.2em]">Longitude</p>
                                 <p className="text-xs sm:text-sm font-mono font-bold text-foreground">{pos[1].toFixed(6)}</p>

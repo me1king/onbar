@@ -166,6 +166,22 @@ function statusIcon(status: string) {
   return Clock3;
 }
 
+const deliveryFlowSteps = ['Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'];
+
+function deliveryFlowIndex(status: string) {
+  if (status === 'Confirmed' || status === 'Pending') return 0;
+  return deliveryFlowSteps.indexOf(status);
+}
+
+function deliveryFlowColor(status: string) {
+  if (status === 'Delivered') return '#16a34a';
+  if (status === 'Out for Delivery') return '#0284c7';
+  if (status === 'Picked Up') return '#7c3aed';
+  if (status === 'Dispatched') return '#d97706';
+  if (status === 'Cancelled') return '#e11d48';
+  return '#ea580c';
+}
+
 function formatTime(value: string | null | undefined) {
   if (!value) return 'No recent update';
   const date = new Date(value);
@@ -386,8 +402,8 @@ export default function DeliveryOpsPage() {
   const activeMapRoutes = React.useMemo(() => activeRoute ? [{
     id: String(activeRoute.orderId),
     polyline: activeRoute.encodedPolyline,
-    color: '#f59e0b'
-  }] : [], [activeRoute]);
+    color: deliveryFlowColor(data?.orders.find(order => order.id === activeRoute.orderId)?.status || 'Dispatched')
+  }] : [], [activeRoute, data?.orders]);
 
   return (
     <main className="delivery-ops min-h-screen bg-[#f7f8fa] px-4 py-5 text-left text-[#10231f] selection:bg-amber-400/30 sm:px-6 lg:px-8">
@@ -507,8 +523,11 @@ export default function DeliveryOpsPage() {
               />
             </div>
             {activeRoute && (
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-amber-50 px-5 py-3 text-[10px] font-semibold text-amber-900 sm:px-6">
-                <span>OSRM route · Order #{activeRoute.orderId} · {activeRoute.riderName}</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3 text-[10px] font-semibold text-slate-700 sm:px-6">
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-1 w-8 rounded-full" style={{ backgroundColor: activeMapRoutes[0]?.color }} />
+                  OSRM route · Order #{activeRoute.orderId} · {activeRoute.riderName}
+                </span>
                 <span>{activeRoute.distanceKm} road km · {activeRoute.durationMinutes} min estimated</span>
               </div>
             )}
@@ -656,6 +675,42 @@ export default function DeliveryOpsPage() {
                           <span className="inline-flex items-center gap-1.5"><Truck size={11} /> Fee {order.delivery_cost == null ? 'Not set' : formatPrice(Number(order.delivery_cost))}</span>
                           {order.delivery_eta_minutes != null && <span className="inline-flex items-center gap-1.5"><Clock3 size={11} /> ETA {order.delivery_eta_minutes} min</span>}
                         </div>
+                        {order.status === 'Cancelled' ? (
+                          <div className="mt-4 flex items-center gap-2 text-[9px] font-black uppercase tracking-wide text-rose-300">
+                            <span className="h-2 w-2 rounded-full bg-rose-400" /> Delivery cancelled
+                          </div>
+                        ) : (
+                          <div className="mt-4 max-w-xl" aria-label={`Delivery progress for order ${order.id}: ${order.status}`}>
+                            <div className="relative">
+                              <div className="absolute left-[3%] right-[3%] top-[5px] h-1 rounded-full bg-white/10" />
+                              <div
+                                className="absolute left-[3%] top-[5px] h-1 rounded-full transition-all"
+                                style={{
+                                  width: `${Math.max(0, deliveryFlowIndex(order.status)) / (deliveryFlowSteps.length - 1) * 94}%`,
+                                  backgroundColor: deliveryFlowColor(order.status)
+                                }}
+                              />
+                              <ol className="relative flex justify-between">
+                                {deliveryFlowSteps.map((step, index) => {
+                                  const currentStep = deliveryFlowIndex(order.status);
+                                  const passed = currentStep >= index;
+                                  return (
+                                    <li key={step} className="flex w-[20%] flex-col items-center gap-1.5">
+                                      <span
+                                        className="h-3 w-3 rounded-full border-2 border-[#0d1728]"
+                                        style={{ backgroundColor: passed ? (index === currentStep ? deliveryFlowColor(order.status) : '#22c55e') : '#475569' }}
+                                      />
+                                      <span className={cn(
+                                        'text-center text-[7px] font-bold leading-3 sm:text-[8px]',
+                                        index === currentStep ? 'text-white' : passed ? 'text-emerald-300' : 'text-slate-500'
+                                      )}>{step === 'Out for Delivery' ? 'On road' : step}</span>
+                                    </li>
+                                  );
+                                })}
+                              </ol>
+                            </div>
+                          </div>
+                        )}
                         {order.rider_phone && ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(order.status) && (
                           <Button
                             type="button"
