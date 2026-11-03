@@ -74,7 +74,7 @@ function CheckoutContent() {
   const [deliveryLandmark, setDeliveryLandmark] = useState("");
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"M-Pesa" | "COD">("M-Pesa");
-  const [shippingRegionId, setShippingRegionId] = useState('nairobi-cbd');
+  const [shippingRegionId] = useState('nairobi-outskirts');
   const [freeDeliveryAreas, setFreeDeliveryAreas] = useState<DeliveryArea[]>([]);
   const [deliveryAreasLoaded, setDeliveryAreasLoaded] = useState(false);
   const [deliveryAreasError, setDeliveryAreasError] = useState<string | null>(null);
@@ -278,13 +278,8 @@ function CheckoutContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const regions = [
-    { id: 'nairobi-cbd', label: settings.shipping.nairobi_cbd_label, fee: settings.shipping.nairobi_cbd },
-    { id: 'nairobi-outskirts', label: settings.shipping.nairobi_outskirts_label, fee: settings.shipping.nairobi_outskirts },
-    { id: 'upcountry', label: settings.shipping.upcountry_label, fee: settings.shipping.upcountry },
-  ];
-
-  const currentRegion = regions.find(r => r.id === shippingRegionId) || regions[0];
+  const fallbackDeliveryLabel = settings.shipping.nairobi_outskirts_label;
+  const fallbackDeliveryFee = settings.shipping.nairobi_outskirts;
   const matchedDeliveryZone = coords.lat != null && coords.lng != null
     ? findDeliveryZone(coords.lat, coords.lng, freeDeliveryAreas)
     : null;
@@ -292,9 +287,9 @@ function CheckoutContent() {
   const deliveryFee = !hasConfirmedLocation
     ? 0
     : matchedDeliveryZone
-      ? matchedDeliveryZone.fee ?? (matchedDeliveryZone.free_delivery ? 0 : currentRegion.fee)
-      : currentRegion.fee;
-  const deliveryLabel = matchedDeliveryZone?.name || currentRegion.label;
+      ? matchedDeliveryZone.fee ?? (matchedDeliveryZone.free_delivery ? 0 : fallbackDeliveryFee)
+      : fallbackDeliveryFee;
+  const deliveryLabel = matchedDeliveryZone?.name || fallbackDeliveryLabel;
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const discount = activeCoupon
@@ -738,35 +733,7 @@ function CheckoutContent() {
             </div>
           </section>
 
-          {/* Shipping Calculator */}
-          <section className="space-y-6">
-            <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><MapPin className="h-5 w-5" /></div>
-                <h2 className="text-xl font-black uppercase tracking-tighter">Delivery Region</h2>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-left">
-                {regions.map((r) => (
-                    <button
-                        key={r.id}
-                        data-behavior-id="checkout.delivery_region"
-                        onClick={() => {
-                            setShippingRegionId(r.id);
-                            OB_OS.track('UI_INTERACTION', { userId: user?.id, details: { id: 'checkout.delivery_region' } });
-                        }}
-                        className={`p-4 sm:p-6 rounded-3xl border-2 text-left transition-all active:scale-95 ${currentRegion.id === r.id ? 'border-primary bg-white shadow-xl scale-105' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}
-                    >
-                        <p className="font-black uppercase tracking-tight text-foreground text-[10px] sm:text-sm">{r.label}</p>
-                        <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 mt-1">
-                            {hasConfirmedLocation
-                                ? `${formatPrice(r.fee)} delivery outside configured zones`
-                                : 'Set a delivery location to calculate'}
-                        </p>
-                    </button>
-                ))}
-            </div>
-          </section>
-
-          {/* 📍 TACTICAL DROP POINT (GPS PINPOINT) */}
+          {/* Delivery location and fee calculator */}
           <section className="space-y-4 sm:space-y-6">
             <div className="flex items-center gap-3">
                 <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Zap className="h-4 w-4 sm:h-5 sm:w-5" /></div>
@@ -816,7 +783,7 @@ function CheckoutContent() {
                     {deliveryAreasError
                         ? deliveryAreasError
                         : !deliveryAreasLoaded
-                            ? 'Checking free-delivery coverage settings…'
+                        ? 'Checking delivery zone settings…'
                             : !hasConfirmedLocation
                                 ? 'Set your delivery location manually or use GPS to calculate the delivery fee.'
                                 : !freeDeliveryAreas.length
