@@ -35,7 +35,13 @@ async function getConfig(database: NonNullable<ReturnType<typeof getClient>>['da
     .select('value')
     .eq('id', true)
     .single();
-  if (error) throw new Error(`Could not load loyalty configuration: ${error.message}`);
+  if (error) {
+    if (['42P01', '42703', 'PGRST204', 'PGRST205', 'PGRST116'].includes(error.code || '')) {
+      throw new Error('Customer rewards are not fully set up yet. Ask an administrator to apply supabase/LOYALTY_POINTS_MIGRATION.sql.');
+    }
+    console.error('[MemberLoyalty] Could not load loyalty configuration:', error);
+    throw new Error('Could not load customer reward settings. Please try again later.');
+  }
   return data.value as {
     points?: {
       order_earn_percent?: number;
@@ -56,6 +62,30 @@ interface RewardOption {
   chance: number;
   value: number;
   type: 'xp' | 'voucher' | 'perk' | 'mystery';
+}
+
+function getLoyaltyFailure(error: unknown) {
+  if (error instanceof Error) return { error: error.message, status: 500 };
+  if (typeof error !== 'object' || error === null) {
+    return { error: 'We could not complete that loyalty action. Please try again later.', status: 500 };
+  }
+
+  const databaseError = error as { code?: unknown; message?: unknown };
+  const code = typeof databaseError.code === 'string' ? databaseError.code : '';
+  const message = typeof databaseError.message === 'string' ? databaseError.message : '';
+  if (['42883', '42P01', '42703', 'PGRST202', 'PGRST204', 'PGRST205', 'PGRST116'].includes(code)) {
+    return {
+      error: 'Customer rewards are not fully set up yet. Ask an administrator to apply supabase/LOYALTY_POINTS_MIGRATION.sql.',
+      status: 503
+    };
+  }
+  if (code === 'P0001' && message) {
+    if (/once every 24 hours/i.test(message)) {
+      return { error: 'You can claim this reward once every 24 hours.', status: 429 };
+    }
+    return { error: message, status: 409 };
+  }
+  return { error: 'We could not complete that loyalty action. Please try again later.', status: 500 };
 }
 
 function chooseReward(rewards: RewardOption[]) {
@@ -198,6 +228,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unknown loyalty action.' }, { status: 400 });
   } catch (error) {
     console.error('[MemberLoyalty] Loyalty action failed:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Loyalty action failed.' }, { status: 500 });
+    const failure = getLoyaltyFailure(error);
+    return NextResponse.json({ error: failure.error }, { status: failure.status });
   }
 }

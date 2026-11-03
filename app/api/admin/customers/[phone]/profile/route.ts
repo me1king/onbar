@@ -559,6 +559,105 @@ export async function GET(
     const topItems = [...itemCounts.values()].sort((left, right) => right.quantity - left.quantity).slice(0, 3);
     const usualOrder = [...orderPatterns.values()].sort((left, right) => right.count - left.count)[0]?.label || '';
 
+    let loyalty: {
+      balance: number;
+      totalEarned: number;
+      totalRedeemed: number;
+      ledger: { id: number; amount: number; description: string; created_at: string }[];
+      dailyRewards: { id: number; reward_type: string; reward_label: string; reward_value: number; created_at: string }[];
+      gifts: { id: number; code: string; discount_percent: number; discount_amount: number; is_active: boolean; created_at: string }[];
+      rewardOptions: {
+        box: { label: string; chance: number; value: number; type: string }[];
+        spin: { label: string; chance: number; value: number; type: string }[];
+      };
+    } | null = null;
+    if (profile?.id) {
+      const [ledgerResult, dailyRewardsResult, giftsResult, loyaltyConfigResult] = await Promise.all([
+        database.from('loyalty_ledger')
+          .select('id,amount,description,created_at')
+          .eq('profile_id', profile.id)
+          .order('created_at', { ascending: false })
+          .range(0, 999),
+        database.from('daily_rewards_log')
+          .select('id,reward_type,reward_label,reward_value,created_at')
+          .eq('user_id', profile.id)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        database.from('coupons')
+          .select('id,code,discount_percent,discount_amount,is_active,created_at')
+          .eq('owner_profile_id', profile.id)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        database.from('loyalty_config')
+          .select('value')
+          .eq('id', true)
+          .maybeSingle()
+      ]);
+      const entries = [...(ledgerResult.data || [])];
+      let ledgerPaginationError = null;
+      if (!ledgerResult.error) {
+        for (let offset = 1000; ; offset += 1000) {
+          const { data: nextEntries, error } = await database.from('loyalty_ledger')
+            .select('id,amount,description,created_at')
+            .eq('profile_id', profile.id)
+            .order('created_at', { ascending: false })
+            .range(offset, offset + 999);
+          if (error) {
+            ledgerPaginationError = error;
+            break;
+          }
+          entries.push(...(nextEntries || []));
+          if (!nextEntries || nextEntries.length < 1000) break;
+        }
+      }
+      const loyaltyError = ledgerResult.error || ledgerPaginationError
+        || dailyRewardsResult.error || giftsResult.error || loyaltyConfigResult.error;
+      if (loyaltyError) {
+        console.error('[CustomerProfile] Could not load customer loyalty details:', loyaltyError);
+        warnings.push('Customer loyalty history, rewards, or gifts could not be loaded. Verify the loyalty database migration.');
+      } else {
+        const rewardConfig = loyaltyConfigResult.data?.value?.rewards;
+        const rewardOptions = (value: unknown) => Array.isArray(value)
+          ? value.filter((reward): reward is { label: string; chance: number; value: number; type: string } =>
+              typeof reward === 'object' && reward !== null
+              && typeof reward.label === 'string'
+              && typeof reward.chance === 'number'
+              && typeof reward.value === 'number'
+              && typeof reward.type === 'string')
+          : [];
+        loyalty = {
+          balance: Number(profile.loyalty_points || 0),
+          totalEarned: entries.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0),
+          totalRedeemed: Math.abs(entries.reduce((sum, entry) => sum + Math.min(0, Number(entry.amount) || 0), 0)),
+          ledger: entries.slice(0, 100).map(entry => ({
+            id: Number(entry.id),
+            amount: Number(entry.amount) || 0,
+            description: entry.description,
+            created_at: entry.created_at
+          })),
+          dailyRewards: (dailyRewardsResult.data || []).map(reward => ({
+            id: Number(reward.id),
+            reward_type: reward.reward_type,
+            reward_label: reward.reward_label,
+            reward_value: Number(reward.reward_value) || 0,
+            created_at: reward.created_at
+          })),
+          gifts: (giftsResult.data || []).map(gift => ({
+            id: Number(gift.id),
+            code: gift.code,
+            discount_percent: Number(gift.discount_percent) || 0,
+            discount_amount: Number(gift.discount_amount) || 0,
+            is_active: Boolean(gift.is_active),
+            created_at: gift.created_at
+          })),
+          rewardOptions: {
+            box: rewardOptions(rewardConfig?.crate_probabilities),
+            spin: rewardOptions(rewardConfig?.spin_probabilities)
+          }
+        };
+      }
+    }
+
     return NextResponse.json({
       customer: {
         isRegistered: Boolean(profile),
@@ -578,8 +677,10 @@ export async function GET(
           created_at: profile?.created_at || orders[orders.length - 1]?.created_at || new Date().toISOString(),
           status_flag: segment,
           lifetime_value: lifetimeValue,
-          total_orders: qualifyingOrders.length
+          total_orders: qualifyingOrders.length,
+          loyalty_points: Number(profile?.loyalty_points || 0)
         },
+        loyalty,
         aggregate: {
           total_sessions: aggregateCount(savedAggregate?.total_sessions, uniqueSessions.length),
           total_active_time_sec: aggregateCount(

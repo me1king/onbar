@@ -10,13 +10,20 @@ import Image from 'next/image';
 interface CommandPaletteProps {
     isOpen: boolean;
     setIsOpen: (open: boolean) => void;
+    pages: NavigationPage[];
+}
+
+interface NavigationPage {
+    name: string;
+    href: string;
+    group: string;
 }
 
 interface SearchResult {
     id: string | number;
     title: string;
     subtitle: string;
-    type: 'order' | 'product' | 'customer' | 'rider' | 'action';
+    type: 'order' | 'product' | 'customer' | 'rider' | 'action' | 'page';
     url: string;
     image?: string;
     meta?: string;
@@ -31,7 +38,27 @@ const STATIC_ACTIONS: SearchResult[] = [
     { id: 'act-6', title: 'Security Scan', subtitle: 'Threat Analysis', type: 'action', url: '/lord/security' },
 ];
 
-export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPaletteProps) {
+const PAGE_SEARCH_ALIASES: Record<string, string> = {
+    '/lord/leads': 'lead leads acquisition prospects campaigns traffic sources',
+    '/lord/demand': 'location map areas zones coverage demand',
+    '/lord/operations': 'customer location map delivery operations control',
+    '/lord/waitlist': 'leads lead locations launch early access customers',
+    '/lord/customers': 'customer customers patrons directory profiles'
+};
+
+function matchesPage(page: NavigationPage, query: string) {
+    const searchableText = [
+        page.name,
+        page.href,
+        page.group,
+        PAGE_SEARCH_ALIASES[page.href] || ''
+    ].join(' ').toLowerCase();
+    const ignoredTerms = new Set(['page', 'pages', 'go', 'find', 'open', 'the']);
+    const terms = query.toLowerCase().trim().split(/\s+/).filter(term => !ignoredTerms.has(term));
+    return terms.every(term => searchableText.includes(term));
+}
+
+export default function GlobalCommandPalette({ isOpen, setIsOpen, pages }: CommandPaletteProps) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
@@ -49,66 +76,107 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPalet
 
     useEffect(() => {
         if (query.length < 2) {
-            setResults(STATIC_ACTIONS);
+            const quickPages = pages.slice(0, 6).map(page => ({
+                id: `page-${page.href}`,
+                title: page.name,
+                subtitle: page.group,
+                type: 'page' as const,
+                url: page.href
+            }));
+            setResults([...quickPages, ...STATIC_ACTIONS]);
             setActiveIndex(0);
             return;
         }
 
+        const controller = new AbortController();
+        let active = true;
         const delayDebounceFn = setTimeout(async () => {
-            if (!supabase) return;
             setLoading(true);
+            const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+            const pageResults: SearchResult[] = pages
+                .filter(page => matchesPage(page, query))
+                .slice(0, 8)
+                .map(page => ({
+                    id: `page-${page.href}`,
+                    title: page.name,
+                    subtitle: `${page.group} · Open page`,
+                    type: 'page',
+                    url: page.href
+                }));
             try {
-                // Multi-Table Tactical Scan
-                const [orders, products, ridersResponse] = await Promise.all([
-                    supabase.from('orders').select('id, customer_name, total_price').ilike('customer_name', `%${query}%`).limit(3),
-                    supabase.from('products').select('id, name, price, image_url').ilike('name', `%${query}%`).limit(3),
-                    fetch(`/api/admin/dispatch/riders?q=${encodeURIComponent(query)}`, { cache: 'no-store' })
-                ]);
-                const riders = ridersResponse.ok
-                    ? await ridersResponse.json() as { riders?: { rider_name: string; rider_phone: string }[] }
-                    : { riders: [] };
+                const entityResults: SearchResult[] = [];
+                if (supabase) {
+                    const [orders, products, ridersResponse] = await Promise.all([
+                        supabase.from('orders').select('id, customer_name, total_price')
+                            .ilike('customer_name', `%${query}%`).order('created_at', { ascending: false }).limit(3)
+                            .abortSignal(controller.signal),
+                        supabase.from('products').select('id, name, price, image_url')
+                            .ilike('name', `%${query}%`).limit(3).abortSignal(controller.signal),
+                        fetch(`/api/admin/dispatch/riders?q=${encodeURIComponent(query)}`, {
+                            cache: 'no-store',
+                            signal: controller.signal
+                        })
+                    ]);
+                    if (orders.error) console.error('[AdminSearch] Could not search orders:', orders.error);
+                    if (products.error) console.error('[AdminSearch] Could not search products:', products.error);
+                    if (!ridersResponse.ok) {
+                        console.error('[AdminSearch] Could not search riders:', ridersResponse.status);
+                    } else {
+                        const riders = await ridersResponse.json() as { riders?: { rider_name: string; rider_phone: string }[] };
+                        riders.riders?.forEach(rider => entityResults.push({
+                            id: rider.rider_phone,
+                            title: rider.rider_name,
+                            subtitle: 'Delivery Fleet',
+                            type: 'rider',
+                            url: '/lord/dispatch',
+                            meta: rider.rider_phone
+                        }));
+                    }
 
-                const formatted: SearchResult[] = [];
+                    products.data?.forEach(product => entityResults.push({
+                        id: product.id,
+                        title: product.name,
+                        subtitle: 'Product Inventory',
+                        type: 'product',
+                        url: `/lord/upload?edit=${product.id}`,
+                        image: product.image_url,
+                        meta: formatPrice(product.price)
+                    }));
 
-                products.data?.forEach(p => formatted.push({
-                    id: p.id,
-                    title: p.name,
-                    subtitle: 'Product Inventory',
-                    type: 'product',
-                    url: `/lord/upload?edit=${p.id}`,
-                    image: p.image_url,
-                    meta: formatPrice(p.price)
-                }));
+                    orders.data?.forEach(order => entityResults.push({
+                        id: order.id,
+                        title: `Order #${order.id}`,
+                        subtitle: order.customer_name || 'Customer not recorded',
+                        type: 'order',
+                        url: '/lord/orders',
+                        meta: formatPrice(order.total_price)
+                    }));
+                }
 
-                orders.data?.forEach(o => formatted.push({
-                    id: o.id,
-                    title: `Order #${o.id}`,
-                    subtitle: o.customer_name,
-                    type: 'order',
-                    url: '/lord/orders',
-                    meta: formatPrice(o.total_price)
-                }));
-
-                riders.riders?.forEach((r: { rider_name: string; rider_phone: string }) => formatted.push({
-                    id: r.rider_phone,
-                    title: r.rider_name,
-                    subtitle: 'Delivery Fleet',
-                    type: 'rider',
-                    url: '/lord/dispatch',
-                    meta: r.rider_phone
-                }));
-
-                setResults(formatted);
-                setActiveIndex(0);
+                if (active) {
+                    setResults([...pageResults, ...entityResults]);
+                    setActiveIndex(0);
+                }
             } catch (err) {
-                console.error(err);
+                if (active) {
+                    if (!controller.signal.aborted) {
+                        console.error('[AdminSearch] Search failed:', err);
+                    }
+                    setResults(pageResults);
+                    setActiveIndex(0);
+                }
             } finally {
-                setLoading(false);
+                window.clearTimeout(timeoutId);
+                if (active) setLoading(false);
             }
         }, 300);
 
-        return () => clearTimeout(delayDebounceFn);
-    }, [query]);
+        return () => {
+            active = false;
+            clearTimeout(delayDebounceFn);
+            controller.abort();
+        };
+    }, [query, pages]);
 
     const handleSelect = (result: SearchResult) => {
         router.push(result.url);
@@ -118,10 +186,10 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPalet
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            setActiveIndex(prev => (prev + 1) % results.length);
+            setActiveIndex(prev => results.length ? (prev + 1) % results.length : 0);
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            setActiveIndex(prev => (prev - 1 + results.length) % results.length);
+            setActiveIndex(prev => results.length ? (prev - 1 + results.length) % results.length : 0);
         } else if (e.key === 'Enter' && results[activeIndex]) {
             handleSelect(results[activeIndex]);
         } else if (e.key === 'Escape') {
@@ -142,7 +210,7 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPalet
                         value={query}
                         onChange={e => setQuery(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Search Orders, Products, Riders..."
+                        placeholder="Search pages, leads, orders, products, riders..."
                         className="flex-1 bg-transparent border-none outline-none text-sm font-black uppercase tracking-widest text-foreground placeholder:text-muted"
                     />
                     <div className="flex items-center gap-2">
@@ -180,6 +248,7 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen }: CommandPalet
                                         {result.type === 'order' ? <ShoppingBag className="h-5 w-5" /> :
                                          result.type === 'rider' ? <Truck className="h-5 w-5" /> :
                                          result.type === 'action' ? <Zap className="h-5 w-5" /> :
+                                         result.type === 'page' ? <Search className="h-5 w-5" /> :
                                          result.type === 'product' ? (
                                              result.image ? <div className="h-8 w-8 relative"><Image src={result.image} fill className="object-contain" alt={result.title || ""} /></div> : <Package className="h-5 w-5" />
                                          ) : <Users className="h-5 w-5" />}

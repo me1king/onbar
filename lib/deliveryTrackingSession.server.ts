@@ -5,7 +5,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 const SESSION_LIFETIME_MS = 2 * 60 * 60 * 1000;
 
 function getSecret() {
-  return process.env.RIDER_SESSION_SECRET?.trim();
+  return process.env.RIDER_SESSION_SECRET?.trim()
+    || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 }
 
 function signature(payload: string, secret: string) {
@@ -14,7 +15,7 @@ function signature(payload: string, secret: string) {
 
 export function createDeliveryTrackingSession(orderId: number) {
   const secret = getSecret();
-  if (!secret) throw new Error('RIDER_SESSION_SECRET is not configured.');
+  if (!secret) throw new Error('A server-side tracking signing secret is not configured.');
   const payload = Buffer.from(JSON.stringify({
     orderId,
     expiresAt: Date.now() + SESSION_LIFETIME_MS

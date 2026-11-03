@@ -251,6 +251,10 @@ export default function AdminLayoutClient({
       })
   })).filter(group => group.items.length > 0);
 
+  const searchablePages = visibleNavGroups.flatMap(group =>
+    group.items.map(item => ({ name: item.name, href: item.href, group: group.group }))
+  );
+
   const isActive = (href: string) => {
     if (href === '/lord') return pathname === '/lord';
     if (href === '/lord/upload?category=extras') {
@@ -267,7 +271,7 @@ export default function AdminLayoutClient({
       <AdminErrorBoundary>
           <div className="min-h-screen bg-background flex flex-col lg:flex-row text-left">
 
-          <GlobalCommandPalette isOpen={isSearchOpen} setIsOpen={setIsSearchOpen} />
+          <GlobalCommandPalette isOpen={isSearchOpen} setIsOpen={setIsSearchOpen} pages={searchablePages} />
           <LiveActivitySidebar isOpen={isActivityOpen} setIsOpen={setIsActivityOpen} />
           <NotificationCenter isOpen={isNotificationsOpen} setIsOpen={setIsNotificationsOpen} />
 

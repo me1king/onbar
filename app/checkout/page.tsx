@@ -82,9 +82,13 @@ function CheckoutContent() {
   const customerNameInputRef = useRef<HTMLInputElement>(null);
   const customerPhoneInputRef = useRef<HTMLInputElement>(null);
   const customerEmailInputRef = useRef<HTMLInputElement>(null);
+  const deliveryZoneSelectRef = useRef<HTMLSelectElement>(null);
   const [deliveryBuilding, setDeliveryBuilding] = useState("");
   const [deliveryLandmark, setDeliveryLandmark] = useState("");
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
+  const [checkoutDraftLoaded, setCheckoutDraftLoaded] = useState(false);
+  const [checkoutDraftOwnerId, setCheckoutDraftOwnerId] = useState<string | null>(null);
+  const [profileSaveNotice, setProfileSaveNotice] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"M-Pesa" | "COD">("M-Pesa");
   const [freeDeliveryAreas, setFreeDeliveryAreas] = useState<DeliveryArea[]>([]);
   const [selectedDeliveryZoneId, setSelectedDeliveryZoneId] = useState('');
@@ -115,7 +119,12 @@ function CheckoutContent() {
   const [pointsPerKsh, setPointsPerKsh] = useState(10);
   const [usePoints, setUsePoints] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<{ latitude?: number, longitude?: number } | null>(null);
+  const [accountProfileLoaded, setAccountProfileLoaded] = useState(false);
+  const [profile, setProfile] = useState<{
+    latitude?: number;
+    longitude?: number;
+    address?: string | null;
+  } | null>(null);
 
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [isPickingLocation, setIsPickingLocation] = useState(false);
@@ -141,6 +150,27 @@ function CheckoutContent() {
 
   useEffect(() => {
     try {
+      const savedDraft = sessionStorage.getItem('ob_checkout_profile_draft')
+        || localStorage.getItem('ob_checkout_profile_draft');
+      if (savedDraft) {
+        const parsed: unknown = JSON.parse(savedDraft);
+        if (typeof parsed === 'object' && parsed !== null) {
+          const draft = parsed as Record<string, unknown>;
+          const ownerId = typeof draft.userId === 'string' ? draft.userId : null;
+          setCheckoutDraftOwnerId(ownerId);
+          if (!ownerId) {
+            if (typeof draft.customerName === 'string') setCustomerName(draft.customerName);
+            if (typeof draft.customerPhone === 'string') setCustomerPhone(draft.customerPhone);
+            if (typeof draft.customerEmail === 'string') setCustomerEmail(draft.customerEmail);
+            if (typeof draft.deliveryBuilding === 'string') setDeliveryBuilding(draft.deliveryBuilding);
+            if (typeof draft.deliveryLandmark === 'string') setDeliveryLandmark(draft.deliveryLandmark);
+            if (typeof draft.deliveryInstructions === 'string') setDeliveryInstructions(draft.deliveryInstructions);
+            if (typeof draft.deliveryZoneId === 'string') setSelectedDeliveryZoneId(draft.deliveryZoneId);
+          }
+        }
+        sessionStorage.setItem('ob_checkout_profile_draft', savedDraft);
+        localStorage.removeItem('ob_checkout_profile_draft');
+      }
       const saved = localStorage.getItem('ob_delivery_location');
       if (!saved) return;
       const parsed: unknown = JSON.parse(saved);
@@ -153,9 +183,40 @@ function CheckoutContent() {
         setCoords({ lat: parsed.lat, lng: parsed.lng });
       }
     } catch (error) {
-      console.warn('Could not restore the saved delivery pin:', error);
+      console.warn('Could not restore saved checkout details:', error);
+    } finally {
+      setCheckoutDraftLoaded(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!checkoutDraftLoaded) return;
+    try {
+      sessionStorage.setItem('ob_checkout_profile_draft', JSON.stringify({
+        userId: user?.id || checkoutDraftOwnerId,
+        customerName,
+        customerPhone,
+        customerEmail,
+        deliveryBuilding,
+        deliveryLandmark,
+        deliveryInstructions,
+        deliveryZoneId: selectedDeliveryZoneId
+      }));
+    } catch (error) {
+      console.warn('Could not save checkout details on this device:', error);
+    }
+  }, [
+    checkoutDraftLoaded,
+    user?.id,
+    checkoutDraftOwnerId,
+    customerName,
+    customerPhone,
+    customerEmail,
+    deliveryBuilding,
+    deliveryLandmark,
+    deliveryInstructions,
+    selectedDeliveryZoneId
+  ]);
 
   useEffect(() => {
     async function checkLockdown() {
@@ -263,6 +324,11 @@ function CheckoutContent() {
     async function loadProfile() {
         if (!supabase) return;
         const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            setCheckoutDraftOwnerId(null);
+            setAccountProfileLoaded(true);
+            return;
+        }
 
         // Anonymous ID Management
         let anonymousId = localStorage.getItem('ob_anonymous_id');
@@ -281,18 +347,43 @@ function CheckoutContent() {
 
         if (session) {
             setUser(session.user);
-            const { data: profileData } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-            if (profileData) {
-                setLoyaltyPoints(profileData.loyalty_points || 0);
-                setProfile(profileData);
-                // Auto-fill details
-                setCustomerName(profileData.full_name || "");
-                setCustomerPhone(profileData.phone_number || "");
-                setCustomerEmail(session.user.email || "");
-                // Sync GPS
-                if (profileData.latitude != null && profileData.longitude != null) {
+            try {
+                const [{ data: profileData, error: profileError }, savedDraftValue] = await Promise.all([
+                    supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
+                    Promise.resolve(localStorage.getItem('ob_checkout_profile_draft'))
+                ]);
+                if (profileError) throw profileError;
+                let savedDraft: Record<string, unknown> = {};
+                if (savedDraftValue) {
+                    try {
+                        const parsed: unknown = JSON.parse(savedDraftValue);
+                        if (typeof parsed === 'object' && parsed !== null
+                            && (parsed as Record<string, unknown>).userId === session.user.id) {
+                            savedDraft = parsed as Record<string, unknown>;
+                        }
+                    } catch (error) {
+                        console.warn('Could not read the saved account checkout details:', error);
+                    }
+                }
+                setCheckoutDraftOwnerId(session.user.id);
+                setLoyaltyPoints(profileData?.loyalty_points || 0);
+                setProfile(profileData || null);
+                setCustomerName(profileData?.full_name || (typeof savedDraft.customerName === 'string' ? savedDraft.customerName : ""));
+                setCustomerPhone(profileData?.phone_number || (typeof savedDraft.customerPhone === 'string' ? savedDraft.customerPhone : ""));
+                setCustomerEmail(session.user.email || (typeof savedDraft.customerEmail === 'string' ? savedDraft.customerEmail : ""));
+                setDeliveryBuilding(typeof savedDraft.deliveryBuilding === 'string'
+                    ? savedDraft.deliveryBuilding
+                    : profileData?.address || "");
+                setDeliveryLandmark(typeof savedDraft.deliveryLandmark === 'string' ? savedDraft.deliveryLandmark : "");
+                setDeliveryInstructions(typeof savedDraft.deliveryInstructions === 'string' ? savedDraft.deliveryInstructions : "");
+                setSelectedDeliveryZoneId(typeof savedDraft.deliveryZoneId === 'string' ? savedDraft.deliveryZoneId : "");
+                if (profileData?.latitude != null && profileData.longitude != null) {
                     setCoords({ lat: profileData.latitude, lng: profileData.longitude });
                 }
+            } catch (error) {
+                console.error('Could not load the customer profile for checkout:', error);
+            } finally {
+                setAccountProfileLoaded(true);
             }
             const configResponse = await fetch('/api/loyalty/config', { cache: 'no-store' });
             if (configResponse.ok) {
@@ -309,6 +400,58 @@ function CheckoutContent() {
     loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!checkoutDraftLoaded || !accountProfileLoaded || !user || !client) return;
+    const address = [deliveryBuilding.trim(), deliveryLandmark.trim()].filter(Boolean).join(', ')
+      || profile?.address?.trim();
+    const updates = {
+      fullName: customerName.trim(),
+      phoneNumber: customerPhone.trim(),
+      ...(address ? { address } : {}),
+      ...(coords.lat !== null && coords.lng !== null
+        ? { latitude: coords.lat, longitude: coords.lng }
+        : {})
+    };
+    if (!updates.fullName && !updates.phoneNumber && !updates.address
+      && coords.lat === null && coords.lng === null) return;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await client.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!sessionData.session?.access_token) throw new Error('Sign-in session is unavailable.');
+        const response = await fetch('/api/profile/checkout-details', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${sessionData.session.access_token}`
+          },
+          body: JSON.stringify(updates)
+        });
+        const result = await response.json() as { error?: string };
+        if (!response.ok) throw new Error(result.error || 'Account profile could not be saved.');
+        setProfileSaveNotice(null);
+      } catch (error) {
+        console.error('Could not save checkout details to the customer profile:', error);
+        setProfileSaveNotice('Your details are saved on this device and with your order, but could not be synced to your account profile.');
+      }
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    user,
+    checkoutDraftLoaded,
+    accountProfileLoaded,
+    customerName,
+    customerPhone,
+    deliveryBuilding,
+    deliveryLandmark,
+    coords.lat,
+    coords.lng,
+    profile?.address
+  ]);
 
   const gpsDeliveryZone = coords.lat != null && coords.lng != null
     ? findDeliveryZone(coords.lat, coords.lng, freeDeliveryAreas)
@@ -333,6 +476,15 @@ function CheckoutContent() {
   const totalSavings = discount + pointsDiscount;
   const originalTotal = subtotal + deliveryFee;
   const total = originalTotal - totalSavings;
+  const checkoutNeedsDeliveryLocation = /estate|delivery zone|delivery area|delivery fee|delivery pin|gps pin/i
+    .test(checkoutStatus.message);
+
+  const focusDeliveryLocation = () => {
+    setUnavailableItem(null);
+    setCheckoutStatus({ type: 'idle', message: '' });
+    document.getElementById('checkout-delivery-location')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => deliveryZoneSelectRef.current?.focus({ preventScroll: true }), 350);
+  };
 
   // 1. Abandoned Cart Recovery Logic
   useEffect(() => {
@@ -449,6 +601,8 @@ function CheckoutContent() {
         type: "error",
         message: "Choose your estate or set a map/GPS pin in a delivery zone before placing the order."
       });
+      document.getElementById('checkout-delivery-location')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => deliveryZoneSelectRef.current?.focus({ preventScroll: true }), 350);
       return;
     }
 
@@ -719,21 +873,13 @@ function CheckoutContent() {
             autoDetect
             onConfirm={async (lat, lng) => {
                 setCoords({ lat, lng });
+                setCheckoutStatus({ type: 'idle', message: '' });
                 try {
                     localStorage.setItem('ob_delivery_location', JSON.stringify({ lat, lng }));
                 } catch (error) {
                     console.warn('Could not save delivery pin on this device:', error);
                 }
                 setLocationSaveNotice(null);
-                if (user && supabase) {
-                    try {
-                        const { error } = await supabase.from('profiles').update({ latitude: lat, longitude: lng }).eq('id', user.id);
-                        if (error) throw error;
-                    } catch (error) {
-                        console.error('Could not save delivery pin to customer profile:', error);
-                        setLocationSaveNotice('This pin is saved on this device and will be attached to this order, but it could not be saved to your customer profile.');
-                    }
-                }
                 setIsPickingLocation(false);
                 OB_OS.track('UI_INTERACTION', { details: { id: 'checkout.location_locked', lat, lng } });
             }}
@@ -784,10 +930,15 @@ function CheckoutContent() {
                   {showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && <p id="checkout-customer-email-error" role="alert" className="text-xs font-semibold text-rose-600">Enter a valid email address for Paystack.</p>}
                 </div>
             </div>
+            {user && accountProfileLoaded && (
+              <p role="status" className="text-xs font-medium text-slate-500">
+                Your name, phone, and delivery address are saved to your account as you update them.
+              </p>
+            )}
           </section>
 
           {/* Delivery location and fee calculator */}
-          <section className="space-y-4 sm:space-y-6">
+          <section id="checkout-delivery-location" className="space-y-4 sm:space-y-6">
             <div className="flex items-center gap-3">
                 <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Zap className="h-4 w-4 sm:h-5 sm:w-5" /></div>
                 <h2 className="text-lg sm:text-xl font-black uppercase tracking-tighter">Delivery location</h2>
@@ -795,11 +946,13 @@ function CheckoutContent() {
             <label className="block space-y-2">
                 <span className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Estate / delivery area</span>
                 <select
+                    ref={deliveryZoneSelectRef}
                     value={selectedDeliveryZoneId}
                     disabled={!deliveryAreasLoaded || isPlacingOrder}
                     onChange={event => {
                         const zoneId = event.target.value;
                         setSelectedDeliveryZoneId(zoneId);
+                        setCheckoutStatus({ type: 'idle', message: '' });
                         const nextZone = freeDeliveryAreas.find(area => area.id === zoneId);
                         const pinMatchesZone = coords.lat != null && coords.lng != null
                             ? findDeliveryZone(coords.lat, coords.lng, freeDeliveryAreas)?.id === zoneId
@@ -889,6 +1042,7 @@ function CheckoutContent() {
                                                 : `${selectedZone.name}: ${zoneFee === 0 ? 'free delivery' : `${formatPrice(zoneFee)} delivery fee`}${freeDeliveryOver > 0 ? ` · free over ${formatPrice(freeDeliveryOver)}` : ''}.`}
                 </p>
                 {locationSaveNotice && <p role="status" className="relative z-10 text-xs text-amber-800">{locationSaveNotice}</p>}
+                {profileSaveNotice && <p role="status" className="relative z-10 text-xs text-amber-800">{profileSaveNotice}</p>}
                 {/* Decoration */}
                 <Zap className="absolute -bottom-6 -right-6 h-20 w-20 sm:h-24 sm:w-24 text-slate-100/50 rotate-12" />
             </Card>
@@ -1230,12 +1384,21 @@ function CheckoutContent() {
                                   </Button>
                                 </>
                               ) : (
-                                <Button
-                                  onClick={handlePlaceOrder}
-                                  className="h-18 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all border-none"
-                                >
-                                    Try checkout again
-                                </Button>
+                                checkoutNeedsDeliveryLocation ? (
+                                  <Button
+                                    onClick={focusDeliveryLocation}
+                                    className="h-18 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all border-none"
+                                  >
+                                      Fix delivery location
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    onClick={handlePlaceOrder}
+                                    className="h-18 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all border-none"
+                                  >
+                                      Try checkout again
+                                  </Button>
+                                )
                               )}
                               <Button
                                 variant="outline"
@@ -1245,7 +1408,7 @@ function CheckoutContent() {
                                 }}
                                 className="h-16 rounded-2xl border-2 border-slate-300 bg-white text-slate-600 font-black uppercase text-[10px] tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
                               >
-                                  Edit cart
+                                  Continue checkout
                               </Button>
                           </div>
                       </div>

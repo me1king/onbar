@@ -206,6 +206,7 @@ export default function AdminLayoutClient({
       { name: 'Smart Autopilot', href: '/lord/growth/autopilot', icon: Bot, permission: 'can_manage_marketing' },
       { name: 'Social Nodes', href: '/lord/growth/accounts', icon: Globe, permission: 'can_manage_marketing' },
       { name: 'Marketing Hub', href: '/lord/marketing', icon: TrendingUp, permission: 'can_manage_marketing' },
+      { name: 'Leads & Acquisition', href: '/lord/leads', icon: Users, permission: 'can_manage_marketing' },
       { name: 'AI Ad Agency', href: '/lord/marketing/ai-agency', icon: Target, permission: 'can_manage_marketing' },
       { name: 'Affiliates', href: '/lord/affiliates', icon: Users, permission: 'can_manage_affiliates' },
       { name: 'Drink Deals', href: '/lord/coupons', icon: Tag, permission: 'can_manage_marketing' },
@@ -246,6 +247,10 @@ export default function AdminLayoutClient({
       })
   })).filter(group => group.items.length > 0);
 
+  const searchablePages = visibleNavGroups.flatMap(group =>
+    group.items.map(item => ({ name: item.name, href: item.href, group: group.group }))
+  );
+
   const isActive = (href: string) => {
     if (href === '/lord') return pathname === '/lord';
     if (href === '/lord/waitlist') return pathname === href;
@@ -263,7 +268,7 @@ export default function AdminLayoutClient({
       <AdminErrorBoundary>
           <div className="min-h-screen bg-background flex flex-col lg:flex-row text-left">
 
-          <GlobalCommandPalette isOpen={isSearchOpen} setIsOpen={setIsSearchOpen} />
+          <GlobalCommandPalette isOpen={isSearchOpen} setIsOpen={setIsSearchOpen} pages={searchablePages} />
           <LiveActivitySidebar isOpen={isActivityOpen} setIsOpen={setIsActivityOpen} />
           <NotificationCenter isOpen={isNotificationsOpen} setIsOpen={setIsNotificationsOpen} />
 

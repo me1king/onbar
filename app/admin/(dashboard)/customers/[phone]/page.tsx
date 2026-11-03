@@ -14,13 +14,17 @@ import {
     Smartphone,
     Bot,
     BarChart3,
-    ShieldAlert
+    ShieldAlert,
+    Gift,
+    Coins,
+    Ticket
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import CustomerCrmPanel from '@/components/admin/customers/CustomerCrmPanel';
+import { logAuditAction } from '@/lib/auditService';
 
 const SessionForensics = dynamic(() => import('@/components/admin/SessionForensics'), { ssr: false });
 
@@ -32,6 +36,13 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
             {detail && <p className="mt-1 break-words text-[11px] leading-4 text-slate-500">{detail}</p>}
         </div>
     );
+}
+
+interface CustomerRewardOption {
+    label: string;
+    chance: number;
+    value: number;
+    type: string;
 }
 
 interface Customer360 {
@@ -49,7 +60,17 @@ interface Customer360 {
         status_flag: string;
         lifetime_value: number;
         total_orders: number;
+        loyalty_points: number;
     };
+    loyalty: {
+        balance: number;
+        totalEarned: number;
+        totalRedeemed: number;
+        ledger: { id: number; amount: number; description: string; created_at: string }[];
+        dailyRewards: { id: number; reward_type: string; reward_label: string; reward_value: number; created_at: string }[];
+        gifts: { id: number; code: string; discount_percent: number; discount_amount: number; is_active: boolean; created_at: string }[];
+        rewardOptions: { box: CustomerRewardOption[]; spin: CustomerRewardOption[] };
+    } | null;
     aggregate: {
         total_sessions: number;
         total_active_time_sec: number;
@@ -139,6 +160,14 @@ export default function CustomerProfilePage() {
     const [notFound, setNotFound] = React.useState(false);
     const [loadError, setLoadError] = React.useState('');
     const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null);
+    const [loyaltyBusy, setLoyaltyBusy] = React.useState(false);
+    const [loyaltyMessage, setLoyaltyMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [pointsAmount, setPointsAmount] = React.useState('100');
+    const [pointsReason, setPointsReason] = React.useState('');
+    const [giftType, setGiftType] = React.useState<'amount' | 'percent'>('amount');
+    const [giftValue, setGiftValue] = React.useState('500');
+    const [dailyRewardType, setDailyRewardType] = React.useState<'box' | 'spin'>('spin');
+    const [dailyRewardIndex, setDailyRewardIndex] = React.useState('0');
 
     const fetchCustomerData = React.useCallback(async () => {
         if (!phone) return;
@@ -169,6 +198,31 @@ export default function CustomerProfilePage() {
     React.useEffect(() => {
         fetchCustomerData();
     }, [fetchCustomerData]);
+
+    const submitLoyaltyAction = async (payload: Record<string, unknown>, successMessage: string) => {
+        setLoyaltyBusy(true);
+        setLoyaltyMessage(null);
+        try {
+            const response = await fetch(`/api/admin/customers/${encodeURIComponent(phone)}/loyalty`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Customer reward update failed.');
+            setLoyaltyMessage({ type: 'success', text: successMessage });
+            await logAuditAction('', 'UPDATE_CUSTOMER_LOYALTY', payload, { type: 'customer', id: phone });
+            await fetchCustomerData();
+        } catch (error) {
+            console.error('[CustomerProfile] Could not update customer rewards:', error);
+            setLoyaltyMessage({
+                type: 'error',
+                text: error instanceof Error ? error.message : 'Customer reward update failed.'
+            });
+        } finally {
+            setLoyaltyBusy(false);
+        }
+    };
 
     if (loading) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
@@ -267,6 +321,191 @@ export default function CustomerProfilePage() {
                     {data.warnings.join(' ')} Order and customer records are still available.
                 </p>
             )}
+
+            <Card className="space-y-6 rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-8">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-3">
+                        <div className="rounded-xl bg-amber-50 p-3 text-amber-600"><Coins className="h-5 w-5" /></div>
+                        <div>
+                            <h2 className="text-lg font-black uppercase tracking-tight text-slate-900">Loyalty &amp; customer gifts</h2>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">See points earned and redeemed, daily crate/spin history, and customer-owned vouchers. Bar Club Engine controls the shared reward odds.</p>
+                        </div>
+                    </div>
+                    {data.loyalty && (
+                        <div className="rounded-xl bg-slate-900 px-4 py-3 text-white">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-300">Current points</p>
+                            <p className="text-2xl font-black">{data.loyalty.balance.toLocaleString()}</p>
+                        </div>
+                    )}
+                </div>
+
+                {!data.isRegistered ? (
+                    <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">This customer has not created an account, so points, daily spins, and account-linked gift vouchers are not available yet.</p>
+                ) : !data.loyalty ? (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Loyalty history is unavailable. Check that the loyalty migration is installed before managing this customer&apos;s rewards.</p>
+                ) : (
+                    <>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            {[
+                                { label: 'Lifetime points earned', value: data.loyalty.totalEarned },
+                                { label: 'Points redeemed', value: data.loyalty.totalRedeemed },
+                                { label: 'Current balance', value: data.loyalty.balance }
+                            ].map(metric => (
+                                <div key={metric.label} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">{metric.label}</p>
+                                    <p className="mt-1 text-xl font-black text-slate-900">{metric.value.toLocaleString()}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {loyaltyMessage && (
+                            <p role={loyaltyMessage.type === 'error' ? 'alert' : 'status'} className={cn(
+                                'rounded-xl border p-3 text-sm font-medium',
+                                loyaltyMessage.type === 'success'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                    : 'border-rose-200 bg-rose-50 text-rose-800'
+                            )}>{loyaltyMessage.text}</p>
+                        )}
+
+                        <div className="grid gap-6 xl:grid-cols-3">
+                            <form
+                                className="space-y-3 rounded-2xl border border-slate-100 p-4"
+                                onSubmit={event => {
+                                    event.preventDefault();
+                                    void submitLoyaltyAction({
+                                        action: 'adjust-points',
+                                        amount: Number(pointsAmount),
+                                        reason: pointsReason
+                                    }, 'Customer points updated and recorded in the loyalty ledger.');
+                                }}
+                            >
+                                <h3 className="flex items-center gap-2 text-xs font-black uppercase text-slate-800"><Coins className="h-4 w-4 text-amber-500" /> Adjust points</h3>
+                                <input aria-label="Points to add or remove" type="number" step="1" min="-100000" max="100000" required value={pointsAmount} onChange={event => setPointsAmount(event.target.value)} className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+                                <input aria-label="Points adjustment reason" type="text" minLength={3} maxLength={160} required value={pointsReason} onChange={event => setPointsReason(event.target.value)} placeholder="Reason (required for audit)" className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+                                <Button type="submit" disabled={loyaltyBusy} className="w-full">{loyaltyBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save points adjustment'}</Button>
+                            </form>
+
+                            <form
+                                className="space-y-3 rounded-2xl border border-slate-100 p-4"
+                                onSubmit={event => {
+                                    event.preventDefault();
+                                    void submitLoyaltyAction({
+                                        action: 'issue-gift',
+                                        giftType,
+                                        giftValue: Number(giftValue)
+                                    }, 'Customer gift voucher issued and attached to their account.');
+                                }}
+                            >
+                                <h3 className="flex items-center gap-2 text-xs font-black uppercase text-slate-800"><Gift className="h-4 w-4 text-primary" /> Give customer a voucher</h3>
+                                <select aria-label="Gift voucher type" value={giftType} onChange={event => setGiftType(event.target.value as 'amount' | 'percent')} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm">
+                                    <option value="amount">Fixed amount (KSh)</option>
+                                    <option value="percent">Percentage off</option>
+                                </select>
+                                <input aria-label="Gift voucher value" type="number" step="1" min="1" max={giftType === 'percent' ? 100 : 1000000} required value={giftValue} onChange={event => setGiftValue(event.target.value)} className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+                                <Button type="submit" variant="outline" disabled={loyaltyBusy} className="w-full"><Ticket className="mr-2 h-4 w-4" /> Issue customer gift</Button>
+                            </form>
+
+                            <form
+                                className="space-y-3 rounded-2xl border border-slate-100 p-4"
+                                onSubmit={event => {
+                                    event.preventDefault();
+                                    void submitLoyaltyAction({
+                                        action: 'award-daily-reward',
+                                        rewardType: dailyRewardType,
+                                        rewardIndex: Number(dailyRewardIndex)
+                                    }, 'Selected daily reward issued and recorded for this customer.');
+                                }}
+                            >
+                                <h3 className="flex items-center gap-2 text-xs font-black uppercase text-slate-800"><Gift className="h-4 w-4 text-violet-600" /> Choose a crate / spin win</h3>
+                                <select
+                                    aria-label="Daily reward type"
+                                    value={dailyRewardType}
+                                    onChange={event => {
+                                        setDailyRewardType(event.target.value as 'box' | 'spin');
+                                        setDailyRewardIndex('0');
+                                    }}
+                                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+                                >
+                                    <option value="spin">Premium Spin</option>
+                                    <option value="box">Daily Crate</option>
+                                </select>
+                                <select aria-label="Choose customer reward" value={dailyRewardIndex} onChange={event => setDailyRewardIndex(event.target.value)} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm">
+                                    {(dailyRewardType === 'spin' ? data.loyalty.rewardOptions.spin : data.loyalty.rewardOptions.box)
+                                        .map((option, index) => ({ option, index }))
+                                        .filter(({ option }) => ['xp', 'voucher'].includes(option.type))
+                                        .map(({ option, index }) => (
+                                            <option key={`${option.label}-${index}`} value={index}>
+                                                {option.label} · {option.chance}% chance
+                                            </option>
+                                        ))}
+                                </select>
+                                <p className="text-[11px] leading-4 text-slate-500">Issues a configured points prize or voucher immediately. Each customer can receive one crate and one spin reward every 24 hours.</p>
+                                <Button type="submit" variant="outline" disabled={loyaltyBusy || !(dailyRewardType === 'spin' ? data.loyalty.rewardOptions.spin : data.loyalty.rewardOptions.box).some(option => ['xp', 'voucher'].includes(option.type))} className="w-full">Issue selected reward</Button>
+                            </form>
+                        </div>
+
+                        <div className="grid gap-6 xl:grid-cols-2">
+                            <div className="space-y-3">
+                                <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Gift vouchers</h3>
+                                {data.loyalty.gifts.length ? data.loyalty.gifts.map(gift => (
+                                    <div key={gift.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3">
+                                        <div>
+                                            <p className="font-mono text-sm font-black text-slate-900">{gift.code}</p>
+                                            <p className="text-xs text-slate-500">
+                                                {gift.discount_percent ? `${gift.discount_percent}% off` : `KSh ${gift.discount_amount.toLocaleString()} off`}
+                                                {' · '}{gift.is_active ? 'Active' : 'Redeemed / inactive'}
+                                            </p>
+                                        </div>
+                                        {gift.is_active && (
+                                            <Button type="button" variant="outline" size="sm" disabled={loyaltyBusy} onClick={() => {
+                                                if (window.confirm(`Deactivate gift voucher ${gift.code}?`)) {
+                                                    void submitLoyaltyAction({ action: 'revoke-gift', giftId: gift.id }, 'Gift voucher deactivated.');
+                                                }
+                                            }}>Deactivate</Button>
+                                        )}
+                                    </div>
+                                )) : <p className="text-sm text-slate-500">No customer gifts have been issued.</p>}
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Daily crate &amp; spin history</h3>
+                                {data.loyalty.dailyRewards.length ? (
+                                    <div className="max-h-64 space-y-2 overflow-y-auto">
+                                        {data.loyalty.dailyRewards.map(reward => (
+                                            <div key={reward.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+                                                <div>
+                                                    <p className="text-sm font-bold text-slate-900">{reward.reward_label}</p>
+                                                    <p className="text-[11px] text-slate-500">{reward.reward_type === 'spin' ? 'Premium Spin' : 'Daily Crate'} · {new Date(reward.created_at).toLocaleString()}</p>
+                                                </div>
+                                                <span className="text-xs font-black uppercase text-slate-600">{reward.reward_value ? reward.reward_value.toLocaleString() : 'Gift'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : <p className="text-sm text-slate-500">No daily crate or spin wins recorded.</p>}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Points history</h3>
+                            {data.loyalty.ledger.length ? (
+                                <div className="max-h-64 space-y-2 overflow-y-auto">
+                                    {data.loyalty.ledger.map(entry => (
+                                        <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+                                            <div>
+                                                <p className="text-sm font-semibold text-slate-800">{entry.description}</p>
+                                                <p className="text-[11px] text-slate-500">{new Date(entry.created_at).toLocaleString()}</p>
+                                            </div>
+                                            <span className={cn('shrink-0 text-sm font-black', entry.amount >= 0 ? 'text-emerald-700' : 'text-rose-700')}>
+                                                {entry.amount > 0 ? '+' : ''}{entry.amount.toLocaleString()}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : <p className="text-sm text-slate-500">No points transactions recorded yet.</p>}
+                        </div>
+                    </>
+                )}
+            </Card>
 
             <div className="grid lg:grid-cols-12 gap-10">
 

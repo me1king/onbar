@@ -81,6 +81,31 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
     setIsSignUp(initialMode === 'signup');
   }, [initialMode]);
 
+  useEffect(() => {
+    if (!isSignUp) return;
+    try {
+      const saved = sessionStorage.getItem('ob_checkout_profile_draft')
+        || localStorage.getItem('ob_checkout_profile_draft');
+      if (!saved) return;
+      sessionStorage.setItem('ob_checkout_profile_draft', saved);
+      localStorage.removeItem('ob_checkout_profile_draft');
+      const parsed: unknown = JSON.parse(saved);
+      if (typeof parsed !== 'object' || parsed === null) return;
+      const draft = parsed as Record<string, unknown>;
+      if (draft.userId !== null && draft.userId !== undefined) return;
+      if (typeof draft.customerName === 'string') setFullName(current => current || (draft.customerName as string));
+      if (typeof draft.customerPhone === 'string') setPhoneNumber(current => current || (draft.customerPhone as string));
+      if (typeof draft.customerEmail === 'string') setEmail(current => current || (draft.customerEmail as string));
+      const savedAddress = [
+        draft.deliveryBuilding,
+        draft.deliveryLandmark
+      ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join(', ');
+      if (savedAddress) setAddress(current => current || savedAddress);
+    } catch (error) {
+      console.warn('[AuthForm] Could not restore checkout details for account creation:', error);
+    }
+  }, [isSignUp]);
+
   const handleIdentityStitching = async (userId: string) => {
       try {
           const anonId = localStorage.getItem('ob_anonymous_id');
@@ -258,7 +283,16 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             const referralCode = isSignUp ? sessionStorage.getItem('ob_referral_code') : null;
             const { error } = await supabase.auth.signInWithOtp({
                 phone: cleanPhone,
-                options: referralCode ? { data: { referred_by_code: referralCode } } : undefined
+                options: {
+                    data: {
+                        phone_number: cleanPhone,
+                        ...(isSignUp ? {
+                            full_name: fullName.trim() || null,
+                            address: address.trim() || null
+                        } : {}),
+                        ...(referralCode ? { referred_by_code: referralCode } : {})
+                    }
+                }
             });
             if (error) throw error;
 
@@ -273,10 +307,40 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
             if (error) throw error;
 
             if (data.user) {
+                const profileUpdates = {
+                    phone_number: cleanPhone,
+                    ...(isSignUp && fullName.trim() ? { full_name: fullName.trim() } : {}),
+                    ...(isSignUp && address.trim() ? { address: address.trim() } : {})
+                };
+                let profileSaved = true;
+                const { data: existingProfile, error: profileError } = await supabase.from('profiles')
+                    .update(profileUpdates)
+                    .eq('id', data.user.id)
+                    .select('id')
+                    .maybeSingle();
+                if (profileError) {
+                    console.error('[AuthForm] Could not save verified phone account details:', profileError);
+                    profileSaved = false;
+                } else if (!existingProfile) {
+                    const { error: insertError } = await supabase.from('profiles').insert({
+                        id: data.user.id,
+                        email: data.user.email || null,
+                        ...profileUpdates
+                    });
+                    if (insertError) {
+                        console.error('[AuthForm] Could not create profile for verified phone account:', insertError);
+                        profileSaved = false;
+                    }
+                }
                 await handleIdentityStitching(data.user.id);
                 await OB_OS.track('USER_LOGIN', { userId: data.user.id });
                 const referralSynced = await registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
-                if (referralSynced) {
+                if (!profileSaved) {
+                    setMessage({
+                        type: 'error',
+                        text: 'Your account is ready, but your contact details could not be saved to the profile. You can continue and update them in Profile.'
+                    });
+                } else if (referralSynced) {
                     setMessage({ type: 'success', text: isSignUp ? 'Identity Established! Synchronizing...' : 'Access Granted. Entering Vault...' });
                 }
                 if (onSuccess) {
@@ -410,6 +474,13 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
                         </div>
                     </div>
                     <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Phone Number</label>
+                        <div className="relative">
+                            <Input type="tel" inputMode="tel" autoComplete="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} placeholder="07XXXXXXXX" required maxLength={40} className="h-16 rounded-2xl bg-slate-50 border-slate-100 pl-14 font-bold text-sm focus:bg-white transition-all shadow-inner" />
+                            <Smartphone className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                        </div>
+                    </div>
+                    <div className="space-y-3">
                         <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Delivery Node</label>
                         <div className="relative">
                             <Input required value={address} onChange={e => setAddress(e.target.value)} placeholder="E.G. KILIMANI, NAIROBI" className="h-16 rounded-2xl bg-slate-50 border-slate-100 pl-14 font-black uppercase text-sm focus:bg-white transition-all shadow-inner" />
@@ -462,6 +533,18 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
               </form>
           ) : (
               <form onSubmit={handlePhoneOTP} className="space-y-8">
+                  {isSignUp && (
+                    <>
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Full Name</label>
+                        <Input required maxLength={120} value={fullName} onChange={event => setFullName(event.target.value)} placeholder="FULL NAME" className="h-14 rounded-2xl bg-slate-50 border-slate-100 px-5 font-bold focus:bg-white transition-all shadow-inner" />
+                      </div>
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Delivery Address</label>
+                        <Input required maxLength={300} value={address} onChange={event => setAddress(event.target.value)} placeholder="BUILDING OR ESTATE, NAIROBI" className="h-14 rounded-2xl bg-slate-50 border-slate-100 px-5 font-bold focus:bg-white transition-all shadow-inner" />
+                      </div>
+                    </>
+                  )}
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase text-slate-400 ml-1 tracking-widest">Mobile Uplink</label>
                     <div className="relative">
