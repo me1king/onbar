@@ -5,7 +5,7 @@ import { useWishlist } from "@/context/WishlistContext";
 import { getLocalSession } from "@/lib/localAuth";
 import { supabase } from "../../lib/supabaseClient";
 import Image from 'next/image';
-import { Menu, Search, ShoppingCart, Heart, X, Zap, Package, User as UserIcon, Bell, CheckCircle, ChevronRight, History, ArrowRight } from "lucide-react";
+import { Menu, Search, ShoppingCart, Heart, X, Zap, Package, User as UserIcon, Bell, CheckCircle, ChevronRight, History, ArrowRight, MapPin } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
@@ -389,6 +389,11 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
       setIsSearchOpen(false);
   };
 
+  const openLocationPreferences = () => {
+    setIsMobileOpen(false);
+    window.dispatchEvent(new Event('onbar:open-location-preferences'));
+  };
+
   const navItems = [
     { href: "/halloween", label: "Halloween Costumes" },
     { href: "/tickets", label: "Halloween Tickets" },
@@ -536,6 +541,15 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
           </div>
 
           <div className="flex items-center gap-1.5 max-[430px]:gap-1 sm:gap-3">
+            <button
+              type="button"
+              onClick={openLocationPreferences}
+              className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-[10px] font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-primary lg:inline-flex"
+              aria-label="Choose delivery area"
+            >
+              <MapPin className="h-4 w-4" />
+              Delivery area
+            </button>
             <button
               onClick={() => setIsMobileOpen(!isMobileOpen)}
               className="lg:hidden p-1.5 max-[430px]:p-1 max-[360px]:p-1 sm:p-2 rounded-full hover:bg-slate-50 transition-all active:scale-95"
@@ -792,6 +806,13 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
         {isMobileOpen && (
           <nav className="lg:hidden mt-4 bg-slate-50 rounded-3xl p-4 sm:p-6 animate-in zoom-in-95 duration-200 shadow-xl border border-slate-100 pb-safe" role="navigation">
             <div className="mb-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={openLocationPreferences}
+                className="flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-3 text-[10px] font-black uppercase tracking-wide text-slate-600"
+              >
+                <MapPin className="h-4 w-4" /> Delivery area
+              </button>
               <button
                 onClick={() => {
                   setIsSearchOpen(true);

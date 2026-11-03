@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import {
   DEFAULT_LOCATION_WAITLIST_CONTENT,
   LOCATION_AREAS,
@@ -20,6 +20,7 @@ const DECISION_KEY = 'onbar_location_prompt_answered';
 const LOCATION_KEY = 'onbar_area_preference';
 const PROMPT_SHOWN_KEY = 'onbar_location_prompt_shown';
 const EXACT_LOCATION_SHARE_EVENT = 'onbar:share-exact-location';
+const OPEN_LOCATION_PREFERENCES_EVENT = 'onbar:open-location-preferences';
 
 function getPreciseBrowserLocation(): Promise<{ latitude: number; longitude: number; accuracyM: number }> {
   return new Promise((resolve, reject) => {
@@ -119,6 +120,16 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   }, [ready, location, isOpen, suppressLauncher]);
 
   useEffect(() => {
+    const openPreferences = () => {
+      setStatus('');
+      setManualMode(Boolean(location));
+      setIsOpen(true);
+    };
+    window.addEventListener(OPEN_LOCATION_PREFERENCES_EVENT, openPreferences);
+    return () => window.removeEventListener(OPEN_LOCATION_PREFERENCES_EVENT, openPreferences);
+  }, [location]);
+
+  useEffect(() => {
     let active = true;
     fetch('/api/location/catalog', { cache: 'no-store', signal: AbortSignal.timeout(6000) })
       .then(async (response) => {
@@ -155,7 +166,15 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       .catch((error) => console.error('[LocationOnboarding] Could not load configured locations:', error));
     try {
       const saved = localStorage.getItem(LOCATION_KEY);
-      if (saved) setLocation(JSON.parse(saved) as SavedLocation);
+      if (saved) {
+        const restored = JSON.parse(saved) as SavedLocation;
+        manualSelection.current = { county: restored.county, area: restored.area };
+        setLocation(restored);
+        setCounty(restored.county);
+        setCity(restored.city);
+        setArea(restored.area);
+        setCustomAreaMode(!LOCATION_AREAS.some(item => item.county === restored.county && item.area === restored.area));
+      }
     } catch (error) {
       console.error('[LocationOnboarding] Could not restore the saved area preference:', error);
     } finally {
@@ -505,36 +524,6 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
 
   return (
     <>
-      {!suppressLauncher && location && !isOpen && (
-        <button
-          type="button"
-          onClick={() => {
-            setStatus('');
-            localStorage.setItem(PROMPT_SHOWN_KEY, 'yes');
-            setIsOpen(true);
-          }}
-          className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] left-3 z-[90] inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-lg backdrop-blur sm:bottom-6 sm:left-6"
-          aria-label={`Change saved area, currently ${location.area}, ${location.city}`}
-        >
-          <MapPin size={14} className="text-primary" />
-          {location.area}
-        </button>
-      )}
-
-      {!suppressLauncher && !location && !isOpen && (
-        <button
-          type="button"
-          onClick={() => {
-            localStorage.setItem(PROMPT_SHOWN_KEY, 'yes');
-            setIsOpen(true);
-          }}
-          className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] left-3 z-[90] inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-lg backdrop-blur sm:bottom-6 sm:left-6"
-        >
-          <MapPin size={14} className="text-primary" />
-          Set your area
-        </button>
-      )}
-
       {isOpen && (
         <div className="fixed inset-0 z-[7000] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm">
           <section
@@ -558,20 +547,21 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
             {!location && !manualMode && (
               <>
                 <div className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
-                  <p className="font-bold">Help us show what’s available in your area.</p>
-                  <p className="mt-2">We use an approximate area to check delivery coverage. GPS coordinates are not stored for this area check.</p>
+                  <p className="font-bold">Find what’s available near you.</p>
+                  <p className="mt-1">Use GPS or choose your area. We only save the approximate area for delivery coverage.</p>
                 </div>
-                <label className="mt-4 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={exactLocationShareConsent}
-                    onChange={(event) => setExactLocationShareConsent(event.target.checked)}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <b>Optional: share my precise live GPS pin with operations.</b> If selected, authorized operations admins can view my anonymous GPS coordinates while I browse. Sharing stops when I close this tab, I stop it, or it expires after 2 minutes without updates. GPS accuracy depends on my device. Leave this off to share no pin.
-                  </span>
-                </label>
+                <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  <summary className="cursor-pointer font-semibold">Optional: share a live GPS pin</summary>
+                  <label className="mt-2 flex items-start gap-2 leading-relaxed">
+                    <input
+                      type="checkbox"
+                      checked={exactLocationShareConsent}
+                      onChange={(event) => setExactLocationShareConsent(event.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Share an anonymous pin with authorized operations admins. It stops when you close this tab or after 2 minutes without updates. Area selection works without it.</span>
+                  </label>
+                </details>
                 <div className="mt-6 grid gap-3">
                   <button type="button" disabled={busy} onClick={requestLocation} className="rounded-2xl bg-primary px-5 py-4 text-sm font-black uppercase tracking-widest text-white disabled:opacity-60">
                     {busy ? 'Checking your area…' : 'Allow Location'}
