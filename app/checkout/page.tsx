@@ -85,7 +85,11 @@ function CheckoutContent() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const attributionId = params.get('utm_id');
-    if (attributionId) sessionStorage.setItem('ob_attribution_id', attributionId);
+    const attributionSource = params.get('utm_source');
+    if (attributionId || attributionSource) {
+      sessionStorage.setItem('ob_attribution_id', attributionId || `utm_source:${attributionSource}`);
+      if (attributionSource) sessionStorage.setItem('ob_attribution_source', attributionSource);
+    }
 
     const exitCoupon = localStorage.getItem('ob_exit_coupon');
     if (exitCoupon) {

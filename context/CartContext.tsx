@@ -30,6 +30,11 @@ export interface CartItem {
   engraving_fee?: number;
   gift_packaging_fee?: number;
   cart_key?: string;
+  stock?: number;
+  variant_stock?: Record<string, number>;
+  is_bite?: boolean;
+  is_snack?: boolean;
+  is_available_now?: boolean;
 }
 
 interface CartContextProps {
@@ -87,24 +92,13 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   }, [cart]);
 
   const addToCart = async (item: CartItem): Promise<AddToCartResult> => {
-    if (!supabase) {
+    const hasAvailabilitySnapshot = item.stock !== undefined || item.variant_stock !== undefined;
+    if (!supabase && !hasAvailabilitySnapshot) {
       return { ok: false, error: 'Product availability could not be checked. Please refresh and try again.' };
     }
-
-    const { data: liveProduct, error: availabilityError } = await supabase
-      .from('products')
-      .select('name, stock, variant_stock, is_bite, is_snack, is_available_now, operating_hours')
-      .eq('id', item.id)
-      .maybeSingle();
-
-    if (availabilityError || !liveProduct) {
-      console.error('[Cart] Could not verify live product availability:', availabilityError);
-      return { ok: false, error: 'Product availability could not be checked. Please refresh and try again.' };
-    }
-
     const stock = Number(
-      (liveProduct.variant_stock as Record<string, number> | null)?.[item.size || 'Standard']
-      ?? liveProduct.stock
+      item.variant_stock?.[item.size || 'Standard']
+      ?? item.stock
       ?? 0
     );
     const requestedQuantity = Math.max(1, Number(item.quantity || 1));
@@ -112,42 +106,18 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       .filter(cartItem => getCartKey(cartItem) === getCartKey(item))
       .reduce((total, cartItem) => total + cartItem.quantity, 0);
 
-    if (!Number.isFinite(stock) || stock < existingQuantity + requestedQuantity) {
+    if (hasAvailabilitySnapshot && (!Number.isFinite(stock) || stock < existingQuantity + requestedQuantity)) {
       return {
         ok: false,
         error: stock > 0
-          ? `Only ${stock} ${liveProduct.name || item.name} ${item.size ? `(${item.size}) ` : ''}available.`
-          : `${liveProduct.name || item.name} is currently unavailable.`
+          ? `Only ${stock} ${item.name} ${item.size ? `(${item.size}) ` : ''}available.`
+          : `${item.name} is currently unavailable.`
       };
     }
 
-    if ((liveProduct.is_bite || liveProduct.is_snack) && liveProduct.is_available_now === false) {
-      return { ok: false, error: `${liveProduct.name || item.name} is not available right now.` };
+    if (hasAvailabilitySnapshot && (item.is_bite || item.is_snack) && item.is_available_now === false) {
+      return { ok: false, error: `${item.name} is not available right now.` };
     }
-
-    // Meta Tracking
-    const win = window as unknown as Window & { fbq?: (...args: unknown[]) => void };
-    if (typeof window !== 'undefined' && win.fbq) {
-        win.fbq('track', 'AddToCart', {
-            content_name: item.name,
-            content_ids: [item.id],
-            content_type: 'product',
-            value: item.price,
-            currency: 'KES'
-        });
-    }
-
-    const { data: { session } } = supabase
-      ? await supabase.auth.getSession()
-      : { data: { session: null } };
-    const anonId = localStorage.getItem('ob_anonymous_id');
-    void OB_OS.track('ADD_TO_CART', {
-      userId: session?.user?.id,
-      anonymousId: anonId || undefined,
-      productId: item.id,
-      amount: item.price,
-      details: { name: item.name, category: item.category, size: item.size, addons: item.addons?.map(addon => addon.name) || [] }
-    });
 
     setCart((prevCart) => {
       const cartKey = getCartKey(item);
@@ -172,6 +142,51 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         quantity: qty
       }];
     });
+
+    // Analytics and the authoritative stock check stay off the click-to-cart path.
+    const win = window as unknown as Window & { fbq?: (...args: unknown[]) => void };
+    if (typeof window !== 'undefined' && win.fbq) {
+      win.fbq('track', 'AddToCart', {
+        content_name: item.name,
+        content_ids: [item.id],
+        content_type: 'product',
+        value: item.price,
+        currency: 'KES'
+      });
+    }
+    if (supabase) {
+      void supabase
+        .from('products')
+        .select('name, stock, variant_stock, is_bite, is_snack, is_available_now')
+        .eq('id', item.id)
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (error || !data) {
+            console.error('[Cart] Background availability verification failed:', error);
+            return;
+          }
+          const verifiedStock = Number(
+            (data.variant_stock as Record<string, number> | null)?.[item.size || 'Standard']
+            ?? data.stock
+            ?? 0
+          );
+          if (verifiedStock < existingQuantity + requestedQuantity
+            || ((data.is_bite || data.is_snack) && data.is_available_now === false)) {
+            console.warn('[Cart] Live availability changed after adding:', item.id);
+          }
+        });
+      void (async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const anonId = localStorage.getItem('ob_anonymous_id');
+        void OB_OS.track('ADD_TO_CART', {
+          userId: session?.user?.id,
+          anonymousId: anonId || undefined,
+          productId: item.id,
+          amount: item.price,
+          details: { name: item.name, category: item.category, size: item.size, addons: item.addons?.map(addon => addon.name) || [] }
+        });
+      })();
+    }
     return { ok: true };
   };
 

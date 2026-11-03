@@ -261,6 +261,11 @@ export default function ProductDetailClient({
       size: selectedVariant,
       wholesale_price: product.wholesale_price,
       wholesale_min_qty: product.wholesale_min_qty,
+      stock: product.stock,
+      variant_stock: product.variant_stock,
+      is_bite: product.is_bite,
+      is_snack: product.is_snack,
+      is_available_now: product.is_available_now,
       addons: selectedAddons.map(addon => ({ ...addon, price: Number(addon.price) }))
     });
 
