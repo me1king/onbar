@@ -32,6 +32,19 @@ interface Order {
     isAccountOrder?: boolean;
 }
 
+async function getSessionWithTimeout(client: NonNullable<typeof supabase>) {
+    try {
+        const result = await Promise.race([
+            client.auth.getSession(),
+            new Promise<null>(resolve => window.setTimeout(() => resolve(null), 800))
+        ]);
+        return result && 'data' in result ? result.data.session : null;
+    } catch (error) {
+        console.warn('Could not load the optional account session on the success page:', error);
+        return null;
+    }
+}
+
 function SuccessContent() {
     const searchParams = useSearchParams();
     const orderId = searchParams?.get("orderId");
@@ -53,7 +66,7 @@ function SuccessContent() {
         const client = supabase;
         if (client) {
             const fetchData = async () => {
-                const { data: { session } } = await client.auth.getSession();
+                const session = await getSessionWithTimeout(client);
                 const browserSessionId = localStorage.getItem('ob_session_id');
 
                 // 1. Fetch Order
@@ -124,7 +137,7 @@ function SuccessContent() {
                 return;
             }
 
-            const { data: { session } } = await client.auth.getSession();
+            const session = await getSessionWithTimeout(client);
             const sessionId = localStorage.getItem('ob_session_id');
             const params = new URLSearchParams({ id: orderId });
             if (sessionId) params.set('sessionId', sessionId);
@@ -243,7 +256,7 @@ function SuccessContent() {
         );
     }
 
-    const isConfirmed = order && ['Paid', 'Delivered', 'Completed'].includes(order.status);
+    const isConfirmed = order && ['Confirmed', 'Paid', 'Delivered', 'Completed'].includes(order.status);
     const isPaymentPending = order?.payment_method === 'Paystack' && order.status === 'Pending';
 
     return (
@@ -257,7 +270,7 @@ function SuccessContent() {
                 </h1>
                 <p className="text-slate-500 font-medium italic">
                     {isConfirmed
-                        ? 'Your payment is confirmed and your order is preparing for dispatch.'
+                        ? 'Your order is accepted and your drink or snack is on the way.'
                         : isPaymentPending
                             ? 'Paystack verified your payment. We are waiting for the order confirmation to finish.'
                             : order
@@ -308,11 +321,11 @@ function SuccessContent() {
                             </div>
                             <div>
                                 <h4 className="font-bold text-foreground">
-                                    {isConfirmed ? 'Payment Confirmed' : isPaymentPending ? 'Payment Received' : 'Order Received'}
+                                    {isConfirmed ? 'Order accepted' : isPaymentPending ? 'Payment Received' : 'Order Received'}
                                 </h4>
                                 <p className="text-sm text-slate-500">
                                     {isConfirmed
-                                        ? 'Your payment is confirmed and the order is being prepared.'
+                                        ? 'Your order is accepted and is being prepared for delivery.'
                                         : isPaymentPending
                                             ? 'Your payment is verified. We are finishing the order confirmation.'
                                             : 'Your order has been saved. We will contact you to confirm delivery.'}
@@ -326,7 +339,7 @@ function SuccessContent() {
                             </div>
                             <div>
                                 <h4 className="font-bold text-foreground">Fast Dispatch</h4>
-                                <p className="text-sm text-slate-500">Our rider will contact you within 1-3 hours for delivery.</p>
+                                <p className="text-sm text-slate-500">Your drink or snack is on the way. Our rider will contact you with delivery updates.</p>
                             </div>
                         </div>
 

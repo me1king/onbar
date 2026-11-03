@@ -456,7 +456,9 @@ function CheckoutContent() {
     try {
       const client = supabase;
       if (!client) return;
-      const { data: { session } } = await client.auth.getSession();
+      const session = paymentMethod === "M-Pesa" || usePoints
+        ? (await client.auth.getSession()).data.session
+        : null;
       const sessionId = localStorage.getItem('ob_session_id');
       if (!sessionId) throw new Error('Your checkout session expired. Refresh the page and try again.');
       const orderResponse = await fetch('/api/checkout/orders', {

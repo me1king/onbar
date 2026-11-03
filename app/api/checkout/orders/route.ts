@@ -563,7 +563,7 @@ export async function POST(request: Request) {
       notification_email_opt_in: body.notificationPreferences?.email ?? false,
       total_price: total,
       delivery_cost: deliveryFee,
-      status: 'Pending',
+      status: body.paymentMethod === 'COD' ? 'Confirmed' : 'Pending',
       payment_method: body.paymentMethod,
       checkout_request_id: reference,
       referred_by_code: referralCode,
@@ -730,7 +730,7 @@ export async function POST(request: Request) {
           Authorization: `Bearer ${notificationSecret}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ orderId: order.id, status: 'Pending' }),
+        body: JSON.stringify({ orderId: order.id, status: body.paymentMethod === 'COD' ? 'Confirmed' : 'Pending' }),
         cache: 'no-store'
       })
         .then((notificationResponse) => {
