@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { verifySessionCookie } from '@/lib/adminAuth';
 import {
   isMerchantBusinessType,
   isMerchantVendorType,
@@ -335,7 +337,7 @@ export async function POST(request: Request) {
     if (inviteError) {
       if (inviteError.code === '42P01' || inviteError.code === 'PGRST205' || /invite_token_hash/i.test(inviteError.message)) {
         return NextResponse.json({
-          error: 'Private onboarding links are not configured. Contact the OnBar team to finish setting this up.'
+          error: 'Private onboarding links are not configured. Ask the OnBar team to apply the vendor pipeline, invite, and shared-draft migrations in order.'
         }, { status: 503 });
       }
       console.error('[MerchantApplications] Could not verify the company invitation:', inviteError);
@@ -354,6 +356,13 @@ export async function POST(request: Request) {
         }, { status: 400 });
       }
       invitationLead = lead;
+      const cookieStore = await cookies();
+      const adminSession = await verifySessionCookie(cookieStore.get('admin_session')?.value);
+      if (adminSession) {
+        return NextResponse.json({
+          error: 'Your team can prepare and save this application, but the merchant must open the link, review the details, accept the privacy notice, and submit it themselves.'
+        }, { status: 403 });
+      }
     } else {
       const { data: branch, error: branchError } = await database
         .from('merchant_business_branch_invites')

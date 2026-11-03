@@ -107,7 +107,37 @@ interface CompanyInvitation {
   vendorType: MerchantVendorType;
   businessType: MerchantBusinessType;
   expiresAt: string;
+  onboardingMode?: 'admin_assisted' | 'shared' | 'merchant_self_serve';
+  stepOwners?: Partial<Record<'business' | 'contact_area' | 'operations' | 'goods_docs', 'admin' | 'merchant'>>;
+  editorRole?: 'admin' | 'merchant';
+  draft?: {
+    formData: Record<string, unknown>;
+    currentStep: number;
+    updatedAt: string;
+  } | null;
 }
+
+type SharedDraftForm = {
+  businessName: string;
+  tradingName: string;
+  email: string;
+  phone: string;
+  ownerName: string;
+  ownerRole: string;
+  address: string;
+  county: string;
+  town: string;
+  latitude: string;
+  longitude: string;
+  operatingAreas: string;
+  cuisineOrCategory: string;
+  preparationCapacity: string;
+  deliveryRadiusKm: string;
+  collectionAvailable: boolean;
+  hours: MerchantOperatingHours;
+  selectedGoods: number[];
+  offeredGoodsPrices: Record<number, string>;
+};
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -172,6 +202,7 @@ export default function MerchantOnboarding() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedApplicationId, setSubmittedApplicationId] = useState('');
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
+  const [draftPrivacyAcknowledged, setDraftPrivacyAcknowledged] = useState(false);
   const [catalogOptions, setCatalogOptions] = useState<Array<{
     id: number;
     name: string;
@@ -194,12 +225,23 @@ export default function MerchantOnboarding() {
   const [invitation, setInvitation] = useState<CompanyInvitation | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [draftSaveError, setDraftSaveError] = useState<string | null>(null);
+  const draftUpdatedAtRef = useRef<string | null>(null);
+  const draftSaveRunningRef = useRef(false);
+  const latestDraftRef = useRef<{ formData: SharedDraftForm; currentStep: number } | null>(null);
+  const saveDraftNowRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get('invite');
-    if (!token) return;
+    if (!token) {
+      setDraftLoaded(true);
+      return;
+    }
 
     setInviteToken(token);
+    setDraftLoaded(false);
     setInviteLoading(true);
     setInviteError(null);
     const controller = new AbortController();
@@ -216,6 +258,45 @@ export default function MerchantOnboarding() {
         setVendorType(payload.invitation.vendorType);
         setBusinessName(payload.invitation.businessName);
         setPhone('');
+        const draft = payload.invitation.draft;
+        if (draft && draft.formData && typeof draft.formData === 'object') {
+          const saved = draft.formData;
+          const readText = (key: string, fallback = '') =>
+            typeof saved[key] === 'string' ? saved[key] as string : fallback;
+          setBusinessName(readText('businessName', payload.invitation.businessName));
+          setTradingName(readText('tradingName'));
+          setEmail(readText('email'));
+          setPhone(readText('phone'));
+          setOwnerName(readText('ownerName'));
+          setOwnerRole(readText('ownerRole'));
+          setAddress(readText('address'));
+          setCounty(readText('county'));
+          setTown(readText('town'));
+          setLatitude(readText('latitude'));
+          setLongitude(readText('longitude'));
+          setOperatingAreas(readText('operatingAreas'));
+          setCuisineOrCategory(readText('cuisineOrCategory'));
+          setPreparationCapacity(readText('preparationCapacity'));
+          setDeliveryRadiusKm(readText('deliveryRadiusKm'));
+          setCollectionAvailable(saved.collectionAvailable === true);
+          if (saved.hours && typeof saved.hours === 'object' && !Array.isArray(saved.hours)) {
+            setHours(normalizeMerchantOperatingHours(saved.hours));
+          }
+          if (Array.isArray(saved.selectedGoods)) {
+            setSelectedGoods(saved.selectedGoods.filter((id): id is number => Number.isSafeInteger(id) && Number(id) > 0));
+          }
+          if (saved.offeredGoodsPrices && typeof saved.offeredGoodsPrices === 'object' && !Array.isArray(saved.offeredGoodsPrices)) {
+            setOfferedGoodsPrices(Object.fromEntries(
+              Object.entries(saved.offeredGoodsPrices).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+            ) as Record<number, string>);
+          }
+          if (Number.isInteger(draft.currentStep) && draft.currentStep >= 0 && draft.currentStep < onboardingStages.length) {
+            setStep(draft.currentStep);
+          }
+          draftUpdatedAtRef.current = draft.updatedAt;
+          setDraftSavedAt(draft.updatedAt);
+        }
+        setDraftLoaded(true);
       })
       .catch(loadError => {
         if (!controller.signal.aborted) {
@@ -413,6 +494,83 @@ export default function MerchantOnboarding() {
     };
   }, []);
 
+  const sharedDraftForm = useMemo<SharedDraftForm>(() => ({
+    businessName,
+    tradingName,
+    email,
+    phone,
+    ownerName,
+    ownerRole,
+    address,
+    county,
+    town,
+    latitude,
+    longitude,
+    operatingAreas,
+    cuisineOrCategory,
+    preparationCapacity,
+    deliveryRadiusKm,
+    collectionAvailable,
+    hours,
+    selectedGoods,
+    offeredGoodsPrices
+  }), [
+    businessName, tradingName, email, phone, ownerName, ownerRole, address,
+    county, town, latitude, longitude, operatingAreas, cuisineOrCategory,
+    preparationCapacity, deliveryRadiusKm, collectionAvailable, hours,
+    selectedGoods, offeredGoodsPrices
+  ]);
+
+  const saveDraftNow = useCallback(async () => {
+    if (!inviteToken || !invitation?.onboardingMode || !draftLoaded || !draftPrivacyAcknowledged || submitted || draftSaveRunningRef.current) return;
+    const snapshot = latestDraftRef.current;
+    if (!snapshot) return;
+    const stageKey = onboardingStages[snapshot.currentStep];
+    if (invitation.stepOwners?.[stageKey] !== invitation.editorRole) return;
+    draftSaveRunningRef.current = true;
+    let failed = false;
+    try {
+      const response = await fetch('/api/merchant-onboarding-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        body: JSON.stringify({
+          token: inviteToken,
+          formData: snapshot.formData,
+          currentStep: snapshot.currentStep,
+          privacyAcknowledged: true,
+          expectedUpdatedAt: draftUpdatedAtRef.current
+        })
+      });
+      const result = await readJsonResponse<{ saved?: boolean; savedAt?: string; error?: string }>(response);
+      if (!response.ok || !result.saved || !result.savedAt) {
+        throw new Error(result.error || 'Your onboarding progress could not be saved.');
+      }
+      draftUpdatedAtRef.current = result.savedAt;
+      setDraftSavedAt(result.savedAt);
+      setDraftSaveError(null);
+    } catch (saveError) {
+      failed = true;
+      setDraftSaveError(saveError instanceof Error ? saveError.message : 'Your onboarding progress could not be saved.');
+    } finally {
+      draftSaveRunningRef.current = false;
+      if (latestDraftRef.current !== snapshot && !failed) void saveDraftNowRef.current();
+    }
+  }, [inviteToken, invitation, draftLoaded, draftPrivacyAcknowledged, submitted]);
+  useEffect(() => {
+    saveDraftNowRef.current = saveDraftNow;
+  }, [saveDraftNow]);
+
+  useEffect(() => {
+    const snapshot = { formData: sharedDraftForm, currentStep: step };
+    latestDraftRef.current = snapshot;
+    if (!inviteToken || !invitation?.onboardingMode || !draftLoaded || !draftPrivacyAcknowledged || submitted
+      || invitation.stepOwners?.[onboardingStages[step]] !== invitation.editorRole) return;
+    const timer = window.setTimeout(() => { void saveDraftNow(); }, 900);
+    return () => window.clearTimeout(timer);
+  }, [sharedDraftForm, step, inviteToken, invitation, draftLoaded, draftPrivacyAcknowledged, submitted, saveDraftNow]);
+
   const requiredDocumentTypes = useMemo(
     () => requirements.filter(requirement => requirement.required).map(requirement => requirement.type),
     [requirements]
@@ -589,9 +747,17 @@ export default function MerchantOnboarding() {
           </p>
           {submittedApplicationId && <p className="mt-4 text-xs font-semibold text-slate-500">Application reference: {submittedApplicationId}</p>}
           {invitation ? (
-            <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
-              This application is linked to {invitation.businessName}. The OnBar team will contact the details you provided about next steps.
-            </p>
+            <div className="mx-auto mt-4 max-w-md rounded-2xl border border-slate-200 bg-slate-50 p-5 text-left">
+              <p className="text-sm font-bold text-slate-900">What happens next</p>
+              <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-600">
+                <li>The OnBar team reviews the business details, proposed goods and required documents.</li>
+                <li>If anything is missing or needs correction, the team contacts you and can send a secure document-upload link.</li>
+                <li>Approval is only possible after required compliance documents are present and current. An approved application receives a merchant ID and can access the Partner Workspace.</li>
+              </ol>
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                This application is linked to {invitation.businessName}. Submission is not approval, and does not publish products or automatically make the store live.
+              </p>
+            </div>
           ) : (
             <>
               <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
@@ -658,7 +824,13 @@ export default function MerchantOnboarding() {
             <button
               key={label}
               type="button"
-              onClick={() => index < step && setStep(index)}
+              onClick={() => {
+                const stageOwner = invitation?.stepOwners?.[onboardingStages[index]];
+                const assignedHere = invitation?.onboardingMode && stageOwner === invitation.editorRole;
+                const merchantFinalReview = invitation?.onboardingMode && index === onboardingStages.length - 1
+                  && invitation.editorRole === 'merchant';
+                if (index < step || assignedHere || merchantFinalReview) setStep(index);
+              }}
               className={`rounded-xl px-2 py-3 text-[10px] font-black uppercase tracking-wide sm:text-xs ${
                 index === step ? 'bg-primary text-white' : index < step ? 'bg-emerald-100 text-emerald-800' : 'bg-white text-slate-400'
               }`}
@@ -668,6 +840,50 @@ export default function MerchantOnboarding() {
           ))}
         </div>
 
+        {invitation?.onboardingMode && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+            <div>
+              <p className="font-bold text-emerald-950">
+                Step owner: {invitation.stepOwners?.[onboardingStages[step]] === 'admin' ? 'OnBar team' : 'Merchant'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-emerald-900">
+                {invitation.stepOwners?.[onboardingStages[step]] === invitation.editorRole
+                  ? 'Draft progress autosaves after you accept the draft notice. For reliable shared editing, only one person should edit at a time. Documents must be selected again if you leave before submitting.'
+                  : step === onboardingStages.length - 1 && invitation.editorRole === 'merchant'
+                    ? 'Your team prepared this section. Review it, upload any outstanding documents, accept the privacy notice, and submit when it is accurate.'
+                    : `This section is assigned to ${invitation.stepOwners?.[onboardingStages[step]] === 'admin' ? 'the OnBar team' : 'the merchant'}. Open the link using that person's account to edit it.`}
+              </p>
+              {draftSaveError ? (
+                <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">{draftSaveError}</p>
+              ) : draftSavedAt ? (
+                <p role="status" className="mt-2 text-xs font-semibold text-emerald-800">Saved {new Date(draftSavedAt).toLocaleTimeString()}</p>
+              ) : draftPrivacyAcknowledged ? (
+                <p role="status" className="mt-2 text-xs text-emerald-800">Saving your private draft…</p>
+              ) : null}
+              <label className="mt-3 flex max-w-2xl items-start gap-2 text-xs leading-5 text-emerald-950">
+                <input
+                  type="checkbox"
+                  checked={draftPrivacyAcknowledged}
+                  onChange={event => setDraftPrivacyAcknowledged(event.target.checked)}
+                  className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span>
+                  I understand that this private application saves business details and selected goods so the merchant and authorized OnBar onboarding staff can resume it. Uploaded files are not saved as draft attachments; they must be selected again before submission. The merchant must still review the privacy notice and personally confirm before submission.
+                </span>
+              </label>
+            </div>
+            <Button type="button" variant="outline" disabled={!draftPrivacyAcknowledged || !draftLoaded || invitation.stepOwners?.[onboardingStages[step]] !== invitation.editorRole} onClick={() => void saveDraftNow()} className="border-emerald-300 bg-white text-emerald-900">
+              Save progress
+            </Button>
+          </div>
+        )}
+
+        <fieldset
+          disabled={Boolean(invitation?.onboardingMode
+            && invitation.stepOwners?.[onboardingStages[step]] !== invitation.editorRole
+            && !(step === onboardingStages.length - 1 && invitation.editorRole === 'merchant'))}
+          className="contents"
+        >
         <Card className="rounded-[2rem] border-0 p-5 shadow-xl sm:p-9">
           {step === 0 && (
             <section className="space-y-6">
@@ -712,6 +928,28 @@ export default function MerchantOnboarding() {
                   <p className="mt-3 text-xs text-slate-500">
                     Link expires {new Date(invitation.expiresAt).toLocaleString()} and accepts one application.
                   </p>
+                  {invitation.onboardingMode && (
+                    <div className="mt-4 border-t border-emerald-200 pt-3">
+                      <p className="text-xs font-bold text-emerald-900">
+                        {invitation.onboardingMode === 'admin_assisted'
+                          ? 'OnBar prepares the details; the merchant reviews and submits.'
+                          : invitation.onboardingMode === 'shared'
+                            ? 'OnBar and the merchant complete the assigned sections together.'
+                            : 'The merchant completes the application themselves.'}
+                      </p>
+                      {invitation.stepOwners && (
+                        <ul className="mt-2 grid gap-1 text-xs text-emerald-900 sm:grid-cols-2">
+                          {onboardingStages.map((stage, index) => (
+                            <li key={stage}>
+                              {['Business details', 'Contact & location', 'Operations', 'Goods & documents'][index]}: {
+                                invitation.stepOwners?.[stage] === 'admin' ? 'OnBar team' : 'Merchant'
+                              }
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : businessType !== 'delivery_partner' && (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-800">
@@ -728,19 +966,23 @@ export default function MerchantOnboarding() {
                 </>
               )}
               {invitation && (
-                <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={journeyAnalyticsEnabled}
-                    onChange={event => setJourneyAnalyticsEnabled(event.target.checked)}
-                    className="mt-1 h-4 w-4 shrink-0 accent-primary"
-                  />
-                  <span>
-                    Help us improve this form by sharing step timing and repeated-click counts with the OnBar team. We do not record what you type. This is optional and does not affect your application.
-                  </span>
-                </label>
+                <>
+                  <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={journeyAnalyticsEnabled}
+                      onChange={event => setJourneyAnalyticsEnabled(event.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                    />
+                    <span>
+                      Help us improve this form by sharing step timing and repeated-click counts with the OnBar team. We do not record what you type. This is optional and does not affect your application.
+                    </span>
+                  </label>
+                  {invitation.onboardingMode && draftSaveError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-semibold text-rose-700">{draftSaveError}</p>}
+                  {invitation.onboardingMode && !draftSaveError && draftSavedAt && <p role="status" className="text-xs font-semibold text-emerald-700">Progress saved securely at {new Date(draftSavedAt).toLocaleTimeString()}.</p>}
+                </>
               )}
-              <Button disabled={!invitation && businessName.trim().length < 2} onClick={() => moveToStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
+              <Button disabled={(!invitation && businessName.trim().length < 2) || (Boolean(invitation?.onboardingMode) && !draftPrivacyAcknowledged)} onClick={() => moveToStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
                 Continue <ArrowRight size={16} className="ml-2" />
               </Button>
             </section>
@@ -939,7 +1181,7 @@ export default function MerchantOnboarding() {
                   </>
                 )}
               </div>
-              <p className="text-xs leading-5 text-slate-500">These are the prices you propose to offer. OnBar reviews the application before your goods or prices are activated; actual available stock is recorded in your inventory after approval.</p>
+              <p className="text-xs leading-5 text-slate-500">These are your proposed selling prices. OnBar can complete this step when it is assigned to the admin team. The customer-facing catalogue price is managed separately by OnBar in the product catalogue. Neither goods nor prices go live until review and approval; actual available stock is recorded in your inventory after approval.</p>
               <div>
                 <h2 className="text-xl font-black uppercase text-slate-900">Documents & compliance</h2>
                 <p className="mt-1 text-sm text-slate-500">The exact checklist depends on business type and county. Documents are private and only shared with authorized reviewers.</p>
@@ -1018,6 +1260,7 @@ export default function MerchantOnboarding() {
             </section>
           )}
         </Card>
+        </fieldset>
 
         <p className="mt-5 text-center text-xs text-slate-500">
           Need help? <Link className="font-bold underline" href="/contact">Contact OnBar support</Link>

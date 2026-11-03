@@ -364,7 +364,8 @@ function recommendRiders(
   loads: Map<string, number>,
   vendorLocations: Array<{ latitude: number; longitude: number }>,
   roadLookup: RoadLookup,
-  routingError: string | null
+  routingError: string | null,
+  priorityRiderPhones: Set<string>
 ) {
   const validVendorLocations = vendorLocations.filter(location =>
     validCoordinates(location.latitude, location.longitude)
@@ -392,9 +393,13 @@ function recommendRiders(
       etaMinutes: route ? Math.ceil(route.durationSeconds / 60) : null,
       locationAvailable: distance !== null,
       healthScore,
+      priorityMerchantConnection: priorityRiderPhones.has(rider.rider_phone),
       suitabilityScore
     };
   }).sort((a, b) => {
+    if (a.priorityMerchantConnection !== b.priorityMerchantConnection) {
+      return a.priorityMerchantConnection ? -1 : 1;
+    }
     if (a.locationAvailable !== b.locationAvailable) return a.locationAvailable ? -1 : 1;
     return a.suitabilityScore - b.suitabilityScore;
   });
@@ -402,6 +407,9 @@ function recommendRiders(
   return {
     candidates,
     recommended: candidates.find(candidate => candidate.locationAvailable) || null,
+    priorityRiderAvailable: candidates.some(candidate =>
+      candidate.priorityMerchantConnection && candidate.locationAvailable
+    ),
     reason: validVendorLocations.length === 0
       ? 'Selected merchant pickup coordinates are missing; rider-to-pickup distance cannot be ranked.'
       : candidates.length === 0
@@ -515,20 +523,45 @@ async function loadDispatchData(database: SupabaseClient) {
     };
   }));
   const allVendorLocations = preparedJobs.flatMap(job => job.fulfillment.selectedVendorLocations);
+  const selectedVendorIds = [...new Set(preparedJobs.flatMap(job => job.fulfillment.selectedVendorIds))];
+  const { data: riderConnections, error: riderConnectionsError } = selectedVendorIds.length
+    ? await database.from('merchant_rider_invites')
+      .select('application_id,rider_phone')
+      .in('application_id', selectedVendorIds)
+      .eq('status', 'accepted')
+    : { data: [], error: null };
+  const priorityConnectionsReady = !riderConnectionsError;
+  if (riderConnectionsError
+    && !['42P01', 'PGRST205'].includes(riderConnectionsError.code || '')
+    && !/merchant_rider_invites/i.test(riderConnectionsError.message || '')) {
+    throw riderConnectionsError;
+  }
+  const priorityRidersByVendor = new Map<string, Set<string>>();
+  for (const connection of riderConnections || []) {
+    const ridersForVendor = priorityRidersByVendor.get(connection.application_id) || new Set<string>();
+    ridersForVendor.add(connection.rider_phone);
+    priorityRidersByVendor.set(connection.application_id, ridersForVendor);
+  }
   const roadDistances = await buildRoadDistanceLookup(riders, loads, allVendorLocations);
   const jobs = preparedJobs.map(job => {
+    const priorityRiderPhones = new Set(job.fulfillment.selectedVendorIds.flatMap(vendorId =>
+      [...(priorityRidersByVendor.get(vendorId) || [])]
+    ));
     const riderRecommendation = recommendRiders(
       riders,
       loads,
       job.fulfillment.selectedVendorLocations,
       roadDistances.lookup,
-      roadDistances.error
+      roadDistances.error,
+      priorityRiderPhones
     );
     return {
       ...job,
       riderCandidates: riderRecommendation.candidates,
       recommendedRider: riderRecommendation.recommended,
-      riderAvailabilityReason: riderRecommendation.reason
+      riderAvailabilityReason: riderRecommendation.reason,
+      priorityRiderAvailable: riderRecommendation.priorityRiderAvailable,
+      merchantRiderPriorityReady: priorityConnectionsReady
     };
   });
 

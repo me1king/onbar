@@ -1,8 +1,14 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, X } from 'lucide-react';
-import { LOCATION_AREAS, type LocationArea } from '@/lib/locationCatalog';
+import {
+  DEFAULT_LOCATION_WAITLIST_CONTENT,
+  LOCATION_AREAS,
+  type ConfiguredLocationArea,
+  type LocationArea,
+  type LocationWaitlistContent
+} from '@/lib/locationCatalog';
 import { supabase } from '@/lib/supabaseClient';
 
 interface SavedLocation extends Omit<LocationArea, 'latitude' | 'longitude'> {
@@ -60,19 +66,62 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   const [city, setCity] = useState('Nairobi');
   const [county, setCounty] = useState('Nairobi');
   const [area, setArea] = useState('Westlands');
+  const [customCounty, setCustomCounty] = useState('');
+  const [customAreaMode, setCustomAreaMode] = useState(false);
+  const [locationAreas, setLocationAreas] = useState<ConfiguredLocationArea[]>(LOCATION_AREAS);
+  const [waitlistContent, setWaitlistContent] = useState<LocationWaitlistContent>(DEFAULT_LOCATION_WAITLIST_CONTENT);
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [notificationConsent, setNotificationConsent] = useState(false);
   const [preciseLocationConsent, setPreciseLocationConsent] = useState(false);
   const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
 
-  const cities = useMemo(() => [...new Set(LOCATION_AREAS.map((item) => item.city))], []);
-  const areasForCity = useMemo(
-    () => LOCATION_AREAS.filter((item) => item.city === city),
-    [city]
+  const counties = useMemo(() => [...new Set(locationAreas.map((item) => item.county))].sort(), [locationAreas]);
+  const areasForCounty = useMemo(
+    () => locationAreas.filter((item) => item.county === county),
+    [locationAreas, county]
   );
+  const manualSelection = useRef({ county, area });
 
   useEffect(() => {
+    manualSelection.current = { county, area };
+  }, [county, area]);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/location/catalog', { cache: 'no-store' })
+      .then(async (response) => {
+        const result = await response.json() as {
+          config?: { areas?: ConfiguredLocationArea[]; waitlist?: LocationWaitlistContent };
+          error?: string;
+        };
+        if (!response.ok) {
+          console.error('[LocationOnboarding] Could not load configured locations:', result.error || response.status);
+          return;
+        }
+        if (!Array.isArray(result.config?.areas)) {
+          console.error('[LocationOnboarding] The location catalog response was invalid.');
+          return;
+        }
+        if (!active) return;
+        setLocationAreas(result.config.areas);
+        if (result.config.waitlist) setWaitlistContent(result.config.waitlist);
+        const selected = manualSelection.current;
+        const countiesFromSettings = [...new Set(result.config.areas.map((item) => item.county))].sort();
+        if (!countiesFromSettings.includes(selected.county)) {
+          setCounty(countiesFromSettings[0] || '');
+          const firstArea = result.config.areas.find((item) => item.county === countiesFromSettings[0]);
+          setCity(firstArea?.city || countiesFromSettings[0] || '');
+          setArea(firstArea?.area || '');
+          setCustomAreaMode(!firstArea);
+        } else if (!result.config.areas.some((item) => item.county === selected.county && item.area === selected.area)) {
+          const firstArea = result.config.areas.find((item) => item.county === selected.county);
+          setCity(firstArea?.city || selected.county);
+          setArea(firstArea?.area || '');
+          setCustomAreaMode(!firstArea);
+        }
+      })
+      .catch((error) => console.error('[LocationOnboarding] Could not load configured locations:', error));
     try {
       const saved = localStorage.getItem(LOCATION_KEY);
       if (saved) setLocation(JSON.parse(saved) as SavedLocation);
@@ -81,6 +130,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
     } finally {
       setReady(true);
     }
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -238,14 +288,23 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   };
 
   const saveManualArea = async () => {
-    const areaMatch = areasForCity.find((item) => item.area === area);
+    const selectedCounty = county === '__other_county__' ? customCounty.trim() : county;
+    const areaMatch = !customAreaMode
+      ? areasForCounty.find((item) => item.area === area)
+      : undefined;
+    const areaName = customAreaMode ? area.trim() : areaMatch?.area || area.trim();
+    const selectedCity = areaMatch?.city || city.trim() || selectedCounty;
+    if (!selectedCounty || !selectedCity || !areaName) {
+      setStatus('Choose a county and enter your area before saving.');
+      return;
+    }
     setBusy(true);
     setStatus('');
     try {
       const response = await fetch('/api/location/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ city, county: areaMatch?.county || county, area: area.trim() })
+        body: JSON.stringify({ city: selectedCity, county: areaMatch?.county || selectedCounty, area: areaName })
       });
       const result = await response.json() as {
         error?: string;
@@ -258,9 +317,9 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       if (!response.ok) throw new Error(result.error || 'We could not check delivery coverage.');
       await saveArea({
         country: result.country || 'Kenya',
-        county: result.county || county,
-        city: result.city || city,
-        area: result.area || area.trim()
+        county: result.county || selectedCounty,
+        city: result.city || selectedCity,
+        area: result.area || areaName
       }, result.serviceAvailable === true, 'manual');
     } catch (error) {
       console.error('[LocationOnboarding] Could not check manually selected area:', error);
@@ -433,33 +492,77 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
 
             {manualMode && (
               <div className="mt-6 space-y-4">
-                <p className="text-sm leading-relaxed text-slate-600">Choose an area to check coverage. Your area is saved only after you confirm.</p>
+                <p className="text-sm leading-relaxed text-slate-600">Choose your county, then an area. If it is not listed, add it and we’ll include it in launch planning.</p>
                 <label className="block text-xs font-bold text-slate-700">
-                  City or town
+                  County
                   <select
-                    value={city}
+                    value={county === '__other_county__' || !counties.includes(county) ? '__other_county__' : county}
                     onChange={(event) => {
-                      const nextCity = event.target.value;
-                      const nextArea = LOCATION_AREAS.find((item) => item.city === nextCity);
-                      setCity(nextCity);
-                      setCounty(nextArea?.county || 'Unspecified');
-                      setArea(nextArea?.area || '');
+                      const nextCounty = event.target.value;
+                      if (nextCounty === '__other_county__') {
+                        setCounty(nextCounty);
+                        setCustomCounty('');
+                        setCity('');
+                        setArea('');
+                        setCustomAreaMode(true);
+                        return;
+                      }
+                      const firstArea = locationAreas.find((item) => item.county === nextCounty);
+                      setCounty(nextCounty);
+                      setCustomCounty('');
+                      setCity(firstArea?.city || nextCounty);
+                      setArea(firstArea?.area || '');
+                      setCustomAreaMode(!firstArea);
                     }}
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3"
                   >
-                    {cities.map((item) => <option key={item} value={item}>{item}</option>)}
-                    <option value="Other Kenya">Other Kenya</option>
+                    {counties.map((item) => <option key={item} value={item}>{item} County</option>)}
+                    <option value="__other_county__">My county is not listed</option>
                   </select>
                 </label>
-                <label className="block text-xs font-bold text-slate-700">
-                  County
-                  <input value={county} onChange={(event) => setCounty(event.target.value)} maxLength={80} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3" />
-                </label>
-                <label className="block text-xs font-bold text-slate-700">
-                  Area
-                  <input value={area} onChange={(event) => setArea(event.target.value)} required maxLength={100} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3" />
-                </label>
-                <button type="button" disabled={busy || !area.trim()} onClick={saveManualArea} className="w-full rounded-2xl bg-primary px-5 py-4 text-sm font-black uppercase tracking-widest text-white disabled:opacity-60">
+                {county === '__other_county__' && (
+                  <label className="block text-xs font-bold text-slate-700">
+                    County name
+                    <input value={customCounty} onChange={(event) => setCustomCounty(event.target.value)} required maxLength={80} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3" />
+                  </label>
+                )}
+                {county !== '__other_county__' && areasForCounty.length > 0 && (
+                  <label className="block text-xs font-bold text-slate-700">
+                    Area
+                    <select
+                      value={customAreaMode ? '__custom_area__' : area}
+                      onChange={(event) => {
+                        if (event.target.value === '__custom_area__') {
+                          setArea('');
+                          setCustomAreaMode(true);
+                          setCity(areasForCounty[0]?.city || county);
+                          return;
+                        }
+                        const selected = areasForCounty.find((item) => item.area === event.target.value);
+                        setArea(selected?.area || '');
+                        setCity(selected?.city || county);
+                        setCustomAreaMode(false);
+                      }}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3"
+                    >
+                      {areasForCounty.map((item) => <option key={`${item.city}-${item.area}`} value={item.area}>{item.area}</option>)}
+                      <option value="__custom_area__">My area is not listed</option>
+                    </select>
+                  </label>
+                )}
+                {customAreaMode && (
+                  <>
+                    <label className="block text-xs font-bold text-slate-700">
+                      Town or city
+                      <input value={city} onChange={(event) => setCity(event.target.value)} required maxLength={100} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3" />
+                    </label>
+                    <label className="block text-xs font-bold text-slate-700">
+                      Area or neighborhood
+                      <input value={area} onChange={(event) => setArea(event.target.value)} required maxLength={100} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3" />
+                    </label>
+                  </>
+                )}
+                <button type="button" disabled={busy || !area.trim() || (county === '__other_county__' && !customCounty.trim())} onClick={saveManualArea} className="w-full rounded-2xl bg-primary px-5 py-4 text-sm font-black uppercase tracking-widest text-white disabled:opacity-60">
                   {busy ? 'Saving area…' : 'Save my area'}
                 </button>
                 {!location && <button type="button" onClick={closePrompt} className="w-full rounded-xl py-2 text-sm font-bold text-slate-500">Not now</button>}
@@ -479,8 +582,11 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
                 {!manualMode && (
                   <button type="button" onClick={() => {
                     setCity(location.city);
-                    setCounty(location.county);
+                    const countyExists = locationAreas.some((item) => item.county === location.county);
+                    setCounty(countyExists ? location.county : '__other_county__');
+                    setCustomCounty(countyExists ? '' : location.county);
                     setArea(location.area);
+                    setCustomAreaMode(!locationAreas.some((item) => item.county === location.county && item.area === location.area));
                     setManualMode(true);
                   }} className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
                     Change or enter area manually
@@ -491,7 +597,14 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
 
             {location && !manualMode && !location.serviceAvailable && !waitlistSubmitted && (
               <form onSubmit={submitWaitlist} className="mt-5 space-y-3">
-                <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">Get notified when Onbar launches here</h3>
+                <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">{waitlistContent.heading}</h3>
+                <p className="text-sm leading-relaxed text-slate-600">{waitlistContent.message}</p>
+                {(waitlistContent.rewardTitle || waitlistContent.rewardDetails) && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-950">
+                    {waitlistContent.rewardTitle && <p className="font-bold">{waitlistContent.rewardTitle}</p>}
+                    {waitlistContent.rewardDetails && <p className={waitlistContent.rewardTitle ? 'mt-1' : ''}>{waitlistContent.rewardDetails}</p>}
+                  </div>
+                )}
                 <label className="block text-xs font-bold text-slate-700">
                   Email
                   <input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3" />

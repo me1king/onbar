@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
+import CustomerLiveLocationMapPanel from '@/components/admin/CustomerLiveLocationMapPanel';
 
 const LiveDispatchMap = dynamic(() => import('@/components/admin/dispatch/LiveDispatchMap'), {
   ssr: false,
@@ -154,6 +155,10 @@ export default function OperationsCommandCenter() {
             })}
           </div>
         </Card>
+      </section>
+
+      <section className="mt-5">
+        <CustomerLiveLocationMapPanel />
       </section>
 
       <section className="mt-5">

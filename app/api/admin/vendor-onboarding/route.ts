@@ -35,12 +35,18 @@ async function authorize() {
 function migrationMissing(error: { code?: string; message?: string }) {
   return ['42P01', 'PGRST202', 'PGRST205'].includes(error.code || '')
     || /relation ["']?(?:public\.)?vendor_onboarding_(?:leads|events|checklist)["']? does not exist/i.test(error.message || '')
-    || /could not find the function public\.(?:advance_vendor_onboarding_lead|issue_vendor_onboarding_invite|set_vendor_onboarding_checklist_item|record_vendor_onboarding_checkin|schedule_vendor_onboarding_visit|set_vendor_onboarding_launch_checks|update_vendor_onboarding_lead)/i.test(error.message || '');
+    || /could not find the function public\.(?:advance_vendor_onboarding_lead|issue_vendor_onboarding_invite|set_vendor_onboarding_checklist_item|record_vendor_onboarding_checkin|schedule_vendor_onboarding_visit|set_vendor_onboarding_launch_checks|update_vendor_onboarding_lead|configure_vendor_onboarding_workflow|save_vendor_onboarding_draft)/i.test(error.message || '')
+    || /column .*onboarding_(?:mode|step_owners)|vendor_onboarding_drafts/i.test(error.message || '');
+}
+
+function sharedDraftMigrationMissing(error: { code?: string; message?: string }) {
+  return ['42P01', 'PGRST202', 'PGRST205'].includes(error.code || '')
+    || /vendor_onboarding_drafts|configure_vendor_onboarding_workflow|onboarding_mode|onboarding_step_owners/i.test(error.message || '');
 }
 
 function migrationResponse() {
   return NextResponse.json({
-    error: 'The vendor launch pipeline is not set up yet. Apply supabase/VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql, then reload.'
+    error: 'Merchant onboarding storage is not set up yet. Apply VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql, ONBOARDING_INVITES_MIGRATION.sql, and MERCHANT_ONBOARDING_SHARED_DRAFTS_MIGRATION.sql in order, then reload.'
   }, { status: 503 });
 }
 
@@ -106,7 +112,22 @@ export async function GET(request: Request) {
       console.error('[VendorOnboarding] Could not load lead checklist:', checklistError);
       return NextResponse.json({ error: 'Could not load the field visit checklist.' }, { status: 503 });
     }
-    return NextResponse.json({ lead, checklist: checklist || [], events: events || [] }, {
+    const { data: draft, error: draftError } = await access.database.from('vendor_onboarding_drafts')
+      .select('current_step,updated_at')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+    if (draftError && !sharedDraftMigrationMissing(draftError)) {
+      if (migrationMissing(draftError)) return migrationResponse();
+      console.error('[VendorOnboarding] Could not load shared draft status:', draftError);
+      return NextResponse.json({ error: 'Could not load shared onboarding progress.' }, { status: 503 });
+    }
+    return NextResponse.json({
+      lead,
+      checklist: checklist || [],
+      events: events || [],
+      draft: draftError ? null : draft,
+      sharedDraftsReady: !draftError
+    }, {
       headers: { 'Cache-Control': 'private, no-store, max-age=0' }
     });
   }
@@ -120,20 +141,40 @@ export async function GET(request: Request) {
   }
   const ids = (leads || []).map(lead => lead.id);
   let checklist: Array<Record<string, unknown>> = [];
+  let drafts: Array<Record<string, unknown>> = [];
+  let sharedDraftsReady = true;
   if (ids.length) {
-    const { data, error } = await access.database.from('vendor_onboarding_checklist')
-      .select('id,lead_id,item_key,label,is_required,is_complete,completed_at,completed_by')
-      .in('lead_id', ids).order('id');
-    if (error) {
-      if (migrationMissing(error)) return migrationResponse();
-      console.error('[VendorOnboarding] Could not load pipeline checklists:', error);
+    const [{ data: checklistData, error: checklistError }, { data: draftData, error: draftError }] = await Promise.all([
+      access.database.from('vendor_onboarding_checklist')
+        .select('id,lead_id,item_key,label,is_required,is_complete,completed_at,completed_by')
+        .in('lead_id', ids).order('id'),
+      access.database.from('vendor_onboarding_drafts')
+        .select('lead_id,current_step,updated_at')
+        .in('lead_id', ids)
+    ]);
+    if (checklistError || (draftError && !sharedDraftMigrationMissing(draftError))) {
+      const error = checklistError || draftError;
+      if (error && migrationMissing(error)) return migrationResponse();
+      console.error('[VendorOnboarding] Could not load pipeline progress:', error);
       return NextResponse.json({ error: 'Could not load onboarding checklist progress.' }, { status: 503 });
     }
-    checklist = data || [];
+    checklist = checklistData || [];
+    drafts = draftError ? [] : draftData || [];
+    sharedDraftsReady = !draftError;
+  } else {
+    const { error: draftProbeError } = await access.database.from('vendor_onboarding_drafts')
+      .select('lead_id').limit(1);
+    if (draftProbeError && !sharedDraftMigrationMissing(draftProbeError)) {
+      console.error('[VendorOnboarding] Could not verify shared onboarding storage:', draftProbeError);
+      return NextResponse.json({ error: 'Could not verify shared onboarding setup.' }, { status: 503 });
+    }
+    sharedDraftsReady = !draftProbeError;
   }
   return NextResponse.json({
     leads: leads || [],
     checklist,
+    drafts,
+    sharedDraftsReady,
     vendorTypes,
     stages
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
@@ -206,6 +247,21 @@ export async function PATCH(request: Request) {
         headers: { 'Cache-Control': 'private, no-store, max-age=0' }
       });
     }
+  } else if (action === 'configure_workflow') {
+    const mode = body.onboarding_mode;
+    const owners = body.onboarding_step_owners;
+    const stepKeys = ['business', 'contact_area', 'operations', 'goods_docs'];
+    if (!['admin_assisted', 'shared', 'merchant_self_serve'].includes(String(mode))
+      || !owners || typeof owners !== 'object' || Array.isArray(owners)
+      || stepKeys.some(key => !['admin', 'merchant'].includes(String((owners as Record<string, unknown>)[key])))) {
+      return NextResponse.json({ error: 'Choose a supported onboarding mode and owner for every step.' }, { status: 400 });
+    }
+    ({ data: result, error } = await access.database.rpc('configure_vendor_onboarding_workflow', {
+      p_lead_id: id,
+      p_mode: mode,
+      p_step_owners: owners,
+      p_actor: access.actor
+    }));
   } else if (action === 'advance') {
     if (typeof body.stage !== 'string' || !stages.includes(body.stage as typeof stages[number])) {
       return NextResponse.json({ error: 'Select a valid next stage.' }, { status: 400 });
@@ -276,7 +332,7 @@ export async function PATCH(request: Request) {
   if (error) {
     if (migrationMissing(error)) return migrationResponse();
     const message = error.message || '';
-    const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|second-person review|second person must complete the launch review|future visit date|after phone approval|schedule a (?:future )?visit|already completed onboarding|only available for vendor companies|agent and notes are outside the allowed length/i.test(message);
+    const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|second-person review|second person must complete the launch review|future visit date|after phone approval|schedule a (?:future )?visit|already completed onboarding|only available for vendor companies|agent and notes are outside the allowed length|already submitted|valid onboarding mode/i.test(message);
     const notFound = /not found/i.test(message);
     if (!stageConflict && !notFound) console.error('[VendorOnboarding] Update failed:', error);
     return NextResponse.json({

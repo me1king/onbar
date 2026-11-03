@@ -32,6 +32,7 @@ import dynamic from 'next/dynamic';
 import EarningsCenter from '@/components/rider/EarningsCenter';
 import PerformanceHub from '@/components/rider/PerformanceHub';
 import { authenticateBiometrics } from '@/lib/biometricService';
+import MerchantConnectionsPanel from '@/components/rider/MerchantConnectionsPanel';
 
 const RiderDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
     ssr: false,
@@ -1181,6 +1182,7 @@ function RiderDashboardContent() {
                 </section>
 
                 <aside className="space-y-5">
+                    {sessionToken && <MerchantConnectionsPanel sessionToken={sessionToken} accentColor={accentColor} />}
                     <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
                         <div className="flex items-center justify-between gap-3">
                             <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Rider profile</h2>

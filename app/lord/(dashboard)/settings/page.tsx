@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
-import { DEFAULT_CATALOG_NAVIGATION, normalizeCatalogNavigation, normalizeShippingSettings } from '@/lib/useSettings';
+import { DEFAULT_CATALOG_NAVIGATION, normalizeCatalogNavigation } from '@/lib/useSettings';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 import {
@@ -93,7 +93,6 @@ const DEFAULTS = {
             { label: "Snacks", href: "/bites" }
         ]
     },
-    shipping: { nairobi_cbd_label: "Local delivery", nairobi_cbd: 0, nairobi_outskirts_label: "Extended delivery", nairobi_outskirts: 300, upcountry_label: "Outside local zones", upcountry: 500 },
     logistics: { dispatch_zones: ["CBD", "Westlands", "Kilimani", "Lavington", "Kileleshwa", "Karen", "Langata", "South C", "South B", "Embakasi", "Roysambu", "Kasarani", "Kahawa", "Githurai", "Zimmerman", "Utawala", "Syokimau", "Kitengela", "Rongai", "Ngong", "Kikuyu", "Thika Road", "Mombasa Road"] },
     catalog: {
         categories: [{ id: 'wine', label: 'Vintages' }, { id: 'spirits', label: 'Premium Spirits' }, { id: 'snacks', label: 'Late Night Snacks' }, { id: 'beer', label: 'Chilled Beers' }, { id: 'mixers', label: 'Mixers' }, { id: 'extras', label: 'Extras' }],
@@ -169,7 +168,6 @@ export default function AdminSettingsPage() {
     const [branding, setBranding] = useState(DEFAULTS.branding);
     const [homepage, setHomepage] = useState(DEFAULTS.homepage);
     const [homepageProducts, setHomepageProducts] = useState<HomepageProduct[]>([]);
-    const [shipping, setShipping] = useState(DEFAULTS.shipping);
     const [logistics, setLogistics] = useState(DEFAULTS.logistics);
     const [catalog, setCatalog] = useState(DEFAULTS.catalog);
     const [promotions, setPromotions] = useState(DEFAULTS.promotions);
@@ -252,7 +250,6 @@ export default function AdminSettingsPage() {
                         const val = item.value as typeof DEFAULTS.homepage;
                         if (val.hero_image_url) setHeroPreview(val.hero_image_url);
                     }
-                    if (item.key === 'shipping') setShipping(normalizeShippingSettings(item.value));
                     if (item.key === 'logistics') setLogistics(item.value as typeof DEFAULTS.logistics);
                     if (item.key === 'catalog') {
                         setCatalog({
@@ -434,26 +431,19 @@ export default function AdminSettingsPage() {
     };
 
     const saveOperationsSettings = async () => {
-        const fees = [shipping.nairobi_cbd, shipping.nairobi_outskirts, shipping.upcountry];
-        if (fees.some(fee => !Number.isSafeInteger(fee) || fee < 0)) {
-            setMessage({ type: 'error', text: 'Enter a whole-number delivery fee of zero or more for each zone.' });
-            return;
-        }
-
         setSavingKey('ops');
         setMessage(null);
         try {
             await saveSettings([
                 { key: 'contact', value: contact, is_published: true },
-                { key: 'shipping', value: shipping, is_published: true }
             ]);
 
-            await logAuditAction(email, 'UPDATE_SETTINGS', { keys: ['contact', 'shipping'], published: true });
-            setMessage({ type: 'success', text: 'Contact and delivery prices are live at checkout.' });
+            await logAuditAction(email, 'UPDATE_SETTINGS', { keys: ['contact'], published: true });
+            setMessage({ type: 'success', text: 'Contact settings are live.' });
             setTimeout(() => setMessage(null), 5000);
         } catch (err) {
             console.error('Operations settings save failed:', err);
-            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not save contact and delivery settings.' });
+            setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Could not save contact settings.' });
         } finally {
             setSavingKey(null);
         }
@@ -480,10 +470,6 @@ export default function AdminSettingsPage() {
     };
 
     const handlePublishAll = async () => {
-        if ([shipping.nairobi_cbd, shipping.nairobi_outskirts, shipping.upcountry].some(fee => !Number.isSafeInteger(fee) || fee < 0)) {
-            setMessage({ type: 'error', text: 'Enter a whole-number delivery fee of zero or more for each zone before publishing.' });
-            return;
-        }
         setSavingKey('all');
         try {
             const updatedBrandingLocal = { ...branding };
@@ -502,7 +488,6 @@ export default function AdminSettingsPage() {
                 { key: 'social_links', value: social },
                 { key: 'store_info', value: store },
                 { key: 'promotions', value: promotions },
-                { key: 'shipping', value: shipping },
                 { key: 'logistics', value: logistics },
                 { key: 'catalog', value: catalog },
                 { key: 'onboarding_config', value: onboarding },
@@ -1368,43 +1353,11 @@ export default function AdminSettingsPage() {
                                     </div>
                                 </div>
 
-                                <div className="bg-card rounded-[2.5rem] border border-border p-10 shadow-sm space-y-8 flex flex-col text-left">
+                                <div className="bg-card rounded-[2.5rem] border border-border p-10 shadow-sm space-y-4 flex flex-col text-left">
                                     <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3">
-                                        <Truck className="h-5 w-5 text-primary" /> Delivery Prices
+                                        <Truck className="h-5 w-5 text-primary" /> Estate delivery pricing
                                     </h2>
-                                    <p className="text-sm text-muted-foreground">Set the standard transport charge for each checkout region. Saved prices appear in the customer&apos;s order total; a configured free-delivery boundary overrides the charge.</p>
-                                    <div className="space-y-4 flex-1 text-left">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Local Zone Label</label>
-                                                <Input value={shipping.nairobi_cbd_label} onChange={e => setShipping({...shipping, nairobi_cbd_label: e.target.value})} className="rounded-xl h-12 bg-secondary border-border font-bold text-foreground" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Fee (Ksh)</label>
-                                                <Input type="number" min="0" step="1" value={shipping.nairobi_cbd} onChange={e => setShipping({...shipping, nairobi_cbd: Number(e.target.value)})} className="rounded-xl h-12 bg-secondary border-border font-black text-foreground" />
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Secondary Label</label>
-                                                <Input value={shipping.nairobi_outskirts_label} onChange={e => setShipping({...shipping, nairobi_outskirts_label: e.target.value})} className="rounded-xl h-12 bg-secondary border-border font-bold text-foreground" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Fee (Ksh)</label>
-                                                <Input type="number" min="0" step="1" value={shipping.nairobi_outskirts} onChange={e => setShipping({...shipping, nairobi_outskirts: Number(e.target.value)})} className="rounded-xl h-12 bg-secondary border-border font-black text-foreground" />
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Upcountry Label</label>
-                                                <Input value={shipping.upcountry_label} onChange={e => setShipping({...shipping, upcountry_label: e.target.value})} className="rounded-xl h-12 bg-secondary border-border font-bold text-foreground" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Fee (Ksh)</label>
-                                                <Input type="number" min="0" step="1" value={shipping.upcountry} onChange={e => setShipping({...shipping, upcountry: Number(e.target.value)})} className="rounded-xl h-12 bg-secondary border-border font-black text-foreground" />
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <p className="text-sm text-muted-foreground">Checkout uses the estate fees and free-delivery minimum configured in Delivery zones below. GPS boundaries are optional; customers can select an estate directly.</p>
                                 </div>
                             </div>
 
@@ -1414,9 +1367,10 @@ export default function AdminSettingsPage() {
 
                             <Card className="rounded-[3rem] border border-border p-10 bg-card shadow-sm space-y-8 mt-8 text-left">
                                 <div className="flex justify-between items-center text-left">
-                                    <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><MapPin className="h-5 w-5 text-primary" /> Delivery Zones</h2>
+                                    <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><MapPin className="h-5 w-5 text-primary" /> Rider dispatch labels</h2>
                                     <Button onClick={() => setLogistics({ ...logistics, dispatch_zones: [...logistics.dispatch_zones, ''] })} variant="outline" className="h-10 rounded-xl text-[8px] font-black uppercase"><Plus className="h-3 w-3 mr-2" /> Add Zone</Button>
                                 </div>
+                                <p className="text-sm text-muted-foreground">These labels support rider operations. Customer-selectable areas and delivery fees are managed in Estate delivery pricing above.</p>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
                                     {logistics.dispatch_zones.map((zone, idx) => (
                                         <div key={idx} className="relative group text-left">

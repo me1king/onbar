@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   ArrowRight,
   Check,
@@ -40,6 +41,20 @@ const types = [
 
 type Stage = typeof stages[number]['id'];
 type VendorType = typeof types[number]['id'];
+type OnboardingMode = 'admin_assisted' | 'shared' | 'merchant_self_serve';
+type OnboardingStep = 'business' | 'contact_area' | 'operations' | 'goods_docs';
+type StepOwners = Record<OnboardingStep, 'admin' | 'merchant'>;
+const onboardingSteps: Array<{ id: OnboardingStep; label: string }> = [
+  { id: 'business', label: 'Business details' },
+  { id: 'contact_area', label: 'Outlet location & contact' },
+  { id: 'operations', label: 'Hours & operations' },
+  { id: 'goods_docs', label: 'Catalogue & documents' }
+];
+const modeOwners: Record<OnboardingMode, StepOwners> = {
+  admin_assisted: { business: 'admin', contact_area: 'admin', operations: 'admin', goods_docs: 'admin' },
+  shared: { business: 'admin', contact_area: 'admin', operations: 'merchant', goods_docs: 'merchant' },
+  merchant_self_serve: { business: 'merchant', contact_area: 'merchant', operations: 'merchant', goods_docs: 'merchant' }
+};
 
 interface Lead {
   id: string;
@@ -65,7 +80,15 @@ interface Lead {
   invite_expires_at?: string | null;
   invite_used_at?: string | null;
   invite_application_id?: string | null;
+  onboarding_mode?: OnboardingMode;
+  onboarding_step_owners?: StepOwners;
   created_at: string;
+}
+
+interface OnboardingDraftStatus {
+  lead_id: string;
+  current_step: number;
+  updated_at: string;
 }
 
 interface ChecklistItem {
@@ -142,6 +165,7 @@ export default function VendorOnboardingPage() {
   const [checklists, setChecklists] = useState<ChecklistItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [events, setEvents] = useState<LeadEvent[]>([]);
+  const [draftStatuses, setDraftStatuses] = useState<OnboardingDraftStatus[]>([]);
   const [tab, setTab] = useState<'pipeline' | 'ledger'>('pipeline');
   const [typeFilter, setTypeFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -165,10 +189,14 @@ export default function VendorOnboardingPage() {
   });
   const [detailChecklist, setDetailChecklist] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sharedDraftsReady, setSharedDraftsReady] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [inviteHref, setInviteHref] = useState('');
+  const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>('shared');
+  const [stepOwners, setStepOwners] = useState<StepOwners>(modeOwners.shared);
+  const selectedLead = leads.find(lead => lead.id === selectedId) || null;
 
   const loadPipeline = useCallback(async (keepSelection = true) => {
     setLoading(true);
@@ -177,9 +205,13 @@ export default function VendorOnboardingPage() {
       const result = await requestJson('/api/admin/vendor-onboarding') as {
         leads: Lead[];
         checklist: ChecklistItem[];
+        drafts: OnboardingDraftStatus[];
+        sharedDraftsReady: boolean;
       };
       setLeads(result.leads);
       setChecklists(result.checklist);
+      setDraftStatuses(result.drafts || []);
+      setSharedDraftsReady(result.sharedDraftsReady === true);
       if (!keepSelection) {
         setSelectedId(current => current && result.leads.some(lead => lead.id === current) ? current : null);
       }
@@ -196,9 +228,16 @@ export default function VendorOnboardingPage() {
         lead: Lead;
         checklist: ChecklistItem[];
         events: LeadEvent[];
+        draft: OnboardingDraftStatus | null;
+        sharedDraftsReady: boolean;
       };
       setDetailChecklist(result.checklist);
       setEvents(result.events);
+      setSharedDraftsReady(result.sharedDraftsReady === true);
+      setDraftStatuses(current => [
+        ...current.filter(item => item.lead_id !== id),
+        ...(result.draft ? [{ ...result.draft, lead_id: id }] : [])
+      ]);
       setAgentDraft(result.lead.agent);
       setNotesDraft(result.lead.notes || '');
       setVisitDraft(formatDateTimeLocal(result.lead.visit_scheduled_at));
@@ -217,7 +256,13 @@ export default function VendorOnboardingPage() {
     setInviteHref('');
   }, [selectedId, loadDetail]);
 
-  const selectedLead = leads.find(lead => lead.id === selectedId) || null;
+  useEffect(() => {
+    if (!selectedLead) return;
+    const mode = selectedLead.onboarding_mode || 'merchant_self_serve';
+    setOnboardingMode(mode);
+    setStepOwners(selectedLead.onboarding_step_owners || modeOwners[mode]);
+  }, [selectedId, selectedLead]);
+
   const journeyStats = useMemo(() => {
     const journeyEvents = events.filter(event =>
       event.event_type.startsWith('onboarding_')
@@ -298,12 +343,38 @@ export default function VendorOnboardingPage() {
     }
   };
 
+  const saveWorkflow = () => {
+    if (!selectedId) return;
+    if (!sharedDraftsReady) {
+      setError('Apply MERCHANT_ONBOARDING_SHARED_DRAFTS_MIGRATION.sql after the vendor pipeline and invite migrations before configuring this workflow.');
+      return;
+    }
+    void saveAction({
+      action: 'configure_workflow',
+      onboarding_mode: onboardingMode,
+      onboarding_step_owners: stepOwners
+    }, 'Onboarding mode and step owners saved.');
+  };
+
   const createInvite = async (): Promise<string | null> => {
     if (!selectedLead || selectedLead.vendor_type === 'rider' || selectedLead.stage === 'live' || selectedLead.invite_application_id) return null;
+    if (!sharedDraftsReady) {
+      setError('Apply MERCHANT_ONBOARDING_SHARED_DRAFTS_MIGRATION.sql after the vendor pipeline and invite migrations before creating a shared onboarding link.');
+      return null;
+    }
     setWorking(true);
     setError(null);
     setNotice(null);
     try {
+      await requestJson('/api/admin/vendor-onboarding', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          id: selectedLead.id,
+          action: 'configure_workflow',
+          onboarding_mode: onboardingMode,
+          onboarding_step_owners: stepOwners
+        })
+      });
       const result = await requestJson('/api/admin/vendor-onboarding', {
         method: 'PATCH',
         body: JSON.stringify({ id: selectedLead.id, action: 'issue_invite' })
@@ -431,11 +502,19 @@ export default function VendorOnboardingPage() {
     };
   }), [agents, leads]);
 
+  const modeNames: Record<OnboardingMode, string> = {
+    admin_assisted: 'OnBar prepares the application; you review and submit it.',
+    shared: 'OnBar and your team will complete the assigned sections together.',
+    merchant_self_serve: 'Complete the application yourself using the secure link.'
+  };
   const messageHref = selectedLead
-    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, here is the private Apex Market onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} This link is only for your company application and expires after 7 days.`)}`
+    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, here is the private Apex Market onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} ${modeNames[onboardingMode]} You can save progress and return using this link. It expires after 7 days. Submitting an application does not activate the store; our team will review it and tell you the next steps.`)}`
     : '';
   const next = selectedLead ? nextStage(selectedLead.stage) : null;
   const stageBlocked = selectedLead?.stage === 'phone_approved' && !selectedLead.visit_scheduled_at;
+  const selectedDraft = selectedLead
+    ? draftStatuses.find(draft => draft.lead_id === selectedLead.id)
+    : null;
 
   return (
     <div className="min-h-full space-y-6 bg-[#f8f6f1] p-4 text-slate-900 md:p-8">
@@ -462,6 +541,11 @@ export default function VendorOnboardingPage() {
 
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div>}
+      {!loading && !sharedDraftsReady && (
+        <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+          Shared onboarding is not installed yet. Apply <strong>VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql</strong>, then <strong>ONBOARDING_INVITES_MIGRATION.sql</strong>, then <strong>MERCHANT_ONBOARDING_SHARED_DRAFTS_MIGRATION.sql</strong> in Supabase to enable saved drafts and work ownership. Existing pipeline records remain available.
+        </div>
+      )}
 
       {showAdd && <Card className="border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -578,13 +662,13 @@ export default function VendorOnboardingPage() {
             <div className="flex flex-wrap gap-2">
               <a href={`tel:${selectedLead.phone}`} className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Call</a>
               {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && !selectedLead.invite_application_id && (
-                <Button type="button" disabled={working} onClick={() => void createInvite()} className="h-9 bg-emerald-700 px-3 text-sm text-white hover:bg-emerald-800">
+                <Button type="button" disabled={working || !sharedDraftsReady} onClick={() => void createInvite()} className="h-9 bg-emerald-700 px-3 text-sm text-white hover:bg-emerald-800">
                   <Link2 className="mr-2 h-4 w-4" /> {selectedLead.invite_expires_at && new Date(selectedLead.invite_expires_at).getTime() > Date.now() ? 'Reissue private link' : 'Create private link'}
                 </Button>
               )}
-              <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Open WhatsApp</a>
+              {inviteHref && <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Open WhatsApp</a>}
               {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && !selectedLead.invite_application_id && (
-                <Button type="button" variant="outline" disabled={working} onClick={() => void copySpecificOnboardingLink()} className="h-9 border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">
+                <Button type="button" variant="outline" disabled={working || !sharedDraftsReady} onClick={() => void copySpecificOnboardingLink()} className="h-9 border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">
                   <Copy className="mr-2 h-4 w-4" /> {inviteHref ? 'Copy onboarding link' : 'Create & copy link'}
                 </Button>
               )}
@@ -594,14 +678,86 @@ export default function VendorOnboardingPage() {
           {inviteHref && (
             <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-xs font-semibold text-emerald-900">Private Apex Market link for {selectedLead.business_name} · expires in 7 days · one application</p>
+              <p className="mt-1 text-xs text-emerald-800">Use this same link to prepare the shared draft, then send it to the merchant to continue or review.</p>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <input readOnly value={inviteHref} aria-label={`Private onboarding link for ${selectedLead.business_name}`}
                   className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800" />
+                <a href={inviteHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50">
+                  Open shared form
+                </a>
                 <Button type="button" variant="outline" onClick={() => void copyInvite()} className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
                   <Copy className="mr-2 h-4 w-4" /> Copy link
                 </Button>
               </div>
             </div>
+          )}
+          {selectedLead.vendor_type !== 'rider' && (
+            <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-medium text-slate-900">Who completes onboarding?</h3>
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">
+                    Progress saves securely as the invited form is completed. Admin-assisted means your team prepares it; the merchant must still review, accept the privacy notice, and submit. No mode activates a store automatically.
+                  </p>
+                </div>
+                {selectedDraft && (
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+                    Draft saved · step {selectedDraft.current_step + 1} of 4 · {formatDate(selectedDraft.updated_at)}
+                  </span>
+                )}
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                <label className="block space-y-1 text-sm font-semibold text-slate-800">
+                  <span>Onboarding mode</span>
+                  <select
+                    value={onboardingMode}
+                    disabled={working || !sharedDraftsReady || Boolean(selectedLead.invite_application_id)}
+                    onChange={event => {
+                      const mode = event.target.value as OnboardingMode;
+                      setOnboardingMode(mode);
+                      setStepOwners(modeOwners[mode]);
+                    }}
+                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                  >
+                    <option value="admin_assisted">We prepare it; merchant reviews and submits</option>
+                    <option value="shared">We start; merchant finishes assigned steps</option>
+                    <option value="merchant_self_serve">Merchant completes it themselves</option>
+                  </select>
+                </label>
+                <Button type="button" variant="outline" disabled={working || !sharedDraftsReady || Boolean(selectedLead.invite_application_id)} onClick={saveWorkflow} className="self-end border-slate-300 text-slate-700">
+                  Save workflow
+                </Button>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {onboardingSteps.map(step => (
+                  <label key={step.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700">
+                    <span>{step.label}</span>
+                    <select
+                      aria-label={`Who completes ${step.label}`}
+                      value={stepOwners[step.id]}
+                      disabled={working || !sharedDraftsReady || Boolean(selectedLead.invite_application_id)}
+                      onChange={event => setStepOwners(current => ({
+                        ...current,
+                        [step.id]: event.target.value as 'admin' | 'merchant'
+                      }))}
+                      className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs"
+                    >
+                      <option value="admin">OnBar team</option>
+                      <option value="merchant">Merchant</option>
+                    </select>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-3 text-xs leading-5 text-slate-600">
+                If Catalogue &amp; documents is assigned to OnBar, your team can choose the goods and enter each proposed merchant selling price. Customer-facing catalogue prices are managed separately in the <Link href="/lord/upload" className="font-bold text-primary underline">product catalogue</Link>; submitted offers still require merchant review and approval before activation.
+              </p>
+              {selectedLead.invite_application_id && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  <strong>Application submitted.</strong> It is not automatically live. Review the application and documents in Merchant Onboarding; only verified applications can be approved.
+                  <Link href="/lord/merchants" className="ml-1 font-bold underline">Open applications</Link>
+                </div>
+              )}
+            </section>
           )}
           <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">

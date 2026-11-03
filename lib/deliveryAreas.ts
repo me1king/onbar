@@ -6,6 +6,22 @@ export interface DeliveryArea {
     points: [number, number][];
 }
 
+export interface DeliveryPricing {
+    free_delivery_over: number;
+}
+
+export function parseDeliveryPricing(value: unknown): DeliveryPricing {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return { free_delivery_over: 3000 };
+    }
+    const threshold = (value as Record<string, unknown>).free_delivery_over;
+    if (threshold === undefined) return { free_delivery_over: 3000 };
+    if (typeof threshold !== 'number' || !Number.isSafeInteger(threshold) || threshold < 0) {
+        throw new Error('Free-delivery minimum must be a whole number of zero or more.');
+    }
+    return { free_delivery_over: threshold };
+}
+
 export function parseDeliveryAreas(value: unknown): DeliveryArea[] {
     if (!Array.isArray(value)) throw new Error('Saved delivery zones must be a list.');
     if (value.some(area =>
@@ -14,7 +30,7 @@ export function parseDeliveryAreas(value: unknown): DeliveryArea[] {
         typeof area.name !== 'string' || !area.name.trim() ||
         typeof area.free_delivery !== 'boolean' ||
         (area.fee !== undefined && (typeof area.fee !== 'number' || !Number.isSafeInteger(area.fee) || area.fee < 0)) ||
-        !Array.isArray(area.points) || area.points.length < 3 ||
+        !Array.isArray(area.points) || (area.points.length > 0 && area.points.length < 3) ||
         area.points.some((point: unknown) =>
             !Array.isArray(point) || point.length !== 2 ||
             typeof point[0] !== 'number' || !Number.isFinite(point[0]) || point[0] < -90 || point[0] > 90 ||

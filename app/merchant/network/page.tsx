@@ -18,7 +18,8 @@ import {
   ShieldCheck,
   Store,
   TrendingUp,
-  Truck
+  Truck,
+  UserRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -161,7 +162,16 @@ type MerchantPerformance = {
   limitations: { responseTime: string; timeouts: string; ratingsAndComplaints: string };
 };
 
-type Section = 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts';
+type Section = 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders';
+type RiderConnection = {
+  id: string;
+  phone: string;
+  name: string | null;
+  verificationStatus: string | null;
+  status: 'pending' | 'accepted' | 'declined' | 'revoked';
+  createdAt: string;
+  acceptedAt: string | null;
+};
 
 const businessLabels: Record<string, string> = {
   bar: 'Bar / Venue',
@@ -229,6 +239,7 @@ const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'orders', label: 'Orders', icon: Truck },
   { id: 'inventory', label: 'Inventory', icon: Box },
   { id: 'performance', label: 'Performance', icon: TrendingUp },
+  { id: 'riders', label: 'Riders', icon: UserRound },
   { id: 'alerts', label: 'Order alerts', icon: BellRing },
   { id: 'incidents', label: 'Reports', icon: AlertTriangle },
   { id: 'business', label: 'Business profile', icon: Building2 }
@@ -313,6 +324,10 @@ export default function OnBarPartnerNetworkPage() {
   const [incidentForm, setIncidentForm] = useState({ link: '', category: 'other', description: '' });
   const [scheduleDraft, setScheduleDraft] = useState<MerchantOperatingHours>(() => normalizeMerchantOperatingHours(null));
   const [acceptingOrdersDraft, setAcceptingOrdersDraft] = useState(false);
+  const [riderConnections, setRiderConnections] = useState<RiderConnection[]>([]);
+  const [riderPhone, setRiderPhone] = useState('');
+  const [ridersLoading, setRidersLoading] = useState(false);
+  const [riderActionId, setRiderActionId] = useState('');
 
   const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
   const canOperate = selected?.application.status === 'approved';
@@ -320,7 +335,7 @@ export default function OnBarPartnerNetworkPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedSection = params.get('section');
-    const validSections: Section[] = ['overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts'];
+    const validSections: Section[] = ['overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts', 'riders'];
     if (requestedSection && validSections.includes(requestedSection as Section)) setSection(requestedSection as Section);
     setDeepLinkApplicationId(params.get('applicationId') || '');
     setDeepLinkOrderId(params.get('orderId') || '');
@@ -457,6 +472,86 @@ export default function OnBarPartnerNetworkPage() {
       window.clearInterval(interval);
     };
   }, [accessToken, section, selected?.application.id, selected?.application.status]);
+
+  const loadRiderConnections = useCallback(async () => {
+    const applicationId = selected?.application.id;
+    if (!accessToken || !applicationId || selected?.application.status !== 'approved') return;
+    setRidersLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/merchant/riders?applicationId=${encodeURIComponent(applicationId)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: 'no-store'
+      });
+      const result = await response.json() as { riders?: RiderConnection[]; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Rider connections could not be loaded.');
+      setRiderConnections(result.riders || []);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Rider connections could not be loaded.');
+    } finally {
+      setRidersLoading(false);
+    }
+  }, [accessToken, selected?.application.id, selected?.application.status]);
+
+  useEffect(() => {
+    if (section === 'riders') void loadRiderConnections();
+  }, [section, loadRiderConnections]);
+
+  const addRider = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selected || !accessToken) return;
+    setRiderActionId('new');
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`/api/merchant/riders?applicationId=${encodeURIComponent(selected.application.id)}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: riderPhone })
+      });
+      const result = await response.json() as {
+        rider?: RiderConnection;
+        notificationSent?: boolean;
+        notificationWarning?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.rider) throw new Error(result.error || 'The rider invitation could not be saved.');
+      setRiderPhone('');
+      setMessage(result.rider.verificationStatus === 'Verified'
+        ? result.notificationWarning
+          || (result.notificationSent
+            ? `Push invitation sent to ${result.rider.name || result.rider.phone}. They must accept it in the rider app before connecting.`
+            : `Invitation saved for ${result.rider.name || result.rider.phone}. Ask them to open Rider Terminal and accept it before connecting.`)
+        : 'Invitation saved. Ask this rider to apply or sign in with this phone number, finish verification, then accept the invitation in the rider app.');
+      await loadRiderConnections();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'The rider invitation could not be saved.');
+    } finally {
+      setRiderActionId('');
+    }
+  };
+
+  const removeRider = async (connection: RiderConnection) => {
+    if (!selected || !accessToken) return;
+    setRiderActionId(connection.id);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`/api/merchant/riders?applicationId=${encodeURIComponent(selected.application.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteId: connection.id })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'The rider connection could not be removed.');
+      setMessage(`${connection.name || connection.phone} is no longer connected to this business.`);
+      await loadRiderConnections();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'The rider connection could not be removed.');
+    } finally {
+      setRiderActionId('');
+    }
+  };
 
   const apiAction = async (body: Record<string, unknown>, successMessage: string) => {
     if (!accessToken) {
@@ -998,6 +1093,78 @@ export default function OnBarPartnerNetworkPage() {
             applicationId={application.id}
             canOperate={canOperate}
           />
+        )}
+
+        {!loading && overview && section === 'riders' && application && (
+          <section className="space-y-5">
+            <header className="rounded-2xl bg-white p-6 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-wide text-primary">Your delivery team</p>
+              <h2 className="mt-2 text-xl font-black text-slate-900">Connect designated riders</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Invite a rider by their Kenyan mobile number. They must use the same number to complete rider verification, sign in to the Rider Terminal, and accept your invitation before they are connected. When an accepted rider is verified, online, sharing a fresh location, and has capacity, dispatch ranks them ahead for your pickup orders. This does not bypass OnBar rider approval or payment and fulfilment checks.
+              </p>
+              {application.status === 'approved' && (
+                <form onSubmit={addRider} className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <label className="sr-only" htmlFor="merchant-rider-phone">Rider phone number</label>
+                  <Input
+                    id="merchant-rider-phone"
+                    type="tel"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    required
+                    maxLength={24}
+                    value={riderPhone}
+                    onChange={event => setRiderPhone(event.target.value)}
+                    placeholder="Rider phone, e.g. 0712 345 678"
+                    className="h-12 rounded-xl bg-white text-base"
+                  />
+                  <Button type="submit" disabled={Boolean(riderActionId) || !riderPhone.trim()} className="h-12 shrink-0 rounded-xl px-5 font-black uppercase">
+                    {riderActionId === 'new' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserRound className="mr-2 h-4 w-4" />}
+                    Invite rider
+                  </Button>
+                </form>
+              )}
+            </header>
+
+            {application.status !== 'approved' ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">Rider connections become available after this business is approved.</div>
+            ) : ridersLoading ? (
+              <div className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500"><Loader2 className="mx-auto mb-2 animate-spin text-primary" />Loading rider connections…</div>
+            ) : riderConnections.length ? (
+              <div className="space-y-3">
+                {riderConnections.map(connection => (
+                  <article key={connection.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-white p-5 shadow-sm">
+                    <div className="min-w-0">
+                      <p className="font-black text-slate-900">{connection.name || 'Rider invitation'}</p>
+                      <p className="mt-1 text-sm text-slate-500">{connection.phone}</p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {connection.status === 'accepted'
+                          ? 'Connected in the rider app'
+                          : connection.verificationStatus === 'Verified'
+                            ? 'Verified rider · waiting for them to accept'
+                            : connection.verificationStatus
+                              ? `Rider verification: ${connection.verificationStatus}`
+                              : 'Waiting for the rider to apply or sign in with this number'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase ${connection.status === 'accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                        {connection.status === 'accepted' ? 'Connected' : 'Invitation pending'}
+                      </span>
+                      <Button type="button" variant="outline" disabled={Boolean(riderActionId)} onClick={() => void removeRider(connection)}
+                        className="h-10 rounded-xl border-rose-200 text-xs font-bold text-rose-700 hover:bg-rose-50">
+                        {riderActionId === connection.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Remove'}
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-white p-8 text-center text-sm text-slate-500">
+                No riders are connected yet. Invite a rider above to get started.
+              </div>
+            )}
+          </section>
         )}
 
         {!loading && overview && section === 'orders' && (

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { AlertTriangle, Check, Image as ImageIcon, Mail, MapPin, MessageCircle, RefreshCw, Save, Search, Store, Upload, Users } from 'lucide-react';
 import { useAdmin } from '@/context/AdminContext';
 import WaitlistFitStudioPanel from '@/components/admin/WaitlistFitStudioPanel';
+import LocationLaunchSettings from '@/components/admin/LocationLaunchSettings';
 import WaitlistLaunchCountdownPreview from '@/components/admin/WaitlistLaunchCountdownPreview';
 import WaitlistContactInviteButton from '@/components/admin/WaitlistContactInviteButton';
 import dynamic from 'next/dynamic';
@@ -659,6 +660,8 @@ export default function WaitlistPage() {
       {error && <div role="alert" className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><AlertTriangle size={18} className="shrink-0" />{error}</div>}
 
       {canView && !canManageSite && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">You can view waitlist signups, but uploading songs and editing the standalone site requires an owner/admin account or the <code className="font-bold">can_manage_settings</code> permission.</div>}
+
+      {canManageSite && <LocationLaunchSettings />}
 
       <WaitlistFitStudioPanel canView={canView} canManage={canManageSite} canExport={canExportFitStudio} />
 

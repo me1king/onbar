@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
-import { DeliveryArea, parseDeliveryAreas } from '@/lib/deliveryAreas';
+import { DeliveryArea, parseDeliveryAreas, parseDeliveryPricing } from '@/lib/deliveryAreas';
 import 'leaflet/dist/leaflet.css';
 
 function BoundaryClickCapture({ onAddPoint }: { onAddPoint: (point: [number, number]) => void }) {
@@ -23,7 +23,8 @@ export default function DeliveryAreaManager() {
     const [areas, setAreas] = React.useState<DeliveryArea[]>([]);
     const [draftPoints, setDraftPoints] = React.useState<[number, number][]>([]);
     const [name, setName] = React.useState('');
-    const [fee, setFee] = React.useState('0');
+    const [fee, setFee] = React.useState('');
+    const [freeDeliveryOver, setFreeDeliveryOver] = React.useState('3000');
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [message, setMessage] = React.useState<string | null>(null);
@@ -36,13 +37,17 @@ export default function DeliveryAreaManager() {
                 setLoading(false);
                 return;
             }
-            const { data, error } = await supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle();
+            const [{ data, error }, { data: pricingData, error: pricingError }] = await Promise.all([
+                supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle(),
+                supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle()
+            ]);
             if (!active) return;
-            if (error) {
-                setMessage(`Could not load delivery areas: ${error.message}`);
+            if (error || pricingError) {
+                setMessage(`Could not load delivery settings: ${(error || pricingError)?.message}`);
             } else {
                 try {
                     setAreas(parseDeliveryAreas(data?.value ?? []));
+                    setFreeDeliveryOver(String(parseDeliveryPricing(pricingData?.value).free_delivery_over));
                 } catch (parseError) {
                     console.error('Saved delivery area data is invalid:', parseError);
                     setMessage(parseError instanceof Error ? parseError.message : 'Saved delivery areas are invalid.');
@@ -70,7 +75,7 @@ export default function DeliveryAreaManager() {
             }, { onConflict: 'key' });
             if (error) throw error;
             setAreas(nextAreas);
-            setMessage('Free-delivery areas saved.');
+            setMessage('Delivery zones saved.');
             return true;
         } catch (error) {
             console.error('Delivery area save failed:', error);
@@ -81,10 +86,45 @@ export default function DeliveryAreaManager() {
         }
     };
 
+    const persistPricing = async () => {
+        const threshold = Number(freeDeliveryOver);
+        if (!Number.isSafeInteger(threshold) || threshold < 0) {
+            setMessage('Enter a whole-number free-delivery minimum of zero or more. Use zero to disable it.');
+            return;
+        }
+        if (!supabase) {
+            setMessage('Supabase is not configured. Delivery pricing was not saved.');
+            return;
+        }
+        setSaving(true);
+        setMessage(null);
+        try {
+            const { error } = await supabase.from('settings').upsert({
+                key: 'delivery_pricing',
+                value: { free_delivery_over: threshold },
+                is_published: true,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'key' });
+            if (error) throw error;
+            setMessage(threshold > 0
+                ? `Free delivery will apply to item subtotals of KSh ${threshold.toLocaleString()} or more.`
+                : 'Free-delivery threshold disabled.');
+        } catch (error) {
+            console.error('Delivery pricing save failed:', error);
+            setMessage(error instanceof Error ? `Could not save pricing: ${error.message}` : 'Could not save delivery pricing.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const addArea = async () => {
         const numericFee = Number(fee);
-        if (!name.trim() || draftPoints.length < 3 || !Number.isSafeInteger(numericFee) || numericFee < 0) {
-            setMessage('Enter a zone name, a whole-number fee of zero or more, and at least three map points.');
+        if (!name.trim() || !fee.trim() || (draftPoints.length > 0 && draftPoints.length < 3) || !Number.isSafeInteger(numericFee) || numericFee < 0) {
+            setMessage('Enter a zone name and a whole-number fee. Map boundaries are optional, but need at least three points when used.');
+            return;
+        }
+        if (areas.some(area => area.name.trim().toLowerCase() === name.trim().toLowerCase())) {
+            setMessage('That estate or delivery area already exists.');
             return;
         }
         const next = [...areas, {
@@ -96,7 +136,7 @@ export default function DeliveryAreaManager() {
         }];
         if (await persistAreas(next)) {
             setName('');
-            setFee('0');
+            setFee('');
             setDraftPoints([]);
         }
     };
@@ -116,15 +156,45 @@ export default function DeliveryAreaManager() {
             : area));
     };
 
+    const updateAreaName = async (id: string, value: string) => {
+        const nextName = value.trim();
+        if (!nextName) {
+            setMessage('Delivery area names cannot be empty.');
+            return;
+        }
+        if (areas.some(area => area.id !== id && area.name.trim().toLowerCase() === nextName.toLowerCase())) {
+            setMessage('That estate or delivery area already exists.');
+            return;
+        }
+        await persistAreas(areas.map(area => area.id === id ? { ...area, name: nextName } : area));
+    };
+
     return (
         <Card className="space-y-5 p-4 sm:p-6">
             <div>
                 <h2 className="text-lg font-black uppercase text-foreground">Delivery zones</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Draw delivery zones on the map and set each zone&apos;s fee. Customers are matched to the zone containing their confirmed pin.
+                    Add each estate or delivery area with its fee. Map boundaries are optional; add at least three points to match GPS pins automatically.
                 </p>
             </div>
             {message && <p role="status" className="rounded-lg bg-secondary p-3 text-sm text-foreground">{message}</p>}
+            <div className="grid gap-3 rounded-2xl border border-border bg-secondary/40 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <label className="block space-y-1 text-sm font-semibold">
+                    <span>Free delivery on item subtotal (KSh)</span>
+                    <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={freeDeliveryOver}
+                        onChange={event => setFreeDeliveryOver(event.target.value)}
+                        disabled={loading || saving}
+                    />
+                    <span className="block text-xs font-normal text-muted-foreground">Set 0 to disable the offer. Zone fees are waived when the cart item subtotal reaches this amount.</span>
+                </label>
+                <Button onClick={persistPricing} disabled={loading || saving} variant="outline">
+                    <Save className="mr-2 h-4 w-4" /> Save free-delivery rule
+                </Button>
+            </div>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
                 <div className="h-72 overflow-hidden rounded-2xl border border-border sm:h-96">
                     <MapContainer center={[-1.286389, 36.817223]} zoom={11} style={{ height: '100%', width: '100%' }}>
@@ -133,7 +203,7 @@ export default function DeliveryAreaManager() {
                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                         />
                         <BoundaryClickCapture onAddPoint={point => setDraftPoints(points => [...points, point])} />
-                        {areas.map(area => <Polygon key={area.id} positions={area.points} pathOptions={{ color: '#10b981', fillOpacity: 0.15 }} />)}
+                        {areas.filter(area => area.points.length >= 3).map(area => <Polygon key={area.id} positions={area.points} pathOptions={{ color: '#10b981', fillOpacity: 0.15 }} />)}
                         {draftPoints.length > 1 && <Polygon positions={draftPoints} pathOptions={{ color: '#f5a000', fillOpacity: 0.12, dashArray: '6 6' }} />}
                     </MapContainer>
                 </div>
@@ -146,7 +216,7 @@ export default function DeliveryAreaManager() {
                         <span>Delivery fee (KSh)</span>
                         <Input type="number" min="0" step="1" value={fee} onChange={event => setFee(event.target.value)} />
                     </label>
-                    <p className="text-xs text-muted-foreground">{draftPoints.length} boundary points marked (minimum 3).</p>
+                    <p className="text-xs text-muted-foreground">{draftPoints.length} boundary points marked {draftPoints.length > 0 ? '(at least 3 required)' : '(optional for estate pricing)'}.</p>
                     <div className="flex flex-wrap gap-2">
                         <Button onClick={() => setDraftPoints(points => points.slice(0, -1))} variant="outline" disabled={!draftPoints.length}>
                             <Undo2 className="mr-2 h-4 w-4" /> Undo point
@@ -160,7 +230,14 @@ export default function DeliveryAreaManager() {
                         <ul className="space-y-2">
                             {areas.map(area => (
                                 <li key={area.id} className="grid grid-cols-[minmax(0,1fr)_5rem_auto_auto] items-center gap-2 rounded-xl border border-border p-3">
-                                    <span className="min-w-0 truncate text-sm font-semibold">{area.name}</span>
+                                    <Input
+                                        aria-label={`Estate or area name for ${area.name}`}
+                                        defaultValue={area.name}
+                                        onBlur={event => {
+                                            if (event.target.value.trim() !== area.name) void updateAreaName(area.id, event.target.value);
+                                        }}
+                                        className="h-9 min-w-0 px-2 text-xs font-semibold"
+                                    />
                                     <Input
                                         aria-label={`Fee for ${area.name}`}
                                         type="number"

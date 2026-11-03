@@ -85,6 +85,7 @@ interface DispatchRiderCandidate {
     etaMinutes?: number | null;
     locationAvailable: boolean;
     healthScore: number;
+    priorityMerchantConnection?: boolean;
 }
 
 interface DispatchJob {
@@ -121,6 +122,8 @@ interface DispatchJob {
     riderCandidates: DispatchRiderCandidate[];
     recommendedRider: DispatchRiderCandidate | null;
     riderAvailabilityReason: string | null;
+    priorityRiderAvailable?: boolean;
+    merchantRiderPriorityReady?: boolean;
 }
 
 const WAREHOUSES = [
@@ -436,6 +439,11 @@ export default function AdminDispatchPage() {
                                 {unverifiedPaymentCount} paid order(s) do not have a matching server-verified Paystack record and remain unassigned.
                             </p>
                         )}
+                        {orders.some(order => order.merchantRiderPriorityReady === false) && (
+                            <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                                Merchant-connected rider priority is not configured yet. Apply supabase/MERCHANT_RIDER_CONNECTIONS_MIGRATION.sql; orders remain available to the regular verified-rider dispatch flow until then.
+                            </p>
+                        )}
 
                         <div className="grid grid-cols-1 gap-4">
                             {orders.length === 0 ? (
@@ -455,7 +463,9 @@ export default function AdminDispatchPage() {
                                             </div>
                                             {recommendation ? (
                                                 <div className="rounded-xl bg-primary/5 border border-primary/10 p-3 text-sm">
-                                                    <p className="text-[9px] font-black uppercase text-primary">OSRM road pickup · {recommendation.distanceKm} km{recommendation.etaMinutes == null ? '' : ` · ${recommendation.etaMinutes} min`}</p>
+                                                    <p className={`text-[9px] font-black uppercase ${recommendation.priorityMerchantConnection ? 'text-emerald-700' : 'text-primary'}`}>
+                                                        {recommendation.priorityMerchantConnection ? 'Connected merchant rider · priority' : 'OSRM road pickup'} · {recommendation.distanceKm} km{recommendation.etaMinutes == null ? '' : ` · ${recommendation.etaMinutes} min`}
+                                                    </p>
                                                     <p className="font-bold text-foreground">{recommendation.riderName} · {recommendation.activeLoad}/{recommendation.maxDeliveries} active</p>
                                                 </div>
                                             ) : (
@@ -506,7 +516,7 @@ export default function AdminDispatchPage() {
                                                 disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
                                                 className="h-12 px-6 rounded-xl bg-primary text-white font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
                                             >
-                                                {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign recommended rider'}
+                                                {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : recommendation?.priorityMerchantConnection ? 'Assign connected rider · priority' : 'Assign recommended rider'}
                                             </Button>
                                             <div className="flex-1 grid sm:grid-cols-2 gap-2">
                                                 <p className="text-xs text-muted-foreground sm:col-span-2">
@@ -520,7 +530,7 @@ export default function AdminDispatchPage() {
                                                     <option value="">Choose rider for override</option>
                                                     {order.riderCandidates.map(candidate => (
                                                         <option key={candidate.riderPhone} value={candidate.riderPhone}>
-                                                            {candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
+                                                            {candidate.priorityMerchantConnection ? 'Connected priority · ' : ''}{candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
                                                             {candidate.locationAvailable ? ` · ${candidate.distanceKm} road km${candidate.etaMinutes == null ? '' : ` · ${candidate.etaMinutes} min`}` : ' · no OSRM route'}
                                                         </option>
                                                     ))}

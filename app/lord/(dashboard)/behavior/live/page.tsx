@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import CustomerLiveLocationMapPanel from '@/components/admin/CustomerLiveLocationMapPanel';
 
 interface JourneyStep {
     event: string;
@@ -181,6 +182,7 @@ export default function LiveBehaviorCommandCenter() {
                     </Card>
                 ))}
             </div>
+            <CustomerLiveLocationMapPanel />
             {/* EVENT STREAM FILTER BAR */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                 {['ALL', 'PRODUCTS', 'SEARCH', 'CART', 'CHECKOUT', 'ORDERS', 'ERRORS', 'OTHER'].map(f => (

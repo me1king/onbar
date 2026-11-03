@@ -20,7 +20,7 @@ import dynamic from "next/dynamic";
 import { OB_OS } from "@/lib/onlineBarOS";
 import { v4 as uuidv4 } from 'uuid';
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
-import { DeliveryArea, findDeliveryZone, parseDeliveryAreas } from "@/lib/deliveryAreas";
+import { DeliveryArea, findDeliveryZone, parseDeliveryAreas, parseDeliveryPricing } from "@/lib/deliveryAreas";
 import DeliveryPushPreferences from "@/components/profile/DeliveryPushPreferences";
 
 const LocationPicker = dynamic(() => import("@/components/profile/LocationPicker"), {
@@ -74,8 +74,9 @@ function CheckoutContent() {
   const [deliveryLandmark, setDeliveryLandmark] = useState("");
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"M-Pesa" | "COD">("M-Pesa");
-  const [shippingRegionId] = useState('nairobi-outskirts');
   const [freeDeliveryAreas, setFreeDeliveryAreas] = useState<DeliveryArea[]>([]);
+  const [selectedDeliveryZoneId, setSelectedDeliveryZoneId] = useState('');
+  const [freeDeliveryOver, setFreeDeliveryOver] = useState(3000);
   const [deliveryAreasLoaded, setDeliveryAreasLoaded] = useState(false);
   const [deliveryAreasError, setDeliveryAreasError] = useState<string | null>(null);
   const [couponCode, setCouponCode] = useState("");
@@ -186,17 +187,21 @@ function CheckoutContent() {
         setDeliveryAreasLoaded(true);
         return;
       }
-      const { data, error } = await supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle();
+      const [{ data, error }, { data: pricingData, error: pricingError }] = await Promise.all([
+        supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle(),
+        supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle()
+      ]);
       if (!active) return;
-      if (error) {
-        console.error('Delivery zone lookup failed:', error);
-        setDeliveryAreasError('Delivery zones are temporarily unavailable. Standard delivery fees apply after location confirmation.');
+      if (error || pricingError) {
+        console.error('Delivery zone lookup failed:', error || pricingError);
+        setDeliveryAreasError('Delivery zones are temporarily unavailable. Please try again before placing your order.');
       } else {
         try {
           setFreeDeliveryAreas(parseDeliveryAreas(data?.value ?? []));
+          setFreeDeliveryOver(parseDeliveryPricing(pricingData?.value).free_delivery_over);
         } catch (areaError) {
           console.error('Saved free-delivery area data is invalid:', areaError);
-          setDeliveryAreasError('Delivery zone settings are invalid. Standard delivery fees apply after location confirmation.');
+          setDeliveryAreasError('Delivery zone settings are invalid. Please contact support before ordering.');
         }
       }
       setDeliveryAreasLoaded(true);
@@ -204,6 +209,13 @@ function CheckoutContent() {
     loadFreeDeliveryAreas();
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!deliveryAreasLoaded || coords.lat == null || coords.lng == null) return;
+    const zone = findDeliveryZone(coords.lat, coords.lng, freeDeliveryAreas);
+    setSelectedDeliveryZoneId(current => zone?.id
+      || (freeDeliveryAreas.some(area => area.id === current && area.points.length < 3) ? current : ''));
+  }, [coords.lat, coords.lng, deliveryAreasLoaded, freeDeliveryAreas]);
 
   const searchParams = useSearchParams();
   const [referralCode, setReferralCode] = useState<string | null>(null);
@@ -278,20 +290,22 @@ function CheckoutContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fallbackDeliveryLabel = settings.shipping.nairobi_outskirts_label;
-  const fallbackDeliveryFee = settings.shipping.nairobi_outskirts;
-  const matchedDeliveryZone = coords.lat != null && coords.lng != null
+  const gpsDeliveryZone = coords.lat != null && coords.lng != null
     ? findDeliveryZone(coords.lat, coords.lng, freeDeliveryAreas)
     : null;
-  const hasConfirmedLocation = coords.lat != null && coords.lng != null;
-  const deliveryFee = !hasConfirmedLocation
-    ? 0
-    : matchedDeliveryZone
-      ? matchedDeliveryZone.fee ?? (matchedDeliveryZone.free_delivery ? 0 : fallbackDeliveryFee)
-      : fallbackDeliveryFee;
-  const deliveryLabel = matchedDeliveryZone?.name || fallbackDeliveryLabel;
-
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const manuallySelectedZone = freeDeliveryAreas.find(area => area.id === selectedDeliveryZoneId) || null;
+  const selectedZone = coords.lat != null && coords.lng != null
+    ? gpsDeliveryZone || (manuallySelectedZone?.points.length === 0 ? manuallySelectedZone : null)
+    : manuallySelectedZone;
+  const hasConfirmedLocation = Boolean(selectedZone);
+  const zoneFee = selectedZone
+    ? selectedZone.fee ?? (selectedZone.free_delivery ? 0 : null)
+    : null;
+  const qualifiesForFreeDelivery = freeDeliveryOver > 0 && subtotal >= freeDeliveryOver;
+  const deliveryFee = hasConfirmedLocation && zoneFee !== null && !qualifiesForFreeDelivery ? zoneFee : 0;
+  const deliveryFeeReady = hasConfirmedLocation && zoneFee !== null;
+  const deliveryLabel = selectedZone?.name || 'Not selected';
   const discount = activeCoupon
     ? Math.min(subtotal, Number(activeCoupon.discount_amount || 0) || (subtotal * activeCoupon.discount_percent) / 100)
     : 0;
@@ -406,12 +420,20 @@ function CheckoutContent() {
       return;
     }
 
-    if (!hasConfirmedLocation) {
+    if (!deliveryFeeReady) {
       setCheckoutStatus({
         type: "error",
-        message: "Set your delivery location with the map or GPS before placing the order so we can calculate the correct fee."
+        message: "Choose your estate or set a map/GPS pin in a delivery zone before placing the order."
       });
-      setIsPickingLocation(true);
+      return;
+    }
+
+    if (coords.lat === null && !deliveryBuilding.trim()) {
+      setCheckoutStatus({
+        type: "error",
+        message: "Enter your building or house name, or add a GPS pin so the rider can find you."
+      });
+      document.getElementById('checkout-delivery-building')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
@@ -475,7 +497,7 @@ function CheckoutContent() {
               customerEmail: customerEmail.trim() || null,
               paymentMethod: paymentMethod === 'M-Pesa' ? 'Paystack' : 'COD',
               sessionId,
-              shippingRegionId,
+              deliveryZoneId: selectedZone?.id || null,
               coordinates: coords.lat !== null && coords.lng !== null
                   ? { lat: coords.lat, lng: coords.lng }
                   : profile?.latitude != null && profile.longitude != null
@@ -739,11 +761,50 @@ function CheckoutContent() {
                 <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Zap className="h-4 w-4 sm:h-5 sm:w-5" /></div>
                 <h2 className="text-lg sm:text-xl font-black uppercase tracking-tighter">Delivery location</h2>
             </div>
+            <label className="block space-y-2">
+                <span className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Estate / delivery area</span>
+                <select
+                    value={selectedDeliveryZoneId}
+                    disabled={!deliveryAreasLoaded || isPlacingOrder}
+                    onChange={event => {
+                        const zoneId = event.target.value;
+                        setSelectedDeliveryZoneId(zoneId);
+                        const nextZone = freeDeliveryAreas.find(area => area.id === zoneId);
+                        const pinMatchesZone = coords.lat != null && coords.lng != null
+                            ? findDeliveryZone(coords.lat, coords.lng, freeDeliveryAreas)?.id === zoneId
+                            : false;
+                        if (coords.lat != null && coords.lng != null && !pinMatchesZone && nextZone?.points.length !== 0) {
+                            setCoords({ lat: null, lng: null });
+                            try {
+                                localStorage.removeItem('ob_delivery_location');
+                            } catch (error) {
+                                console.warn('Could not clear the previous delivery pin:', error);
+                            }
+                        }
+                    }}
+                    className="h-14 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
+                >
+                    <option value="">Choose estate or area…</option>
+                    {freeDeliveryAreas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
+                </select>
+                {selectedZone && deliveryFeeReady && (
+                    <span className="block px-1 text-sm font-bold text-primary">
+                        {qualifiesForFreeDelivery
+                            ? `Free delivery applied · ${selectedZone.name}`
+                            : `${selectedZone.name} delivery · ${zoneFee === 0 ? 'Free' : formatPrice(zoneFee)}`}
+                    </span>
+                )}
+                {freeDeliveryOver > 0 && (
+                    <span className="block px-1 text-xs text-slate-500">
+                        Free delivery on item subtotals of {formatPrice(freeDeliveryOver)} or more.
+                    </span>
+                )}
+            </label>
             <Card
                 onClick={() => setIsPickingLocation(true)}
                 className={cn(
                     "p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border-2 transition-all cursor-pointer group relative overflow-hidden",
-                    coords.lat !== null && coords.lng !== null ? "border-emerald-100 bg-emerald-50/30" : "border-slate-50 bg-slate-50/50 hover:border-primary/20"
+                    hasConfirmedLocation ? "border-emerald-100 bg-emerald-50/30" : "border-slate-50 bg-slate-50/50 hover:border-primary/20"
                 )}
             >
                 <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6">
@@ -751,21 +812,21 @@ function CheckoutContent() {
                         <div className="flex items-center gap-3">
                             <div className={cn(
                                 "h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-sm transition-all duration-500",
-                                coords.lat !== null && coords.lng !== null ? "bg-emerald-500 text-white animate-bounce" : "bg-white text-slate-300 group-hover:text-primary"
+                                hasConfirmedLocation ? "bg-emerald-500 text-white" : "bg-white text-slate-300 group-hover:text-primary"
                             )}>
                                 <MapPin className="h-5 w-5 sm:h-6 sm:w-6" />
                             </div>
                             <div>
                                 <h3 className="font-black uppercase text-foreground tracking-tight text-xs sm:text-base">
-                                    {coords.lat !== null && coords.lng !== null ? "Delivery Location Set" : "Set Delivery Location"}
+                                    {hasConfirmedLocation ? "Delivery Area Set" : "Set GPS Pin (Optional)"}
                                 </h3>
                                 <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                    {coords.lat !== null && coords.lng !== null ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : "Click to set delivery pin"}
+                                    {coords.lat !== null && coords.lng !== null ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : selectedZone?.name || "Use GPS or place a pin on the map"}
                                 </p>
                             </div>
                         </div>
                         <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 leading-relaxed max-w-xs">
-                            Confirm a delivery location to calculate the correct fee. GPS is optional; you can also place the pin manually.
+                            Select your estate to see its fee. Add a GPS pin for more accurate rider directions.
                         </p>
                     </div>
                     <Button
@@ -776,7 +837,7 @@ function CheckoutContent() {
                             coords.lat !== null && coords.lng !== null ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
                         )}
                     >
-                        {coords.lat !== null && coords.lng !== null ? "Change Delivery Pin" : "Set Delivery Pin"}
+                        {coords.lat !== null && coords.lng !== null ? "Update GPS Pin" : "Add GPS Pin"}
                     </Button>
                 </div>
                 <p role="status" className="relative z-10 text-sm font-semibold">
@@ -784,13 +845,17 @@ function CheckoutContent() {
                         ? deliveryAreasError
                         : !deliveryAreasLoaded
                         ? 'Checking delivery zone settings…'
-                            : !hasConfirmedLocation
-                                ? 'Set your delivery location manually or use GPS to calculate the delivery fee.'
-                                : !freeDeliveryAreas.length
-                                    ? `No delivery zones are configured. The ${deliveryLabel} fee applies.`
-                                    : matchedDeliveryZone
-                                        ? `${matchedDeliveryZone.name}: ${deliveryFee === 0 ? 'free delivery' : `${formatPrice(deliveryFee)} delivery fee`} applies.`
-                                        : `This pin is outside configured zones. The ${deliveryLabel} fee applies.`}
+                            : !freeDeliveryAreas.length
+                                ? 'Delivery areas are not configured yet. Please contact the store.'
+                                : coords.lat !== null && coords.lng !== null && !gpsDeliveryZone && selectedZone?.points.length !== 0
+                                    ? 'This pin is outside configured delivery areas. Choose your estate or move the pin.'
+                                    : !selectedZone
+                                        ? 'Choose your estate or delivery area to see the exact fee.'
+                                        : !deliveryFeeReady
+                                            ? 'A fee has not been configured for this area yet.'
+                                            : qualifiesForFreeDelivery
+                                                ? `Free delivery applied for orders of ${formatPrice(freeDeliveryOver)} or more.`
+                                                : `${selectedZone.name}: ${zoneFee === 0 ? 'free delivery' : `${formatPrice(zoneFee)} delivery fee`}${freeDeliveryOver > 0 ? ` · free over ${formatPrice(freeDeliveryOver)}` : ''}.`}
                 </p>
                 {locationSaveNotice && <p role="status" className="relative z-10 text-xs text-amber-800">{locationSaveNotice}</p>}
                 {/* Decoration */}
@@ -798,8 +863,8 @@ function CheckoutContent() {
             </Card>
             <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                    <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Building / Estate (Optional)</label>
-                    <Input data-behavior-id="checkout.delivery_building" value={deliveryBuilding} onChange={event => setDeliveryBuilding(event.target.value)} maxLength={120} placeholder="Building or estate name" disabled={isPlacingOrder} className="h-14 rounded-2xl border-slate-100 bg-slate-50/50" />
+                    <label htmlFor="checkout-delivery-building" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Building / house name {coords.lat === null ? '*' : '(Optional)'}</label>
+                    <Input id="checkout-delivery-building" data-behavior-id="checkout.delivery_building" value={deliveryBuilding} onChange={event => setDeliveryBuilding(event.target.value)} maxLength={120} placeholder="Building, apartment or house name" disabled={isPlacingOrder} className="h-14 rounded-2xl border-slate-100 bg-slate-50/50" />
                 </div>
                 <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Landmark (Optional)</label>
@@ -984,7 +1049,7 @@ function CheckoutContent() {
                 </div>
                 <div className="flex justify-between text-xs font-black uppercase tracking-widest text-slate-500">
                   <span>Delivery ({deliveryLabel})</span>
-                  <span className="text-primary">{!hasConfirmedLocation ? 'Set location' : deliveryFee === 0 ? 'FREE' : formatPrice(deliveryFee)}</span>
+                  <span className="text-primary">{!hasConfirmedLocation ? 'Choose area' : !deliveryFeeReady ? 'Fee unavailable' : deliveryFee === 0 ? 'FREE' : formatPrice(deliveryFee)}</span>
                 </div>
                 {activeCoupon && (
                     <div className="flex justify-between text-xs font-black uppercase tracking-widest text-rose-500 bg-rose-50 p-2 rounded-lg">

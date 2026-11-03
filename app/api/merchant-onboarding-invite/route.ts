@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { verifySessionCookie } from '@/lib/adminAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +33,8 @@ export async function GET(request: Request) {
   if (!database) {
     return NextResponse.json({ error: 'Company onboarding is temporarily unavailable.' }, { status: 503 });
   }
+  const cookieStore = await cookies();
+  const editorRole = await verifySessionCookie(cookieStore.get('admin_session')?.value) ? 'admin' : 'merchant';
 
   const tokenHash = createHash('sha256').update(token).digest('hex');
   const { data: branchInvite, error: branchInviteError } = await database
@@ -66,7 +70,8 @@ export async function GET(request: Request) {
         businessName: business.business_name,
         vendorType,
         businessType: business.business_type,
-        expiresAt: branchInvite.expires_at
+        expiresAt: branchInvite.expires_at,
+        editorRole
       }
     }, {
       headers: {
@@ -76,14 +81,26 @@ export async function GET(request: Request) {
     });
   }
 
-  const { data, error } = await database.from('vendor_onboarding_leads')
-    .select('id,business_name,vendor_type,invite_expires_at')
+  let inviteResult = await database.from('vendor_onboarding_leads')
+    .select('id,business_name,vendor_type,invite_expires_at,onboarding_mode,onboarding_step_owners')
     .eq('invite_token_hash', tokenHash)
     .gt('invite_expires_at', new Date().toISOString())
     .is('invite_used_at', null)
     .is('invite_application_id', null)
     .maybeSingle();
 
+  let sharedOnboardingEnabled = true;
+  if (inviteResult.error && /onboarding_mode|onboarding_step_owners/i.test(inviteResult.error.message)) {
+    sharedOnboardingEnabled = false;
+    inviteResult = await database.from('vendor_onboarding_leads')
+      .select('id,business_name,vendor_type,invite_expires_at')
+      .eq('invite_token_hash', tokenHash)
+      .gt('invite_expires_at', new Date().toISOString())
+      .is('invite_used_at', null)
+      .is('invite_application_id', null)
+      .maybeSingle();
+  }
+  const { data, error } = inviteResult;
   if (error) {
     if (error.code === '42P01' || error.code === 'PGRST205' || /invite_token_hash/i.test(error.message)) {
       return NextResponse.json(
@@ -97,11 +114,23 @@ export async function GET(request: Request) {
   if (!data || !['retailer', 'wholesaler', 'street_food'].includes(data.vendor_type)) {
     return invalidLink();
   }
+  let draft = null;
+  if (sharedOnboardingEnabled) {
+    const draftResult = await database.from('vendor_onboarding_drafts')
+      .select('form_data,current_step,updated_at')
+      .eq('lead_id', data.id)
+      .maybeSingle();
+    if (draftResult.error) {
+      console.error('[MerchantOnboardingInvite] Could not load saved progress:', draftResult.error);
+      return NextResponse.json({ error: 'Saved company progress could not be loaded. Ask the OnBar team to check the shared onboarding setup.' }, { status: 503 });
+    }
+    draft = draftResult.data;
+  }
   const { error: eventError } = await database.from('vendor_onboarding_events').insert({
     lead_id: data.id,
     event_type: 'onboarding_link_opened',
-    actor: 'applicant',
-    details: { source: 'invite_link' }
+    actor: editorRole === 'admin' ? 'onboarding_admin' : 'applicant',
+    details: { source: 'invite_link', editor_role: editorRole }
   });
   if (eventError) {
     console.error('[MerchantOnboardingInvite] Could not record link opening:', eventError);
@@ -118,7 +147,15 @@ export async function GET(request: Request) {
       businessName: data.business_name,
       vendorType: data.vendor_type,
       businessType,
-      expiresAt: data.invite_expires_at
+      expiresAt: data.invite_expires_at,
+      onboardingMode: sharedOnboardingEnabled ? data.onboarding_mode : undefined,
+      stepOwners: sharedOnboardingEnabled ? data.onboarding_step_owners : undefined,
+      editorRole,
+      draft: draft ? {
+        formData: draft.form_data,
+        currentStep: draft.current_step,
+        updatedAt: draft.updated_at
+      } : null
     }
   }, {
     headers: {

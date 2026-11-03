@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-import { approximateArea, LOCATION_AREAS } from '@/lib/locationCatalog';
+import { createServerSupabaseClient } from '@/lib/serverSupabase';
+import {
+  approximateArea,
+  DEFAULT_LOCATION_CATALOG,
+  normalizeLocationCatalogConfig
+} from '@/lib/locationCatalog';
 
 export async function POST(request: Request) {
   let body: { latitude?: unknown; longitude?: unknown; city?: unknown; county?: unknown; area?: unknown };
@@ -10,6 +15,35 @@ export async function POST(request: Request) {
   }
 
   const hasCoordinates = body.latitude !== undefined || body.longitude !== undefined;
+  const database = createServerSupabaseClient();
+  let catalog = DEFAULT_LOCATION_CATALOG;
+  let dispatchZones = ['CBD', 'Westlands', 'Kilimani', 'Lavington', 'Kileleshwa', 'Karen', 'Langata', 'South C', 'South B', 'Embakasi', 'Roysambu', 'Kasarani', 'Kahawa', 'Githurai', 'Zimmerman', 'Utawala', 'Syokimau', 'Kitengela', 'Rongai', 'Ngong', 'Kikuyu', 'Thika Road', 'Mombasa Road'];
+  if (database) {
+    const { data: settings, error } = await database.from('settings')
+      .select('key,value')
+      .in('key', ['logistics', 'location_catalog']);
+    if (error) {
+      console.error('[Location] Could not load location and delivery settings:', error);
+      return NextResponse.json({ error: 'Delivery coverage could not be checked right now. Your area was not saved.' }, { status: 503 });
+    }
+    const locationSetting = settings?.find((setting) => setting.key === 'location_catalog');
+    if (locationSetting) {
+      const savedCatalog = normalizeLocationCatalogConfig(locationSetting.value);
+      if (!savedCatalog) {
+        console.error('[Location] Saved area catalog has an invalid format.');
+        return NextResponse.json({ error: 'Location options need to be reviewed by an administrator.' }, { status: 503 });
+      }
+      catalog = savedCatalog;
+    }
+    const logisticsSetting = settings?.find((setting) => setting.key === 'logistics');
+    const configuredZones = logisticsSetting?.value && typeof logisticsSetting.value === 'object'
+      ? (logisticsSetting.value as { dispatch_zones?: unknown }).dispatch_zones
+      : null;
+    if (Array.isArray(configuredZones) && configuredZones.every(zone => typeof zone === 'string')) {
+      dispatchZones = configuredZones;
+    }
+  }
+
   let area: { country: string; county: string; city: string; area: string } | null = null;
   if (hasCoordinates) {
     const latitude = Number(body.latitude);
@@ -20,7 +54,8 @@ export async function POST(request: Request) {
     }
     area = approximateArea(
       Math.round(latitude * 100) / 100,
-      Math.round(longitude * 100) / 100
+      Math.round(longitude * 100) / 100,
+      catalog.areas
     );
   } else {
     const city = typeof body.city === 'string' ? body.city.trim().slice(0, 100) : '';
@@ -29,15 +64,19 @@ export async function POST(request: Request) {
     if (!city || !county || !areaName) {
       return NextResponse.json({ error: 'Choose a valid area to check service coverage.' }, { status: 400 });
     }
-    const knownArea = LOCATION_AREAS.find((item) =>
-      item.city.toLowerCase() === city.toLowerCase()
+    const knownArea = catalog.areas.find((item) =>
+      item.county.toLowerCase() === county.toLowerCase()
+      && item.city.toLowerCase() === city.toLowerCase()
       && item.area.toLowerCase() === areaName.toLowerCase()
-    ) || LOCATION_AREAS.find((item) => item.area.toLowerCase() === areaName.toLowerCase());
-    area = {
+    ) || catalog.areas.find((item) =>
+      item.county.toLowerCase() === county.toLowerCase()
+      && item.area.toLowerCase() === areaName.toLowerCase()
+    );
+    area = knownArea || {
       country: 'Kenya',
-      county: knownArea?.county || county,
-      city: knownArea?.city || city,
-      area: knownArea?.area || areaName
+      county,
+      city,
+      area: areaName
     };
   }
 
@@ -49,26 +88,6 @@ export async function POST(request: Request) {
       area: 'Please tell us your area',
       serviceAvailable: false
     });
-  }
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  let dispatchZones = ['CBD', 'Westlands', 'Kilimani', 'Lavington', 'Kileleshwa', 'Karen', 'Langata', 'South C', 'South B', 'Embakasi', 'Roysambu', 'Kasarani', 'Kahawa', 'Githurai', 'Zimmerman', 'Utawala', 'Syokimau', 'Kitengela', 'Rongai', 'Ngong', 'Kikuyu', 'Thika Road', 'Mombasa Road'];
-
-  if (url && serviceKey) {
-    const { createClient } = await import('@supabase/supabase-js');
-    const database = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
-    const { data, error } = await database.from('settings').select('value').eq('key', 'logistics').maybeSingle();
-    if (error) {
-      console.error('[Location] Could not load configured dispatch zones:', error);
-      return NextResponse.json({ error: 'Delivery coverage could not be checked right now. Your area was not saved.' }, { status: 503 });
-    }
-    const configuredZones = data?.value && typeof data.value === 'object'
-      ? (data.value as { dispatch_zones?: unknown }).dispatch_zones
-      : null;
-    if (Array.isArray(configuredZones) && configuredZones.every(zone => typeof zone === 'string')) {
-      dispatchZones = configuredZones;
-    }
   }
 
   return NextResponse.json({

@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
-import { findDeliveryZone, parseDeliveryAreas } from '@/lib/deliveryAreas';
+import { findDeliveryZone, parseDeliveryAreas, parseDeliveryPricing } from '@/lib/deliveryAreas';
 import { getStoredVariantPrices } from '@/lib/productPricing';
 import { getPublicBaseUrl } from '@/lib/utils';
 
@@ -30,7 +30,7 @@ type CheckoutBody = {
   customerEmail: string | null;
   paymentMethod: 'Paystack' | 'COD';
   sessionId: string;
-  shippingRegionId: string;
+  deliveryZoneId: string | null;
   coordinates: { lat: number; lng: number } | null;
   deliveryBuilding: string | null;
   deliveryLandmark: string | null;
@@ -146,7 +146,7 @@ function readBody(value: unknown): CheckoutBody | null {
     customerEmail,
     paymentMethod,
     sessionId,
-    shippingRegionId,
+    deliveryZoneId,
     coordinates,
     deliveryBuilding,
     deliveryLandmark,
@@ -194,7 +194,7 @@ function readBody(value: unknown): CheckoutBody | null {
     || (typeof customerEmail === 'string' && customerEmail.length > 254)
     || (paymentMethod !== 'Paystack' && paymentMethod !== 'COD')
     || typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 160
-    || !['nairobi-cbd', 'nairobi-outskirts', 'upcountry'].includes(String(shippingRegionId))
+    || (deliveryZoneId !== null && typeof deliveryZoneId !== 'string')
     || typeof usePoints !== 'boolean'
     || typeof isGift !== 'boolean'
     || (couponCode !== null && typeof couponCode !== 'string')
@@ -241,7 +241,7 @@ function readBody(value: unknown): CheckoutBody | null {
     customerEmail: typeof customerEmail === 'string' ? customerEmail.trim() || null : null,
     paymentMethod,
     sessionId: sessionId.trim(),
-    shippingRegionId: String(shippingRegionId),
+    deliveryZoneId: typeof deliveryZoneId === 'string' && deliveryZoneId.trim() ? deliveryZoneId.trim() : null,
     coordinates: coordinate,
     deliveryBuilding: building as string | null,
     deliveryLandmark: landmark as string | null,
@@ -258,11 +258,6 @@ function readBody(value: unknown): CheckoutBody | null {
     giftRecipient: isGift ? normalizedGiftRecipient as string | null : null,
     giftOccasion: isGift ? normalizedGiftOccasion as string | null : null
   };
-}
-
-function readNumber(value: unknown, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : fallback;
 }
 
 function isVisible(product: ProductRow) {
@@ -304,7 +299,7 @@ export async function POST(request: Request) {
     }
 
     const { database } = configuration;
-    const settingKeys = ['system_lockdown', 'shipping', 'free_delivery_areas'];
+    const settingKeys = ['system_lockdown', 'free_delivery_areas', 'delivery_pricing'];
     const [settingsResult, customizedProductsResult] = await Promise.all([
       database.from('settings').select('key, value').in('key', settingKeys),
       database.from('products')
@@ -340,38 +335,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Order intake is temporarily paused for system maintenance.' }, { status: 503 });
     }
 
-    const shipping = isRecord(settingsByKey.get('shipping')) ? settingsByKey.get('shipping') as Record<string, unknown> : {};
-    const regionSettings = {
-      'nairobi-cbd': {
-        fee: readNumber(shipping.nairobi_cbd, 0),
-        label: typeof shipping.nairobi_cbd_label === 'string' ? shipping.nairobi_cbd_label : 'Local delivery'
-      },
-      'nairobi-outskirts': {
-        fee: readNumber(shipping.nairobi_outskirts, 300),
-        label: typeof shipping.nairobi_outskirts_label === 'string' ? shipping.nairobi_outskirts_label : 'Extended delivery'
-      },
-      upcountry: {
-        fee: readNumber(shipping.upcountry, 500),
-        label: typeof shipping.upcountry_label === 'string' ? shipping.upcountry_label : 'Outside local zones'
-      }
-    };
-    const selectedRegion = regionSettings[body.shippingRegionId as keyof typeof regionSettings];
     const rawAreas = settingsByKey.get('free_delivery_areas') ?? [];
     let deliveryZones: ReturnType<typeof parseDeliveryAreas>;
+    let deliveryPricing: ReturnType<typeof parseDeliveryPricing>;
     try {
       deliveryZones = parseDeliveryAreas(rawAreas);
+      deliveryPricing = parseDeliveryPricing(settingsByKey.get('delivery_pricing'));
     } catch (error) {
       console.error('[CheckoutOrder] Delivery zones are invalid:', error);
       return NextResponse.json({ error: 'Delivery coverage settings are invalid. Please contact support.' }, { status: 503 });
     }
-    if (!body.coordinates) {
-      return NextResponse.json({ error: 'Set and confirm your delivery location before placing the order.' }, { status: 400 });
+    const selectedZone = body.deliveryZoneId
+      ? deliveryZones.find(zone => zone.id === body.deliveryZoneId) || null
+      : null;
+    if (!selectedZone) {
+      return NextResponse.json({ error: 'Choose a configured estate or delivery area before placing the order.' }, { status: 400 });
     }
-    const matchedZone = findDeliveryZone(body.coordinates.lat, body.coordinates.lng, deliveryZones);
-    const deliveryFee = matchedZone
-      ? matchedZone.fee ?? (matchedZone.free_delivery ? 0 : selectedRegion.fee)
-      : selectedRegion.fee;
-    const deliveryLabel = matchedZone?.name || selectedRegion.label;
+    if (!body.coordinates && !body.deliveryBuilding) {
+      return NextResponse.json({ error: 'Enter a building or house name, or provide a GPS pin for delivery.' }, { status: 400 });
+    }
+    if (body.coordinates) {
+      const matchedZone = findDeliveryZone(body.coordinates.lat, body.coordinates.lng, deliveryZones);
+      if ((matchedZone && matchedZone.id !== selectedZone.id)
+        || (!matchedZone && selectedZone.points.length >= 3)) {
+        return NextResponse.json({ error: 'The GPS pin is outside the selected estate. Update the pin or choose its matching estate.' }, { status: 400 });
+      }
+    }
+    const zoneFee = selectedZone.fee ?? (selectedZone.free_delivery ? 0 : null);
+    if (zoneFee === null) {
+      return NextResponse.json({ error: 'Delivery fee is not configured for this estate yet. Please contact the store.' }, { status: 503 });
+    }
+    const deliveryLabel = selectedZone.name;
 
     const products = (productsData || []) as ProductRow[];
     const productById = new Map(products.map((product) => [Number(product.id), product]));
@@ -448,6 +442,9 @@ export async function POST(request: Request) {
         status: 'Pending'
       };
     });
+    const qualifiesForFreeDelivery = deliveryPricing.free_delivery_over > 0
+      && subtotal >= deliveryPricing.free_delivery_over;
+    const deliveryFee = qualifiesForFreeDelivery ? 0 : zoneFee;
 
     const requestedQuantities = new Map<string, number>();
     for (const item of normalizedLines) {
@@ -544,8 +541,8 @@ export async function POST(request: Request) {
 
     const reference = body.paymentMethod === 'Paystack' ? `OB-${crypto.randomUUID()}` : null;
     const noteParts = [
-      `Region: ${selectedRegion.label}`,
-      matchedZone ? `Delivery zone: ${matchedZone.name}` : null,
+      `Delivery zone: ${deliveryLabel}`,
+      qualifiesForFreeDelivery ? `Free delivery over KSh ${deliveryPricing.free_delivery_over}` : null,
       couponCode ? `Coupon: ${couponCode}` : null,
       pointsRedeemed > 0 ? `Used ${pointsRedeemed} points` : null,
       referralCode ? `Referred by ${referralCode}` : null,

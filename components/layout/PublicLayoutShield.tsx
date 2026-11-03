@@ -12,6 +12,7 @@ import { applyThemeColors, normalizeThemeColors, THEME_UPDATED_EVENT, type Theme
 import { Loader2 } from 'lucide-react';
 import CustomerAnnouncementHost from './CustomerAnnouncementHost';
 import LocationOnboarding from './LocationOnboarding';
+import CustomerLiveLocationSharing from './CustomerLiveLocationSharing';
 
 // Lazy Load Non-Critical Components
 const LiveTicker = dynamic(() => import('./LiveTicker'), { ssr: false });
@@ -191,6 +192,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
         <>
             <CustomerAnnouncementHost />
             <LocationOnboarding suppressLauncher={suppressFloatingLaunchers} />
+            <CustomerLiveLocationSharing suppressLauncher={suppressFloatingLaunchers} />
             <CookieConsentBanner />
             <LevelUpCelebration />
             <AgeVerification />
