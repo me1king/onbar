@@ -47,6 +47,18 @@ interface PaystackResponse {
   redirecturl?: string;
 }
 
+function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> {
+  let timer: number | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = window.setTimeout(() => reject(new Error(message)), milliseconds);
+    })
+  ]).finally(() => {
+    if (timer !== undefined) window.clearTimeout(timer);
+  });
+}
+
 declare global {
   interface Window {
     fbq?: (action: string, eventName: string, params?: Record<string, unknown>) => void;
@@ -187,24 +199,32 @@ function CheckoutContent() {
         setDeliveryAreasLoaded(true);
         return;
       }
-      const [{ data, error }, { data: pricingData, error: pricingError }] = await Promise.all([
-        supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle(),
-        supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle()
-      ]);
-      if (!active) return;
-      if (error || pricingError) {
-        console.error('Delivery zone lookup failed:', error || pricingError);
-        setDeliveryAreasError('Delivery zones are temporarily unavailable. Please try again before placing your order.');
-      } else {
-        try {
+      try {
+        const [{ data, error }, { data: pricingData, error: pricingError }] = await withTimeout(
+          Promise.all([
+            supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle(),
+            supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle()
+          ]),
+          12000,
+          'Delivery zone settings timed out. Refresh checkout and try again.'
+        );
+        if (!active) return;
+        if (error || pricingError) {
+          console.error('Delivery zone lookup failed:', error || pricingError);
+          setDeliveryAreasError('Delivery zones are temporarily unavailable. Please try again before placing your order.');
+        } else {
           setFreeDeliveryAreas(parseDeliveryAreas(data?.value ?? []));
           setFreeDeliveryOver(parseDeliveryPricing(pricingData?.value).free_delivery_over);
-        } catch (areaError) {
-          console.error('Saved free-delivery area data is invalid:', areaError);
-          setDeliveryAreasError('Delivery zone settings are invalid. Please contact support before ordering.');
         }
+      } catch (error) {
+        if (!active) return;
+        console.error('Delivery zone lookup failed:', error);
+        setDeliveryAreasError(error instanceof Error
+          ? error.message
+          : 'Delivery zones are temporarily unavailable. Please try again before placing your order.');
+      } finally {
+        if (active) setDeliveryAreasLoaded(true);
       }
-      setDeliveryAreasLoaded(true);
     }
     loadFreeDeliveryAreas();
     return () => { active = false; };
@@ -323,9 +343,10 @@ function CheckoutContent() {
         const sessionId = localStorage.getItem('ob_session_id');
 
         try {
-            await supabase.from('abandoned_carts').upsert({
+            const { error } = await supabase.from('abandoned_carts').upsert({
                 customer_name: customerName.trim(),
                 customer_phone: customerPhone.trim(),
+                customer_email: (user?.email || customerEmail).trim().toLowerCase() || null,
                 cart_items: cart,
                 total_price: total,
                 loyalty_points_redeemed: usePoints ? Math.min(loyaltyPoints, Math.ceil(pointsDiscount * pointsPerKsh)) : 0,
@@ -333,6 +354,9 @@ function CheckoutContent() {
                 updated_at: new Date().toISOString(),
                 recovery_status: 'Waiting'
             }, { onConflict: 'customer_phone' });
+            if (error) {
+                console.warn("Abandoned cart sync issue:", error);
+            }
         } catch (err) {
             console.warn("Abandoned cart sync issue:", err);
         }
@@ -340,7 +364,7 @@ function CheckoutContent() {
 
     const timer = setTimeout(syncAbandonedCart, 5000); // Sync after 5s of typing
     return () => clearTimeout(timer);
-  }, [customerName, customerPhone, cart, total, loyaltyPoints, pointsDiscount, pointsPerKsh, usePoints]);
+  }, [customerName, customerPhone, customerEmail, user?.email, cart, total, loyaltyPoints, pointsDiscount, pointsPerKsh, usePoints]);
 
   // 1.5 Realtime "Magic" Checkout Listener
   useEffect(() => {
@@ -472,18 +496,23 @@ function CheckoutContent() {
 
     try {
       const client = supabase;
-      if (!client) return;
-      const session = paymentMethod === "M-Pesa" || usePoints
-        ? (await client.auth.getSession()).data.session
+      if (!client) throw new Error('Database connection was lost. Your order was not submitted.');
+      const session = usePoints
+        ? (await withTimeout(
+            client.auth.getSession(),
+            5000,
+            'Your sign-in check timed out. Turn off points or sign in again, then retry.'
+          )).data.session
         : null;
       const sessionId = localStorage.getItem('ob_session_id');
       if (!sessionId) throw new Error('Your checkout session expired. Refresh the page and try again.');
-      const orderResponse = await fetch('/api/checkout/orders', {
+      const orderResponse = await withTimeout(fetch('/api/checkout/orders', {
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
               ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
           },
+          signal: AbortSignal.timeout(15000),
           body: JSON.stringify({
               items: cart.map(item => ({
                   productId: item.id,
@@ -515,7 +544,7 @@ function CheckoutContent() {
               giftRecipient: giftRecipient.trim() || null,
               giftOccasion: giftOccasion.trim() || null
           })
-      });
+      }), 16000, 'The order service did not respond within 15 seconds. Your order may still be processing; check Orders before retrying to avoid a duplicate.');
       const orderResult = await orderResponse.json() as {
           error?: string;
           code?: string;
@@ -602,7 +631,9 @@ function CheckoutContent() {
     } catch (error: unknown) {
         const err = error as Error;
         console.error("Checkout Error:", err);
-        const message = err instanceof TypeError && /fetch/i.test(err.message)
+        const message = ['AbortError', 'TimeoutError'].includes(err.name)
+          ? 'The order request timed out. Your order may still be processing; check Orders before retrying to avoid a duplicate.'
+          : err instanceof TypeError && /fetch/i.test(err.message)
           ? "We could not reach the order service. Check your connection and try again."
           : err.message || "An unexpected error occurred.";
         setCheckoutStatus({ type: "error", message });

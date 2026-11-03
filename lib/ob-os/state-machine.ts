@@ -2,6 +2,7 @@ export type OrderStatus =
     | 'Created'
     | 'Pending'
     | 'Payment Pending'
+    | 'Confirmed'
     | 'Paid'
     | 'Stock Reserved'
     | 'Supplier Confirmed'
@@ -26,6 +27,7 @@ const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
     'Created': ['Payment Pending', 'Cancelled'],
     'Pending': ['Paid', 'Payment Failed', 'Cancelled'],
     'Payment Pending': ['Paid', 'Payment Failed', 'Cancelled'],
+    'Confirmed': ['Processing', 'Cancelled'],
     'Paid': ['Stock Reserved', 'Dispatched', 'Cancelled', 'Refunded'],
     'Stock Reserved': ['Supplier Confirmed', 'Processing', 'Cancelled', 'Refunded'],
     'Supplier Confirmed': ['Processing', 'Cancelled', 'Refunded'],

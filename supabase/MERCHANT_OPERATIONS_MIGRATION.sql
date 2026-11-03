@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS public.merchant_applications (
     collection_available BOOLEAN NOT NULL DEFAULT false,
     offered_goods JSONB NOT NULL DEFAULT '[]'::JSONB,
     offered_goods_pricing JSONB NOT NULL DEFAULT '[]'::JSONB,
+    merchant_accent_color TEXT NOT NULL DEFAULT '#F5A000'
+        CHECK (merchant_accent_color ~ '^#[0-9A-Fa-f]{6}$'),
     documents JSONB NOT NULL DEFAULT '[]'::JSONB,
     privacy_notice_version TEXT NOT NULL DEFAULT 'merchant-application-v1',
     privacy_acknowledged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -51,7 +53,9 @@ ALTER TABLE public.merchant_applications
     ADD COLUMN IF NOT EXISTS accepting_orders BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN IF NOT EXISTS availability_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ADD COLUMN IF NOT EXISTS offered_goods JSONB NOT NULL DEFAULT '[]'::JSONB,
-    ADD COLUMN IF NOT EXISTS offered_goods_pricing JSONB NOT NULL DEFAULT '[]'::JSONB;
+    ADD COLUMN IF NOT EXISTS offered_goods_pricing JSONB NOT NULL DEFAULT '[]'::JSONB,
+    ADD COLUMN IF NOT EXISTS merchant_accent_color TEXT NOT NULL DEFAULT '#F5A000'
+        CHECK (merchant_accent_color ~ '^#[0-9A-Fa-f]{6}$');
 
 DO $$
 BEGIN

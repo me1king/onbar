@@ -84,8 +84,16 @@ export async function POST(request: Request) {
   }
 
   const source = body.source;
+  const precision = body.precision === undefined ? 'approximate' : body.precision;
+  if (precision !== 'approximate' && precision !== 'exact') {
+    return NextResponse.json({ error: 'Choose approximate or exact GPS sharing.' }, { status: 400 });
+  }
+  if (precision === 'exact' && (source !== 'gps' || body.exactLocationConsent !== true)) {
+    return NextResponse.json({ error: 'Exact GPS sharing requires your explicit consent and a live GPS reading.' }, { status: 403 });
+  }
   let latitude: number;
   let longitude: number;
+  let accuracyM: number | null = null;
   let city = '';
   let area = '';
   if (source === 'manual') {
@@ -104,8 +112,22 @@ export async function POST(request: Request) {
       || !Number.isFinite(longitudeValue) || longitudeValue < -180 || longitudeValue > 180) {
       return NextResponse.json({ error: 'A valid location is required to share with operations.' }, { status: 400 });
     }
-    latitude = Math.round(latitudeValue * 1000) / 1000;
-    longitude = Math.round(longitudeValue * 1000) / 1000;
+    if (precision === 'exact') {
+      const accuracyValue = Number(body.accuracyM);
+      if (!Number.isFinite(accuracyValue) || accuracyValue <= 0 || accuracyValue > 10000) {
+        return NextResponse.json({ error: 'A valid device GPS accuracy reading is required for exact sharing.' }, { status: 400 });
+      }
+      latitude = latitudeValue;
+      longitude = longitudeValue;
+      accuracyM = accuracyValue;
+    } else {
+      latitude = Math.round(latitudeValue * 1000) / 1000;
+      longitude = Math.round(longitudeValue * 1000) / 1000;
+      const accuracyValue = Number(body.accuracyM);
+      accuracyM = Number.isFinite(accuracyValue) && accuracyValue > 0 && accuracyValue <= 10000
+        ? accuracyValue
+        : null;
+    }
     const nearest = approximateArea(latitude, longitude);
     city = nearest?.city || 'Other';
     area = nearest?.area || 'Other';
@@ -127,6 +149,8 @@ export async function POST(request: Request) {
     share_id: shareId,
     latitude,
     longitude,
+    precision,
+    accuracy_m: accuracyM,
     city,
     area,
     activity,
@@ -136,7 +160,8 @@ export async function POST(request: Request) {
   if (error) return migrationMissing(error) ? unavailable() : unavailable(error);
   return NextResponse.json({
     sharing: true,
-    approximate: true,
+    approximate: precision === 'approximate',
+    precision,
     area: { city, area },
     expiresAt: expiresAt.toISOString()
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });

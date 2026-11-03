@@ -42,6 +42,7 @@ interface CartContextProps {
   compareList: Product[];
   addToCart: (item: CartItem) => Promise<AddToCartResult>;
   addBundleToCart: (items: CartItem[]) => void;
+  replaceCart: (items: unknown) => boolean;
   toggleCompare: (item: Product) => void;
   removeFromCart: (id: number, cartKey?: string) => void;
   clearCart: () => void;
@@ -66,6 +67,76 @@ function getUnitPrice(item: CartItem, quantity: number) {
   const addonPrice = (item.addons || []).reduce((sum, addon) => sum + addon.price, 0);
   const customizationPrice = Number(item.engraving_fee || 0) + Number(item.gift_packaging_fee || 0);
   return basePrice + addonPrice + customizationPrice;
+}
+
+function isEngravingCustomization(value: unknown): value is EngravingCustomization {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const engraving = value as Record<string, unknown>;
+  return typeof engraving.text === 'string'
+    && ['classic', 'modern', 'signature'].includes(String(engraving.font))
+    && ['matte_black', 'brushed_steel'].includes(String(engraving.finish))
+    && typeof engraving.giftPackage === 'boolean'
+    && (engraving.giftMessage === null || typeof engraving.giftMessage === 'string')
+    && engraving.spellingApproved === true;
+}
+
+function normalizeRecoveredCart(items: unknown): CartItem[] | null {
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  const recoveredItems: CartItem[] = [];
+  for (const value of items) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const item = value as Record<string, unknown>;
+    const id = Number(item.id);
+    const quantity = Number(item.quantity);
+    const price = Number(item.price);
+    const basePrice = Number(item.base_price ?? item.price);
+    const addons = Array.isArray(item.addons)
+      ? item.addons.map(addon => {
+        if (!addon || typeof addon !== 'object' || Array.isArray(addon)) return null;
+        const value = addon as Record<string, unknown>;
+        const addonPrice = Number(value.price);
+        return typeof value.id === 'string' && typeof value.name === 'string' && Number.isFinite(addonPrice) && addonPrice >= 0
+          ? { id: value.id, name: value.name, price: addonPrice }
+          : null;
+      })
+      : undefined;
+    const engraving = item.engraving;
+    const hasValidEngraving = engraving == null || isEngravingCustomization(engraving);
+    if (!Number.isSafeInteger(id) || id < 1
+      || typeof item.name !== 'string' || !item.name.trim()
+      || !Number.isFinite(price) || price < 0
+      || !Number.isFinite(basePrice) || basePrice < 0
+      || !Number.isSafeInteger(quantity) || quantity < 1
+      || typeof item.image !== 'string'
+      || (item.addons !== undefined && !Array.isArray(item.addons))
+      || (Array.isArray(item.addons) && addons?.some(addon => addon === null))
+      || !hasValidEngraving) {
+      return null;
+    }
+
+    recoveredItems.push({
+      id,
+      name: item.name,
+      price,
+      base_price: basePrice,
+      image: item.image,
+      quantity,
+      ...(typeof item.category === 'string' ? { category: item.category } : {}),
+      ...(typeof item.size === 'string' ? { size: item.size } : {}),
+      ...(addons ? {
+        addons: addons.filter((addon): addon is { id: string; name: string; price: number } => addon !== null)
+      } : {}),
+      ...(isEngravingCustomization(engraving) ? { engraving } : {}),
+      ...(Number.isFinite(Number(item.engraving_fee)) ? { engraving_fee: Number(item.engraving_fee) } : {}),
+      ...(Number.isFinite(Number(item.gift_packaging_fee)) ? { gift_packaging_fee: Number(item.gift_packaging_fee) } : {}),
+      ...(Number.isFinite(Number(item.wholesale_price)) ? { wholesale_price: Number(item.wholesale_price) } : {}),
+      ...(Number.isSafeInteger(Number(item.wholesale_min_qty)) && Number(item.wholesale_min_qty) > 0
+        ? { wholesale_min_qty: Number(item.wholesale_min_qty) }
+        : {})
+    });
+  }
+  return recoveredItems;
 }
 
 const CartContext = createContext<CartContextProps | undefined>(undefined);
@@ -217,6 +288,13 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
+  const replaceCart = (items: unknown) => {
+    const recoveredItems = normalizeRecoveredCart(items);
+    if (!recoveredItems) return false;
+    setCart(recoveredItems);
+    return true;
+  };
+
   const removeFromCart = (id: number, cartKey?: string) => {
     setCart((prevCart) => prevCart.filter((item) => cartKey ? getCartKey(item) !== cartKey : item.id !== id));
   };
@@ -249,7 +327,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <CartContext.Provider
-      value={{ cart, compareList, addToCart, addBundleToCart, toggleCompare, removeFromCart, clearCart, updateQuantity }}
+      value={{ cart, compareList, addToCart, addBundleToCart, replaceCart, toggleCompare, removeFromCart, clearCart, updateQuantity }}
     >
       {children}
     </CartContext.Provider>

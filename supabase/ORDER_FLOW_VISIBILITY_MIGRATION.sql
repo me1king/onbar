@@ -1,4 +1,4 @@
--- Durable order lifecycle history and atomic admin status transitions.
+ -- Durable order lifecycle history and atomic admin status transitions.
 -- Run after FINAL_ESTABLISHMENT_SQL.sql and DISPATCH_MIGRATION.sql.
 
 BEGIN;
@@ -109,6 +109,7 @@ AS $$
         WHEN 'Created' THEN next_state IN ('Payment Pending', 'Cancelled')
         WHEN 'Pending' THEN next_state IN ('Paid', 'Payment Failed', 'Cancelled')
         WHEN 'Payment Pending' THEN next_state IN ('Paid', 'Payment Failed', 'Cancelled')
+        WHEN 'Confirmed' THEN next_state IN ('Processing', 'Cancelled')
         WHEN 'Paid' THEN next_state IN ('Stock Reserved', 'Cancelled', 'Refunded', 'Dispatched')
         WHEN 'Stock Reserved' THEN next_state IN ('Supplier Confirmed', 'Processing', 'Cancelled', 'Refunded')
         WHEN 'Supplier Confirmed' THEN next_state IN ('Processing', 'Cancelled', 'Refunded')
@@ -155,7 +156,7 @@ BEGIN
         RAISE EXCEPTION 'An order may only be selected once.';
     END IF;
     IF new_state_input NOT IN (
-        'Created', 'Pending', 'Payment Pending', 'Paid', 'Stock Reserved', 'Supplier Confirmed',
+        'Created', 'Pending', 'Payment Pending', 'Confirmed', 'Paid', 'Stock Reserved', 'Supplier Confirmed',
         'Processing', 'Packed', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered',
         'Completed', 'Cancelled', 'Payment Failed', 'Refunded', 'Warranty', 'Returned'
     ) THEN

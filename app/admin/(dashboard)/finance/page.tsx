@@ -102,7 +102,7 @@ export default function AdminFinancePage() {
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600">Treasury OS Active</span>
                     </div>
                     <h1 className="text-3xl sm:text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Financial Fortress</h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1">Ledger-based financial summaries. Reconciliation requires a verified external match.</p>
+                    <p className="text-muted-foreground text-sm font-medium mt-1">Revenue and estimated product costs post when an order is delivered. Gateway fees and reconciliation require verified external records.</p>
                 </div>
                 <div className="flex gap-2">
                     <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex mr-2">

@@ -21,8 +21,20 @@ export async function GET() {
     auth: { autoRefreshToken: false, persistSession: false }
   });
   const now = new Date();
+  const { error: cleanupError } = await database.from('customer_live_location_shares')
+    .delete()
+    .lt('expires_at', now.toISOString());
+  if (cleanupError) {
+    console.error('[CustomerLocationMap] Could not remove expired location shares:', cleanupError);
+    return NextResponse.json({
+      error: cleanupError.code === '42P01' || cleanupError.code === 'PGRST205'
+        || /customer_live_location_shares/i.test(cleanupError.message)
+        ? 'The customer live location map is not installed. Apply supabase/CUSTOMER_LIVE_LOCATION_SHARING_MIGRATION.sql.'
+        : 'Expired customer locations could not be removed.'
+    }, { status: 503 });
+  }
   const { data, error } = await database.from('customer_live_location_shares')
-    .select('share_id,latitude,longitude,city,area,activity,last_seen_at')
+    .select('share_id,latitude,longitude,precision,accuracy_m,city,area,activity,last_seen_at')
     .gt('expires_at', now.toISOString())
     .order('last_seen_at', { ascending: false })
     .limit(500);
@@ -41,6 +53,8 @@ export async function GET() {
     visitorCode: `Visitor ${location.share_id.slice(0, 6).toUpperCase()}`,
     latitude: Number(location.latitude),
     longitude: Number(location.longitude),
+    precision: location.precision,
+    accuracyM: location.accuracy_m === null ? null : Number(location.accuracy_m),
     city: location.city,
     area: location.area,
     activity: location.activity,

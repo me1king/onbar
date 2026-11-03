@@ -12,6 +12,8 @@ type CustomerLocation = {
   visitorCode: string;
   latitude: number;
   longitude: number;
+  precision: 'approximate' | 'exact';
+  accuracyM: number | null;
   city: string;
   area: string;
   activity: 'browsing' | 'checkout' | 'ordered';
@@ -33,9 +35,9 @@ function FitCustomerLocations({ locations }: { locations: CustomerLocation[] }) 
     if (signature === previousLocations.current) return;
     previousLocations.current = signature;
     if (locations.length > 1) {
-      map.fitBounds(locations.map(location => [location.latitude, location.longitude] as [number, number]), { padding: [40, 40], maxZoom: 13 });
+      map.fitBounds(locations.map(location => [location.latitude, location.longitude] as [number, number]), { padding: [40, 40], maxZoom: 18 });
     } else if (locations.length === 1) {
-      map.setView([locations[0].latitude, locations[0].longitude], 13);
+      map.setView([locations[0].latitude, locations[0].longitude], locations[0].precision === 'exact' ? 17 : 13);
     }
   }, [locations, map]);
   return null;
@@ -97,7 +99,7 @@ export default function CustomerLiveLocationMap() {
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-primary">Customer app · explicit opt-in only</p>
           <h2 className="mt-1 text-xl font-black uppercase tracking-tight">Live customer locations</h2>
-          <p className="mt-1 text-xs text-slate-500">Anonymous pins are rounded to about 100 m and expire after 2 minutes without a heartbeat.</p>
+          <p className="mt-1 text-xs text-slate-500">Customers choose whether to share approximate (~100 m) or exact GPS pins. Pins are anonymous and expire after 2 minutes without a heartbeat.</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-800">
@@ -140,6 +142,13 @@ export default function CustomerLiveLocationMap() {
                 <div className="min-w-[150px] p-1">
                   <p className="font-black text-slate-900">{location.visitorCode}</p>
                   <p className="mt-1 text-xs font-semibold text-slate-600">{location.city} · {location.area}</p>
+                  {location.precision === 'exact' ? (
+                    <>
+                      <p className="mt-1 text-xs font-bold text-rose-800">Exact GPS pin (shared by customer)</p>
+                      <p className="mt-1 font-mono text-[10px] text-slate-700">{location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</p>
+                      {location.accuracyM !== null && <p className="mt-1 text-[10px] text-slate-500">Device-reported accuracy: ~{Math.round(location.accuracyM)} m</p>}
+                    </>
+                  ) : <p className="mt-1 text-[10px] font-semibold text-slate-500">Approximate pin · ~100 m precision</p>}
                   <p className="mt-1 text-xs font-bold" style={{ color: activityColor(location.activity) }}>{activityLabel(location.activity)}</p>
                   <p className="mt-1 text-[10px] text-slate-500">Updated {freshness(location.lastSeenAt)}</p>
                 </div>

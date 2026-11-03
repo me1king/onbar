@@ -11,11 +11,14 @@ type SharedLocation = {
   city: string;
   area: string;
   source: 'gps' | 'manual';
+  precision?: 'approximate' | 'exact';
+  accuracyM?: number;
 };
 
 type Props = { suppressLauncher?: boolean };
 
 const SHARE_ID_KEY = 'ob_live_location_share_id';
+const EXACT_LOCATION_SHARE_EVENT = 'onbar:share-exact-location';
 const HEARTBEAT_MS = 30_000;
 
 function getShareId() {
@@ -58,16 +61,30 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
       body: JSON.stringify({
         action: 'share',
         shareId: getShareId(),
+        precision: nextLocation.precision || 'approximate',
+        exactLocationConsent: nextLocation.precision === 'exact',
+        accuracyM: nextLocation.accuracyM,
         ...nextLocation,
         activity: activityForPath(pathnameRef.current)
       })
     });
-    const result = await response.json() as { error?: string; area?: { city: string; area: string } };
+    const result = await response.json() as {
+      error?: string;
+      area?: { city: string; area: string };
+      precision?: 'approximate' | 'exact';
+    };
     if (!response.ok) throw new Error(result.error || 'Your location could not be shared.');
-    const savedLocation = { ...nextLocation, city: result.area?.city || nextLocation.city, area: result.area?.area || nextLocation.area };
+    const savedLocation = {
+      ...nextLocation,
+      precision: result.precision || nextLocation.precision || 'approximate',
+      city: result.area?.city || nextLocation.city,
+      area: result.area?.area || nextLocation.area
+    };
     locationRef.current = savedLocation;
     setLocation(savedLocation);
-    setStatus(`Sharing an approximate ${savedLocation.city} · ${savedLocation.area} location with operations.`);
+    setStatus(savedLocation.precision === 'exact'
+      ? 'Your anonymous GPS pin is visible to authorized operations admins. It is removed when you stop sharing or after 2 minutes without updates.'
+      : `Sharing an approximate ${savedLocation.city} · ${savedLocation.area} location with operations.`);
   }, []);
 
   const stopSharing = useCallback(async () => {
@@ -110,13 +127,13 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
     }
   }, [saveLocation]);
 
-  const shareGps = () => {
+  const shareGps = (precision: 'approximate' | 'exact' = 'approximate') => {
     if (!navigator.geolocation) {
       setStatus('GPS is not available in this browser. Choose your area instead.');
       return;
     }
     setBusy(true);
-    setStatus('Finding an approximate location…');
+    setStatus(precision === 'exact' ? 'Finding your precise GPS location…' : 'Finding an approximate location…');
     navigator.geolocation.getCurrentPosition(
       position => {
         const nearest = approximateArea(position.coords.latitude, position.coords.longitude);
@@ -125,7 +142,9 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
           longitude: position.coords.longitude,
           city: nearest?.city || 'Other',
           area: nearest?.area || 'Other',
-          source: 'gps'
+          source: 'gps',
+          precision,
+          accuracyM: position.coords.accuracy
         });
       },
       error => {
@@ -134,7 +153,7 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
           ? 'Location permission was declined. Choose your area to share instead.'
           : 'We could not get your location. Choose your area to share instead.');
       },
-      { enableHighAccuracy: false, timeout: 15_000, maximumAge: 30_000 }
+      { enableHighAccuracy: precision === 'exact', timeout: 20_000, maximumAge: precision === 'exact' ? 0 : 30_000 }
     );
   };
 
@@ -149,9 +168,39 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
       longitude: selected.longitude,
       city: selected.city,
       area: selected.area,
-      source: 'manual'
+      source: 'manual',
+      precision: 'approximate'
     });
   };
+
+  useEffect(() => {
+    const handleExactLocationShare = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        latitude?: unknown;
+        longitude?: unknown;
+        accuracyM?: unknown;
+        city?: unknown;
+        area?: unknown;
+      }>).detail;
+      if (
+        !detail || typeof detail.latitude !== 'number' || typeof detail.longitude !== 'number'
+        || typeof detail.accuracyM !== 'number' || typeof detail.city !== 'string'
+        || typeof detail.area !== 'string'
+      ) return;
+      setOpen(true);
+      void startSharing({
+        latitude: detail.latitude,
+        longitude: detail.longitude,
+        accuracyM: detail.accuracyM,
+        city: detail.city,
+        area: detail.area,
+        source: 'gps',
+        precision: 'exact'
+      });
+    };
+    window.addEventListener(EXACT_LOCATION_SHARE_EVENT, handleExactLocationShare);
+    return () => window.removeEventListener(EXACT_LOCATION_SHARE_EVENT, handleExactLocationShare);
+  }, [startSharing]);
 
   useEffect(() => {
     if (!sharing) return;
@@ -165,7 +214,9 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
             longitude: position.coords.longitude,
             city: nearest?.city || 'Other',
             area: nearest?.area || 'Other',
-            source: 'gps'
+            source: 'gps',
+            precision: locationRef.current?.precision || 'approximate',
+            accuracyM: position.coords.accuracy
           };
         },
         error => {
@@ -173,7 +224,11 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
             ? 'GPS access was withdrawn. Stop sharing or choose an area.'
             : 'GPS could not refresh. Your last approximate location will expire if it cannot be updated.');
         },
-        { enableHighAccuracy: false, maximumAge: 30_000, timeout: 15_000 }
+        {
+          enableHighAccuracy: locationRef.current?.precision === 'exact',
+          maximumAge: locationRef.current?.precision === 'exact' ? 0 : 30_000,
+          timeout: 20_000
+        }
       );
     }
     const interval = window.setInterval(() => {
@@ -217,13 +272,16 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
 
           <div className="mt-3 flex gap-2 rounded-xl bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-950">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>Only an anonymous location rounded to about 100 m is shown. Sharing lasts while this app is open; it expires automatically after 2 minutes without an update.</p>
+            <p>Approximate sharing rounds GPS to about 100 m. Exact sharing sends your anonymous device coordinates to authorized operations admins. Either mode ends when you stop, close this tab, or after 2 minutes without an update. GPS accuracy varies by device.</p>
           </div>
 
           {!sharing ? (
             <div className="mt-3 space-y-3">
-              <button type="button" onClick={shareGps} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-60">
+              <button type="button" onClick={() => shareGps()} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-60">
                 <Crosshair size={16} /> {busy ? 'Finding location…' : 'Share approximate GPS'}
+              </button>
+              <button type="button" onClick={() => shareGps('exact')} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-black uppercase tracking-wide text-rose-900 disabled:opacity-60">
+                <Crosshair size={16} /> {busy ? 'Finding location…' : 'Share exact GPS pin'}
               </button>
               <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-slate-400"><span className="h-px flex-1 bg-slate-200" />Or choose an area<span className="h-px flex-1 bg-slate-200" /></div>
               <label className="block text-xs font-bold text-slate-700">
@@ -242,7 +300,9 @@ export default function CustomerLiveLocationSharing({ suppressLauncher = false }
           ) : (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
               <div className="flex items-center gap-2 text-xs font-black text-emerald-800"><Radio size={15} className="animate-pulse" /> Sharing is on</div>
-              <p className="mt-1 text-xs text-emerald-900">{location?.city} · {location?.area} · {location?.source === 'gps' ? 'approximate GPS' : 'selected area'}</p>
+              <p className="mt-1 text-xs text-emerald-900">
+                {location?.city} · {location?.area} · {location?.precision === 'exact' ? `exact GPS pin · device accuracy ~${Math.round(location.accuracyM || 0)} m` : location?.source === 'gps' ? 'approximate GPS' : 'selected area'}
+              </p>
               <button type="button" onClick={() => void stopSharing()} disabled={busy} className="mt-3 w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-black uppercase text-emerald-900 disabled:opacity-60">
                 {busy ? 'Stopping…' : 'Stop sharing'}
               </button>

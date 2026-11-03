@@ -1,39 +1,58 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ShoppingBag, X, ArrowRight } from 'lucide-react';
+import { ShoppingBag, X, ArrowRight, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '../ui/button';
-import Link from 'next/link';
+import { useCart } from '@/context/CartContext';
+import { useRouter } from 'next/navigation';
 
 export default function AbandonedCartBar() {
-    const [abandonedCart, setAbandonedCart] = useState<Record<string, unknown> | null>(null);
+    const { cart, replaceCart } = useCart();
+    const router = useRouter();
+    const [savedItems, setSavedItems] = useState<unknown>(null);
     const [isVisible, setIsVisible] = useState(false);
+    const [isRestoring, setIsRestoring] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     useEffect(() => {
         async function checkAbandonedCart() {
-            if (!supabase) return;
+            if (!supabase || cart.length > 0) return;
+            const { data: { session }, error } = await supabase.auth.getSession();
+            if (error) {
+                console.error('[AbandonedCart] Could not read customer session:', error);
+                return;
+            }
+            if (!session) return;
 
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                const { data } = await supabase
-                    .from('abandoned_carts')
-                    .select('*')
-                    .eq('customer_email', session.user.email)
-                    .is('recovery_sent_at', null)
-                    .limit(1)
-                    .maybeSingle();
-
-                if (data) {
-                    setAbandonedCart(data);
-                    setIsVisible(true);
-                }
+            const response = await fetch('/api/customer/abandoned-cart', {
+                headers: { Authorization: `Bearer ${session.access_token}` },
+                cache: 'no-store'
+            });
+            const result = await response.json() as { cart?: { cart_items?: unknown } | null; error?: string };
+            if (!response.ok) throw new Error(result.error || 'Saved cart could not be loaded.');
+            if (result.cart?.cart_items) {
+                setSavedItems(result.cart.cart_items);
+                setIsVisible(true);
             }
         }
-        checkAbandonedCart();
-    }, []);
+        void checkAbandonedCart().catch(error => {
+            console.error('[AbandonedCart] Could not load saved cart:', error);
+        });
+    }, [cart.length]);
 
-    if (!isVisible || !abandonedCart) return null;
+    if (!isVisible || !savedItems || cart.length > 0) return null;
+
+    const restoreSavedCart = () => {
+        setIsRestoring(true);
+        setErrorMessage(null);
+        if (!replaceCart(savedItems)) {
+            setErrorMessage('These saved items could not be restored. Please browse and add them again.');
+            setIsRestoring(false);
+            return;
+        }
+        router.push('/cart');
+    };
 
     return (
         <div className="bg-primary text-white py-3 px-4 shadow-lg animate-in slide-in-from-top duration-500">
@@ -48,11 +67,13 @@ export default function AbandonedCartBar() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <Link href="/cart">
-                        <Button className="h-9 px-6 bg-white text-primary hover:bg-slate-50 font-black uppercase text-[10px] tracking-widest rounded-xl">
-                            Finish Order <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                    <div className="flex items-center gap-3">
+                        {errorMessage && <p role="alert" className="text-xs font-semibold">{errorMessage}</p>}
+                        <Button onClick={restoreSavedCart} disabled={isRestoring} className="h-9 px-6 bg-white text-primary hover:bg-slate-50 font-black uppercase text-[10px] tracking-widest rounded-xl">
+                            {isRestoring ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+                            Restore saved cart <ArrowRight className="ml-2 h-3.5 w-3.5" />
                         </Button>
-                    </Link>
+                    </div>
                     <button
                         onClick={() => setIsVisible(false)}
                         className="p-1 hover:bg-white/20 rounded-lg transition-colors"

@@ -126,6 +126,19 @@ function SuccessContent() {
         let active = true;
         let pollTimer: ReturnType<typeof setTimeout> | undefined;
         let loyaltyProcessed = false;
+        let statusPollCount = 0;
+
+        const scheduleStatusPoll = (fetchStatus: () => Promise<void>, delay = 2500) => {
+            if (!active || statusPollCount >= 24) return;
+            statusPollCount += 1;
+            pollTimer = setTimeout(() => {
+                fetchStatus().catch((error: unknown) => {
+                    console.error('Could not refresh order status:', error);
+                    if (active) setStatusError('Order status is still syncing. This page will keep checking automatically.');
+                    scheduleStatusPoll(fetchStatus, 5000);
+                });
+            }, delay);
+        };
 
         const loadStatus = async () => {
             const client = supabase;
@@ -185,20 +198,8 @@ function SuccessContent() {
                     }
                 }
 
-                if (result.order.payment_method === 'Paystack' && result.order.status === 'Pending') {
-                    pollTimer = setTimeout(() => {
-                        fetchStatus().catch((error: unknown) => {
-                            console.error('Could not refresh Paystack order status:', error);
-                            if (active) {
-                                setStatusError('Payment confirmation is still processing. This page will keep checking automatically.');
-                            }
-                            pollTimer = setTimeout(() => {
-                                fetchStatus().catch((retryError: unknown) => {
-                                    console.error('Could not refresh Paystack order status:', retryError);
-                                });
-                            }, 5000);
-                        });
-                    }, 2500);
+                if (!['Delivered', 'Completed', 'Cancelled', 'Payment Failed', 'Refunded', 'Returned'].includes(result.order.status)) {
+                    scheduleStatusPoll(fetchStatus);
                 }
             };
 
@@ -256,8 +257,10 @@ function SuccessContent() {
         );
     }
 
-    const isConfirmed = order && ['Confirmed', 'Paid', 'Delivered', 'Completed'].includes(order.status);
-    const isPaymentPending = order?.payment_method === 'Paystack' && order.status === 'Pending';
+    const isAccepted = order && ['Processing', 'Packed', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered', 'Completed'].includes(order.status);
+    const isPaymentPending = order?.payment_method === 'Paystack' && ['Pending', 'Payment Pending'].includes(order.status);
+    const isPaymentReceived = order && ['Paid', 'Delivered', 'Completed'].includes(order.status);
+    const isOnTheWay = order && ['Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(order.status);
 
     return (
         <div className="container mx-auto px-4 py-12 max-w-2xl text-center">
@@ -266,21 +269,23 @@ function SuccessContent() {
                     {isPaymentPending ? <Clock3 className="h-12 w-12" /> : <CheckCircle2 className="h-12 w-12 animate-in zoom-in duration-500" />}
                 </div>
                 <h1 className="text-5xl font-black uppercase tracking-tighter text-foreground mb-2">
-                    {isConfirmed ? 'Order Confirmed' : isPaymentPending ? 'Confirming Payment' : order ? 'Order Received' : 'Order Status'}
+                    {isAccepted ? 'Order Accepted' : isPaymentPending ? 'Payment Pending' : order ? 'Order Received' : 'Order Status'}
                 </h1>
                 <p className="text-slate-500 font-medium italic">
-                    {isConfirmed
-                        ? 'Your order is accepted and your drink or snack is on the way.'
+                    {isAccepted
+                        ? isOnTheWay
+                            ? 'Your order has been accepted and is on the way.'
+                            : 'The merchant accepted your order and is preparing it.'
                         : isPaymentPending
-                            ? 'Paystack verified your payment. We are waiting for the order confirmation to finish.'
+                            ? 'Your order is saved. Complete the payment prompt; we will update this page when payment is verified.'
                             : order
-                                ? 'We received your order and will contact you shortly to confirm delivery.'
+                                ? 'Your order is saved and sent to the merchant. We are waiting for the merchant to accept it.'
                                 : 'We could not load the order status.'}
                 </p>
                 {statusError && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{statusError}</p>}
             </div>
 
-            {order && !isPaymentPending && (
+            {order && isOnTheWay && (
                 <div className="mb-10 overflow-hidden rounded-[2.5rem] border border-primary/10 bg-gradient-to-r from-amber-50 via-white to-primary/5 p-6 shadow-lg">
                     <div className="relative h-24">
                         <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary/15" />
@@ -321,13 +326,17 @@ function SuccessContent() {
                             </div>
                             <div>
                                 <h4 className="font-bold text-foreground">
-                                    {isConfirmed ? 'Order accepted' : isPaymentPending ? 'Payment Received' : 'Order Received'}
+                                    {isAccepted ? (isOnTheWay ? 'On the way' : 'Order accepted') : isPaymentPending ? 'Payment pending' : isPaymentReceived ? 'Payment received' : 'Order received'}
                                 </h4>
                                 <p className="text-sm text-slate-500">
-                                    {isConfirmed
-                                        ? 'Your order is accepted and is being prepared for delivery.'
+                                    {isAccepted
+                                        ? isOnTheWay
+                                            ? 'Your order is on the way to your delivery location.'
+                                            : 'The merchant accepted your order and is preparing it.'
                                         : isPaymentPending
-                                            ? 'Your payment is verified. We are finishing the order confirmation.'
+                                            ? 'Complete the payment prompt. This page will show confirmation when payment is verified.'
+                                            : isPaymentReceived
+                                                ? 'Payment is verified. We are waiting for the merchant to accept your order.'
                                             : 'Your order has been saved. We will contact you to confirm delivery.'}
                                 </p>
                             </div>
@@ -345,7 +354,7 @@ function SuccessContent() {
 
                         <div className="pt-6 border-t border-dashed border-slate-200">
                             <div className="flex justify-between items-center mb-6">
-                                <span className="text-slate-500 font-medium">{isConfirmed ? 'Total Amount Paid' : 'Order Total'}</span>
+                                <span className="text-slate-500 font-medium">{isPaymentReceived ? 'Total Amount Paid' : 'Order Total'}</span>
                                 <span className="text-2xl font-black text-foreground">{formatPrice(order?.total_price || 0)}</span>
                             </div>
 
@@ -356,8 +365,8 @@ function SuccessContent() {
                                     paymentMethod={order?.payment_method || 'Payment'}
                                     status={order?.status || 'Checking'}
                                     onPrint={downloadReceipt}
-                                    autoStart={Boolean(isConfirmed && receiptDetailsLoaded)}
-                                    disabled={!isConfirmed}
+                                    autoStart={Boolean(isAccepted && receiptDetailsLoaded)}
+                                    disabled={!isAccepted}
                                 />
                                 <Button
                                     onClick={shareToWhatsApp}

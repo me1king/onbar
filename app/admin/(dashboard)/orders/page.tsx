@@ -113,6 +113,7 @@ export default function AdminOrdersPage() {
   const [editingGiftOrderId, setEditingGiftOrderId] = React.useState<number | null>(null);
   const [giftMessageDraft, setGiftMessageDraft] = React.useState('');
   const [isSavingGiftMessage, setIsSavingGiftMessage] = React.useState(false);
+  const recentRequestInFlight = React.useRef(false);
 
   const canManageOrders = role === 'staff' || role === 'admin' || role === 'owner' || permissions.can_manage_orders;
   const canDeleteOrders = role === 'admin' || role === 'owner' || permissions.can_delete_items;
@@ -129,19 +130,24 @@ export default function AdminOrdersPage() {
     return new Map(products.map((product) => [product.id, product.name]));
   }, [products]);
 
-  const loadOrders = async () => {
-    setIsLoading(true);
+  const loadOrders = React.useCallback(async (recent = false, includeProducts = false) => {
+    if (recent && recentRequestInFlight.current) return;
+    if (recent) recentRequestInFlight.current = true;
+    if (!recent) setIsLoading(true);
 
     try {
-      const response = await fetch('/api/admin/orders', { cache: 'no-store' });
+      const url = recent
+        ? `/api/admin/orders?recent=1${includeProducts ? '&includeProducts=1' : ''}`
+        : '/api/admin/orders';
+      const response = await fetch(url, { cache: 'no-store' });
       const result = await response.json() as {
         orders?: OrderRecord[];
         products?: { id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number> }[];
         error?: string;
       };
-      if (!response.ok || !result.orders || !result.products) throw new Error(result.error || 'Unable to load orders.');
+      if (!response.ok || !result.orders || (!recent && !result.products)) throw new Error(result.error || 'Unable to load orders.');
       setOrders(result.orders);
-      setProducts(result.products);
+      if (result.products) setProducts(result.products);
       setStatusMessage({ type: 'idle', text: '' });
     } catch (err: unknown) {
       const error = err as Error;
@@ -149,8 +155,9 @@ export default function AdminOrdersPage() {
       setStatusMessage({ type: 'error', text: error.message || 'Unable to load orders.' });
     } finally {
       setIsLoading(false);
+      if (recent) recentRequestInFlight.current = false;
     }
-  };
+  }, []);
 
   const filteredOrders = React.useMemo(() => {
       return orders.filter(o =>
@@ -161,14 +168,16 @@ export default function AdminOrdersPage() {
   }, [orders, searchQuery]);
 
   React.useEffect(() => {
-    loadOrders();
-  }, []);
+    void loadOrders(true, true);
+    const timer = window.setInterval(() => { void loadOrders(true); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [loadOrders]);
 
   const summary = React.useMemo(() => {
     const totalRevenue = orders
       .filter(o => o.status === 'Delivered' || o.status === 'Completed')
       .reduce((sum, order) => sum + Number(order.total_price || 0), 0);
-    const pending = orders.filter((order) => order.status === 'Created' || order.status === 'Payment Pending').length;
+    const pending = orders.filter((order) => order.status === 'Created' || order.status === 'Payment Pending' || order.status === 'Confirmed').length;
     const delivered = orders.filter((order) => order.status === 'Delivered' || order.status === 'Completed').length;
 
     return {

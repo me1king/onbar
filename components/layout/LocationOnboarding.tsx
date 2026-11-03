@@ -18,6 +18,8 @@ interface SavedLocation extends Omit<LocationArea, 'latitude' | 'longitude'> {
 
 const DECISION_KEY = 'onbar_location_prompt_answered';
 const LOCATION_KEY = 'onbar_area_preference';
+const PROMPT_SHOWN_KEY = 'onbar_location_prompt_shown';
+const EXACT_LOCATION_SHARE_EVENT = 'onbar:share-exact-location';
 
 function getPreciseBrowserLocation(): Promise<{ latitude: number; longitude: number; accuracyM: number }> {
   return new Promise((resolve, reject) => {
@@ -56,6 +58,18 @@ function createAnonymousId() {
   return id;
 }
 
+function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> {
+  let timer: number | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = window.setTimeout(() => reject(new Error(message)), milliseconds);
+    })
+  ]).finally(() => {
+    if (timer !== undefined) window.clearTimeout(timer);
+  });
+}
+
 export default function LocationOnboarding({ suppressLauncher = false }: { suppressLauncher?: boolean }) {
   const [ready, setReady] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -74,6 +88,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   const [phone, setPhone] = useState('');
   const [notificationConsent, setNotificationConsent] = useState(false);
   const [preciseLocationConsent, setPreciseLocationConsent] = useState(false);
+  const [exactLocationShareConsent, setExactLocationShareConsent] = useState(false);
   const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
 
   const counties = useMemo(() => [...new Set(locationAreas.map((item) => item.county))].sort(), [locationAreas]);
@@ -88,8 +103,24 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   }, [county, area]);
 
   useEffect(() => {
+    if (!ready || location || isOpen || suppressLauncher) return;
+    if (localStorage.getItem(DECISION_KEY) || localStorage.getItem(PROMPT_SHOWN_KEY)) return;
+
+    let activeSeconds = 0;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      activeSeconds += 1;
+      if (activeSeconds < 60) return;
+      window.clearInterval(timer);
+      localStorage.setItem(PROMPT_SHOWN_KEY, 'yes');
+      setIsOpen(true);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [ready, location, isOpen, suppressLauncher]);
+
+  useEffect(() => {
     let active = true;
-    fetch('/api/location/catalog', { cache: 'no-store' })
+    fetch('/api/location/catalog', { cache: 'no-store', signal: AbortSignal.timeout(6000) })
       .then(async (response) => {
         const result = await response.json() as {
           config?: { areas?: ConfiguredLocationArea[]; waitlist?: LocationWaitlistContent };
@@ -146,6 +177,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
             'Content-Type': 'application/json',
             Authorization: `Bearer ${session.access_token}`
           },
+          signal: AbortSignal.timeout(10000),
           body: JSON.stringify({ action: 'link', anonymousId })
         });
         if (!response.ok) {
@@ -170,27 +202,33 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       const saved: SavedLocation = { ...areaDetails, serviceAvailable, source };
       localStorage.setItem(LOCATION_KEY, JSON.stringify(saved));
       localStorage.setItem(DECISION_KEY, 'yes');
+      localStorage.setItem(PROMPT_SHOWN_KEY, 'yes');
       setLocation(saved);
       setWaitlistSubmitted(false);
       setEmail('');
       setPhone('');
       setNotificationConsent(false);
       setPreciseLocationConsent(false);
+      setExactLocationShareConsent(false);
       setStatus(serviceAvailable
         ? `Saved ${areaDetails.area}, ${areaDetails.city} on this device. We’ll use it to check local availability. Admin demand reporting will update after the location database migration is installed.`
         : `Saved ${areaDetails.area}, ${areaDetails.city} on this device. We’re not serving this area yet. Admin demand reporting and the launch waitlist require the location database migration.`);
       setManualMode(false);
+      return true;
     };
 
     try {
       const anonymousId = createAnonymousId();
-      const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+      const session = supabase
+        ? (await withTimeout(supabase.auth.getSession(), 5000, 'Your sign-in check timed out. Please try saving your area again.')).data.session
+        : null;
       const response = await fetch('/api/location', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
         },
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify({
           action: 'save',
           anonymousId,
@@ -206,8 +244,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       if (!response.ok) {
         const migrationMissing = /Area saving is not set up on this database|DEMAND_INTELLIGENCE_MIGRATION/i.test(result.error || '');
         if (migrationMissing) {
-          persistLocalOnly();
-          return;
+          return persistLocalOnly();
         }
         throw new Error(result.error || 'Your area preference could not be saved.');
       }
@@ -215,19 +252,25 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       const saved: SavedLocation = { ...areaDetails, serviceAvailable, source };
       localStorage.setItem(LOCATION_KEY, JSON.stringify(saved));
       localStorage.setItem(DECISION_KEY, 'yes');
+      localStorage.setItem(PROMPT_SHOWN_KEY, 'yes');
       setLocation(saved);
       setWaitlistSubmitted(false);
       setEmail('');
       setPhone('');
       setNotificationConsent(false);
       setPreciseLocationConsent(false);
+      setExactLocationShareConsent(false);
       setStatus(serviceAvailable
         ? `Saved ${areaDetails.area}, ${areaDetails.city}. We’ll use your area to check local availability.`
         : `Saved ${areaDetails.area}, ${areaDetails.city}. We’re not serving this area yet; you can join the launch waitlist below.`);
       setManualMode(false);
+      return true;
     } catch (error) {
       console.error('[LocationOnboarding] Could not save an opted-in area:', error);
-      setStatus(error instanceof Error ? error.message : 'Your area preference could not be saved.');
+      setStatus(error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name)
+        ? 'Saving your area timed out. Check your saved location before retrying.'
+        : error instanceof Error ? error.message : 'Your area preference could not be saved.');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -244,9 +287,16 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
     setBusy(true);
     navigator.geolocation.getCurrentPosition(async (position) => {
       try {
+        const accuracyM = position.coords.accuracy;
+        if (exactLocationShareConsent && (!Number.isFinite(accuracyM) || accuracyM <= 0 || accuracyM > 100)) {
+          setStatus(`Your device reports GPS accuracy of ${Math.round(accuracyM || 0)} m. We did not share a pin; try again outdoors or choose an area manually.`);
+          setManualMode(true);
+          return;
+        }
         const response = await fetch('/api/location/resolve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000),
           body: JSON.stringify({
             latitude: Math.round(position.coords.latitude * 100) / 100,
             longitude: Math.round(position.coords.longitude * 100) / 100
@@ -261,15 +311,28 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
           serviceAvailable?: boolean;
         };
         if (!response.ok) throw new Error(result.error || 'We could not check delivery coverage.');
-        await saveArea({
+        const areaSaved = await saveArea({
           country: result.country || 'Kenya',
           county: result.county || 'Unspecified',
           city: result.city || 'Other Kenya',
           area: result.area || 'Please tell us your area'
         }, result.serviceAvailable === true, 'browser_geolocation');
+        if (areaSaved && exactLocationShareConsent) {
+          window.dispatchEvent(new CustomEvent(EXACT_LOCATION_SHARE_EVENT, {
+            detail: {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracyM,
+              city: result.city || 'Other Kenya',
+              area: result.area || 'Please tell us your area'
+            }
+          }));
+        }
       } catch (error) {
         console.error('[LocationOnboarding] Could not resolve approximate location:', error);
-        setStatus(error instanceof Error ? error.message : 'We could not resolve your area. Please enter it manually.');
+        setStatus(error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name)
+          ? 'Location lookup timed out. Please enter your area manually.'
+          : error instanceof Error ? error.message : 'We could not resolve your area. Please enter it manually.');
         setManualMode(true);
       } finally {
         setBusy(false);
@@ -284,7 +347,11 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
         setStatus('We could not detect your location. You can choose your area manually.');
       }
       setManualMode(true);
-    }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 });
+    }, {
+      enableHighAccuracy: exactLocationShareConsent,
+      timeout: exactLocationShareConsent ? 20000 : 12000,
+      maximumAge: exactLocationShareConsent ? 0 : 300000
+    });
   };
 
   const saveManualArea = async () => {
@@ -304,6 +371,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       const response = await fetch('/api/location/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify({ city: selectedCity, county: areaMatch?.county || selectedCounty, area: areaName })
       });
       const result = await response.json() as {
@@ -323,7 +391,9 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       }, result.serviceAvailable === true, 'manual');
     } catch (error) {
       console.error('[LocationOnboarding] Could not check manually selected area:', error);
-      setStatus(error instanceof Error ? error.message : 'We could not check delivery coverage.');
+      setStatus(error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name)
+        ? 'Area check timed out. Please try again or choose another area.'
+        : error instanceof Error ? error.message : 'We could not check delivery coverage.');
     } finally {
       setBusy(false);
     }
@@ -339,13 +409,16 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       const source = new URLSearchParams(window.location.search).get('utm_source')
         || sessionStorage.getItem('ob_attribution_source')
         || 'direct';
-      const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+      const session = supabase
+        ? (await withTimeout(supabase.auth.getSession(), 5000, 'Your sign-in check timed out. Please retry the waitlist signup.')).data.session
+        : null;
       const response = await fetch('/api/location', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
         },
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify({
           action: 'waitlist',
           country: location.country,
@@ -374,7 +447,9 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       setPreciseLocationConsent(false);
     } catch (error) {
       console.error('[LocationOnboarding] Could not submit market waitlist signup:', error);
-      setStatus(error instanceof Error ? error.message : 'We could not add you to the area waitlist.');
+      setStatus(error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name)
+        ? 'Waitlist signup timed out. Check your email before retrying.'
+        : error instanceof Error ? error.message : 'We could not add you to the area waitlist.');
     } finally {
       setBusy(false);
     }
@@ -387,13 +462,16 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
     try {
       const anonymousId = localStorage.getItem('ob_anonymous_id');
       if (anonymousId) {
-        const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+        const session = supabase
+          ? (await withTimeout(supabase.auth.getSession(), 5000, 'Your sign-in check timed out. Please retry removing your area.')).data.session
+          : null;
         const response = await fetch('/api/location', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
           },
+          signal: AbortSignal.timeout(10000),
           body: JSON.stringify({ action: 'withdraw', anonymousId })
         });
         const result = await response.json() as { error?: string };
@@ -408,7 +486,9 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       setIsOpen(false);
     } catch (error) {
       console.error('[LocationOnboarding] Could not withdraw the saved area:', error);
-      setStatus(error instanceof Error ? error.message : 'Your saved area could not be removed.');
+      setStatus(error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name)
+        ? 'Area removal timed out. Your server-side preference may still be saved; retry removal.'
+        : error instanceof Error ? error.message : 'Your saved area could not be removed.');
     } finally {
       setBusy(false);
     }
@@ -416,6 +496,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
 
   const closePrompt = () => {
     localStorage.setItem(DECISION_KEY, 'declined');
+    localStorage.setItem(PROMPT_SHOWN_KEY, 'yes');
     setIsOpen(false);
     setManualMode(false);
   };
@@ -429,6 +510,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
           type="button"
           onClick={() => {
             setStatus('');
+            localStorage.setItem(PROMPT_SHOWN_KEY, 'yes');
             setIsOpen(true);
           }}
           className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] left-3 z-[90] inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-lg backdrop-blur sm:bottom-6 sm:left-6"
@@ -442,7 +524,10 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       {!suppressLauncher && !location && !isOpen && (
         <button
           type="button"
-          onClick={() => setIsOpen(true)}
+          onClick={() => {
+            localStorage.setItem(PROMPT_SHOWN_KEY, 'yes');
+            setIsOpen(true);
+          }}
           className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] left-3 z-[90] inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-lg backdrop-blur sm:bottom-6 sm:left-6"
         >
           <MapPin size={14} className="text-primary" />
@@ -474,8 +559,19 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
               <>
                 <div className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
                   <p className="font-bold">Help us show what’s available in your area.</p>
-                  <p className="mt-2">We use an approximate area to check delivery coverage and understand where Onbar should grow. We round your location before matching it to an area and never store the GPS coordinates.</p>
+                  <p className="mt-2">We use an approximate area to check delivery coverage. GPS coordinates are not stored for this area check.</p>
                 </div>
+                <label className="mt-4 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={exactLocationShareConsent}
+                    onChange={(event) => setExactLocationShareConsent(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <b>Optional: share my precise live GPS pin with operations.</b> If selected, authorized operations admins can view my anonymous GPS coordinates while I browse. Sharing stops when I close this tab, I stop it, or it expires after 2 minutes without updates. GPS accuracy depends on my device. Leave this off to share no pin.
+                  </span>
+                </label>
                 <div className="mt-6 grid gap-3">
                   <button type="button" disabled={busy} onClick={requestLocation} className="rounded-2xl bg-primary px-5 py-4 text-sm font-black uppercase tracking-widest text-white disabled:opacity-60">
                     {busy ? 'Checking your area…' : 'Allow Location'}

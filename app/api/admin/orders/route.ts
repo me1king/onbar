@@ -6,7 +6,7 @@ import { isValidTransition, type OrderStatus } from '@/lib/ob-os/state-machine';
 export const dynamic = 'force-dynamic';
 
 const orderStatuses: OrderStatus[] = [
-  'Created', 'Pending', 'Payment Pending', 'Paid', 'Stock Reserved', 'Supplier Confirmed',
+  'Created', 'Pending', 'Payment Pending', 'Confirmed', 'Paid', 'Stock Reserved', 'Supplier Confirmed',
   'Processing', 'Packed', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered',
   'Completed', 'Cancelled', 'Payment Failed', 'Refunded', 'Warranty', 'Returned'
 ];
@@ -77,9 +77,31 @@ async function updateOrderStatus(
   return { oldStatus: currentStatus };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const access = await getAccess();
   if ('response' in access) return access.response;
+  const searchParams = new URL(request.url).searchParams;
+  if (searchParams.get('recent') === '1') {
+    const includeProducts = searchParams.get('includeProducts') === '1';
+    const [orders, products] = await Promise.all([
+      access.database.from('orders')
+        .select('*, order_items(*)')
+        .order('created_at', { ascending: false })
+        .limit(150),
+      includeProducts
+        ? access.database.from('products').select('id,name,price,cost_price,stock,variant_stock').order('name')
+        : Promise.resolve({ data: null, error: null })
+    ]);
+    const error = orders.error || products.error;
+    if (error) {
+      console.error('[AdminOrders] Could not load recent order updates:', error);
+      return NextResponse.json({ error: 'Recent orders could not be loaded. Check the database connection and schema.' }, { status: 503 });
+    }
+    return NextResponse.json({
+      orders: (orders.data || []).map(order => ({ ...order, status_events: [] })),
+      ...(includeProducts ? { products: products.data || [] } : {})
+    }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  }
   const [orders, products] = await Promise.all([
     access.database.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(500),
     access.database.from('products').select('id,name,price,cost_price,stock,variant_stock').order('name')

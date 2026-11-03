@@ -30,6 +30,7 @@ export default function PrivacyPolicyPage() {
             <ul className="list-disc pl-5 space-y-2 text-slate-500">
               <li><strong>Connection Information:</strong> Your web browser parameters, local IP address, time zone configurations, and relevant tracking cookie details.</li>
               <li><strong>Order Information:</strong> Your full name, delivery address, shipping location details, and a valid telephone number.</li>
+              <li><strong>Optional live location:</strong> If you explicitly opt in, your device can share an anonymous approximate area or precise GPS pin with authorized operations staff while you browse. Precise sharing is optional and requires a separate confirmation.</li>
             </ul>
           </section>
 
@@ -41,6 +42,7 @@ export default function PrivacyPolicyPage() {
               <li>Arranging delivery, managing local carrier dispatch, and generating order confirmation receipts.</li>
               <li>Communicating order tracking milestones directly to your phone.</li>
               <li>Screening incoming transactions for potential security risks or automated fraud patterns.</li>
+              <li>Using an opted-in live location to understand active customer demand and coordinate service. Live pins expire after two minutes without an update; you can stop sharing sooner.</li>
             </ul>
           </section>
 

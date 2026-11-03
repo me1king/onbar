@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -14,6 +14,7 @@ import {
   Loader2,
   LogOut,
   PackageCheck,
+  Palette,
   RefreshCw,
   ShieldCheck,
   Store,
@@ -173,6 +174,19 @@ type RiderConnection = {
   acceptedAt: string | null;
 };
 
+const MERCHANT_ACCENT_PRESETS = ['#F5A000', '#39D98A', '#4E9BFF', '#A78BFA', '#FF8A4C', '#F05D6C'];
+
+function getContrastForeground(hexColor: string) {
+  const channels = hexColor.slice(1).match(/.{2}/g)?.map(channel => parseInt(channel, 16) / 255);
+  if (!channels || channels.length !== 3) return '#FFFFFF';
+  const linear = channels.map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  const darkLuminance = 0.009;
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
+  return whiteContrast >= darkContrast ? '#FFFFFF' : '#0F172A';
+}
+
 const businessLabels: Record<string, string> = {
   bar: 'Bar / Venue',
   kitchen: 'Kitchen',
@@ -309,6 +323,9 @@ export default function OnBarPartnerNetworkPage() {
   const [performanceDays, setPerformanceDays] = useState<7 | 30>(7);
   const [selectedId, setSelectedId] = useState('');
   const [section, setSection] = useState<Section>('overview');
+  const [merchantAccentColor, setMerchantAccentColor] = useState(MERCHANT_ACCENT_PRESETS[0]);
+  const [appearanceMessage, setAppearanceMessage] = useState('');
+  const [appearanceBusy, setAppearanceBusy] = useState(false);
   const [deepLinkApplicationId, setDeepLinkApplicationId] = useState('');
   const [deepLinkOrderId, setDeepLinkOrderId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -331,6 +348,49 @@ export default function OnBarPartnerNetworkPage() {
 
   const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
   const canOperate = selected?.application.status === 'approved';
+
+  useEffect(() => {
+    if (!accessToken || !canOperate || !selected?.application.id) return;
+    let active = true;
+    const query = new URLSearchParams({ applicationId: selected.application.id });
+    void fetch(`/api/merchant/preferences?${query}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: 'no-store'
+    }).then(async response => {
+      const result = await response.json() as { accentColor?: string; error?: string };
+      if (!response.ok || !result.accentColor) throw new Error(result.error || 'Merchant appearance could not be loaded.');
+      if (active) {
+        setMerchantAccentColor(result.accentColor);
+        setAppearanceMessage('');
+      }
+    }).catch(loadError => {
+      if (active) setAppearanceMessage(loadError instanceof Error ? loadError.message : 'Merchant appearance could not be loaded.');
+    });
+    return () => { active = false; };
+  }, [accessToken, canOperate, selected?.application.id]);
+
+  const saveMerchantAccent = useCallback(async (color: string) => {
+    if (!accessToken || !selected?.application.id || !/^#[\da-f]{6}$/i.test(color)) return;
+    setMerchantAccentColor(color.toUpperCase());
+    setAppearanceBusy(true);
+    setAppearanceMessage('');
+    try {
+      const response = await fetch('/api/merchant/preferences', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId: selected.application.id, accentColor: color }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as { accentColor?: string; error?: string };
+      if (!response.ok || !result.accentColor) throw new Error(result.error || 'Merchant appearance could not be saved.');
+      setMerchantAccentColor(result.accentColor);
+      setAppearanceMessage('Saved');
+    } catch (saveError) {
+      setAppearanceMessage(saveError instanceof Error ? saveError.message : 'Merchant appearance could not be saved.');
+    } finally {
+      setAppearanceBusy(false);
+    }
+  }, [accessToken, selected?.application.id]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -866,7 +926,13 @@ export default function OnBarPartnerNetworkPage() {
   ] : [];
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main
+      className="min-h-screen bg-slate-50"
+      style={{
+        '--primary': merchantAccentColor,
+        '--primary-foreground': getContrastForeground(merchantAccentColor)
+      } as CSSProperties}
+    >
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
           <div>
@@ -888,6 +954,35 @@ export default function OnBarPartnerNetworkPage() {
               {workspace.map(item => <option key={item.application.id} value={item.application.id}>{item.application.business_name} · {statusLabels[item.application.status] || item.application.status}</option>)}
             </select>
           </label>
+        )}
+
+        {canOperate && selected && (
+          <section aria-label="Merchant appearance" className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="mr-2">
+              <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-700"><Palette size={15} /> Workspace color</p>
+              <p role="status" className="mt-1 text-[11px] text-slate-500">{appearanceBusy ? 'Saving…' : appearanceMessage || 'Personalize this merchant workspace.'}</p>
+            </div>
+            {MERCHANT_ACCENT_PRESETS.map(color => (
+              <button
+                key={color}
+                type="button"
+                aria-label={`Choose ${color} workspace color`}
+                aria-pressed={merchantAccentColor === color}
+                onClick={() => void saveMerchantAccent(color)}
+                className={`h-8 w-8 rounded-full border-2 ${merchantAccentColor === color ? 'border-slate-900' : 'border-transparent'}`}
+                style={{ backgroundColor: color }}
+              />
+            ))}
+            <label aria-label="Choose custom workspace color" className="relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-100">
+              <Palette size={15} className="text-slate-600" />
+              <input
+                type="color"
+                value={merchantAccentColor}
+                onChange={event => void saveMerchantAccent(event.target.value)}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              />
+            </label>
+          </section>
         )}
 
         {(error || message) && <div role={error ? 'alert' : 'status'} className={`mb-5 flex items-start justify-between gap-3 rounded-xl p-4 text-sm ${error ? 'bg-rose-50 text-rose-800' : 'bg-emerald-50 text-emerald-800'}`}>
