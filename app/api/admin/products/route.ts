@@ -201,6 +201,48 @@ async function saveProduct(database: SupabaseClient, id: number | null, product:
     }
 }
 
+async function synchronizeSingleVariantStock(database: SupabaseClient, id: number | null, product: ProductPayload) {
+    if (!Object.prototype.hasOwnProperty.call(product, 'stock')
+        || Object.prototype.hasOwnProperty.call(product, 'variant_stock')) return;
+    if (typeof product.stock !== 'number' || !Number.isSafeInteger(product.stock) || product.stock < 0) {
+        throw new Error('Stock must be a whole number of zero or more.');
+    }
+
+    let existingSizes: unknown = null;
+    let existingVariantStock: unknown = null;
+    let existingSizeLabel: unknown = null;
+    if (id !== null) {
+        const { data, error } = await database.from('products')
+            .select('sizes, size_label, variant_stock')
+            .eq('id', id)
+            .maybeSingle();
+        if (error) {
+            console.error('[ProductAdmin] Could not load product variants before synchronizing stock:', error);
+            throw new Error('Product variants could not be verified before saving stock.');
+        }
+        if (!data) throw new Error('Product not found.');
+        existingSizes = data.sizes;
+        existingVariantStock = data.variant_stock;
+        existingSizeLabel = data.size_label;
+    }
+
+    const sizesValue = product.sizes ?? existingSizes;
+    const sizes = Array.isArray(sizesValue)
+        ? sizesValue.filter((size): size is string => typeof size === 'string' && size.trim().length > 0)
+        : [];
+    if (sizes.length > 1) return;
+
+    const sizeLabel = product.size_label ?? existingSizeLabel;
+    const size = sizes[0] || (typeof sizeLabel === 'string' && sizeLabel.trim()) || 'Standard';
+    const variantStock = product.variant_stock ?? existingVariantStock;
+    product.variant_stock = {
+        ...(typeof variantStock === 'object' && variantStock !== null && !Array.isArray(variantStock)
+            ? variantStock as Record<string, unknown>
+            : {}),
+        [size]: Number(product.stock)
+    };
+}
+
 export async function POST(request: Request) {
     const access = await getAuthorizedDatabase();
     if ('response' in access) return access.response;
@@ -218,6 +260,7 @@ export async function POST(request: Request) {
     if (engravingValidationError) return NextResponse.json({ error: engravingValidationError }, { status: 400 });
 
     try {
+        await synchronizeSingleVariantStock(access.database, null, body.product);
         const result = await saveProduct(access.database, null, body.product);
         return NextResponse.json(result, { status: 201 });
     } catch (error) {
@@ -243,6 +286,7 @@ export async function PATCH(request: Request) {
     if (engravingValidationError) return NextResponse.json({ error: engravingValidationError }, { status: 400 });
 
     try {
+        await synchronizeSingleVariantStock(access.database, Number(body.id), body.product);
         const result = await saveProduct(access.database, Number(body.id), body.product);
         return NextResponse.json(result);
     } catch (error) {
