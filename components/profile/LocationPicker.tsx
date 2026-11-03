@@ -151,8 +151,8 @@ export default function LocationPicker({ initialLat, initialLng, autoDetect = fa
                                 key={area.id}
                                 positions={area.points}
                                 pathOptions={{
-                                    color: getDeliveryAreaColor(index),
-                                    fillColor: getDeliveryAreaColor(index),
+                                    color: getDeliveryAreaColor(index, area.color),
+                                    fillColor: getDeliveryAreaColor(index, area.color),
                                     fillOpacity: 0.12,
                                     weight: 3
                                 }}

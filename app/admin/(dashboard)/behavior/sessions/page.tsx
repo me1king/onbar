@@ -23,7 +23,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 
 // Components
@@ -72,56 +71,21 @@ export default function SessionLibraryPage() {
     });
 
     const fetchSessions = React.useCallback(async () => {
-        if (!supabase) {
-            setError('Supabase is not configured. Session data is unavailable.');
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         setError(null);
         try {
-            const activeSince = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-            const [sessionsRes, eventsRes, cartsRes, ordersRes, bouncedRes, activeRes] = await Promise.all([
-                supabase.from('customer_sessions').select('*').order('last_seen_at', { ascending: false }).limit(50),
-                supabase.from('analytics_events').select('id, event_name, session_id, page_url, payload, created_at').not('session_id', 'is', null).order('created_at', { ascending: false }).limit(1000),
-                supabase.from('analytics_events').select('id', { count: 'exact', head: true }).eq('event_name', 'ADD_TO_CART'),
-                supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'Delivered'),
-                supabase.from('customer_sessions').select('id', { count: 'exact', head: true }).eq('session_status', 'ABANDONED'),
-                supabase.from('customer_sessions').select('id', { count: 'exact', head: true }).gte('last_seen_at', activeSince)
-            ]);
-
-            const queryError = sessionsRes.error || eventsRes.error || cartsRes.error || ordersRes.error || bouncedRes.error || activeRes.error;
-            if (queryError) throw queryError;
-
-            setHud({
-                activeSessions: activeRes.count || 0,
-                cartsCreated: cartsRes.count || 0,
-                ordersCompleted: ordersRes.count || 0,
-                bouncedVisitors: bouncedRes.count || 0
-            });
-
-            const eventsBySession = new Map<string, typeof eventsRes.data>();
-            for (const event of eventsRes.data || []) {
-                if (!event.session_id) continue;
-                const sessionEvents = eventsBySession.get(event.session_id) || [];
-                sessionEvents.push(event);
-                eventsBySession.set(event.session_id, sessionEvents);
+            const response = await fetch('/api/admin/behavior/sessions', { cache: 'no-store' });
+            const result = await response.json() as {
+                error?: string;
+                sessions?: SessionNode[];
+                hud?: typeof hud;
+            };
+            if (!response.ok) throw new Error(result.error || 'Session data could not be loaded.');
+            if (!Array.isArray(result.sessions) || !result.hud) {
+                throw new Error('The session service returned an invalid response.');
             }
-
-            const mapped: SessionNode[] = (sessionsRes.data || []).map(session => {
-                const sessionEvents = eventsBySession.get(session.id) || [];
-                const firstEvent = sessionEvents.at(-1);
-                return {
-                    id: session.id,
-                    entry_page: session.entry_page || firstEvent?.page_url || 'Unknown entry page',
-                    source_channel: session.source_channel || 'Unknown source',
-                    total_active_time_sec: session.total_active_time_sec || 0,
-                    pages_viewed: new Set(sessionEvents.map(event => event.page_url).filter(Boolean)).size,
-                    created_at: session.created_at,
-                    status: session.session_status || 'Unknown',
-                    device_info: session.device_info || {}
-                };
-            });
+            const mapped = result.sessions;
+            setHud(result.hud);
             setSessions(mapped);
             setSelectedSession(mapped[0] || null);
             if (mapped[0]) {
@@ -132,7 +96,7 @@ export default function SessionLibraryPage() {
             }
         } catch (err) {
             console.error('Session data fetch error:', err);
-            setError(err instanceof Error ? err.message : 'Unable to load session data.');
+            setError(err instanceof Error ? err.message : String(err));
             setSessions([]);
             setSelectedSession(null);
             setForensics([]);
@@ -142,31 +106,18 @@ export default function SessionLibraryPage() {
     }, []);
 
     const fetchForensics = async (session: SessionNode) => {
-        if (!supabase) {
-            setForensicsError('Supabase is not configured. Session activity is unavailable.');
-            return;
-        }
         setLoadingForensics(true);
         setForensicsError(null);
         try {
-            const { data, error: fetchError } = await supabase
-                .from('analytics_events')
-                .select('id, event_name, page_url, payload, created_at')
-                .eq('session_id', session.id)
-                .order('created_at', { ascending: true });
-
-            if (fetchError) throw fetchError;
-            setForensics((data || []).map(event => ({
-                id: event.id,
-                action_type: event.event_name,
-                page_url: event.page_url || 'Unknown page',
-                metadata: event.payload || {},
-                timestamp: event.created_at
-            })));
+            const response = await fetch(`/api/admin/behavior/sessions?sessionId=${encodeURIComponent(session.id)}`, { cache: 'no-store' });
+            const result = await response.json() as { error?: string; events?: ForensicEvent[] };
+            if (!response.ok) throw new Error(result.error || 'Session activity could not be loaded.');
+            if (!Array.isArray(result.events)) throw new Error('The session activity service returned an invalid response.');
+            setForensics(result.events);
         } catch (err) {
             console.error('Session activity fetch error:', err);
             setForensics([]);
-            setForensicsError(err instanceof Error ? err.message : 'Unable to load session activity.');
+            setForensicsError(err instanceof Error ? err.message : String(err));
         } finally {
             setLoadingForensics(false);
         }

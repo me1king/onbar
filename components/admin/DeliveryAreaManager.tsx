@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
-import { DeliveryArea, getDeliveryAreaColor, parseDeliveryAreas, parseDeliveryPricing } from '@/lib/deliveryAreas';
+import { DELIVERY_AREA_COLORS, DeliveryArea, getDeliveryAreaColor, parseDeliveryAreas, parseDeliveryPricing } from '@/lib/deliveryAreas';
 import 'leaflet/dist/leaflet.css';
 
 function BoundaryClickCapture({ onAddPoint }: { onAddPoint: (point: [number, number]) => void }) {
@@ -19,13 +19,12 @@ function BoundaryClickCapture({ onAddPoint }: { onAddPoint: (point: [number, num
     return null;
 }
 
-function FitDeliveryAreas({ areas }: { areas: DeliveryArea[] }) {
+function FocusDeliveryArea({ area }: { area: DeliveryArea | null }) {
     const map = useMap();
 
     React.useEffect(() => {
-        const points = areas.flatMap(area => area.points);
-        if (points.length) map.fitBounds(points, { padding: [32, 32], maxZoom: 13 });
-    }, [areas, map]);
+        if (area && area.points.length >= 3) map.fitBounds(area.points, { padding: [48, 48], maxZoom: 15 });
+    }, [area, map]);
 
     return null;
 }
@@ -35,7 +34,9 @@ export default function DeliveryAreaManager() {
     const [draftPoints, setDraftPoints] = React.useState<[number, number][]>([]);
     const [name, setName] = React.useState('');
     const [fee, setFee] = React.useState('');
+    const [zoneColor, setZoneColor] = React.useState<string>(DELIVERY_AREA_COLORS[0]);
     const [editingAreaId, setEditingAreaId] = React.useState<string | null>(null);
+    const [focusedAreaId, setFocusedAreaId] = React.useState<string | null>(null);
     const [drawingBoundary, setDrawingBoundary] = React.useState(false);
     const [freeDeliveryOver, setFreeDeliveryOver] = React.useState('3000');
     const [loading, setLoading] = React.useState(true);
@@ -146,14 +147,17 @@ export default function DeliveryAreaManager() {
             name: name.trim(),
             free_delivery: numericFee === 0,
             fee: numericFee,
+            color: zoneColor,
             points: draftPoints
         };
         const next = editingAreaId
             ? areas.map(existing => existing.id === editingAreaId ? area : existing)
             : [...areas, area];
         if (await persistAreas(next)) {
+            setFocusedAreaId(area.id);
             setName('');
             setFee('');
+            setZoneColor(DELIVERY_AREA_COLORS[next.length % DELIVERY_AREA_COLORS.length]);
             setDraftPoints([]);
             setEditingAreaId(null);
             setDrawingBoundary(false);
@@ -162,8 +166,10 @@ export default function DeliveryAreaManager() {
 
     const editArea = (area: DeliveryArea) => {
         setEditingAreaId(area.id);
+        setFocusedAreaId(area.id);
         setName(area.name);
         setFee(String(area.fee ?? (area.free_delivery ? 0 : '')));
+        setZoneColor(getDeliveryAreaColor(areas.indexOf(area), area.color));
         setDraftPoints(area.points);
         setDrawingBoundary(false);
         setMessage(`Editing ${area.name}. Draw a new boundary or save its current boundary and fee.`);
@@ -171,8 +177,10 @@ export default function DeliveryAreaManager() {
 
     const cancelAreaEdit = () => {
         setEditingAreaId(null);
+        setFocusedAreaId(null);
         setName('');
         setFee('');
+        setZoneColor(DELIVERY_AREA_COLORS[areas.length % DELIVERY_AREA_COLORS.length]);
         setDraftPoints([]);
         setDrawingBoundary(false);
         setMessage(null);
@@ -207,11 +215,11 @@ export default function DeliveryAreaManager() {
     };
 
     return (
-        <Card id="estate-delivery-pricing" className="space-y-5 p-4 sm:p-6 scroll-mt-24">
+        <Card id="estate-delivery-pricing" className="space-y-6 p-4 sm:p-6 lg:p-8 scroll-mt-24">
             <div>
                 <h2 className="text-lg font-black uppercase text-foreground">Delivery zones</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Set each zone’s fee and draw its map boundary. A confirmed customer GPS pin is priced only when it falls inside exactly one mapped zone; without a pin, customers can still choose their zone from checkout.
+                    Map each delivery area and set its fee. GPS pins are charged by the mapped zone they fall inside. Use a separate color for each area so boundaries are easy to tell apart.
                 </p>
             </div>
             {message && <p role="status" className="rounded-lg bg-secondary p-3 text-sm text-foreground">{message}</p>}
@@ -241,20 +249,21 @@ export default function DeliveryAreaManager() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                         <h3 className="text-sm font-black uppercase text-foreground">Draw zone boundaries</h3>
-                        <p className="text-xs text-muted-foreground">Select “Draw boundary”, then click at least three points around each estate or delivery zone. Use Undo to correct the last point; the map can be panned and zoomed to reach other places.</p>
+                        <p className="text-xs text-muted-foreground">Select “Draw boundary”, then click at least three points around the place you want to cover. Pan and zoom the large map to reach other towns, then use Undo to correct points.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                         {areas.map((area, index) => (
                             <span key={area.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 font-semibold">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getDeliveryAreaColor(index) }} />
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getDeliveryAreaColor(index, area.color) }} />
                                 {area.name}
                             </span>
                         ))}
                     </div>
                 </div>
-                <div className="h-72 overflow-hidden rounded-2xl border border-border sm:h-[430px]">
-                    <MapContainer center={[-1.286389, 36.817223]} zoom={11} style={{ height: '100%', width: '100%' }}>
-                        <FitDeliveryAreas areas={areas} />
+                <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.8fr)_minmax(360px,0.8fr)]">
+                <div className="h-[55vh] min-h-[440px] overflow-hidden rounded-2xl border border-border sm:h-[68vh] sm:min-h-[620px] xl:h-[76vh] xl:min-h-[700px]">
+                    <MapContainer center={[-1.286389, 36.817223]} zoom={11} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
+                        <FocusDeliveryArea area={areas.find(area => area.id === focusedAreaId) || null} />
                         <TileLayer
                             attribution='&copy; OpenStreetMap contributors'
                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -262,20 +271,21 @@ export default function DeliveryAreaManager() {
                         {drawingBoundary && <BoundaryClickCapture onAddPoint={point => setDraftPoints(points => [...points, point])} />}
                         {areas.filter(area => area.points.length >= 3 && area.id !== editingAreaId).map(area => {
                             const index = areas.findIndex(item => item.id === area.id);
-                            const color = getDeliveryAreaColor(index);
+                            const color = getDeliveryAreaColor(index, area.color);
                             return (
                                 <Polygon key={area.id} positions={area.points} pathOptions={{ color, fillColor: color, fillOpacity: 0.12, weight: 3 }}>
                                     <Tooltip sticky>{area.name} · KSh {(area.fee ?? 0).toLocaleString()}</Tooltip>
                                 </Polygon>
                             );
                         })}
-                        {draftPoints.length > 1 && <Polygon positions={draftPoints} pathOptions={{ color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.16, dashArray: '7 6', weight: 4 }} />}
+                        {draftPoints.length > 1 && <Polygon positions={draftPoints} pathOptions={{ color: zoneColor, fillColor: zoneColor, fillOpacity: 0.2, dashArray: '7 6', weight: 4 }} />}
                         {draftPoints.map((point, index) => (
-                            <CircleMarker key={`${point[0]}-${point[1]}-${index}`} center={point} radius={6} pathOptions={{ color: '#fff', weight: 2, fillColor: '#f59e0b', fillOpacity: 1 }} />
+                            <CircleMarker key={`${point[0]}-${point[1]}-${index}`} center={point} radius={6} pathOptions={{ color: '#fff', weight: 2, fillColor: zoneColor, fillOpacity: 1 }} />
                         ))}
                     </MapContainer>
                 </div>
-                <div className="grid gap-4 rounded-2xl border border-border bg-secondary/30 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_12rem_auto] lg:items-end">
+                <div className="grid content-start gap-4 rounded-2xl border border-border bg-secondary/30 p-4 sm:p-5">
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
                     <label className="block space-y-1 text-sm font-semibold">
                         <span>{editingAreaId ? 'Edit estate / zone name' : 'Estate / zone name'}</span>
                         <Input value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Westlands" maxLength={80} disabled={loading || saving} />
@@ -284,7 +294,26 @@ export default function DeliveryAreaManager() {
                         <span>Delivery fee (KSh)</span>
                         <Input type="number" min="0" step="1" value={fee} onChange={event => setFee(event.target.value)} placeholder="e.g. 250" disabled={loading || saving} />
                     </label>
-                    <div className="flex flex-wrap gap-2 lg:justify-end">
+                    </div>
+                    <div className="space-y-2">
+                        <p className="text-sm font-semibold">Zone color · {DELIVERY_AREA_COLORS.length} colors</p>
+                        <div className="grid grid-cols-6 gap-2" role="group" aria-label="Choose a delivery zone color">
+                            {DELIVERY_AREA_COLORS.map((color, index) => (
+                                <button
+                                    key={color}
+                                    type="button"
+                                    aria-label={`Zone color ${index + 1}`}
+                                    aria-pressed={zoneColor === color}
+                                    title={`Color ${index + 1}`}
+                                    onClick={() => setZoneColor(color)}
+                                    disabled={loading || saving}
+                                    className={`h-8 w-8 rounded-full border-2 transition hover:scale-110 disabled:opacity-50 ${zoneColor === color ? 'border-foreground ring-2 ring-primary ring-offset-2' : 'border-white shadow'}`}
+                                    style={{ backgroundColor: color }}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                         <Button onClick={() => {
                             if (!drawingBoundary && editingAreaId) setDraftPoints([]);
                             setDrawingBoundary(value => !value);
@@ -296,15 +325,16 @@ export default function DeliveryAreaManager() {
                         </Button>
                         <Button onClick={() => setDraftPoints([])} variant="outline" disabled={!draftPoints.length || saving}>Clear points</Button>
                     </div>
-                    <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">
+                    <p className="text-xs text-muted-foreground">
                         {draftPoints.length} boundary points {drawingBoundary ? 'marked; click the map to add more' : 'ready'} {draftPoints.length > 0 && draftPoints.length < 3 ? '· add at least 3 to save' : ''}
                     </p>
-                    <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-3">
+                    <div className="flex flex-wrap gap-2">
                         <Button onClick={saveArea} disabled={saving || loading} className="min-w-48">
                             {editingAreaId ? <><Save className="mr-2 h-4 w-4" /> Save zone changes</> : <><Plus className="mr-2 h-4 w-4" /> Add delivery zone</>}
                         </Button>
                         {editingAreaId && <Button onClick={cancelAreaEdit} disabled={saving} variant="outline"><X className="mr-2 h-4 w-4" /> Cancel edit</Button>}
                     </div>
+                </div>
                 </div>
             </section>
             <section className="space-y-3">
@@ -315,8 +345,9 @@ export default function DeliveryAreaManager() {
                 {loading ? <p className="text-xs text-muted-foreground">Loading saved areas…</p> : (
                     <ul className="grid gap-3 md:grid-cols-2">
                             {areas.map(area => (
-                                <li key={area.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_7rem_auto] items-end gap-3 rounded-xl border border-border bg-background p-3">
-                                    <label className="min-w-0 space-y-1 text-xs font-semibold">
+                                <li key={area.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_7rem_auto] items-end gap-3 rounded-xl border border-border bg-background p-3">
+                                <span className="mb-1 h-5 w-5 rounded-full border border-black/10" style={{ backgroundColor: getDeliveryAreaColor(areas.indexOf(area), area.color) }} aria-label={`${area.name} zone color`} />
+                                <label className="min-w-0 space-y-1 text-xs font-semibold">
                                         <span className="block truncate text-muted-foreground">Zone name · {area.points.length >= 3 ? 'Mapped' : 'Needs map boundary'}</span>
                                     <Input
                                         aria-label={`Estate or area name for ${area.name}`}

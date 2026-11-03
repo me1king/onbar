@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { DEFAULT_CATALOG_NAVIGATION, normalizeCatalogNavigation } from '@/lib/useSettings';
@@ -60,8 +59,6 @@ import {
     normalizeBuildMyNightConfig,
     validateBuildMyNightConfig
 } from '@/lib/buildMyNightConfig';
-
-const DeliveryAreaManager = dynamic(() => import('@/components/admin/DeliveryAreaManager'), { ssr: false });
 
 const DEFAULTS = {
     contact: { whatsapp: "254769345599", email: "support@onlinebar.co.ke", address: "Nairobi, Kenya" },
@@ -1365,16 +1362,15 @@ export default function AdminSettingsPage() {
                                     </div>
                                 </div>
 
-                                <div className="bg-card rounded-[2.5rem] border border-border p-10 shadow-sm space-y-4 flex flex-col text-left">
+                                <div className="bg-card rounded-[2.5rem] border border-border p-8 shadow-sm space-y-4 flex flex-col text-left">
                                     <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3">
-                                        <Truck className="h-5 w-5 text-primary" /> Estate delivery pricing
+                                        <Truck className="h-5 w-5 text-primary" /> Delivery zone map
                                     </h2>
-                                    <p className="text-sm text-muted-foreground">Checkout uses the estate fees and free-delivery minimum configured in Delivery zones below. GPS boundaries are optional; customers can select an estate directly.</p>
+                                    <p className="text-sm text-muted-foreground">Open the dedicated large map to draw delivery boundaries, assign fees, and choose from 30 zone colors.</p>
+                                    <a href="/lord/delivery-zones" className="inline-flex min-h-12 w-fit items-center rounded-xl bg-primary px-5 text-xs font-black uppercase tracking-wide text-primary-foreground shadow-sm hover:opacity-90">
+                                        Open delivery zone map
+                                    </a>
                                 </div>
-                            </div>
-
-                            <div className="mt-8">
-                                <DeliveryAreaManager />
                             </div>
 
                             <Card className="rounded-[3rem] border border-primary/20 p-10 bg-primary/[0.03] shadow-sm space-y-6 mt-8 text-left">
@@ -1403,7 +1399,7 @@ export default function AdminSettingsPage() {
                                         <p className="mt-1 text-xs text-muted-foreground">These labels help dispatchers sort orders; they do not set customer delivery fees.</p>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
-                                        <a href="#estate-delivery-pricing" className="inline-flex h-10 items-center rounded-xl bg-primary px-4 text-[9px] font-black uppercase text-primary-foreground">Set delivery prices</a>
+                                        <a href="/lord/delivery-zones" className="inline-flex h-10 items-center rounded-xl bg-primary px-4 text-[9px] font-black uppercase text-primary-foreground">Set delivery prices</a>
                                         <Button onClick={() => setLogistics({ ...logistics, dispatch_zones: [...logistics.dispatch_zones, ''] })} variant="outline" className="h-10 rounded-xl text-[8px] font-black uppercase"><Plus className="h-3 w-3 mr-2" /> Add Label</Button>
                                     </div>
                                 </div>

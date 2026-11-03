@@ -5,6 +5,7 @@ export interface DeliveryArea {
     name: string;
     free_delivery: boolean;
     fee?: number;
+    color?: string;
     points: [number, number][];
 }
 
@@ -30,10 +31,18 @@ export interface LegacyDeliveryQuote {
     points: [number, number][];
 }
 
-export const DELIVERY_AREA_COLORS = ['#2563eb', '#16a34a', '#9333ea', '#ea580c', '#0891b2', '#db2777'] as const;
+export const DELIVERY_AREA_COLORS = [
+    '#2563eb', '#16a34a', '#9333ea', '#ea580c', '#0891b2', '#db2777',
+    '#dc2626', '#65a30d', '#7c3aed', '#c2410c', '#0f766e', '#be185d',
+    '#1d4ed8', '#15803d', '#6d28d9', '#b45309', '#0e7490', '#a21caf',
+    '#b91c1c', '#4d7c0f', '#5b21b6', '#9a3412', '#115e59', '#9d174d',
+    '#4338ca', '#047857', '#a16207', '#c026d3', '#0369a1', '#4f46e5'
+] as const;
 
-export function getDeliveryAreaColor(index: number): string {
-    return DELIVERY_AREA_COLORS[index % DELIVERY_AREA_COLORS.length];
+export function getDeliveryAreaColor(index: number, savedColor?: string): string {
+    return savedColor && /^#[0-9a-f]{6}$/i.test(savedColor)
+        ? savedColor
+        : DELIVERY_AREA_COLORS[index % DELIVERY_AREA_COLORS.length];
 }
 
 export function resolveLegacyDeliveryQuote(
@@ -95,6 +104,7 @@ export function parseDeliveryAreas(value: unknown): DeliveryArea[] {
         typeof area.id !== 'string' || !area.id.trim() ||
         typeof area.name !== 'string' || !area.name.trim() ||
         typeof area.free_delivery !== 'boolean' ||
+        (area.color !== undefined && (typeof area.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(area.color))) ||
         (area.fee !== undefined && (typeof area.fee !== 'number' || !Number.isSafeInteger(area.fee) || area.fee < 0)) ||
         !Array.isArray(area.points) || (area.points.length > 0 && area.points.length < 3) ||
         area.points.some((point: unknown) =>

@@ -180,6 +180,7 @@ export default function AdminLayoutClient({
       { name: 'Ticketing', href: '/lord/ticketing', icon: Ticket, minRole: 'admin' },
       { name: 'Live Runners', href: '/lord/dispatch', icon: Truck, permission: 'can_manage_orders' },
       { name: 'Delivery Flow', href: '/lord/delivery', icon: Truck, permission: 'can_manage_orders' },
+      { name: 'Delivery Zone Map', href: '/lord/delivery-zones', icon: MapPin, permission: 'can_manage_settings' },
       { name: 'Vendor Scorecard', href: '/lord/delivery/scorecard', icon: Store, permission: 'can_manage_orders' },
       { name: 'The Buzz Hub', href: '/lord/buzz', icon: Flame, permission: 'can_manage_marketing' },
       { name: 'Tasks Board', href: '/lord/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },
