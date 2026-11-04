@@ -173,6 +173,7 @@ export default function AdminSettingsPage() {
     const [social, setSocial] = useState(DEFAULTS.social_links);
     const [store, setStore] = useState(DEFAULTS.store_info);
     const [aiConfig, setAiConfig] = useState(DEFAULTS.ai_config);
+    const [onlinePaymentProvider, setOnlinePaymentProvider] = useState<'paystack' | 'payhero'>('paystack');
     const [gatewaysConfig, setGatewaysConfig] = useState({
         paystack_secret_key: '',
         paystack_public_key: '',
@@ -263,6 +264,9 @@ export default function AdminSettingsPage() {
                     if (item.key === 'seo_config') setSeo(item.value as typeof DEFAULTS.seo_config);
                     if (item.key === 'social_links') setSocial(item.value as typeof DEFAULTS.social_links);
                     if (item.key === 'store_info') setStore(item.value as typeof DEFAULTS.store_info);
+                    if (item.key === 'payment_config') {
+                        setOnlinePaymentProvider(item.value.online_provider === 'payhero' ? 'payhero' : 'paystack');
+                    }
                     if (item.key === 'ai_config') setAiConfig({
                         ...DEFAULTS.ai_config,
                         ...Object.fromEntries(Object.entries(item.value).filter(([key]) =>
@@ -1790,6 +1794,59 @@ export default function AdminSettingsPage() {
                     {activeTab === 'integrations' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-500 text-left">
                             <ConnectionDiagnostics />
+
+                            <Card className="space-y-6 rounded-[2rem] border border-violet-100 bg-gradient-to-br from-white to-violet-50 p-6 shadow-sm sm:p-8">
+                                <div>
+                                    <h2 className="text-xl font-black uppercase text-foreground">Drink delivery payments</h2>
+                                    <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                                        Select the provider for new online drink orders. Ticket payment settings are separate and are not affected by this switch. Existing orders keep their original provider.
+                                    </p>
+                                </div>
+                                <fieldset className="grid gap-3 sm:grid-cols-2">
+                                    <legend className="sr-only">Active drink-order payment provider</legend>
+                                    {([
+                                        ['paystack', 'Paystack', 'Pay by card or a payment method enabled on your Paystack account.'],
+                                        ['payhero', 'PayHero', 'Send an M-Pesa STK prompt to the customer’s phone.']
+                                    ] as const).map(([provider, label, description]) => (
+                                        <label
+                                            key={provider}
+                                            className={cn(
+                                                'flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-4 transition',
+                                                onlinePaymentProvider === provider
+                                                    ? 'border-violet-500 bg-white shadow-md'
+                                                    : 'border-slate-200 bg-white/70 hover:border-violet-200'
+                                            )}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="drink-payment-provider"
+                                                value={provider}
+                                                checked={onlinePaymentProvider === provider}
+                                                onChange={() => setOnlinePaymentProvider(provider)}
+                                                className="mt-1 accent-violet-600"
+                                            />
+                                            <span>
+                                                <span className="block text-sm font-black text-slate-900">{label}</span>
+                                                <span className="mt-1 block text-xs leading-5 text-slate-500">{description}</span>
+                                            </span>
+                                        </label>
+                                    ))}
+                                </fieldset>
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
+                                    Configure credentials as Vercel environment variables before switching: Paystack needs <code>PAYSTACK_SECRET_KEY</code> and <code>NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY</code>; PayHero needs <code>PAYHERO_AUTH_TOKEN</code> and <code>PAYHERO_CHANNEL_ID</code>. Never paste secret keys into this settings page.
+                                </div>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <Button
+                                        type="button"
+                                        disabled={savingKey !== null}
+                                        onClick={() => void handleSave('payment_config', { online_provider: onlinePaymentProvider })}
+                                        className="h-11 rounded-xl bg-violet-700 px-5 font-black text-white hover:bg-violet-800"
+                                    >
+                                        {savingKey === 'payment_config' ? 'Saving…' : `Save ${onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'} for drinks`}
+                                    </Button>
+                                    <span className="text-xs text-slate-500">The setting controls new online drink orders only.</span>
+                                </div>
+                            </Card>
 
                             {/* 1. PAYMENT GATEWAYS HUB (PAYSTACK & M-PESA DARAJA) */}
                             <Card className="p-8 sm:p-10 rounded-[3rem] bg-white border border-slate-100 shadow-sm space-y-8 text-left">

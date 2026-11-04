@@ -215,12 +215,12 @@ export async function alertAllocatedMerchants(database: SupabaseClient, orderId:
     .maybeSingle();
   if (orderError) throw orderError;
   const paymentMethod = String(order?.payment_method || '').toLowerCase();
-  const isPaystackOrder = paymentMethod === 'paystack'
+  const isPaidOnlineOrder = ['paystack', 'payhero'].includes(paymentMethod)
     && String(order?.status || '').toLowerCase() === 'paid'
     && Boolean(order?.payment_verified_at);
   const isCodOrder = paymentMethod === 'cod'
     && ['pending', 'placed', 'confirmed'].includes(String(order?.status || '').toLowerCase());
-  if (!order || (!isPaystackOrder && !isCodOrder)) {
+  if (!order || (!isPaidOnlineOrder && !isCodOrder)) {
     return { applications: 0, pushSent: 0, escalationQueued: false };
   }
 

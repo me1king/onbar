@@ -20,7 +20,8 @@ const allowedSettings = new Set([
   'catalog',
   'onboarding_config',
   'features',
-  'ai_config'
+  'ai_config',
+  'payment_config'
 ]);
 
 type SettingUpdate = {
@@ -74,6 +75,10 @@ function isSettingUpdate(value: unknown): value is SettingUpdate {
 
   if (update.key === 'ai_config') {
     return validateBuildMyNightConfig(update.value) === null;
+  }
+
+  if (update.key === 'payment_config') {
+    return update.value.online_provider === 'paystack' || update.value.online_provider === 'payhero';
   }
 
   return true;

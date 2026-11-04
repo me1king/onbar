@@ -118,10 +118,11 @@ export async function GET(request: Request) {
 
   try {
     const order = await loadRiderOrder(database, orderId, session.phone);
-    if (order.payment_method?.trim().toLowerCase() === 'paystack' && order.payment_verified_at) {
+    if (['paystack', 'payhero'].includes(order.payment_method?.trim().toLowerCase() || '')
+      && order.payment_verified_at) {
       return NextResponse.json({
         status: 'paid',
-        paymentMethod: 'Paystack',
+        paymentMethod: order.payment_method?.trim().toLowerCase() === 'payhero' ? 'PayHero' : 'Paystack',
         amountKsh: Math.round(Number(order.total_price))
       }, { headers: { 'Cache-Control': 'no-store' } });
     }
@@ -165,7 +166,8 @@ export async function POST(request: Request) {
     return sendError(message, message.includes('Only verified') ? 403 : 409);
   }
 
-  if (order.payment_method?.trim().toLowerCase() === 'paystack' && order.payment_verified_at) {
+  if (['paystack', 'payhero'].includes(order.payment_method?.trim().toLowerCase() || '')
+    && order.payment_verified_at) {
     return sendError('This order is already paid online.', 409);
   }
   if (!isCashOrder(order.payment_method || '')) {

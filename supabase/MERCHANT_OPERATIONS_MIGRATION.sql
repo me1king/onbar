@@ -867,25 +867,28 @@ BEGIN
            OR (
                lower(coalesce(parent_order.status, '')) = 'paid'
                AND parent_order.payment_verified_at IS NOT NULL
-               AND lower(coalesce(parent_order.payment_method, '')) = 'paystack'
+               AND lower(coalesce(parent_order.payment_method, '')) IN ('paystack', 'payhero')
            )
        )
        OR parent_order.latitude IS NULL
        OR parent_order.longitude IS NULL
        OR to_regclass('public.payment_confirmations') IS NULL THEN
-        RAISE EXCEPTION 'Merchant inventory can only be allocated to a Paystack order with confirmed payment and delivery coordinates.';
+        RAISE EXCEPTION 'Merchant inventory can only be allocated to an online order with confirmed payment and delivery coordinates.';
     END IF;
     EXECUTE
         'SELECT EXISTS (
             SELECT 1 FROM public.payment_confirmations confirmation
             WHERE confirmation.order_id = $1
-              AND confirmation.provider = ''Paystack''
+              AND confirmation.provider = CASE
+                  WHEN lower($4) = ''payhero'' THEN ''PayHero''
+                  ELSE ''Paystack''
+              END
               AND confirmation.reference = $2
               AND confirmation.amount_kobo = round($3 * 100)::BIGINT
               AND confirmation.currency = ''KES''
         )'
     INTO has_payment_proof
-    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price;
+    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price, parent_order.payment_method;
     IF NOT has_payment_proof THEN
         RAISE EXCEPTION 'Server-verified payment proof is required before merchant stock can be allocated.';
     END IF;
@@ -1050,7 +1053,7 @@ BEGIN
            OR (
                lower(coalesce(parent_order.status, '')) = 'paid'
                AND parent_order.payment_verified_at IS NOT NULL
-               AND lower(coalesce(parent_order.payment_method, '')) = 'paystack'
+               AND lower(coalesce(parent_order.payment_method, '')) IN ('paystack', 'payhero')
            )
        )
        OR to_regclass('public.payment_confirmations') IS NULL THEN
@@ -1062,13 +1065,16 @@ BEGIN
             SELECT 1
             FROM public.payment_confirmations confirmation
             WHERE confirmation.order_id = $1
-              AND confirmation.provider = ''Paystack''
+              AND confirmation.provider = CASE
+                  WHEN lower($4) = ''payhero'' THEN ''PayHero''
+                  ELSE ''Paystack''
+              END
               AND confirmation.reference = $2
               AND confirmation.amount_kobo = round($3 * 100)::BIGINT
               AND confirmation.currency = ''KES''
         )'
     INTO has_payment_proof
-    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price;
+    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price, parent_order.payment_method;
 
     IF NOT has_payment_proof OR parent_order.latitude IS NULL OR parent_order.longitude IS NULL THEN
         RETURN NEW;

@@ -127,7 +127,7 @@ BEGIN
     OR (
       lower(coalesce(target_order.status, '')) = 'paid'
       AND target_order.payment_verified_at IS NOT NULL
-      AND lower(coalesce(target_order.payment_method, '')) = 'paystack'
+      AND lower(coalesce(target_order.payment_method, '')) IN ('paystack', 'payhero')
     )
   ) THEN
     RAISE EXCEPTION 'Only a verified paid order can be accepted';
@@ -214,7 +214,7 @@ BEGIN
       AND (
         lower(coalesce(target_order.payment_method, '')) = 'cod'
         OR (
-          lower(coalesce(target_order.payment_method, '')) = 'paystack'
+          lower(coalesce(target_order.payment_method, '')) IN ('paystack', 'payhero')
           AND target_order.payment_verified_at IS NOT NULL
         )
       )

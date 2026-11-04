@@ -319,7 +319,7 @@ export default function ProductList({
                         active: 'border-amber-500 bg-amber-500 text-white shadow-amber-500/25',
                         icon: 'bg-amber-100 text-amber-700'
                       }
-                    : CATEGORY_COLORS.find(group => group.ids.includes(cat.id as typeof group.ids[number]))
+                    : CATEGORY_COLORS.find(group => group.ids.some(id => id === cat.id))
                       || FALLBACK_CATEGORY_COLORS[(index - 1) % FALLBACK_CATEGORY_COLORS.length];
                   const isActive = activeCategory === cat.id;
                   return (

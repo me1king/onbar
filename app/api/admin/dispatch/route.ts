@@ -428,7 +428,7 @@ async function loadDispatchData(database: SupabaseClient) {
       .select('id, status, payment_method, payment_verified_at, checkout_request_id, customer_name, customer_email, total_price, latitude, longitude, note, created_at, rider_name, rider_phone')
       .eq('status', 'Paid')
       .not('payment_verified_at', 'is', null)
-      .eq('payment_method', 'Paystack')
+      .in('payment_method', ['Paystack', 'PayHero'])
       .order('payment_verified_at', { ascending: true })
       .limit(100),
     database.from('rider_status')
@@ -460,12 +460,12 @@ async function loadDispatchData(database: SupabaseClient) {
     .filter(order =>
       order.status?.toLowerCase() === 'paid'
       && Boolean(order.payment_verified_at)
-      && (order.payment_method || '').toLowerCase() === 'paystack'
+      && ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase())
       && !order.rider_phone
     );
   const { data: confirmations, error: confirmationError } = paidOrders.length
     ? await database.from('payment_confirmations')
-      .select('order_id, reference, amount_kobo, currency')
+      .select('order_id, provider, reference, amount_kobo, currency')
       .in('order_id', paidOrders.map(order => order.id))
     : { data: [], error: null };
   if (confirmationError) throw confirmationError;
@@ -473,6 +473,7 @@ async function loadDispatchData(database: SupabaseClient) {
     .filter(confirmation => {
       const order = paidOrders.find(candidate => candidate.id === Number(confirmation.order_id));
       return Boolean(order)
+        && confirmation.provider === (order?.payment_method === 'PayHero' ? 'PayHero' : 'Paystack')
         && confirmation.reference === order?.checkout_request_id
         && Number(confirmation.amount_kobo) === Math.round(Number(order?.total_price) * 100)
         && confirmation.currency === 'KES';

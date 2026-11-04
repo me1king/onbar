@@ -307,7 +307,7 @@ BEGIN
     RAISE EXCEPTION 'Handover is blocked because a safety issue was reported.';
   END IF;
 
-  IF lower(coalesce(target_order.payment_method, '')) = 'paystack' THEN
+  IF lower(coalesce(target_order.payment_method, '')) IN ('paystack', 'payhero') THEN
     IF target_order.payment_verified_at IS NULL
        AND NOT EXISTS (
          SELECT 1

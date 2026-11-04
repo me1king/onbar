@@ -1,10 +1,12 @@
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
 import { findDeliveryZones, parseDeliveryAreas, parseDeliveryPricing, resolveLegacyDeliveryQuote } from '@/lib/deliveryAreas';
 import { getStoredVariantPrices } from '@/lib/productPricing';
 import { getPublicBaseUrl } from '@/lib/utils';
+import { assertPayHeroOrderPaymentConfiguration, initializePayHeroOrderPayment } from '@/lib/payheroOrders.server';
+import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +30,7 @@ type CheckoutBody = {
   customerName: string;
   customerPhone: string;
   customerEmail: string | null;
-  paymentMethod: 'Paystack' | 'COD';
+  paymentMethod: 'Paystack' | 'PayHero' | 'COD';
   sessionId: string;
   deliveryZoneId: string | null;
   coordinates: { lat: number; lng: number } | null;
@@ -192,7 +194,7 @@ function readBody(value: unknown): CheckoutBody | null {
     || typeof customerPhone !== 'string' || !customerPhone.trim() || customerPhone.length > 40
     || (customerEmail !== null && typeof customerEmail !== 'string')
     || (typeof customerEmail === 'string' && customerEmail.length > 254)
-    || (paymentMethod !== 'Paystack' && paymentMethod !== 'COD')
+    || (paymentMethod !== 'Paystack' && paymentMethod !== 'PayHero' && paymentMethod !== 'COD')
     || typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 160
     || (deliveryZoneId !== null && typeof deliveryZoneId !== 'string')
     || typeof usePoints !== 'boolean'
@@ -299,9 +301,9 @@ export async function POST(request: Request) {
     }
 
     const { database } = configuration;
-    const settingKeys = ['system_lockdown', 'free_delivery_areas', 'delivery_pricing', 'shipping'];
+    const settingKeys = ['system_lockdown', 'free_delivery_areas', 'delivery_pricing', 'shipping', 'payment_config'];
     const [settingsResult, customizedProductsResult] = await Promise.all([
-      database.from('settings').select('key, value').in('key', settingKeys),
+      database.from('settings').select('key, value').eq('is_published', true).in('key', settingKeys),
       database.from('products')
         .select('id, name, stock, variant_stock, price, old_price, variant_prices, beverage_specs, cost_price, is_bite, is_snack, sizes, hide_product, is_available_now, status, engraving_enabled, engraving_fee, gift_packaging_fee')
         .in('id', [...new Set(body.items.map((item) => item.productId))])
@@ -330,6 +332,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Checkout information could not be verified. Please try again.' }, { status: 503 });
     }
     const settingsByKey = new Map((settings || []).map((setting) => [setting.key, setting.value]));
+    const paymentConfig = settingsByKey.get('payment_config');
+    const configuredProvider = isRecord(paymentConfig) ? paymentConfig.online_provider : undefined;
+    if (paymentConfig !== undefined && configuredProvider !== 'paystack' && configuredProvider !== 'payhero') {
+      console.error('[CheckoutOrder] Published online payment provider setting is invalid.');
+      return NextResponse.json({ error: 'Online payment settings are invalid. Contact support.' }, { status: 503 });
+    }
+    const activeProvider = configuredProvider === 'payhero' ? 'PayHero' : 'Paystack';
+    if (body.paymentMethod !== 'COD' && body.paymentMethod !== activeProvider) {
+      return NextResponse.json({
+        error: 'The online payment provider changed. Refresh checkout and try again.',
+        code: 'PAYMENT_PROVIDER_CHANGED'
+      }, { status: 409 });
+    }
+    if (body.paymentMethod === 'PayHero') {
+      try {
+        assertPayHeroOrderPaymentConfiguration();
+      } catch (configurationError) {
+        console.error('[CheckoutOrder] PayHero is selected but not configured:', configurationError);
+        return NextResponse.json({
+          error: 'PayHero is selected for drink orders but its server credentials are not configured. Contact support.'
+        }, { status: 503 });
+      }
+      const { error: payHeroSchemaError } = await database
+        .from('payhero_order_payment_attempts')
+        .select('order_id')
+        .limit(0);
+      if (payHeroSchemaError) {
+        console.error('[CheckoutOrder] PayHero order-payment migration is missing:', payHeroSchemaError);
+        return NextResponse.json({
+          error: 'PayHero drink payments are not installed yet. Apply supabase/PAYHERO_DRINK_ORDERS_MIGRATION.sql.'
+        }, { status: 503 });
+      }
+      if (!normalizeTicketPhoneNumber(body.customerPhone)
+        || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.customerEmail || '')) {
+        return NextResponse.json({
+          error: 'Enter a valid Kenyan M-Pesa number and email address for PayHero checkout.'
+        }, { status: 400 });
+      }
+    }
     const lockdownValue = settingsByKey.get('system_lockdown');
     if (isRecord(lockdownValue) && lockdownValue.active === true) {
       return NextResponse.json({ error: 'Order intake is temporarily paused for system maintenance.' }, { status: 503 });
@@ -543,15 +584,20 @@ export async function POST(request: Request) {
     }
 
     const total = Math.max(0, subtotal + deliveryFee - couponDiscount - pointsDiscount);
-    if (body.paymentMethod === 'Paystack' && total <= 0) {
+    if (body.paymentMethod !== 'COD' && total <= 0) {
       return NextResponse.json({ error: 'Online payment total must be greater than zero.' }, { status: 400 });
     }
-    if (body.paymentMethod === 'Paystack'
+    if (body.paymentMethod !== 'COD'
       && (!body.customerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.customerEmail))) {
-      return NextResponse.json({ error: 'Enter a valid email address for Paystack.' }, { status: 400 });
+      return NextResponse.json({ error: 'Enter a valid email address for online payment.' }, { status: 400 });
+    }
+    if (body.paymentMethod === 'PayHero' && !Number.isSafeInteger(total)) {
+      return NextResponse.json({
+        error: 'PayHero M-Pesa checkout requires a whole-KSh order total. Please contact the store to correct the order total.'
+      }, { status: 400 });
     }
 
-    const reference = body.paymentMethod === 'Paystack' ? `OB-${crypto.randomUUID()}` : null;
+    const reference = body.paymentMethod !== 'COD' ? `OB-${crypto.randomUUID()}` : null;
     const noteParts = [
       `Delivery zone: ${deliveryLabel}`,
       qualifiesForFreeDelivery ? `Free delivery over KSh ${deliveryPricing.free_delivery_over}` : null,
@@ -599,6 +645,25 @@ export async function POST(request: Request) {
     if (orderError || !order) {
       console.error('[CheckoutOrder] Could not create order:', orderError);
       return NextResponse.json({ error: 'The order could not be saved. Please try again.' }, { status: 503 });
+    }
+    const payHeroCallbackSecret = body.paymentMethod === 'PayHero'
+      ? randomBytes(32).toString('hex')
+      : null;
+    if (body.paymentMethod === 'PayHero' && reference && payHeroCallbackSecret) {
+      const { error: attemptError } = await database.from('payhero_order_payment_attempts').insert({
+        order_id: order.id,
+        external_reference: reference,
+        callback_secret_hash: createHash('sha256').update(payHeroCallbackSecret).digest('hex'),
+        amount_kobo: Math.round(total * 100),
+        status: 'initializing'
+      });
+      if (attemptError) {
+        console.error('[CheckoutOrder] Could not reserve a PayHero payment attempt:', attemptError);
+        await database.from('orders').delete().eq('id', order.id);
+        return NextResponse.json({
+          error: 'PayHero payment could not be prepared. No payment prompt was sent. Please try again.'
+        }, { status: 503 });
+      }
     }
 
     const rows = orderItems.map((item) => ({ ...item, order_id: order.id }));
@@ -754,12 +819,52 @@ export async function POST(request: Request) {
       console.error('[CheckoutOrder] Order was created, but INTERNAL_API_SECRET is not configured for placed notifications.');
     }
 
+    let paymentStarted = body.paymentMethod !== 'PayHero';
+    if (body.paymentMethod === 'PayHero' && reference && payHeroCallbackSecret) {
+      try {
+        const callbackUrl = new URL('/api/payhero/orders/webhook', getPublicBaseUrl());
+        callbackUrl.searchParams.set('key', payHeroCallbackSecret);
+        const payment = await initializePayHeroOrderPayment({
+          amountMinor: Math.round(total * 100),
+          phone: body.customerPhone,
+          customerName: body.customerName,
+          externalReference: reference,
+          callbackUrl: callbackUrl.toString()
+        });
+        const { error: savePaymentError } = await database.from('payhero_order_payment_attempts')
+          .update({
+            payhero_reference: payment.reference,
+            checkout_request_id: payment.checkoutRequestId,
+            status: 'queued',
+            updated_at: new Date().toISOString()
+          })
+          .eq('order_id', order.id)
+          .eq('external_reference', reference);
+        if (savePaymentError) throw savePaymentError;
+        paymentStarted = true;
+      } catch (paymentError) {
+        console.error('[CheckoutOrder] PayHero could not confirm whether the M-Pesa prompt started:', paymentError);
+        const { error: attemptUpdateError } = await database.from('payhero_order_payment_attempts')
+          .update({ status: 'unknown', updated_at: new Date().toISOString() })
+          .eq('order_id', order.id)
+          .eq('external_reference', reference);
+        if (attemptUpdateError) {
+          console.error('[CheckoutOrder] Could not mark ambiguous PayHero initialization:', attemptUpdateError);
+        }
+      }
+    }
+
     return NextResponse.json({
       orderId: order.id,
       reference,
       total,
-      currency: 'KES'
-    }, { headers: { 'Cache-Control': 'no-store' } });
+      currency: 'KES',
+      provider: body.paymentMethod,
+      paymentStarted
+    }, {
+      status: body.paymentMethod === 'PayHero' && !paymentStarted ? 202 : 201,
+      headers: { 'Cache-Control': 'no-store' }
+    });
   } catch (error) {
     if (error instanceof StockUnavailableError) {
       return NextResponse.json({

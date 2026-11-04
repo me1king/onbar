@@ -74,6 +74,7 @@ declare global {
 function CheckoutContent() {
   const { cart, clearCart, removeFromCart } = useCart();
   const { settings, loading: storeSettingsLoading } = useSettings();
+  const onlinePaymentProvider = settings.payment_config.online_provider;
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -668,8 +669,12 @@ function CheckoutContent() {
 
     setShowCustomerErrors(false);
     const paystackPublicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY?.trim();
-    if (paymentMethod === "M-Pesa" && !paystackPublicKey) {
+    if (paymentMethod === "M-Pesa" && onlinePaymentProvider === 'paystack' && !paystackPublicKey) {
       setCheckoutStatus({ type: "error", message: "Online payments are not configured. Please choose Cash on Delivery or contact support." });
+      return;
+    }
+    if (storeSettingsLoading) {
+      setCheckoutStatus({ type: "error", message: "Payment settings are still loading. Please wait a moment and try again." });
       return;
     }
 
@@ -706,7 +711,9 @@ function CheckoutContent() {
               customerName,
               customerPhone,
               customerEmail: customerEmail.trim() || null,
-              paymentMethod: paymentMethod === 'M-Pesa' ? 'Paystack' : 'COD',
+              paymentMethod: paymentMethod === 'M-Pesa'
+                ? onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'
+                : 'COD',
               sessionId,
               deliveryZoneId: selectedZone?.id || null,
               coordinates: coords.lat !== null && coords.lng !== null
@@ -741,6 +748,8 @@ function CheckoutContent() {
           reference?: string | null;
           total?: number;
           currency?: string;
+          provider?: 'Paystack' | 'PayHero' | 'COD';
+          paymentStarted?: boolean;
       };
       if (!orderResponse.ok || !orderResult.orderId || typeof orderResult.total !== 'number') {
           if (orderResult.code === 'STOCK_UNAVAILABLE' && orderResult.stockIssue) {
@@ -754,6 +763,12 @@ function CheckoutContent() {
 
       if (paymentMethod === "M-Pesa") {
         if (!orderResult.reference) throw new Error('The payment reference could not be created. Please try again.');
+        if (orderResult.provider === 'PayHero') {
+          clearGiftDraft();
+          const warning = orderResult.paymentStarted === false ? '&prompt=unknown' : '';
+          window.location.href = `/checkout/success?orderId=${orderId}&payment=payhero${warning}`;
+          return;
+        }
         if (!window.PaystackPop) {
             setCheckoutStatus({ type: "error", message: "Payment system failing to load. Please check your connection." });
             OB_OS.track('PAYMENT_FAIL', { userId: user?.id, orderId, details: { reason: 'PAYMENT_WINDOW_UNAVAILABLE' } });
@@ -954,9 +969,9 @@ function CheckoutContent() {
                   {showCustomerErrors && !customerPhone.trim() && <p id="checkout-customer-phone-error" role="alert" className="text-xs font-semibold text-rose-600">Enter your phone number to continue.</p>}
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <label htmlFor="checkout-customer-email" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Address {paymentMethod === "M-Pesa" ? "(Required for Paystack)" : "(For PDF Receipt)"}</label>
+                  <label htmlFor="checkout-customer-email" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Address {paymentMethod === "M-Pesa" ? `(Required for ${onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'})` : "(For PDF Receipt)"}</label>
                   <Input id="checkout-customer-email" data-behavior-id="checkout.customer_email" ref={customerEmailInputRef} type="email" autoComplete="email" required={paymentMethod === "M-Pesa"} aria-invalid={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())} aria-describedby={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "checkout-customer-email-error" : undefined} placeholder="you@example.com" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} disabled={isPlacingOrder} />
-                  {showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && <p id="checkout-customer-email-error" role="alert" className="text-xs font-semibold text-rose-600">Enter a valid email address for Paystack.</p>}
+                  {showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && <p id="checkout-customer-email-error" role="alert" className="text-xs font-semibold text-rose-600">Enter a valid email address for {onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'}.</p>}
                 </div>
             </div>
             {user && accountProfileLoaded && (
@@ -1206,8 +1221,8 @@ function CheckoutContent() {
                     setPaymentMethod("M-Pesa");
                     OB_OS.track('UI_INTERACTION', { userId: user?.id, details: { id: 'checkout.payment_method', method: 'M-Pesa' } });
                   }} className={`p-6 rounded-3xl border-2 text-left transition-all ${paymentMethod === 'M-Pesa' ? 'border-primary bg-white shadow-xl' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}>
-                    <p className="font-black uppercase tracking-tight text-foreground text-lg">M-Pesa</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Pay now by M-Pesa or card</p>
+                    <p className="font-black uppercase tracking-tight text-foreground text-lg">{onlinePaymentProvider === 'payhero' ? 'PayHero M-Pesa' : 'Paystack'}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">{onlinePaymentProvider === 'payhero' ? 'Receive an M-Pesa prompt on your phone' : 'Pay now by card or a Paystack payment method'}</p>
                   </button>
 
                   <button data-behavior-id="checkout.payment_method" onClick={() => {

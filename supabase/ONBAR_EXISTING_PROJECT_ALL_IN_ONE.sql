@@ -2832,7 +2832,7 @@ BEGIN
     IF NOT FOUND
        OR lower(coalesce(parent_order.status, '')) <> 'paid'
        OR parent_order.payment_verified_at IS NULL
-       OR lower(coalesce(parent_order.payment_method, '')) <> 'paystack'
+       OR lower(coalesce(parent_order.payment_method, '')) NOT IN ('paystack', 'payhero')
        OR parent_order.latitude IS NULL
        OR parent_order.longitude IS NULL
        OR to_regclass('public.payment_confirmations') IS NULL THEN
@@ -2842,13 +2842,16 @@ BEGIN
         'SELECT EXISTS (
             SELECT 1 FROM public.payment_confirmations confirmation
             WHERE confirmation.order_id = $1
-              AND confirmation.provider = ''Paystack''
+              AND confirmation.provider = CASE
+                  WHEN lower($4) = ''payhero'' THEN ''PayHero''
+                  ELSE ''Paystack''
+              END
               AND confirmation.reference = $2
               AND confirmation.amount_kobo = round($3 * 100)::BIGINT
               AND confirmation.currency = ''KES''
         )'
     INTO has_payment_proof
-    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price;
+    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price, parent_order.payment_method;
     IF NOT has_payment_proof THEN
         RAISE EXCEPTION 'Server-verified payment proof is required before merchant stock can be allocated.';
     END IF;
@@ -3007,7 +3010,7 @@ BEGIN
     IF NOT FOUND
        OR lower(coalesce(parent_order.status, '')) <> 'paid'
        OR parent_order.payment_verified_at IS NULL
-       OR lower(coalesce(parent_order.payment_method, '')) <> 'paystack'
+       OR lower(coalesce(parent_order.payment_method, '')) NOT IN ('paystack', 'payhero')
        OR to_regclass('public.payment_confirmations') IS NULL THEN
         RETURN NEW;
     END IF;
@@ -3017,13 +3020,16 @@ BEGIN
             SELECT 1
             FROM public.payment_confirmations confirmation
             WHERE confirmation.order_id = $1
-              AND confirmation.provider = ''Paystack''
+              AND confirmation.provider = CASE
+                  WHEN lower($4) = ''payhero'' THEN ''PayHero''
+                  ELSE ''Paystack''
+              END
               AND confirmation.reference = $2
               AND confirmation.amount_kobo = round($3 * 100)::BIGINT
               AND confirmation.currency = ''KES''
         )'
     INTO has_payment_proof
-    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price;
+    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price, parent_order.payment_method;
 
     IF NOT has_payment_proof OR parent_order.latitude IS NULL OR parent_order.longitude IS NULL THEN
         RETURN NEW;
@@ -3455,7 +3461,7 @@ BEGIN
     IF NOT FOUND
        OR lower(coalesce(parent_order.status, '')) <> 'paid'
        OR parent_order.payment_verified_at IS NULL
-       OR lower(coalesce(parent_order.payment_method, '')) <> 'paystack'
+       OR lower(coalesce(parent_order.payment_method, '')) NOT IN ('paystack', 'payhero')
        OR parent_order.latitude IS NULL
        OR parent_order.longitude IS NULL THEN
         RETURN NEW;
@@ -3466,13 +3472,16 @@ BEGIN
             SELECT 1
             FROM public.payment_confirmations confirmation
             WHERE confirmation.order_id = $1
-              AND confirmation.provider = ''Paystack''
+              AND confirmation.provider = CASE
+                  WHEN lower($4) = ''payhero'' THEN ''PayHero''
+                  ELSE ''Paystack''
+              END
               AND confirmation.reference = $2
               AND confirmation.amount_kobo = round($3 * 100)::BIGINT
               AND confirmation.currency = ''KES''
         )'
     INTO has_payment_proof
-    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price;
+    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price, parent_order.payment_method;
 
     IF NOT has_payment_proof THEN
         RETURN NEW;
@@ -3632,7 +3641,7 @@ DECLARE
 BEGIN
     IF lower(coalesce(NEW.status, '')) <> 'paid'
        OR NEW.payment_verified_at IS NULL
-       OR lower(coalesce(NEW.payment_method, '')) <> 'paystack'
+       OR lower(coalesce(NEW.payment_method, '')) NOT IN ('paystack', 'payhero')
        OR (
            OLD.status IS NOT DISTINCT FROM NEW.status
            AND OLD.payment_verified_at IS NOT DISTINCT FROM NEW.payment_verified_at
@@ -3725,7 +3734,7 @@ GRANT EXECUTE ON FUNCTION public.update_merchant_dispatch_location(UUID, NUMERIC
 CREATE TABLE IF NOT EXISTS public.payment_confirmations (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     order_id BIGINT NOT NULL REFERENCES public.orders(id) ON DELETE RESTRICT,
-    provider TEXT NOT NULL CHECK (provider = 'Paystack'),
+    provider TEXT NOT NULL CHECK (provider IN ('Paystack', 'PayHero')),
     reference TEXT NOT NULL UNIQUE,
     amount_kobo BIGINT NOT NULL CHECK (amount_kobo > 0),
     currency TEXT NOT NULL CHECK (currency = 'KES'),
@@ -3769,12 +3778,15 @@ BEGIN
     END IF;
     IF lower(coalesce(target_order.status, '')) <> 'paid'
        OR target_order.payment_verified_at IS NULL
-       OR lower(coalesce(target_order.payment_method, '')) <> 'paystack'
+       OR lower(coalesce(target_order.payment_method, '')) NOT IN ('paystack', 'payhero')
        OR target_order.checkout_request_id IS NULL
        OR NOT EXISTS (
            SELECT 1 FROM public.payment_confirmations confirmation
            WHERE confirmation.order_id = target_order.id
-             AND confirmation.provider = 'Paystack'
+             AND confirmation.provider = CASE
+                 WHEN lower(target_order.payment_method) = 'payhero' THEN 'PayHero'
+                 ELSE 'Paystack'
+             END
              AND confirmation.reference = target_order.checkout_request_id
              AND confirmation.amount_kobo = round(target_order.total_price * 100)::BIGINT
              AND confirmation.currency = 'KES'
@@ -3782,7 +3794,7 @@ BEGIN
         RETURN jsonb_build_object(
             'success', false,
             'code', 'PAYMENT_NOT_CONFIRMED',
-            'error', 'Retry is limited to orders with a matching server-verified Paystack payment.'
+            'error', 'Retry is limited to orders with a matching server-verified online payment.'
         );
     END IF;
     IF target_order.rider_phone IS NOT NULL
@@ -3952,11 +3964,11 @@ BEGIN
 
     IF lower(coalesce(target_order.status, '')) <> 'paid'
        OR target_order.payment_verified_at IS NULL
-       OR lower(coalesce(target_order.payment_method, '')) <> 'paystack' THEN
+       OR lower(coalesce(target_order.payment_method, '')) NOT IN ('paystack', 'payhero') THEN
         RETURN jsonb_build_object(
             'success', false,
             'code', 'PAYMENT_NOT_CONFIRMED',
-            'error', 'Dispatch is limited to Paystack orders with a verified payment timestamp. COD and manual orders remain unassigned.'
+            'error', 'Dispatch is limited to verified online orders. COD and manual orders remain unassigned.'
         );
     END IF;
     IF target_order.checkout_request_id IS NULL
@@ -3964,7 +3976,10 @@ BEGIN
            SELECT 1
            FROM public.payment_confirmations confirmation
            WHERE confirmation.order_id = target_order.id
-             AND confirmation.provider = 'Paystack'
+             AND confirmation.provider = CASE
+                 WHEN lower(target_order.payment_method) = 'payhero' THEN 'PayHero'
+                 ELSE 'Paystack'
+             END
              AND confirmation.reference = target_order.checkout_request_id
              AND confirmation.amount_kobo = round(target_order.total_price * 100)::BIGINT
              AND confirmation.currency = 'KES'
@@ -3972,7 +3987,7 @@ BEGIN
         RETURN jsonb_build_object(
             'success', false,
             'code', 'PAYMENT_PROOF_MISSING',
-            'error', 'A server-verified Paystack payment record is required before dispatch.'
+            'error', 'A server-verified online payment record is required before dispatch.'
         );
     END IF;
 

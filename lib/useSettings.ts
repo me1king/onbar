@@ -63,6 +63,9 @@ export function normalizeCatalogNavigation(value: unknown): CatalogNavigationIte
 }
 
 export interface StoreSettings {
+    payment_config: {
+        online_provider: 'paystack' | 'payhero';
+    };
     contact: {
         whatsapp: string;
         email: string;
@@ -190,6 +193,9 @@ export function normalizeShippingSettings(value: unknown): StoreSettings['shippi
 }
 
 export const DEFAULT_SETTINGS: StoreSettings = {
+    payment_config: {
+        online_provider: 'paystack'
+    },
     contact: {
         whatsapp: "254769345599",
         email: "support@onlinebar.co.ke",
@@ -313,6 +319,11 @@ export function useSettings() {
                 if (data && data.length > 0) {
                     const newSettings = { ...DEFAULT_SETTINGS };
                     data.forEach(item => {
+                        if (item.key === 'payment_config') {
+                            newSettings.payment_config = {
+                                online_provider: item.value.online_provider === 'payhero' ? 'payhero' : 'paystack'
+                            };
+                        }
                         if (item.key === 'contact') newSettings.contact = { ...newSettings.contact, ...item.value };
                         if (item.key === 'branding') newSettings.branding = { ...newSettings.branding, ...item.value };
                         if (item.key === 'homepage') newSettings.homepage = { ...newSettings.homepage, ...item.value };
