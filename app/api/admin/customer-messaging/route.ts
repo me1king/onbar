@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   CUSTOMER_NOTIFICATION_CHANNELS,
   CUSTOMER_NOTIFICATION_STATUSES,
+  isValidCustomerEmailDesign,
   normalizeCustomerNotificationConfig,
   normalizeCustomerContactKey
 } from '@/lib/customerMessaging';
@@ -127,6 +128,7 @@ export async function PUT(request: Request) {
         || typeof value.message !== 'string'
         || !value.message.trim()
         || value.message.length > 2000
+        || !isValidCustomerEmailDesign(value)
         || (value.smsMessage !== undefined
           && (typeof value.smsMessage !== 'string' || !value.smsMessage.trim() || value.smsMessage.length > 2000));
     })) {

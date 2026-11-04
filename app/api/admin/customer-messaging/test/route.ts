@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
+import {
+  CUSTOMER_NOTIFICATION_STATUSES,
+  DEFAULT_CUSTOMER_NOTIFICATION_CONFIG,
+  isValidCustomerEmailDesign,
+  type CustomerNotificationRule,
+  type CustomerNotificationStatus
+} from '@/lib/customerMessaging';
+import { renderCustomerOrderEmail, renderCustomerOrderEmailText } from '@/lib/customerOrderEmail';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,17 +18,9 @@ type TestMessage = {
   message?: unknown;
   phone?: unknown;
   email?: unknown;
+  status?: unknown;
+  emailDesign?: unknown;
 };
-
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, character => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[character] || character);
-}
 
 function normalizePhone(value: string) {
   let digits = value.replace(/\D/g, '');
@@ -63,12 +63,32 @@ export async function POST(request: Request) {
       if (!config.configured) {
         return NextResponse.json({ error: 'Email is not configured. Set JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL in Vercel.' }, { status: 503 });
       }
+      const status = CUSTOMER_NOTIFICATION_STATUSES.includes(body.status as CustomerNotificationStatus)
+        ? body.status as CustomerNotificationStatus
+        : 'Pending';
+      const emailDesign = body.emailDesign === undefined
+        ? DEFAULT_CUSTOMER_NOTIFICATION_CONFIG[status]
+        : isValidCustomerEmailDesign(body.emailDesign) ? body.emailDesign as Pick<CustomerNotificationRule, 'emailHeadline' | 'emailButtonLabel' | 'emailAccentColor'> : null;
+      if (!emailDesign) {
+        return NextResponse.json({ error: 'Email headline, button label, or accent color is invalid.' }, { status: 400 });
+      }
+      const email = {
+        headline: emailDesign.emailHeadline,
+        buttonLabel: emailDesign.emailButtonLabel,
+        accentColor: emailDesign.emailAccentColor,
+        message,
+        orderId: '1042',
+        total: 'KES 2,450.00',
+        status,
+        trackingUrl: 'https://onlinebar.co.ke/track?id=1042',
+        testNotice: 'Messaging Center test · no customer notification was sent.'
+      };
       await sendTransactionalEmail({
         from: config.from,
         to: destination,
         subject: `[TEST] ${subject}`,
-        text: message,
-        html: `<div style="font-family:Arial,sans-serif;white-space:pre-wrap">${escapeHtml(message)}</div><hr><p style="color:#777;font-size:12px">Messaging Center test · no customer notification was sent.</p>`
+        text: renderCustomerOrderEmailText(email),
+        html: renderCustomerOrderEmail(email)
       });
       return NextResponse.json({ sent: true, channel, destination, provider: config.provider });
     }

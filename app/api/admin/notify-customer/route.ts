@@ -3,6 +3,7 @@ import {
   CUSTOMER_NOTIFICATION_CHANNELS,
   normalizeCustomerNotificationConfig,
   normalizeCustomerContactKey,
+  type CustomerNotificationRule,
   type CustomerNotificationChannel,
   type CustomerNotificationStatus
 } from '@/lib/customerMessaging';
@@ -10,6 +11,7 @@ import { getAdminSession, hasAdminPermission, isInternalRequest, isSameOriginReq
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
 import { sendTransactionalEmail } from '@/lib/jmsurfMail.server';
+import { getCustomerOrderEmailDesign, renderCustomerOrderEmail, renderCustomerOrderEmailText } from '@/lib/customerOrderEmail';
 import { isWebPushConfigured, sendWebPush } from '@/lib/webPush.server';
 
 type NotificationBody = { orderId?: unknown; status?: unknown; retryChannel?: unknown };
@@ -29,16 +31,6 @@ const SUPPORTED_TEMPLATE_VARIABLES = new Set([
   'eta',
   'tracking_link'
 ]);
-
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, character => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[character] || character);
-}
 
 function renderTemplate(
   template: string,
@@ -89,13 +81,29 @@ function maskPhone(phone: string): string {
   return digits.length >= 4 ? `****${digits.slice(-4)}` : '';
 }
 
-async function sendEmail(to: string, subject: string, message: string, trackingUrl: string) {
-  const html = `<div style="font-family:sans-serif;padding:20px;color:#333"><p>${escapeHtml(message).replace(/\n/g, '<br/>')}</p><p><a href="${escapeHtml(trackingUrl)}">Track your order</a></p><hr/><p style="font-size:12px;color:#999">Online Bar Nairobi</p></div>`;
+async function sendEmail(
+  to: string,
+  subject: string,
+  message: string,
+  trackingUrl: string,
+  status: CustomerNotificationStatus,
+  order: { id: number; total_price: number | string },
+  rule: CustomerNotificationRule
+) {
+  const design = getCustomerOrderEmailDesign(rule);
+  const email = {
+    ...design,
+    message,
+    orderId: String(order.id),
+    total: `KES ${Number(order.total_price).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    status,
+    trackingUrl
+  };
   return sendTransactionalEmail({
     to,
     subject,
-    html,
-    text: `${message}\n\nTrack your order: ${trackingUrl}\n\nOnline Bar Nairobi`
+    html: renderCustomerOrderEmail(email),
+    text: renderCustomerOrderEmailText(email)
   });
 }
 
@@ -355,7 +363,7 @@ export async function POST(request: Request) {
       try {
         let providerMessageId: string | undefined;
         if (channel === 'email') {
-          const sent = await sendEmail(email, subject, message, trackingUrl);
+          const sent = await sendEmail(email, subject, message, trackingUrl, status as CustomerNotificationStatus, order, rule);
           providerMessageId = sent.messageId;
         }
         if (channel === 'whatsapp') await sendWhatsApp(phone, message);

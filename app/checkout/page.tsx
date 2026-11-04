@@ -811,7 +811,7 @@ function CheckoutContent() {
                     window.location.href = `/checkout/success?orderId=${orderId}`;
                 }
             },
-            onClose: async () => {
+            onClose: () => {
                 OB_OS.track('PAYMENT_FAIL', { userId: user?.id, orderId, details: { reason: 'PAYMENT_PROMPT_CLOSED' } });
                 setIsPlacingOrder(false);
                 setCheckoutStatus({

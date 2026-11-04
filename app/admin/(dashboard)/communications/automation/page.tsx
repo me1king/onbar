@@ -15,6 +15,7 @@ import {
   type CustomerNotificationConfig,
   type CustomerNotificationStatus
 } from '@/lib/customerMessaging';
+import { renderCustomerOrderEmail } from '@/lib/customerOrderEmail';
 import { cn } from '@/lib/utils';
 
 interface MessagingCustomer {
@@ -70,6 +71,8 @@ const sampleVariables: Record<string, string> = {
   total: 'KES 2,450.00',
   rider_name: 'Kiptoo',
   rider_phone: '+254712345678',
+  payment_method: 'M-Pesa',
+  payment_receipt: 'QWE123456',
   tracking_link: 'https://onlinebar.co.ke/track?id=1042'
 };
 function renderSample(template: string) {
@@ -189,6 +192,12 @@ export default function CustomerMessagingAutomationPage() {
           channel,
           subject: renderSample(rule.subject),
           message: renderSample(rule.message),
+          status,
+          emailDesign: {
+            emailHeadline: renderSample(rule.emailHeadline),
+            emailButtonLabel: rule.emailButtonLabel,
+            emailAccentColor: rule.emailAccentColor
+          },
           email: testEmail,
           phone: testPhone
         })
@@ -388,10 +397,67 @@ export default function CustomerMessagingAutomationPage() {
                   }))}
                   placeholder="Message customers receive"
                 />
+                <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Email look and feel</p>
+                  <Input
+                    aria-label={`${status} email headline`}
+                    value={rule.emailHeadline}
+                    maxLength={100}
+                    onChange={event => setConfig(current => ({
+                      ...current, [status]: { ...current[status], emailHeadline: event.target.value }
+                    }))}
+                    placeholder="Email headline"
+                  />
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Email button label
+                      <Input
+                        aria-label={`${status} email button label`}
+                        value={rule.emailButtonLabel}
+                        maxLength={40}
+                        onChange={event => setConfig(current => ({
+                          ...current, [status]: { ...current[status], emailButtonLabel: event.target.value }
+                        }))}
+                        placeholder="Track my order"
+                        className="mt-1"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                      Email color
+                      <input
+                        aria-label={`${status} email accent color`}
+                        type="color"
+                        value={rule.emailAccentColor}
+                        onChange={event => setConfig(current => ({
+                          ...current, [status]: { ...current[status], emailAccentColor: event.target.value }
+                        }))}
+                        className="h-10 w-14 cursor-pointer rounded-lg border border-slate-200 bg-white p-1"
+                      />
+                      <span className="font-mono text-[11px] uppercase">{rule.emailAccentColor}</span>
+                    </label>
+                  </div>
+                </div>
                 <div className="rounded-xl bg-slate-50 p-3">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Live sample preview</p>
                   {rule.channels.includes('email') && <p className="mt-2 text-xs font-semibold text-slate-700">Subject: {renderSample(rule.subject)}</p>}
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-800">{renderSample(rule.message)}</p>
+                  {rule.channels.includes('email') && (
+                    <iframe
+                      title={`${status} email design preview`}
+                      sandbox=""
+                      srcDoc={renderCustomerOrderEmail({
+                        headline: renderSample(rule.emailHeadline),
+                        message: renderSample(rule.message),
+                        buttonLabel: rule.emailButtonLabel,
+                        accentColor: rule.emailAccentColor,
+                        orderId: '1042',
+                        total: 'KES 2,450.00',
+                        status,
+                        trackingUrl: sampleVariables.trackingUrl
+                      })}
+                      className="mt-4 h-[520px] w-full rounded-xl border border-slate-200 bg-white"
+                    />
+                  )}
                   {rule.channels.includes('sms') && (() => {
                     const count = getSmsSegments(renderSample(rule.smsMessage || rule.message));
                     return <p className="mt-2 text-[10px] font-bold text-slate-500">{count.encoding} · {count.units} units · {count.segments} SMS segment{count.segments === 1 ? '' : 's'} (estimate)</p>;
