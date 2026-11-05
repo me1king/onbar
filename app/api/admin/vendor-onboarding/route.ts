@@ -304,8 +304,8 @@ export async function PATCH(request: Request) {
     }));
   } else if (action === 'launch_check') {
     const check = body.check;
-    if (!['test_order', 'second_review'].includes(String(check)) || typeof body.passed !== 'boolean') {
-      return NextResponse.json({ error: 'Select a valid test-order or second-review result.' }, { status: 400 });
+    if (check !== 'test_order' || typeof body.passed !== 'boolean') {
+      return NextResponse.json({ error: 'Record a valid test-order result.' }, { status: 400 });
     }
     ({ data: result, error } = await access.database.rpc('set_vendor_onboarding_launch_checks', {
       p_lead_id: id,
@@ -332,7 +332,7 @@ export async function PATCH(request: Request) {
   if (error) {
     if (migrationMissing(error)) return migrationResponse();
     const message = error.message || '';
-    const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|second-person review|second person must complete the launch review|future visit date|after phone approval|schedule a (?:future )?visit|already completed onboarding|only available for vendor companies|agent and notes are outside the allowed length|already submitted|valid onboarding mode/i.test(message);
+    const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|future visit date|after phone approval|schedule a (?:future )?visit|already completed onboarding|only available for vendor companies|agent and notes are outside the allowed length|already submitted|valid onboarding mode/i.test(message);
     const notFound = /not found/i.test(message);
     if (!stageConflict && !notFound) console.error('[VendorOnboarding] Update failed:', error);
     return NextResponse.json({

@@ -216,11 +216,8 @@ BEGIN
     RAISE EXCEPTION 'A field visit check-in is required before verification';
   END IF;
 
-  IF p_stage = 'live' AND (
-    NOT current_lead.test_order_passed
-    OR NOT current_lead.second_review_passed
-  ) THEN
-    RAISE EXCEPTION 'A passed test order and second-person review are required before launch';
+  IF p_stage = 'live' AND NOT current_lead.test_order_passed THEN
+    RAISE EXCEPTION 'A passed test order is required before launch';
   END IF;
 
   UPDATE public.vendor_onboarding_leads
@@ -415,7 +412,7 @@ DECLARE
   current_lead public.vendor_onboarding_leads%ROWTYPE;
   updated_lead public.vendor_onboarding_leads%ROWTYPE;
 BEGIN
-  IF p_check NOT IN ('test_order', 'second_review') THEN
+  IF p_check <> 'test_order' THEN
     RAISE EXCEPTION 'Unsupported launch check';
   END IF;
 
@@ -429,22 +426,8 @@ BEGIN
   IF current_lead.stage <> 'test_order' THEN
     RAISE EXCEPTION 'Launch checks are only available during the test-order stage';
   END IF;
-  IF p_check = 'second_review' AND p_passed AND NOT current_lead.test_order_passed THEN
-    RAISE EXCEPTION 'A passed test order is required before second-person review';
-  END IF;
-
-  IF p_check = 'second_review' AND p_passed
-    AND lower(current_lead.created_by) = lower(p_actor) THEN
-    RAISE EXCEPTION 'A second person must complete the launch review';
-  END IF;
-
   UPDATE public.vendor_onboarding_leads
-  SET test_order_passed = CASE WHEN p_check = 'test_order' THEN p_passed ELSE test_order_passed END,
-      second_review_passed = CASE
-        WHEN p_check = 'test_order' AND NOT p_passed THEN false
-        WHEN p_check = 'second_review' THEN p_passed
-        ELSE second_review_passed
-      END,
+  SET test_order_passed = p_passed,
       updated_at = now()
   WHERE id = p_lead_id
   RETURNING * INTO updated_lead;
@@ -455,7 +438,7 @@ BEGIN
 
   INSERT INTO public.vendor_onboarding_events (lead_id, event_type, actor, details)
   VALUES (p_lead_id, 'launch_check_updated', p_actor,
-    jsonb_build_object('check', p_check, 'passed', p_passed));
+    jsonb_build_object('check', p_check, 'passed', p_passed, 'review_mode', 'single_admin'));
   RETURN updated_lead;
 END;
 $$;

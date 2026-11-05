@@ -261,9 +261,13 @@ private, admin-only lead ledger, type-specific field checklists, visit
 check-ins, activity history, and launch-gate functions. The Admin page is
 `/lord/vendor-onboarding`. It tracks retailer, wholesaler, street-food, and
 rider leads, requires a future scheduled visit and GPS check-in plus the
-required checklist before visit verification, and requires a recorded passed
-test order and second-person review before a lead reaches its internal Live
-stage.
+required checklist before visit verification, and requires one authorized
+operator to record a passed test order before moving a lead to its internal
+Live stage. A second-person review is not required.
+
+On an existing project, run `VENDOR_ONBOARDING_SINGLE_REVIEW_MIGRATION.sql`
+after `VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql` to remove the second-person
+launch gate.
 
 This pipeline is an internal onboarding tracker. It does not create vendor or
 rider accounts, upload private documents, send SMS/WhatsApp messages, provision

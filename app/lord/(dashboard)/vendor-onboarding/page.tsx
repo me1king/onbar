@@ -75,7 +75,6 @@ interface Lead {
   check_in_lat: number | null;
   check_in_lng: number | null;
   test_order_passed: boolean;
-  second_review_passed: boolean;
   launched_at: string | null;
   invite_expires_at?: string | null;
   invite_used_at?: string | null;
@@ -851,13 +850,7 @@ export default function VendorOnboardingPage() {
                     className="h-4 w-4 accent-emerald-500" />
                   Test order accepted (record only after a real test)
                 </label>
-                <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
-                  <input type="checkbox" checked={selectedLead.second_review_passed} disabled={working || selectedLead.stage !== 'test_order' || !selectedLead.test_order_passed}
-                    onChange={event => void saveAction({ action: 'launch_check', check: 'second_review', passed: event.target.checked }, 'Second review updated.')}
-                    className="h-4 w-4 accent-emerald-500" />
-                  Second-person review complete
-                </label>
-                <p className="mt-2 text-xs text-slate-500">These checks are audit records; this page does not create test orders or activate accounts.</p>
+                <p className="mt-2 text-xs text-slate-500">One authorized admin can record the real test order and move the business live. This tracker does not create test orders or activate merchant accounts.</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <h3 className="text-sm font-medium text-slate-900">Agent & notes</h3>
@@ -874,7 +867,7 @@ export default function VendorOnboardingPage() {
                 }}>
                   {next ? <>Move to {stageLabel(next)} <ArrowRight className="ml-2 h-4 w-4" /></> : <><Check className="mr-2 h-4 w-4" /> Live</>}
                 </Button>
-                <p className="mt-2 text-xs text-slate-500">Stage changes are sequential. A visit time, completed visit, passed test order, and second review are required at their respective steps.</p>
+                <p className="mt-2 text-xs text-slate-500">Stage changes are sequential. A visit time, completed visit, and passed test order remain required; no second-person confirmation is needed.</p>
               </div>
             </section>
           </div>
