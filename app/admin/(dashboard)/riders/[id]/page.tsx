@@ -112,46 +112,46 @@ export default function RiderProfilePage() {
     );
 
     return (
-        <div className="p-8 space-y-10 bg-slate-50 min-h-screen text-left selection:bg-primary/20">
-            <header className="flex items-center gap-6 border-b border-slate-200 pb-8">
+        <div className="min-h-screen space-y-6 bg-slate-50 p-4 text-left selection:bg-primary/20 sm:space-y-10 sm:p-6 lg:p-8">
+            <header className="flex flex-col items-start gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-center sm:gap-6 sm:pb-8">
                 <Button onClick={() => router.back()} variant="outline" size="icon" className="h-12 w-12 rounded-xl bg-white border-slate-200">
                     <ArrowLeft size={20} />
                 </Button>
-                <div>
-                    <div className="flex items-center gap-3 mb-1 text-left">
+                <div className="min-w-0">
+                    <div className="mb-1 flex flex-wrap items-center gap-2 text-left sm:gap-3">
                         <span className={cn(
                             "px-2 py-0.5 rounded-md text-[7px] font-black uppercase tracking-widest",
                             rider.status === 'Offline' ? "bg-slate-200 text-slate-400" : "bg-emerald-500 text-white animate-pulse"
                         )}>{rider.status}</span>
                         <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em]">{rider.current_tier} Operator</p>
                     </div>
-                    <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">{rider.rider_name}</h1>
+                    <h1 className="break-words text-3xl font-black uppercase leading-tight tracking-tighter text-foreground sm:text-4xl">{rider.rider_name}</h1>
                 </div>
             </header>
 
-            <div className="grid lg:grid-cols-12 gap-10">
+            <div className="grid gap-5 lg:grid-cols-12 lg:gap-10">
 
                 {/* LEFT: TELEMETRY */}
-                <div className="lg:col-span-4 space-y-8">
-                    <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-10 text-left">
-                        <div className="flex justify-between items-start">
-                            <div className="h-16 w-16 rounded-[2rem] bg-slate-50 border border-slate-100 flex items-center justify-center text-foreground font-black text-2xl shadow-inner">
+                <div className="space-y-5 lg:col-span-4 sm:space-y-8">
+                    <Card className="space-y-6 rounded-[2rem] border border-slate-100 bg-white p-5 text-left shadow-sm sm:space-y-10 sm:rounded-[3.5rem] sm:p-8 lg:p-10">
+                        <div className="flex min-w-0 items-start justify-between gap-3">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.5rem] border border-slate-100 bg-slate-50 text-2xl font-black text-foreground shadow-inner sm:h-16 sm:w-16 sm:rounded-[2rem]">
                                 {rider.rider_name.substring(0, 2).toUpperCase()}
                             </div>
-                            <div className="text-right">
+                            <div className="min-w-0 text-right">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Trust Score</p>
-                                <p className="text-2xl font-black text-primary">{rider.health_score}%</p>
+                                <p className="break-words text-xl font-black text-primary sm:text-2xl">{rider.health_score}%</p>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 space-y-1">
-                                <p className="text-[8px] font-black uppercase text-slate-400 flex items-center gap-2"><BatteryMedium size={12} className="text-primary" /> Battery</p>
-                                <p className="text-xl font-black text-foreground">{rider.battery_level}%</p>
+                        <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                            <div className="min-w-0 space-y-1 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-3 sm:rounded-[2rem] sm:p-5 lg:p-6">
+                                <p className="flex flex-wrap items-center gap-1.5 text-[8px] font-black uppercase text-slate-400 sm:gap-2"><BatteryMedium size={12} className="shrink-0 text-primary" /> Battery</p>
+                                <p className="break-words text-lg font-black text-foreground sm:text-xl">{rider.battery_level}%</p>
                             </div>
-                            <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 space-y-1 text-right">
-                                <p className="text-[8px] font-black uppercase text-slate-400 flex items-center justify-end gap-2"><Star size={12} className="text-amber-500 fill-current" /> Rating</p>
-                                <p className="text-xl font-black text-foreground">{rider.rating}</p>
+                            <div className="min-w-0 space-y-1 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-3 text-right sm:rounded-[2rem] sm:p-5 lg:p-6">
+                                <p className="flex flex-wrap items-center justify-end gap-1.5 text-[8px] font-black uppercase text-slate-400 sm:gap-2"><Star size={12} className="shrink-0 fill-current text-amber-500" /> Rating</p>
+                                <p className="break-words text-lg font-black text-foreground sm:text-xl">{rider.rating}</p>
                             </div>
                         </div>
 
@@ -161,13 +161,13 @@ export default function RiderProfilePage() {
                                 <Trophy size={14} className="text-amber-500" />
                             </div>
                             <div className="space-y-1">
-                                <p className="text-3xl font-black text-foreground tracking-tighter">{formatPrice(rider.wallet?.total_earned || 0)}</p>
+                                <p className="break-words text-2xl font-black tracking-tighter text-foreground sm:text-3xl">{formatPrice(rider.wallet?.total_earned || 0)}</p>
                                 <p className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">Active Balance: {formatPrice(rider.wallet?.balance || 0)}</p>
                             </div>
                         </div>
                     </Card>
 
-                    <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-8 text-left">
+                    <Card className="space-y-6 rounded-[2rem] border border-slate-100 bg-white p-5 text-left shadow-sm sm:space-y-8 sm:rounded-[3.5rem] sm:p-8 lg:p-10">
                         <div className="flex items-center gap-4">
                             <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
                                 <Activity size={24} />
@@ -195,8 +195,8 @@ export default function RiderProfilePage() {
                 </div>
 
                 {/* RIGHT: MAP & ACTIVITY */}
-                <div className="lg:col-span-8 space-y-8">
-                    <div className="h-[450px] w-full relative overflow-hidden rounded-[3rem] border border-slate-100 shadow-sm">
+                <div className="min-w-0 space-y-5 lg:col-span-8 sm:space-y-8">
+                    <div className="relative h-[320px] w-full overflow-hidden rounded-[2rem] border border-slate-100 shadow-sm sm:h-[450px] sm:rounded-[3rem]">
                         <LiveMap riders={[{
                             id: rider.id,
                             rider_name: rider.rider_name,
@@ -205,13 +205,13 @@ export default function RiderProfilePage() {
                         }]} />
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-8">
+                    <div className="grid min-w-0 gap-5 md:grid-cols-2 sm:gap-8">
                         {/* RECENT MISSIONS */}
                         <Card className="rounded-[3rem] border border-slate-100 bg-white shadow-sm overflow-hidden text-left">
-                            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-50 p-5 sm:p-8">
                                 <div className="flex items-center gap-3">
                                     <History className="h-6 w-6 text-primary" />
-                                    <h2 className="text-2xl font-black uppercase text-foreground tracking-tighter">Mission History</h2>
+                                    <h2 className="text-xl font-black uppercase tracking-tighter text-foreground sm:text-2xl">Mission History</h2>
                                 </div>
                                 <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-50 px-4 py-2 rounded-full border border-slate-100">Last 10 Drops</span>
                             </div>
@@ -239,7 +239,7 @@ export default function RiderProfilePage() {
                         </Card>
 
                         {/* COMMAND ACTIONS */}
-                        <Card className="p-10 rounded-[3.5rem] bg-white border border-slate-100 shadow-sm space-y-8 text-left">
+                        <Card className="space-y-6 rounded-[2rem] border border-slate-100 bg-white p-5 text-left shadow-sm sm:space-y-8 sm:rounded-[3.5rem] sm:p-8 lg:p-10">
                             <h3 className="text-xl font-black uppercase tracking-tighter text-foreground flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-emerald-500" /> Operational Authority</h3>
                             <div className="space-y-4">
                                 <Button onClick={() => window.open(`tel:${rider.rider_phone}`, '_self')} className="w-full h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">

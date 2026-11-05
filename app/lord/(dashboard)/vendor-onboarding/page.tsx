@@ -540,6 +540,9 @@ export default function VendorOnboardingPage() {
 
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div>}
+      <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950">
+        Launch requires one authorized admin to record a passed real test order. No second-person review is required.
+      </div>
       {!loading && !sharedDraftsReady && (
         <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
           Shared onboarding is not installed yet. Apply <strong>VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql</strong>, then <strong>ONBOARDING_INVITES_MIGRATION.sql</strong>, then <strong>MERCHANT_ONBOARDING_SHARED_DRAFTS_MIGRATION.sql</strong> in Supabase to enable saved drafts and work ownership. Existing pipeline records remain available.

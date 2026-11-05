@@ -332,6 +332,12 @@ export async function PATCH(request: Request) {
   if (error) {
     if (migrationMissing(error)) return migrationResponse();
     const message = error.message || '';
+    const outdatedReviewGate = /second.person.{0,40}(?:review|confirm)|(?:review|confirm).{0,40}second.person/i.test(message);
+    if (outdatedReviewGate) {
+      return NextResponse.json({
+        error: 'The database still has the old second-person launch gate. Run supabase/VENDOR_ONBOARDING_SINGLE_REVIEW_MIGRATION.sql after VENDOR_ONBOARDING_PIPELINE_MIGRATION.sql in Supabase, then retry. A passed real test order remains required.'
+      }, { status: 409 });
+    }
     const stageConflict = /only the next onboarding stage|complete and verify|required before launch|field visit check-in|booked visit|test-order stage|passed test order|future visit date|after phone approval|schedule a (?:future )?visit|already completed onboarding|only available for vendor companies|agent and notes are outside the allowed length|already submitted|valid onboarding mode/i.test(message);
     const notFound = /not found/i.test(message);
     if (!stageConflict && !notFound) console.error('[VendorOnboarding] Update failed:', error);
