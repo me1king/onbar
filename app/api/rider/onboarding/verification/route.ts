@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
@@ -8,6 +8,11 @@ export const dynamic = 'force-dynamic';
 const bucket = 'rider-verifications';
 const allowedImageTypes = new Set(['image/jpeg', 'image/png']);
 const maximumImageSize = 5 * 1024 * 1024;
+const sessionTokenPattern = /^[A-Za-z0-9_-]{40,64}$/;
+
+function hashSessionToken(token: string) {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 function getDatabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -47,6 +52,21 @@ export async function GET(request: Request) {
 
   const database = getDatabase();
   if (!database) return NextResponse.json({ error: 'Rider verification is not configured on the server.' }, { status: 503 });
+  const sessionToken = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
+  if (!sessionTokenPattern.test(sessionToken)) {
+    return NextResponse.json({ error: 'Resume your saved onboarding session to check application status.' }, { status: 401 });
+  }
+  const { data: session, error: sessionError } = await database.from('rider_onboarding_sessions')
+    .select('rider_phone')
+    .eq('session_token_hash', hashSessionToken(sessionToken))
+    .eq('rider_phone', phone)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
+  if (sessionError) {
+    console.error('[RiderOnboarding] Could not verify status session:', sessionError);
+    return NextResponse.json({ error: 'Your saved onboarding session could not be checked.' }, { status: 503 });
+  }
+  if (!session) return NextResponse.json({ error: 'Your saved onboarding session is invalid or expired.' }, { status: 401 });
 
   const { data: rider, error } = await database.from('rider_status')
     .select('rider_name,verification_status')
@@ -76,6 +96,7 @@ export async function POST(request: Request) {
   }
 
   const phone = normalizePhone(String(form.get('phone') || ''));
+  const sessionToken = String(form.get('sessionToken') || '');
   const riderName = String(form.get('riderName') || '').trim();
   const riderEmail = String(form.get('riderEmail') || '').trim().toLowerCase();
   const birthDate = String(form.get('birthDate') || '').trim();
@@ -87,6 +108,9 @@ export async function POST(request: Request) {
   const vehiclePhoto = form.get('vehiclePhoto');
 
   if (!phone) return NextResponse.json({ error: 'Enter a valid Kenyan rider phone number.' }, { status: 400 });
+  if (!sessionTokenPattern.test(sessionToken)) {
+    return NextResponse.json({ error: 'Your saved onboarding session is missing. Return to the phone step and continue again.' }, { status: 401 });
+  }
   if (!riderName || riderName.length > 160) {
     return NextResponse.json({ error: 'Enter the rider’s full name (up to 160 characters).' }, { status: 400 });
   }
@@ -107,6 +131,20 @@ export async function POST(request: Request) {
 
   const database = getDatabase();
   if (!database) return NextResponse.json({ error: 'Rider verification is not configured on the server.' }, { status: 503 });
+
+  const { data: onboardingSession, error: sessionError } = await database.from('rider_onboarding_sessions')
+    .select('rider_phone')
+    .eq('session_token_hash', hashSessionToken(sessionToken))
+    .eq('rider_phone', phone)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
+  if (sessionError) {
+    console.error('[RiderOnboarding] Could not verify onboarding session:', sessionError);
+    return NextResponse.json({ error: 'Your saved onboarding session could not be checked.' }, { status: 503 });
+  }
+  if (!onboardingSession) {
+    return NextResponse.json({ error: 'Your saved onboarding session is invalid or expired. Start again from the phone step.' }, { status: 401 });
+  }
 
   let minimumAge = 18;
   let licenseRequired = true;
@@ -214,6 +252,19 @@ export async function POST(request: Request) {
       }
       console.error('[RiderOnboarding] Could not save rider verification:', saveResult.error);
       throw new Error('Rider verification could not be saved. Check that the rider verification database fields are installed.');
+    }
+
+    const { error: progressError } = await database.from('rider_onboarding_sessions')
+      .update({
+        current_step: 'pending',
+        form_data: {},
+        updated_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      })
+      .eq('session_token_hash', hashSessionToken(sessionToken))
+      .eq('rider_phone', phone);
+    if (progressError) {
+      console.error('[RiderOnboarding] Application was submitted, but saved progress could not be advanced:', progressError);
     }
 
     return NextResponse.json({ verificationStatus: 'Pending' }, { status: 201 });

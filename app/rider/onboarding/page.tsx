@@ -23,7 +23,12 @@ import Link from 'next/link';
 
 type Step = 'welcome' | 'phone' | 'identity' | 'vehicle' | 'verification' | 'agreement' | 'biometrics' | 'pending' | 'success';
 
-const normalizePhone = (p: string) => p.replace(/^\+254/, '').replace(/^0/, '').trim();
+const normalizePhone = (p: string) => {
+    let digits = p.replace(/\D/g, '');
+    if (digits.startsWith('254')) digits = digits.slice(3);
+    else if (digits.startsWith('0')) digits = digits.slice(1);
+    return digits;
+};
 const riderProgressSteps: Step[] = ['phone', 'identity', 'vehicle', 'verification', 'agreement', 'biometrics', 'pending'];
 
 async function withSupabaseTimeout<T>(
@@ -48,6 +53,7 @@ export default function RiderOnboarding() {
     const [step, setStep] = useState<Step>('welcome');
     const [loading, setLoading] = useState(false);
     const [phone, setPhone] = useState('');
+    const [onboardingSessionToken, setOnboardingSessionToken] = useState('');
     const [riderName, setRiderName] = useState('');
     const [riderEmail, setRiderEmail] = useState('');
     const [birthDate, setBirthDate] = useState('');
@@ -93,53 +99,55 @@ export default function RiderOnboarding() {
         void loadConfig();
 
         const savedPhone = localStorage.getItem('ob_onboarding_phone');
-        if (savedPhone) {
+        const savedSessionToken = localStorage.getItem('ob_onboarding_session');
+        if (savedPhone && savedSessionToken) {
             setPhone(savedPhone);
-            void fetchProgress(savedPhone);
+            setOnboardingSessionToken(savedSessionToken);
+            void fetchProgress(savedSessionToken);
         }
     }, []);
 
-    const fetchProgress = async (p: string) => {
-        const client = supabase;
-        if (!client) {
-            setError('Saved rider progress could not be restored because onboarding storage is unavailable.');
-            return;
-        }
-        const normalized = normalizePhone(p);
-        let timer: ReturnType<typeof setTimeout> | null = null;
+    const fetchProgress = async (token: string) => {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 10000);
         try {
-            const result = await Promise.race([
-                client
-                    .from('rider_onboarding_sessions')
-                    .select('*')
-                    .eq('rider_phone', normalized)
-                    .maybeSingle(),
-                new Promise<never>((_, reject) => {
-                    timer = setTimeout(() => reject(new Error('Loading saved progress timed out. Check your connection and refresh.')), 10000);
-                })
-            ]);
-            if (result.error) throw result.error;
-
-            const data = result.data as { current_step?: Step; form_data?: Record<string, string> } | null;
-            if (data) {
-                setStep(data.current_step || 'welcome');
-                if (data.form_data) {
-                    const fd = data.form_data as Record<string, string>;
-                    setRiderName(fd.riderName || '');
-                    setRiderEmail(fd.riderEmail || '');
-                    setBirthDate(fd.birthDate || '');
-                    setIdNumber(fd.idNumber || '');
-                    setLicenseNumber(fd.licenseNumber || '');
-                    setPlateNumber(fd.plateNumber || '');
-                    setVehicleType(fd.vehicleType || 'Motorbike');
+            const response = await fetch('/api/rider/onboarding/progress', {
+                headers: { Authorization: `Bearer ${token}` },
+                cache: 'no-store',
+                signal: controller.signal
+            });
+            const result = await response.json() as {
+                error?: string;
+                currentStep?: Step;
+                formData?: Record<string, string>;
+            };
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 404) {
+                    localStorage.removeItem('ob_onboarding_session');
+                    setOnboardingSessionToken('');
                 }
+                throw new Error(result.error || 'Saved rider progress could not be restored.');
             }
+            setStep(result.currentStep || 'welcome');
+            const fd = result.formData;
+            if (fd) {
+                setRiderName(fd.riderName || '');
+                setRiderEmail(fd.riderEmail || '');
+                setBirthDate(fd.birthDate || '');
+                setIdNumber(fd.idNumber || '');
+                setLicenseNumber(fd.licenseNumber || '');
+                setPlateNumber(fd.plateNumber || '');
+                setVehicleType(fd.vehicleType || 'Motorbike');
+            }
+            setError(null);
         } catch (loadError) {
-            setError(loadError instanceof Error
+            setError(loadError instanceof DOMException && loadError.name === 'AbortError'
+                ? 'Loading saved progress timed out. Check your connection and refresh.'
+                : loadError instanceof Error
                 ? `Your saved progress could not be restored: ${loadError.message}`
                 : 'Your saved progress could not be restored. Refresh and try again.');
         } finally {
-            if (timer) clearTimeout(timer);
+            window.clearTimeout(timer);
         }
     };
 
@@ -154,51 +162,60 @@ export default function RiderOnboarding() {
         return 'pending';
     };
 
-    const saveProgress = async (nextStep: Step) => {
+    const saveProgress = async (nextStep: Step, sessionTokenOverride?: string) => {
         if (!phone) {
             setError('Enter your phone number before saving onboarding progress.');
             return false;
         }
         const normalized = normalizePhone(phone);
-        const client = supabase;
-        if (!client) {
-            setError('Rider onboarding storage is unavailable. Your progress was not advanced; please try again later.');
+        if (!/^[17]\d{8}$/.test(normalized)) {
+            setError('Enter a valid Kenyan mobile number, for example +254 7XX XXX XXX.');
             return false;
         }
-
-        let timer: ReturnType<typeof setTimeout> | null = null;
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 15000);
+        const activeToken = sessionTokenOverride !== undefined
+            ? sessionTokenOverride
+            : onboardingSessionToken || localStorage.getItem('ob_onboarding_session') || '';
         try {
-            const saveResult = await Promise.race([
-                client.from('rider_onboarding_sessions').upsert({
-                    rider_phone: normalized,
-                    current_step: nextStep,
-                    form_data: {
-                        riderName,
-                        riderEmail,
-                        birthDate,
-                        idNumber,
-                        licenseNumber,
-                        plateNumber,
-                        vehicleType
-                    },
-                    updated_at: new Date().toISOString()
-                }),
-                new Promise<never>((_, reject) => {
-                    timer = setTimeout(() => reject(new Error('Saving your progress timed out. Check your connection and try again.')), 10000);
+            const response = await fetch('/api/rider/onboarding/progress', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                cache: 'no-store',
+                signal: controller.signal,
+                body: JSON.stringify({
+                    phone: normalized,
+                    sessionToken: activeToken,
+                    currentStep: nextStep,
+                    formData: { riderName, riderEmail, birthDate, idNumber, licenseNumber, plateNumber, vehicleType }
                 })
-            ]);
-            if (saveResult.error) throw saveResult.error;
-            localStorage.setItem('ob_onboarding_phone', phone);
+            });
+            const result = await response.json() as { saved?: boolean; sessionToken?: string; error?: string };
+            if (!response.ok || !result.saved) {
+                if (response.status === 401 && activeToken) {
+                    localStorage.removeItem('ob_onboarding_session');
+                    setOnboardingSessionToken('');
+                }
+                throw new Error(result.error || 'Rider progress could not be saved.');
+            }
+            const sessionToken = result.sessionToken || activeToken;
+            if (!sessionToken) throw new Error('The saved session could not be created. Please try again.');
+            setOnboardingSessionToken(sessionToken);
+            localStorage.setItem('ob_onboarding_phone', normalized);
+            localStorage.setItem('ob_onboarding_session', sessionToken);
             setError(null);
             setStep(nextStep);
             return true;
         } catch (saveError) {
-            setError(saveError instanceof Error
+            setError(saveError instanceof DOMException && saveError.name === 'AbortError'
+                ? 'Saving your progress timed out. Check your connection and try again.'
+                : saveError instanceof Error
                 ? `Your progress was not saved: ${saveError.message}`
                 : 'Your progress was not saved. Check your connection and try again.');
             return false;
         } finally {
-            if (timer) clearTimeout(timer);
+            window.clearTimeout(timer);
+            setLoading(false);
         }
     };
 
@@ -236,15 +253,23 @@ export default function RiderOnboarding() {
 
     const handleIdentify = async () => {
         const normalized = normalizePhone(phone);
-        if (normalized.length < 9) {
-            setError("Valid phone number required");
+        if (!/^[17]\d{8}$/.test(normalized)) {
+            setError('Enter a valid Kenyan mobile number, for example +254 7XX XXX XXX.');
             return;
         }
         setLoading(true);
         setError(null);
 
         try {
-            await saveProgress(getNextEnabledStep('phone'));
+            const previousPhone = localStorage.getItem('ob_onboarding_phone');
+            const sessionToken = previousPhone && normalizePhone(previousPhone) !== normalized
+                ? ''
+                : onboardingSessionToken || localStorage.getItem('ob_onboarding_session') || '';
+            if (!sessionToken) {
+                localStorage.removeItem('ob_onboarding_session');
+                setOnboardingSessionToken('');
+            }
+            if (await saveProgress(getNextEnabledStep('phone'), sessionToken)) setPhone(normalized);
         } finally {
             setLoading(false);
         }
@@ -292,6 +317,7 @@ export default function RiderOnboarding() {
             const normalized = normalizePhone(phone);
             const formData = new FormData();
             formData.set('phone', normalized);
+            formData.set('sessionToken', onboardingSessionToken || localStorage.getItem('ob_onboarding_session') || '');
             formData.set('riderName', riderName.trim());
             formData.set('riderEmail', riderEmail.trim());
             formData.set('birthDate', birthDate);
@@ -308,7 +334,9 @@ export default function RiderOnboarding() {
             });
             const result = await response.json() as { error?: string };
             if (!response.ok) throw new Error(result.error || 'Rider verification could not be submitted.');
-            await saveProgress(getNextEnabledStep('verification'));
+            localStorage.setItem('ob_onboarding_phone', normalized);
+            setStep('pending');
+            setError(null);
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Verification upload failed.");
         } finally {
@@ -365,8 +393,8 @@ export default function RiderOnboarding() {
                         {step === 'phone' && (
                             <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 text-left">
                                 <div className="space-y-2">
-                                    <h3 className="text-xl font-black text-foreground uppercase">Identity Link</h3>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Enter Mobile Number</p>
+                                    <h3 className="text-xl font-black text-foreground uppercase">Start with your phone</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">We’ll use it to save your application on this device</p>
                                 </div>
                                 <div className="relative">
                                     <Input
@@ -377,9 +405,8 @@ export default function RiderOnboarding() {
                                     />
                                     <Phone className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
                                 </div>
-                                {error && <p className="text-[10px] font-black text-rose-500 uppercase animate-pulse">{error}</p>}
                                 <Button onClick={handleIdentify} disabled={loading} className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest active:scale-95 transition-all">
-                                    {loading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : "Verify Identity"}
+                                    {loading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : "Continue"}
                                 </Button>
                             </div>
                         )}
@@ -553,6 +580,7 @@ export default function RiderOnboarding() {
                                             const normalized = normalizePhone(phone);
                                             try {
                                                 const response = await fetch(`/api/rider/onboarding/verification?phone=${encodeURIComponent(normalized)}`, {
+                                                    headers: { Authorization: `Bearer ${onboardingSessionToken || localStorage.getItem('ob_onboarding_session') || ''}` },
                                                     cache: 'no-store'
                                                 });
                                                 const result = await response.json() as {
@@ -562,11 +590,10 @@ export default function RiderOnboarding() {
                                                 };
                                                 if (!response.ok) throw new Error(result.error || 'Rider verification status could not be loaded.');
                                                 if (result.verificationStatus === 'Verified') {
-                                                    const saved = await saveProgress('success');
-                                                    if (saved) {
-                                                        localStorage.setItem('ob_rider_phone', normalized);
-                                                        if (result.riderName) localStorage.setItem('rider_name', result.riderName);
-                                                    }
+                                                    setStep('success');
+                                                    setError(null);
+                                                    localStorage.setItem('ob_rider_phone', normalized);
+                                                    if (result.riderName) localStorage.setItem('rider_name', result.riderName);
                                                 } else {
                                                     setError("Verification still pending. Check back soon.");
                                                     setTimeout(() => setError(null), 3000);
