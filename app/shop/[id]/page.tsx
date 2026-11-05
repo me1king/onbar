@@ -4,6 +4,7 @@ import { Metadata } from 'next';
 import { Product } from '@/types/product';
 import { getPublicBaseUrl, normalizeImage } from '@/lib/utils';
 import { isStorefrontProductVisible } from '@/lib/productVisibility';
+import { LOCAL_DELIVERY_ESTIMATE } from '@/lib/deliveryEstimate';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -38,7 +39,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   return {
     title: `${product.name} | Online Bar Nairobi`,
-    description: product.description || `Buy authentic ${product.name} with Nairobi fast dispatch. Genuine products and premium service.`,
+    description: product.description || `Buy authentic ${product.name}. Eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}; confirm address and availability at checkout.`,
     openGraph: {
       title: product.name,
       description: product.description || undefined,

@@ -1,6 +1,7 @@
 'use client';
 
 import NeuralHero from '@/components/home/hero/NeuralHero';
+import DeliveryEstimateBanner from '@/components/home/DeliveryEstimateBanner';
 import ProductList from '@/components/home/ProductList';
 import WidgetRegistry from '@/components/widgets/WidgetRegistry';
 import { useSettings } from '@/lib/useSettings';
@@ -13,6 +14,7 @@ export default function HomepageSections({ initialProducts }: { initialProducts:
     return (
         <div className="bg-white min-h-screen text-left pb-20">
             {homepage.show_hero !== false && <NeuralHero />}
+            <DeliveryEstimateBanner />
             {homepage.show_catalog !== false && (
                 <section id="catalog-section" className="mx-auto w-full px-3 sm:px-6 lg:px-8">
                     <ProductList

@@ -1,6 +1,7 @@
 import { CartProvider } from "@/context/CartContext";
 import { WishlistProvider } from "@/context/WishlistContext";
 import type { Metadata, Viewport } from "next";
+import { LOCAL_DELIVERY_ESTIMATE } from "@/lib/deliveryEstimate";
 import "@/app/globals.css";
 
 export const metadata: Metadata = {
@@ -9,12 +10,12 @@ export const metadata: Metadata = {
     default: 'Alcohol Delivery in Nairobi | Beer, Wine & Spirits | Online Bar',
     template: '%s | Online Bar',
   },
-  description: 'Order beer, wine, whisky and spirits online from Online Bar. Check mapped delivery areas and fees, then pay with M-Pesa or card. 18+ only.',
+  description: `Online ordering is open 24/7. Eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}, subject to address and availability. Confirm coverage at checkout. 18+.`,
   openGraph: {
     type: 'website',
     siteName: 'Online Bar',
     title: 'Alcohol Delivery in Nairobi | Online Bar',
-    description: 'Beer, wine and spirits delivered in Online Bar’s configured service areas. Check delivery fees and pay with M-Pesa or card.',
+    description: `Online ordering is open 24/7. Eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}, subject to address and availability. Confirm coverage and timing at checkout.`,
     locale: 'en_KE',
   },
   twitter: { card: 'summary_large_image' },

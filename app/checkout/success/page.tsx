@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useSettings } from "@/lib/useSettings";
 import ReceiptPrintButton from "@/components/receipt/ReceiptPrintButton";
 import { generateReceiptPDF } from "@/lib/receiptService";
+import DeliveryCountdown from "@/components/tracking/DeliveryCountdown";
 
 interface Order {
     id: number;
@@ -22,6 +23,7 @@ interface Order {
     user_id: string | null;
     session_id: string | null;
     payment_method: string | null;
+    delivery_area?: string | null;
     order_items?: Array<{
         product_id: number | null;
         product_name?: string;
@@ -290,6 +292,12 @@ function SuccessContent() {
                 </p>
                 {statusError && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{statusError}</p>}
             </div>
+
+            {order && (
+                <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left">
+                    <DeliveryCountdown createdAt={order.created_at} status={order.status} deliveryArea={order.delivery_area} />
+                </div>
+            )}
 
             {order && isOnTheWay && (
                 <div className="mb-10 overflow-hidden rounded-[2.5rem] border border-primary/10 bg-gradient-to-r from-amber-50 via-white to-primary/5 p-6 shadow-lg">

@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from './supabaseClient';
 import { formatPrice } from './utils';
+import { LOCAL_DELIVERY_ESTIMATE } from './deliveryEstimate';
 
 export async function generateProductCatalog(month: string) {
     if (!supabase) throw new Error("Database not connected");
@@ -70,7 +71,7 @@ export async function generateProductCatalog(month: string) {
             doc.setFontSize(8);
             doc.setTextColor(150);
             doc.text(
-                '© 2026 ONLINE BAR™ - Nairobi Fast Dispatch Guaranteed. Visit onlinebar.co.ke for live stock.',
+                `© 2026 ONLINE BAR™ - Eligible local Nairobi delivery estimated ${LOCAL_DELIVERY_ESTIMATE}; confirm coverage at checkout.`,
                 14,
                 doc.internal.pageSize.height - 10
             );

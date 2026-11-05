@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import BuildMyNightWidget from '@/components/widgets/concierge/BuildMyNightWidget';
+import { LOCAL_DELIVERY_ESTIMATE } from '@/lib/deliveryEstimate';
 import { getServiceHoursSchema, loadPublishedDispatchHours } from '@/lib/publicStoreInfo.server';
 
 export const metadata: Metadata = {
   title: 'House Party Drinks Setup | Build the Night',
-  description: 'Planning a house party? Share your guest count, budget and vibe. Build a drinks list from the live catalog, check delivery coverage and pay with M-Pesa. 18+.',
+  description: `Plan house party drinks online 24/7. Eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}, subject to address and availability. 18+.`,
   alternates: { canonical: '/build-the-night' },
 };
 
@@ -20,8 +21,8 @@ export default async function BuildTheNightPage() {
     serviceType: 'Party drinks planning and delivery',
     provider: { '@id': 'https://www.onlinebar.co.ke/#org' },
     description: hours
-      ? `Published dispatch hours: ${hours}. Delivery availability is confirmed for the customer's address.`
-      : 'Dispatch hours are not currently published. Confirm delivery availability and timing for your address.',
+      ? `Online ordering hours: ${hours}. Eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}; confirm availability and timing for the customer's address.`
+      : `Online ordering is open 24/7. Eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}; confirm availability and timing for your address.`,
     ...getServiceHoursSchema(hours),
     offers: {
       '@type': 'Offer',
@@ -37,10 +38,10 @@ export default async function BuildTheNightPage() {
         <p className="text-sm font-bold uppercase tracking-wider text-primary">Online Bar party planning</p>
         <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">Build the Night: your house party drinks, sorted</h1>
         <p className="mt-4 text-lg leading-8 text-slate-700">
-          Build the Night is Online Bar&apos;s house party planning service. Tell us how many guests you expect, your budget and the kind of night you want. Build a drinks list from our current catalog, then confirm your address, delivery availability and total before you order. We accept M-Pesa at checkout. Alcohol is for adults aged 18 and over.
+          Build the Night is Online Bar&apos;s house party planning service. Tell us how many guests you expect, your budget and the kind of night you want. Build a drinks list from our current catalog, then confirm your address, delivery availability and total before you order. Eligible local Nairobi deliveries are estimated at {LOCAL_DELIVERY_ESTIMATE}, subject to address and availability. We accept M-Pesa at checkout. Alcohol is for adults aged 18 and over.
         </p>
         <p className="mt-3 leading-7 text-slate-600">
-          {hours ? <>Published dispatch hours: <strong>{hours}</strong>. Delivery coverage and timing are confirmed for your exact address.</> : 'Dispatch hours are not currently published. Confirm delivery availability and timing for your address at checkout or with Online Bar.'}
+          Online ordering is open <strong>24/7</strong>. Eligible local Nairobi delivery is estimated at {LOCAL_DELIVERY_ESTIMATE}; confirm coverage and timing for your exact address.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <a href="#planner" className="inline-flex min-h-12 items-center rounded-lg bg-slate-950 px-5 font-semibold text-white hover:bg-slate-800">Start my plan</a>

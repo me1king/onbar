@@ -3,13 +3,16 @@ import type { Metadata } from 'next';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { supabase } from '@/lib/supabaseClient';
 import { parseDeliveryAreas, type DeliveryArea } from '@/lib/deliveryAreas';
-import { loadPublishedDispatchHours } from '@/lib/publicStoreInfo.server';
+import { LOCAL_DELIVERY_ESTIMATE } from '@/lib/deliveryEstimate';
+import { loadPublicLocationAreas } from '@/lib/locationCatalog.server';
+import type { ConfiguredLocationArea } from '@/lib/locationCatalog';
+import { getServiceHoursSchema, PUBLIC_DISPATCH_HOURS } from '@/lib/publicStoreInfo.server';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Alcohol Delivery Areas and Fees',
-  description: 'See Online Bar mapped delivery areas and configured fees. Confirm your address, delivery availability and current fee at checkout.',
+  title: 'Alcohol Delivery in Kenya | Service Areas',
+  description: `Online ordering is open 24/7. Find Online Bar delivery locations across Kenya; eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}. Confirm address and timing at checkout.`,
   alternates: { canonical: '/delivery' },
 };
 
@@ -41,17 +44,66 @@ async function loadDeliveryAreas(): Promise<(DeliveryArea & { fee: number })[] |
 }
 
 export default async function DeliveryPage() {
-  const [areas, hours] = await Promise.all([loadDeliveryAreas(), loadPublishedDispatchHours()]);
+  const [areas, locations] = await Promise.all([loadDeliveryAreas(), loadPublicLocationAreas()]);
+  const serviceSchema = locations ? {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    name: 'Online Bar delivery service',
+    serviceType: 'Online drinks and grocery delivery',
+    provider: { '@id': 'https://www.onlinebar.co.ke/#org' },
+    description: `Online ordering is open 24/7. Eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}; delivery timing and availability for other locations are confirmed at checkout.`,
+    areaServed: locations.map(location => ({
+      '@type': 'Place',
+      name: `${location.area}, ${location.city}, ${location.county}, ${location.country}`,
+    })),
+    ...getServiceHoursSchema(PUBLIC_DISPATCH_HOURS),
+  } : null;
+  const locationsByCounty = new Map<string, ConfiguredLocationArea[]>();
+  for (const location of locations || []) {
+    const group = locationsByCounty.get(location.county) || [];
+    group.push(location);
+    locationsByCounty.set(location.county, group);
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
+      {serviceSchema && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceSchema).replace(/</g, '\\u003c') }} />
+      )}
       <header className="max-w-3xl">
         <p className="text-sm font-bold uppercase tracking-wider text-primary">Online Bar delivery</p>
         <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">Delivery areas and fees</h1>
         <p className="mt-4 text-lg leading-8 text-slate-600">
-          Online Bar is a delivery service, not a walk-in bar. We deliver to addresses inside the mapped service areas below. Choose your location at checkout to confirm that your pin is covered and see the applicable fee and available delivery timing.
+          Online Bar is a delivery service, not a walk-in bar. Online ordering is open <strong>24/7</strong>. Eligible local Nairobi deliveries are estimated at <strong>{LOCAL_DELIVERY_ESTIMATE}</strong>, depending on your exact address and availability. Delivery timing for other locations is confirmed at checkout.
         </p>
       </header>
+
+      {locations ? (
+        <section aria-labelledby="delivery-locations" className="mt-8">
+          <h2 id="delivery-locations" className="text-2xl font-bold text-slate-950">Delivery locations</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            These are the locations in Online Bar&apos;s published location directory. Confirm your exact pin, delivery option, fee and estimated timing at checkout.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[...locationsByCounty.entries()].map(([county, countyLocations]) => (
+              <section key={county} className="rounded-xl border border-slate-200 bg-white p-5">
+                <h3 className="font-bold text-slate-950">{county} County</h3>
+                <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                  {countyLocations.map(location => (
+                    <li key={`${location.city}-${location.area}`}>
+                      {location.area}{location.city !== location.area ? `, ${location.city}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <p role="status" className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5 text-slate-800">
+          The delivery location list could not be loaded. Confirm your address with Online Bar before ordering.
+        </p>
+      )}
 
       {areas === null ? (
         <p className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5 text-slate-800">
@@ -81,7 +133,7 @@ export default async function DeliveryPage() {
       )}
 
       <p className="mt-6 text-sm text-slate-600">
-        {hours ? <>Published dispatch hours: <strong>{hours}</strong>. Check your address at checkout for current delivery availability and timing.</> : 'Dispatch hours are not currently published. Check your address at checkout or contact Online Bar for current delivery availability and timing.'}
+        Online ordering is open <strong>24/7</strong>. Eligible local Nairobi delivery is estimated at {LOCAL_DELIVERY_ESTIMATE}; check your address at checkout for current availability and timing.
       </p>
 
       <div className="mt-10 flex flex-wrap gap-3">

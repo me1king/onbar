@@ -181,7 +181,7 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
                 Online<span className="text-primary">Bar</span>
               </Link>
               <p className="text-muted-foreground mt-4 mb-6 max-w-sm font-medium leading-relaxed">
-                Online Bar is an online store for drinks, snacks and gifts. Delivery is available in configured service areas; check your address at checkout.
+                Online Bar is an online store for drinks, snacks and gifts. Online ordering and customer care are available 24/7; we reply within 15 minutes. Delivery is available in configured service areas; check your address at checkout.
               </p>
 
               <div className="space-y-3">

@@ -37,7 +37,7 @@ async function loadTrackingOrder(orderId: number) {
 
   const { data: order, error } = await database
     .from('orders')
-    .select('id, status, customer_name, customer_phone, total_price, created_at, payment_method, rider_name, rider_phone, delivery_eta_minutes, delivery_eta_updated_at, delivered_at, latitude, longitude')
+    .select('id, status, customer_name, customer_phone, total_price, created_at, payment_method, delivery_area, rider_name, rider_phone, delivery_eta_minutes, delivery_eta_updated_at, delivered_at, latitude, longitude')
     .eq('id', orderId)
     .maybeSingle();
   if (error) {
@@ -137,6 +137,7 @@ async function loadTrackingOrder(orderId: number) {
       total_price: order.total_price,
       created_at: order.created_at,
       payment_method: order.payment_method,
+      delivery_area: order.delivery_area,
       delivery_eta_minutes: order.delivery_eta_minutes,
       delivery_eta_updated_at: order.delivery_eta_updated_at,
       delivered_at: order.delivered_at,

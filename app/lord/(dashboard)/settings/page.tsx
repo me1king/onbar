@@ -99,7 +99,7 @@ const DEFAULTS = {
     theme_config: { ...DEFAULT_THEME_COLORS, custom_css: "" },
     seo_config: { title: "Online Bar | Premium Drinks", description: "Premium wine, spirits and snacks delivery in Nairobi.", keywords: "Wine delivery, Whiskey Nairobi, Late night snacks, Kenya Bar", og_image: "" },
     social_links: { instagram: "", tiktok: "", facebook: "", x: "", youtube: "", snapchat: "" },
-    store_info: { name: "ONLINE BAR", hours: "24/7 Dispatch", google_maps: "", footer_copy: "© 2026 Online Bar™" },
+    store_info: { name: "ONLINE BAR", hours: "Open 24/7", google_maps: "", footer_copy: "© 2026 Online Bar™" },
     ai_config: {
         assistant_name: "Bar AI",
         response_style: "Premium",

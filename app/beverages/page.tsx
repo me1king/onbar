@@ -14,6 +14,7 @@ import {
     Sparkles
 } from 'lucide-react';
 import { cn, formatPrice, normalizeImage } from '@/lib/utils';
+import { LOCAL_DELIVERY_ESTIMATE } from '@/lib/deliveryEstimate';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
@@ -149,7 +150,7 @@ export default function BeverageCommandPage() {
                             Beverage <span className="text-primary italic">Command.</span>
                         </h1>
                         <p className="text-slate-500 font-medium text-base sm:text-lg italic leading-relaxed">
-                            &quot;Ice-cold drinks. Instant refresh. Express delivery in Nairobi.&quot;
+                            &quot;Order online 24/7. Estimated {LOCAL_DELIVERY_ESTIMATE} local delivery in eligible Nairobi areas; confirm address and availability at checkout.&quot;
                         </p>
                     </div>
                 </div>

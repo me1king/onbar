@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import EventRequestForm from '@/components/concierge/EventRequestForm';
+import { LOCAL_DELIVERY_ESTIMATE } from '@/lib/deliveryEstimate';
 import { getServiceHoursSchema, loadPublishedDispatchHours } from '@/lib/publicStoreInfo.server';
 
 export const metadata: Metadata = {
   title: 'Event Drinks Concierge | Personal Event Planning',
-  description: 'Planning a wedding, birthday, graduation or corporate event? Share your guest count, date, venue area and budget to start an Online Bar drinks plan.',
+  description: `Plan wedding, birthday, graduation or corporate event drinks online 24/7. Eligible local Nairobi delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}, subject to venue coverage.`,
   alternates: { canonical: '/concierge' },
 };
 
@@ -22,8 +23,8 @@ export default async function ConciergePage() {
     serviceType: 'Event drinks planning concierge',
     provider: { '@id': 'https://www.onlinebar.co.ke/#org' },
     description: hours
-      ? `Published dispatch hours: ${hours}. Event delivery availability is confirmed for the venue address.`
-      : 'Dispatch hours are not currently published. Confirm delivery availability and timing for the venue address.',
+      ? `Online ordering hours: ${hours}. Eligible local Nairobi event delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}; confirm availability and timing for the venue address.`
+      : `Online ordering is open 24/7. Eligible local Nairobi event delivery is estimated at ${LOCAL_DELIVERY_ESTIMATE}; confirm availability and timing for the venue address.`,
     ...getServiceHoursSchema(hours),
     offers: {
       '@type': 'Offer',
@@ -39,10 +40,10 @@ export default async function ConciergePage() {
         <p className="text-sm font-bold uppercase tracking-wider text-primary">Online Bar event planning</p>
         <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">Your personal drinks concierge for events</h1>
         <p className="mt-4 text-lg leading-8 text-slate-600">
-          Not sure what to serve at your event? Tell our concierge your guest count, date, venue area and budget. We can help you plan a drinks list from the current catalog and check delivery availability for your address, so you can review the options and total before ordering.
+          Not sure what to serve at your event? Tell our concierge your guest count, date, venue area and budget. We can help you plan a drinks list from the current catalog and check delivery availability for your address, so you can review the options and total before ordering. Eligible local Nairobi deliveries are estimated at {LOCAL_DELIVERY_ESTIMATE}, subject to venue address and availability.
         </p>
         <p className="mt-3 leading-7 text-slate-600">
-          {hours ? <>Published dispatch hours: <strong>{hours}</strong>. Delivery coverage and timing are confirmed for the venue address.</> : 'Dispatch hours are not currently published. Confirm delivery availability and timing for the venue address before booking.'}
+          Online ordering is open <strong>24/7</strong>. Eligible local Nairobi event delivery is estimated at {LOCAL_DELIVERY_ESTIMATE}; confirm coverage and timing for the venue address.
         </p>
       </header>
 

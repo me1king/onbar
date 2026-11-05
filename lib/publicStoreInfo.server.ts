@@ -1,28 +1,7 @@
-import { createServerSupabaseClient } from '@/lib/serverSupabase';
-import { supabase } from '@/lib/supabaseClient';
+export const PUBLIC_DISPATCH_HOURS = 'Open 24/7';
 
 export async function loadPublishedDispatchHours(): Promise<string | null> {
-  const database = createServerSupabaseClient() || supabase;
-  if (!database) {
-    console.error('[PublicStoreInfo] Server-side settings are not configured.');
-    return null;
-  }
-
-  const { data, error } = await database.from('settings')
-    .select('value')
-    .eq('key', 'store_info')
-    .eq('is_published', true)
-    .abortSignal(AbortSignal.timeout(8_000))
-    .maybeSingle();
-  if (error) {
-    console.error('[PublicStoreInfo] Could not load published store hours:', error.message);
-    return null;
-  }
-
-  const value = data?.value;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const hours = (value as Record<string, unknown>).hours;
-  return typeof hours === 'string' && hours.trim() ? hours.trim() : null;
+  return PUBLIC_DISPATCH_HOURS;
 }
 
 export function getServiceHoursSchema(hours: string | null) {

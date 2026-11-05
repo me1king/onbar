@@ -276,7 +276,7 @@ export const DEFAULT_SETTINGS: StoreSettings = {
     },
     store_info: {
         name: "ONLINE BAR",
-        hours: "24/7 Dispatch: Nairobi",
+        hours: "Open 24/7",
         google_maps: "",
         footer_copy: "© 2026 Online Bar™"
     },

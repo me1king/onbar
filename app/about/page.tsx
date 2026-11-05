@@ -30,7 +30,7 @@ export default function AboutUsPage() {
           </div>
           <div>
             <div className="text-xl sm:text-2xl font-black text-foreground">24/7</div>
-            <div className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider font-medium mt-1">Fast Dispatch</div>
+            <div className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider font-medium mt-1">Online Ordering</div>
           </div>
         </div>
 

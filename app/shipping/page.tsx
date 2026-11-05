@@ -1,5 +1,6 @@
 "use strict";
 import React from "react";
+import { LOCAL_DELIVERY_ESTIMATE } from "@/lib/deliveryEstimate";
 
 export default function ShippingInfoPage() {
   const lastUpdated = "May 2026";
@@ -13,7 +14,7 @@ export default function ShippingInfoPage() {
           <h1 className="text-3xl font-extrabold text-foreground tracking-tight">Shipping & Delivery Info</h1>
           <p className="text-sm text-slate-400 mt-2">Last Updated: {lastUpdated}</p>
           <p className="text-slate-600 mt-4 leading-relaxed">
-            At <strong>Online Bar</strong>, we work to get your premium beverages and snacks processed, packed, and dispatched into your hands as quickly as possible. Below you will find everything you need to know about our local delivery zones, timelines, and courier fulfillment methods.
+            Eligible local Nairobi deliveries are estimated at <strong>{LOCAL_DELIVERY_ESTIMATE}</strong>, depending on your exact address and availability. This is not a coverage guarantee; confirm your address and current timing at checkout. Upcountry shipping uses separate courier timelines.
           </p>
         </div>
 
@@ -31,13 +32,13 @@ export default function ShippingInfoPage() {
               </thead>
               <tbody className="divide-y divide-slate-200 text-slate-600">
                 <tr>
-                  <td className="px-4 py-3 font-medium text-foreground">Nairobi CBD & Environs</td>
-                  <td className="px-4 py-3">Same Day or Within 24 Hours</td>
+                  <td className="px-4 py-3 font-medium text-foreground">Nairobi CBD & Environs (if eligible)</td>
+                  <td className="px-4 py-3">Estimated {LOCAL_DELIVERY_ESTIMATE}; confirm address and availability</td>
                   <td className="px-4 py-3">Local On-Demand Rider</td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-3 font-medium text-foreground">Nairobi Suburbs</td>
-                  <td className="px-4 py-3">24 to 48 Hours max</td>
+                  <td className="px-4 py-3 font-medium text-foreground">Nairobi Suburbs (if eligible)</td>
+                  <td className="px-4 py-3">Estimated {LOCAL_DELIVERY_ESTIMATE}; confirm address and availability</td>
                   <td className="px-4 py-3">Standard Moto-Courier</td>
                 </tr>
                 <tr>
@@ -53,7 +54,7 @@ export default function ShippingInfoPage() {
         {/* Essential Processing Alert */}
         <div className="p-5 bg-indigo-50 border border-indigo-100 rounded-xl mb-8">
           <h3 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-2">⚡ Processing Cut-Off Times</h3>
-            Orders placed and paid via M-Pesa before <strong>12:00 PM (Noon)</strong> East African Time, Monday through Saturday, qualify for our accelerated daily dispatch lines. Orders finalized after Noon or during Sundays will be integrated into the immediate next business day&apos;s morning courier batch.
+            Online orders are accepted <strong>24/7</strong>. Eligible local Nairobi deliveries have an estimated 10–30 minute window from order placement, subject to address and live delivery availability. Upcountry orders use separate courier services and business-day dispatch schedules; confirm their timing at checkout.
         </div>
 
         {/* Policy Body Layout */}

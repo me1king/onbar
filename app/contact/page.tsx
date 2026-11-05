@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { LOCAL_DELIVERY_ESTIMATE } from "@/lib/deliveryEstimate";
 import Link from "next/link";
 import {
   CheckCircle,
@@ -108,7 +109,7 @@ export default function Contact() {
       icon: Phone,
       title: "Call Us",
       details: [loading ? '...' : `+${settings.contact.whatsapp}`],
-      description: "Mon-Fri from 8am to 5pm",
+      description: "Customer care is online 24/7",
     },
     {
       icon: MapPin,
@@ -118,9 +119,9 @@ export default function Contact() {
     },
     {
       icon: Clock,
-      title: "Working Hours",
-      details: ["Monday - Friday: 9am - 6pm", "Saturday: 10am - 4pm"],
-      description: "Sunday: Closed",
+      title: "Customer Care",
+      details: ["Online 24/7"],
+      description: "We reply within 15 minutes",
     },
   ];
 
@@ -133,7 +134,7 @@ export default function Contact() {
     {
       icon: MessageSquare,
       title: "Quick Response",
-      description: "We reply within 2 hours",
+      description: "Customer care is online 24/7. We reply within 15 minutes.",
     },
     {
       icon: Shield,
@@ -162,6 +163,9 @@ export default function Contact() {
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto font-medium">
               Have a question about a product, compatibility, or your order? We&apos;re here to help you get the best out of your experience.
             </p>
+            <p className="mt-4 text-sm font-semibold text-slate-700">
+              Customer care is online 24/7. We reply within 15 minutes by WhatsApp, phone, email, or the support form.
+            </p>
           </div>
         </div>
       </section>
@@ -176,7 +180,7 @@ export default function Contact() {
                     Send us a message
                   </CardTitle>
                   <p className="text-slate-500 font-medium text-sm mt-1">
-                    Fill out the form below and we&apos;ll get back to you as soon as possible.
+                    Fill out the form below. Customer care is online 24/7 and replies within 15 minutes.
                   </p>
                 </CardHeader>
                 <CardContent className="p-8">
@@ -457,7 +461,7 @@ export default function Contact() {
               {
                 question: "How long does delivery take?",
                 answer:
-                  "Nairobi deliveries are usually within 2 hours. For upcountry orders, we dispatch via regional parcel services which typically take 2-3 business days.",
+                  `Eligible local Nairobi deliveries are estimated at ${LOCAL_DELIVERY_ESTIMATE}, depending on your exact address and availability; confirm the ETA at checkout. Upcountry orders use regional parcel services and typically take 2-3 business days.`,
               },
               {
                 question: "Do you offer quality checks?",

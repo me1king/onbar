@@ -62,8 +62,16 @@ function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: stri
 declare global {
   interface Window {
     fbq?: (action: string, eventName: string, params?: Record<string, unknown>) => void;
-    PaystackPop: {
-      setup: (options: Record<string, unknown>) => {
+    PaystackPop?: {
+      setup: (options: {
+        key: string;
+        email: string;
+        amount: number;
+        currency: string;
+        ref: string;
+        callback: (response: PaystackResponse) => void;
+        onClose: () => void;
+      }) => {
         openIframe: () => void;
       };
     };
@@ -748,6 +756,7 @@ function CheckoutContent() {
     setIsPlacingOrder(true);
     setCheckoutStatus({ type: "processing", message: "Submitting your order..." });
 
+    let submittedOrderId: number | null = null;
     try {
       const client = supabase;
       if (!client) throw new Error('Database connection was lost. Your order was not submitted.');
@@ -825,6 +834,7 @@ function CheckoutContent() {
           throw new Error(orderResult.error || 'The order could not be created.');
       }
       const orderId = orderResult.orderId;
+      submittedOrderId = orderId;
       const authoritativeTotal = orderResult.total;
       setPlacedOrderId(orderId);
 
@@ -837,11 +847,10 @@ function CheckoutContent() {
           return;
         }
         if (!window.PaystackPop) {
-            setCheckoutStatus({ type: "error", message: "Payment system failing to load. Please check your connection." });
             OB_OS.track('PAYMENT_FAIL', { userId: user?.id, orderId, details: { reason: 'PAYMENT_WINDOW_UNAVAILABLE' } });
-            setIsPlacingOrder(false);
-            return;
+            throw new Error('The secure payment window could not load.');
         }
+        if (!paystackPublicKey) throw new Error('Online payments are not configured.');
 
         setCheckoutStatus({ type: "processing", message: "Launching secure payment window..." });
 
@@ -851,8 +860,9 @@ function CheckoutContent() {
             amount: Math.round(authoritativeTotal * 100),
             currency: orderResult.currency || 'KES',
             ref: orderResult.reference,
-            callback: async (response: PaystackResponse) => {
-                if (response.status === 'success') {
+            callback: (response: PaystackResponse) => {
+                if (response.status !== 'success') return;
+                void (async () => {
                     try {
                         const verification = await fetch('/api/paystack/verify-order', {
                             method: 'POST',
@@ -876,14 +886,14 @@ function CheckoutContent() {
                     // FORCE REDIRECT - prevent being stuck in Paystack modal
                     clearGiftDraft();
                     window.location.href = `/checkout/success?orderId=${orderId}`;
-                }
+                })();
             },
             onClose: () => {
                 OB_OS.track('PAYMENT_FAIL', { userId: user?.id, orderId, details: { reason: 'PAYMENT_PROMPT_CLOSED' } });
                 setIsPlacingOrder(false);
                 setCheckoutStatus({
                     type: "error",
-                    message: "Payment was not completed. Your order remains pending; you can safely retry checkout."
+                    message: `Payment was not completed. Order #${orderId} remains pending. Contact support before placing another order.`
                 });
             }
         });
@@ -895,11 +905,15 @@ function CheckoutContent() {
     } catch (error: unknown) {
         const err = error as Error;
         console.error("Checkout Error:", err);
-        const message = ['AbortError', 'TimeoutError'].includes(err.name)
+        const baseMessage = ['AbortError', 'TimeoutError'].includes(err.name)
           ? 'The order request timed out. Your order may still be processing; check Orders before retrying to avoid a duplicate.'
           : err instanceof TypeError && /fetch/i.test(err.message)
           ? "We could not reach the order service. Check your connection and try again."
           : err.message || "An unexpected error occurred.";
+        const message = submittedOrderId
+          ? `${baseMessage} Order #${submittedOrderId} has already been saved. Do not place it again; contact support for help completing payment.`
+          : baseMessage;
+        if (submittedOrderId) setPlacedOrderId(submittedOrderId);
         setCheckoutStatus({ type: "error", message });
         setIsPlacingOrder(false);
     }
@@ -1577,7 +1591,7 @@ function CheckoutContent() {
                 data-behavior-event="PAYMENT_STARTED"
                 className="w-full h-20 bg-primary text-white hover:bg-primary/90 rounded-[1.8rem] font-black uppercase tracking-[0.2em] text-[11px] mt-4 shadow-2xl disabled:bg-slate-200 transition-all active:scale-95"
                 onClick={handlePlaceOrder}
-                disabled={isPlacingOrder || checkoutStatus.type === 'success'}
+                disabled={isPlacingOrder || checkoutStatus.type === 'success' || placedOrderId !== null}
               >
                 {isPlacingOrder ? (
                     <div className="flex items-center gap-3">
@@ -1608,7 +1622,16 @@ function CheckoutContent() {
                           <p className="mb-12 text-sm font-medium text-slate-600 italic leading-relaxed max-w-xs mx-auto">&quot;{checkoutStatus.message}&quot;</p>
 
                           <div className="flex flex-col gap-4">
-                              {unavailableItem ? (
+                              {placedOrderId !== null ? (
+                                <>
+                                  <Button asChild className="h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-[0.2em] shadow-2xl shadow-primary/30">
+                                    <Link href="/contact">Contact support · order #{placedOrderId}</Link>
+                                  </Button>
+                                  <Button asChild variant="outline" className="h-16 rounded-2xl border-2 border-slate-300 bg-white text-slate-600 font-black uppercase text-[10px] tracking-widest">
+                                    <Link href={`/track?id=${placedOrderId}`}>Track saved order</Link>
+                                  </Button>
+                                </>
+                              ) : unavailableItem ? (
                                 <>
                                   <Button
                                     onClick={() => {
@@ -1641,16 +1664,18 @@ function CheckoutContent() {
                                   </Button>
                                 )
                               )}
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setUnavailableItem(null);
-                                  setCheckoutStatus({ type: "idle", message: "" });
-                                }}
-                                className="h-16 rounded-2xl border-2 border-slate-300 bg-white text-slate-600 font-black uppercase text-[10px] tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
-                              >
-                                  Continue checkout
-                              </Button>
+                              {placedOrderId === null && (
+                                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    setUnavailableItem(null);
+                                    setCheckoutStatus({ type: "idle", message: "" });
+                                  }}
+                                  className="h-16 rounded-2xl border-2 border-slate-300 bg-white text-slate-600 font-black uppercase text-[10px] tracking-widest hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
+                                >
+                                    Continue checkout
+                                </Button>
+                              )}
                           </div>
                       </div>
                       <Zap className="absolute -bottom-10 -left-10 h-64 w-64 text-rose-900/5 rotate-12 -z-0" />

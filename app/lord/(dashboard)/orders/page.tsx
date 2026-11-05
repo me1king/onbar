@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
+import OrderItemsSummary from '@/components/admin/OrderItemsSummary';
 import {
   Plus,
   RefreshCcw,
@@ -24,8 +25,6 @@ import {
   CheckSquare,
   Square,
   Gift,
-  ThermometerSnowflake,
-  Coffee,
   Trash2
 } from 'lucide-react';
 
@@ -134,6 +133,7 @@ export default function AdminOrdersPage() {
   const [isSavingManualOrder, setIsSavingManualOrder] = React.useState(false);
   const [manualOrder, setManualOrder] = React.useState<ManualOrderForm>(initialManualOrder);
   const [selectedOrders, setSelectedOrders] = React.useState<number[]>([]);
+  const [selectedBulkStatus, setSelectedBulkStatus] = React.useState<MachineStatus | ''>('');
   const [isBulkUpdating, setIsBulkUpdating] = React.useState(false);
   const [editingGiftOrderId, setEditingGiftOrderId] = React.useState<number | null>(null);
   const [giftMessageDraft, setGiftMessageDraft] = React.useState('');
@@ -215,6 +215,9 @@ export default function AdminOrdersPage() {
       getAdminStatusActions(order.status).includes(status)
     ));
   }, [orders, selectedOrders]);
+  const effectiveBulkStatus = selectedBulkStatus && availableBulkStatuses.includes(selectedBulkStatus)
+    ? selectedBulkStatus
+    : availableBulkStatuses[0] || '';
 
   const renderOrderFlow = (order: OrderRecord) => {
     const events = order.status_events || [];
@@ -662,29 +665,40 @@ export default function AdminOrdersPage() {
         <div className="lg:col-span-2 space-y-6 text-left">
           <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden text-left flex flex-col min-h-[600px]">
             {selectedOrders.length > 0 && (
-                <div className="bg-white/90 backdrop-blur-2xl p-6 flex items-center justify-between z-30 animate-in slide-in-from-top-2 border-b border-slate-100 shrink-0">
-                    <div className="flex items-center gap-4 ml-4">
-                        <div className="h-2 w-2 rounded-full bg-primary animate-ping"></div>
-                        <p className="text-[11px] font-black uppercase text-foreground tracking-[0.2em]">{selectedOrders.length} Orders Selected</p>
+                <div className="z-30 flex shrink-0 flex-col gap-3 border-b border-slate-100 bg-slate-50/90 p-4 animate-in slide-in-from-top-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="h-2 w-2 rounded-full bg-primary"></div>
+                        <p className="text-xs font-bold text-slate-700">{selectedOrders.length} orders selected</p>
                     </div>
-                    <div className="flex gap-3">
-                        {availableBulkStatuses.map(s => (
-                            <Button
-                                key={s}
-                                size="sm"
-                                disabled={isBulkUpdating}
-                                onClick={() => handleBulkStatusUpdate(s)}
-                                className="h-10 px-4 rounded-xl bg-slate-50 hover:bg-slate-100 text-foreground font-black uppercase text-[9px] tracking-widest border border-slate-100 transition-all hover:scale-105 active:scale-95"
-                            >
-                                Set {s}
-                            </Button>
-                        ))}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        {availableBulkStatuses.length > 0 ? (
+                            <>
+                                <select
+                                    aria-label="Bulk order status"
+                                    value={effectiveBulkStatus}
+                                    onChange={event => setSelectedBulkStatus(event.target.value as MachineStatus)}
+                                    className="h-10 min-w-40 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                >
+                                    {availableBulkStatuses.map(status => <option key={status} value={status}>{status}</option>)}
+                                </select>
+                                <Button
+                                    size="sm"
+                                    disabled={isBulkUpdating || !effectiveBulkStatus}
+                                    onClick={() => effectiveBulkStatus && handleBulkStatusUpdate(effectiveBulkStatus)}
+                                    className="h-10 rounded-lg px-4 text-xs font-bold"
+                                >
+                                    {isBulkUpdating ? 'Updating…' : 'Apply status'}
+                                </Button>
+                            </>
+                        ) : (
+                            <p className="text-xs text-slate-500">No shared next status is available for this selection.</p>
+                        )}
                         <Button
                             onClick={() => setSelectedOrders([])}
                             variant="ghost"
-                            className="h-10 px-4 text-slate-400 hover:text-rose-600 text-[9px] font-black uppercase tracking-widest transition-colors active:scale-95"
+                            className="h-10 px-3 text-xs font-semibold text-slate-500 hover:text-rose-600"
                         >
-                            Cancel
+                            Clear selection
                         </Button>
                     </div>
                 </div>
@@ -816,52 +830,7 @@ export default function AdminOrdersPage() {
                                 </div>
                                 </td>
                                 <td className="px-5 py-5 align-top">
-                                <div className="flex flex-col text-left gap-2.5">
-                                    {order.order_items && order.order_items.length > 0 ? (
-                                        order.order_items.map((item) => {
-                                            const pName = productNameMap.get(item.product_id) || '';
-                                            const isChilled = pName.toLowerCase().includes('wine') ||
-                                                             pName.toLowerCase().includes('beer') ||
-                                                             pName.toLowerCase().includes('juice') ||
-                                                             pName.toLowerCase().includes('soda');
-
-                                            return (
-                                                <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 last:pb-2.5">
-                                                    <div className="flex justify-between items-start gap-3">
-                                                        <div className="flex flex-col gap-1">
-                                                            <span className="font-black text-foreground uppercase text-[11px] block break-words max-w-[190px]">
-                                                                {pName || `Item #${item.product_id}`}
-                                                            </span>
-                                                            <div className="flex items-center gap-1.5">
-                                                                {isChilled ? (
-                                                                    <span className="text-[7px] font-black uppercase text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                                                        <ThermometerSnowflake className="h-2 w-2" /> Chilled
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-[7px] font-black uppercase text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                                                        <Coffee className="h-2 w-2" /> Dry Shelf
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        {order.warehouse_location && (
-                                                            <span className="text-[7px] font-black uppercase text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded shadow-sm">
-                                                                {order.warehouse_location.split(' ')[0]}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center justify-between gap-2 mt-1.5">
-                                                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">
-                                                            x{item.quantity} Bottles {item.size && `(${item.size})`}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    ) : (
-                                        <span className="text-[10px] text-slate-400 italic">No Items Logged</span>
-                                    )}
-                                </div>
+                                <OrderItemsSummary items={order.order_items} productNameMap={productNameMap} warehouseLocation={order.warehouse_location} />
                                 </td>
                                 <td className="px-5 py-5 align-top">
                                     <span className={cn(
@@ -985,6 +954,8 @@ export default function AdminOrdersPage() {
                                     </div>
                                 </div>
                                 {renderOrderFlow(order)}
+
+                                <OrderItemsSummary items={order.order_items} productNameMap={productNameMap} warehouseLocation={order.warehouse_location} />
 
                                 <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl">
                                     <span className="text-[9px] font-black uppercase text-slate-400">Pipeline Status</span>

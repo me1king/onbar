@@ -13,6 +13,7 @@ import { useSearchParams } from 'next/navigation';
 import { useSettings } from '@/lib/useSettings';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
+import DeliveryCountdown from '@/components/tracking/DeliveryCountdown';
 
 const CustomerDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
   ssr: false,
@@ -26,6 +27,7 @@ interface OrderDetails {
   total_price: number;
   created_at: string;
   payment_method: string;
+  delivery_area?: string | null;
   delivered_at?: string | null;
   rider_name?: string | null;
   rider_phone?: string | null;
@@ -343,6 +345,10 @@ function TrackingContent() {
               </div>
 
               <div className="p-8 sm:p-12">
+                <div className="mb-10 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                  <DeliveryCountdown createdAt={order.created_at} status={order.status} deliveryArea={order.delivery_area} />
+                </div>
+
                 <div className="relative mb-12 sm:mb-20">
                   <div className="absolute left-0 right-0 top-6 hidden h-1.5 rounded-full bg-slate-100 sm:block">
                     <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{ width: `${(currentIndex / (steps.length - 1)) * 100}%` }} />

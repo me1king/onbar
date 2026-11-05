@@ -39,6 +39,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Product } from '@/types/product';
 import { getStoredVariantPrices, getVariantPrice } from '@/lib/productPricing';
 import { isAllowed } from '@/lib/consentService';
+import { LOCAL_DELIVERY_ESTIMATE } from '@/lib/deliveryEstimate';
 
 import ReviewSection from '@/components/product/ReviewSection';
 import BundleUpsell from './BundleUpsell';
@@ -643,7 +644,7 @@ export default function ProductDetailClient({
                 {product.stock !== undefined && product.stock > 0 ? (
                     <div className="flex items-center gap-3 px-5 py-3 bg-emerald-50 text-emerald-600 rounded-full w-fit border border-emerald-100 shadow-sm animate-in slide-in-from-left-4 duration-1000 max-w-full">
                         <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                        <span className="text-[10px] font-black uppercase tracking-widest truncate">In stock &bull; dispatched 24/7</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest truncate">In stock &bull; order online 24/7</span>
                     </div>
                 ) : (
                     <div className="w-full">
@@ -881,7 +882,7 @@ export default function ProductDetailClient({
                 <div className="space-y-3 rounded-2xl border border-amber-100 bg-white p-4 shadow-sm sm:p-5">
                     <p className="flex items-start gap-3 text-sm leading-relaxed text-slate-800">
                         <Zap size={18} className="mt-0.5 shrink-0 fill-amber-500 text-amber-500" />
-                        <span><strong>Fast delivery in Nairobi</strong> · 30 minutes for most areas, or next-day countrywide.</span>
+                        <span><strong>Estimated local delivery: {LOCAL_DELIVERY_ESTIMATE}</strong> for eligible Nairobi addresses; confirm coverage and availability at checkout. Upcountry orders use separate courier timelines.</span>
                     </p>
                     <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
                         <span className="mr-1">We accept</span>
@@ -1023,7 +1024,7 @@ export default function ProductDetailClient({
           </div>
           <div className="grid md:grid-cols-2 gap-6">
                 {(product.faq_data || [
-                    { q: "What is the delivery timeline?", a: "Online Bar Nairobi mission protocol ensures most orders reach your grid coordinates within 20-45 minutes. Chilled dispatch is standard." },
+                    { q: "What is the delivery timeline?", a: `Eligible local Nairobi deliveries are estimated at ${LOCAL_DELIVERY_ESTIMATE}, depending on your exact address and availability. Confirm the ETA at checkout; upcountry orders use separate courier timelines.` },
                     { q: "Is this product authentic?", a: "Affirmative. Every node in our cellar is 100% genuine, sourced directly from authorized Kenyan distributors and bonded warehouses." },
                     { q: "Can I pay on delivery?", a: "Yes, where Cash on Delivery is available. At handover, a verified rider checks your ID and one-time code, then can record cash, send an M-Pesa prompt, or open a secure scan-to-pay checkout." },
                     { q: "What if my drink is warm?", a: "Chilled delivery is our prime directive. If your beverage arrives above 8°C, our dispatch hub will issue a tactical replacement." }
@@ -1032,7 +1033,7 @@ export default function ProductDetailClient({
                         <h4 className="text-[11px] font-black text-brand-red uppercase tracking-widest mb-4 flex items-center gap-3">
                             <div className="h-1.5 w-1.5 rounded-full bg-brand-red animate-pulse" /> {faq.q}
                         </h4>
-                        <p className="text-slate-500 font-medium leading-relaxed italic text-sm">&quot;{faq.a}&quot;</p>
+                        <p className="text-slate-500 font-medium leading-relaxed italic text-sm">&quot;{/delivery timeline|delivery time|how long.*deliver/i.test(faq.q) ? `Eligible local Nairobi deliveries are estimated at ${LOCAL_DELIVERY_ESTIMATE}, depending on your exact address and availability. Confirm the ETA at checkout; upcountry orders use separate courier timelines.` : faq.a}&quot;</p>
                     </Card>
                 ))}
           </div>
