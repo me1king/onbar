@@ -70,6 +70,7 @@
   },
   "allowScripts": {
     "core-js@3.49.0": true,
+    "msgpackr-extract@3.0.4": true,
     "sharp@0.33.5": true,
     "unrs-resolver@1.11.1": true
   }
