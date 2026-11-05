@@ -66,19 +66,19 @@ export async function GET(request: Request) {
   const database = getDatabase();
   if (!database) return NextResponse.json({ error: 'Rider progress storage is not configured on the server.' }, { status: 503 });
 
-  const { data, error } = await database.from('rider_onboarding_sessions')
+  const { data, error } = await database.from('rider_onboarding_progress')
     .select('rider_phone,current_step,form_data,updated_at')
     .eq('session_token_hash', hashToken(token))
     .gt('expires_at', new Date().toISOString())
     .maybeSingle();
   if (error) {
     console.error('[RiderOnboardingProgress] Could not load saved progress:', error);
-    return /rider_onboarding_sessions/i.test(error.message)
+    return /rider_onboarding_progress/i.test(error.message)
       ? unavailable()
       : NextResponse.json({ error: 'Saved rider progress could not be loaded. Please try again.' }, { status: 503 });
   }
   if (!data) {
-    const { error: cleanupError } = await database.from('rider_onboarding_sessions')
+    const { error: cleanupError } = await database.from('rider_onboarding_progress')
       .delete()
       .eq('session_token_hash', hashToken(token))
       .lt('expires_at', new Date().toISOString());
@@ -94,7 +94,7 @@ export async function GET(request: Request) {
     .select('verification_status')
     .eq('rider_phone', data.rider_phone)
     .maybeSingle();
-  if (riderError) {
+  if (riderError && !/rider_status/i.test(riderError.message)) {
     console.error('[RiderOnboardingProgress] Could not check application status:', riderError);
     return NextResponse.json({ error: 'Rider application status could not be checked. Please try again.' }, { status: 503 });
   }
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
   const sessionTokenHash = hashToken(sessionToken);
 
   if (token) {
-    const { data, error } = await database.from('rider_onboarding_sessions')
+    const { data, error } = await database.from('rider_onboarding_progress')
       .update({
         current_step: currentStep,
         form_data: body.formData,
@@ -158,13 +158,13 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (error) {
       console.error('[RiderOnboardingProgress] Could not save progress:', error);
-      return /rider_onboarding_sessions/i.test(error.message)
+      return /rider_onboarding_progress/i.test(error.message)
         ? unavailable()
         : NextResponse.json({ error: 'Rider progress could not be saved. Please try again.' }, { status: 503 });
     }
     if (!data) return NextResponse.json({ error: 'This saved session expired or belongs to a different phone number. Start again.' }, { status: 401 });
   } else {
-    const { error: cleanupError } = await database.from('rider_onboarding_sessions')
+    const { error: cleanupError } = await database.from('rider_onboarding_progress')
       .delete()
       .lt('expires_at', now);
     if (cleanupError) {
@@ -186,7 +186,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'An application for this phone number is already under review. The team will contact you by email.' }, { status: 409 });
     }
 
-    const { error } = await database.from('rider_onboarding_sessions').insert({
+    const { error } = await database.from('rider_onboarding_progress').insert({
       rider_phone: phone,
       session_token_hash: sessionTokenHash,
       current_step: currentStep,
@@ -196,7 +196,7 @@ export async function POST(request: Request) {
     });
     if (error) {
       console.error('[RiderOnboardingProgress] Could not start progress session:', error);
-      return /rider_onboarding_sessions/i.test(error.message)
+      return /rider_onboarding_progress/i.test(error.message)
         ? unavailable()
         : NextResponse.json({ error: 'Rider progress could not be started. Please try again.' }, { status: 503 });
     }

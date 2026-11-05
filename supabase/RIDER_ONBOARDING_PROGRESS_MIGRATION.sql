@@ -12,7 +12,9 @@ BEGIN
 END;
 $$;
 
-CREATE TABLE IF NOT EXISTS public.rider_onboarding_sessions (
+-- Use a separate table from the legacy rider_onboarding_sessions table,
+-- whose phone-primary-key/FK schema is not suitable for pre-application drafts.
+CREATE TABLE IF NOT EXISTS public.rider_onboarding_progress (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   rider_phone TEXT NOT NULL CHECK (rider_phone ~ '^[17][0-9]{8}$'),
   session_token_hash TEXT NOT NULL UNIQUE CHECK (session_token_hash ~ '^[0-9a-f]{64}$'),
@@ -26,13 +28,13 @@ CREATE TABLE IF NOT EXISTS public.rider_onboarding_sessions (
   expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '30 days')
 );
 
-CREATE INDEX IF NOT EXISTS rider_onboarding_sessions_phone_idx
-  ON public.rider_onboarding_sessions (rider_phone, updated_at DESC);
-CREATE INDEX IF NOT EXISTS rider_onboarding_sessions_expiry_idx
-  ON public.rider_onboarding_sessions (expires_at);
+CREATE INDEX IF NOT EXISTS rider_onboarding_progress_phone_idx
+  ON public.rider_onboarding_progress (rider_phone, updated_at DESC);
+CREATE INDEX IF NOT EXISTS rider_onboarding_progress_expiry_idx
+  ON public.rider_onboarding_progress (expires_at);
 
-ALTER TABLE public.rider_onboarding_sessions ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.rider_onboarding_sessions FROM PUBLIC, anon, authenticated;
-GRANT ALL ON public.rider_onboarding_sessions TO service_role;
+ALTER TABLE public.rider_onboarding_progress ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.rider_onboarding_progress FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.rider_onboarding_progress TO service_role;
 
 COMMIT;

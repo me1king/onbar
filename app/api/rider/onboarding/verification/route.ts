@@ -56,7 +56,7 @@ export async function GET(request: Request) {
   if (!sessionTokenPattern.test(sessionToken)) {
     return NextResponse.json({ error: 'Resume your saved onboarding session to check application status.' }, { status: 401 });
   }
-  const { data: session, error: sessionError } = await database.from('rider_onboarding_sessions')
+  const { data: session, error: sessionError } = await database.from('rider_onboarding_progress')
     .select('rider_phone')
     .eq('session_token_hash', hashSessionToken(sessionToken))
     .eq('rider_phone', phone)
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
   const database = getDatabase();
   if (!database) return NextResponse.json({ error: 'Rider verification is not configured on the server.' }, { status: 503 });
 
-  const { data: onboardingSession, error: sessionError } = await database.from('rider_onboarding_sessions')
+  const { data: onboardingSession, error: sessionError } = await database.from('rider_onboarding_progress')
     .select('rider_phone')
     .eq('session_token_hash', hashSessionToken(sessionToken))
     .eq('rider_phone', phone)
@@ -254,7 +254,7 @@ export async function POST(request: Request) {
       throw new Error('Rider verification could not be saved. Check that the rider verification database fields are installed.');
     }
 
-    const { error: progressError } = await database.from('rider_onboarding_sessions')
+    const { error: progressError } = await database.from('rider_onboarding_progress')
       .update({
         current_step: 'pending',
         form_data: {},
