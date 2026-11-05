@@ -7,6 +7,7 @@ import {
     Fingerprint,
     Phone,
     User,
+    Mail,
     CreditCard,
     Camera,
     Truck,
@@ -49,6 +50,7 @@ export default function RiderOnboarding() {
     const [loading, setLoading] = useState(false);
     const [phone, setPhone] = useState('');
     const [riderName, setRiderName] = useState('');
+    const [riderEmail, setRiderEmail] = useState('');
     const [birthDate, setBirthDate] = useState('');
     const [idNumber, setIdNumber] = useState('');
     const [licenseNumber, setLicenseNumber] = useState('');
@@ -121,6 +123,7 @@ export default function RiderOnboarding() {
             if (data.form_data) {
                 const fd = data.form_data as Record<string, string>;
                 setRiderName(fd.riderName || '');
+                setRiderEmail(fd.riderEmail || '');
                 setBirthDate(fd.birthDate || '');
                 setIdNumber(fd.idNumber || '');
                 setLicenseNumber(fd.licenseNumber || '');
@@ -160,6 +163,7 @@ export default function RiderOnboarding() {
                         current_step: nextStep,
                         form_data: {
                             riderName,
+                            riderEmail,
                             birthDate,
                             idNumber,
                             licenseNumber,
@@ -280,6 +284,10 @@ export default function RiderOnboarding() {
             setError("Full Name is required");
             return;
         }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(riderEmail.trim())) {
+            setError("Enter a valid email address for rider updates and approval instructions.");
+            return;
+        }
         setLoading(true);
         setError(null);
         try {
@@ -287,6 +295,7 @@ export default function RiderOnboarding() {
             const formData = new FormData();
             formData.set('phone', normalized);
             formData.set('riderName', riderName.trim());
+            formData.set('riderEmail', riderEmail.trim());
             formData.set('birthDate', birthDate);
             formData.set('idNumber', idNumber);
             formData.set('licenseNumber', licenseNumber);
@@ -372,6 +381,11 @@ export default function RiderOnboarding() {
                                     <div className="relative">
                                         <Input value={riderName} onChange={e => setRiderName(e.target.value)} placeholder="Full Name" className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-bold" />
                                         <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                                    </div>
+                                    <div className="relative">
+                                        <Input type="email" autoComplete="email" value={riderEmail} onChange={e => setRiderEmail(e.target.value)} placeholder="Your Gmail or email address" className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-bold" required />
+                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+                                        <p className="mt-2 pl-1 text-xs text-slate-500">We’ll use this email for approval notices, onboarding instructions, and rider communications.</p>
                                     </div>
                                     <div className="relative">
                                         <Input type="date" value={birthDate} onChange={e => setBirthDate(e.target.value)} className="h-14 rounded-2xl bg-slate-50 border-slate-100 pl-12 font-bold" />

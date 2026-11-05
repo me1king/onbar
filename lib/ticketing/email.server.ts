@@ -658,6 +658,15 @@ export async function sendTicketOrderEmail(database: Database, orderId: string):
       .maybeSingle();
     if (orderError) throw orderError;
     if (!order || order.status !== 'paid') throw new Error('Paid ticket order could not be found.');
+    const { data: suppression, error: suppressionError } = await database
+      .from('email_suppressions')
+      .select('reason')
+      .eq('email', order.buyer_email.toLowerCase())
+      .maybeSingle();
+    if (suppressionError) {
+      throw new Error('Ticket email safety check failed. Apply EMAIL_COMMAND_CENTER_MIGRATION.sql before sending ticket email.');
+    }
+    if (suppression) throw new Error(`Ticket email suppressed after a ${suppression.reason}.`);
 
     const [eventResult, itemsResult, themeResult, paymentResult, emailSettings, buyerEmailThemeResult] = await Promise.all([
       database.from('ticketing_events')

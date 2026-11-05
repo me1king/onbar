@@ -969,7 +969,7 @@ export default function ProfilePage() {
                                 ))}
                                 {workspaceAccess.riderApproved && (
                                     <Link
-                                        href={profile?.phone_number ? `/rider/dashboard?phone=${encodeURIComponent(profile.phone_number)}` : '/rider/dashboard'}
+                                        href="/rider/dashboard"
                                         className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-foreground transition hover:border-primary/40 hover:text-primary"
                                     >
                                         <Truck size={15} /> Open rider dashboard

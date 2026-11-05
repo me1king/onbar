@@ -32,9 +32,54 @@ async function authorize() {
   return { session, database };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const access = await authorize();
   if ('response' in access) return access.response;
+  const staffId = new URL(request.url).searchParams.get('id');
+  if (staffId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(staffId)) {
+      return NextResponse.json({ error: 'A valid staff member ID is required.' }, { status: 400 });
+    }
+    const canViewAuditLogs = hasAdminPermission(access.session, 'can_view_audit_logs');
+    const [{ data: member, error: memberError }, auditResult] = await Promise.all([
+      access.database.from('staff')
+        .select('id,email,role,status,last_activity_at,completed_tasks,overdue_tasks,sla_rating,created_at')
+        .eq('id', staffId)
+        .maybeSingle(),
+      canViewAuditLogs
+        ? access.database.from('audit_logs')
+          .select('id,action,ip_address,device_info,created_at,details')
+          .eq('actor_id', staffId)
+          .order('created_at', { ascending: false })
+          .limit(100)
+        : Promise.resolve({ data: [], error: null })
+    ]);
+    if (memberError) {
+      console.error('[AdminStaff] Could not load staff profile:', memberError);
+      return NextResponse.json({ error: 'Staff profile could not be loaded. Check the staff database migrations and access.' }, { status: 503 });
+    }
+    if (!member) return NextResponse.json({ error: 'Staff member was not found.' }, { status: 404 });
+    if (auditResult.error) {
+      console.error('[AdminStaff] Could not load staff audit history:', auditResult.error);
+      return NextResponse.json({ error: 'Staff profile loaded, but audit history could not be loaded. Check AUTH_SECURITY_MIGRATION.sql.' }, { status: 503 });
+    }
+    const { data: orders, error: ordersError } = await access.database.from('orders')
+      .select('id,total_price,created_at,status')
+      .eq('captured_by', member.email)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (ordersError) {
+      console.error('[AdminStaff] Could not load staff order history:', ordersError);
+      return NextResponse.json({ error: 'Staff profile loaded, but order history could not be loaded.' }, { status: 503 });
+    }
+    return NextResponse.json({
+      staff: member,
+      logs: auditResult.data || [],
+      orders: orders || [],
+      auditLogsVisible: canViewAuditLogs
+    }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  }
+
   const { data, error } = await access.database
     .from('staff')
     .select('id, email, role, status, last_activity_at, completed_tasks, overdue_tasks, sla_rating, can_view_revenue, can_manage_inventory, can_manage_orders, can_execute_payouts, can_view_audit_logs, can_manage_settings, can_manage_staff, can_view_sensitive_data, can_manage_communications, can_manage_marketing, can_manage_kitchen, created_at')

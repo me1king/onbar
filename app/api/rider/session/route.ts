@@ -38,10 +38,6 @@ export async function POST(request: Request) {
   if (phone.length < 7 || phone.length > 40 || !/^\d{4}$/.test(pin)) {
     return NextResponse.json({ error: 'Enter a valid rider phone number and four-digit PIN.' }, { status: 400 });
   }
-  if (!process.env.RIDER_SESSION_SECRET?.trim()) {
-    return NextResponse.json({ error: 'Rider sessions are not configured on the server.' }, { status: 503 });
-  }
-
   const database = getDatabase();
   if (!database) {
     return NextResponse.json({ error: 'Rider sign-in is not configured on the server.' }, { status: 503 });

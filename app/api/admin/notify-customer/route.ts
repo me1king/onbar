@@ -323,6 +323,31 @@ export async function POST(request: Request) {
   const results: { channel: CustomerNotificationChannel; status: string; error?: string }[] = [];
 
   for (const channel of channels) {
+    if (channel === 'email') {
+      const { data: suppression, error: suppressionError } = await database
+        .from('email_suppressions')
+        .select('reason')
+        .eq('email', email.toLowerCase())
+        .maybeSingle();
+      if (suppressionError) {
+        console.error('[CustomerNotification] Could not verify email suppression:', suppressionError);
+        results.push({
+          channel,
+          status: 'failed',
+          error: 'Email safety check failed. Apply EMAIL_COMMAND_CENTER_MIGRATION.sql before sending customer email.'
+        });
+        continue;
+      }
+      if (suppression) {
+        results.push({
+          channel,
+          status: 'skipped',
+          error: `Email suppressed after a ${suppression.reason}.`
+        });
+        continue;
+      }
+    }
+
     if (channel === 'push' && (!order.user_id || !isWebPushConfigured())) {
       results.push({
         channel,

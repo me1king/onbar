@@ -19,6 +19,7 @@ ALTER TABLE public.rider_status
   ADD COLUMN IF NOT EXISTS plate_number TEXT,
   ADD COLUMN IF NOT EXISTS rider_photo_url TEXT,
   ADD COLUMN IF NOT EXISTS vehicle_photo_url TEXT,
+  ADD COLUMN IF NOT EXISTS rider_email TEXT,
   ADD COLUMN IF NOT EXISTS biometric_key JSONB;
 
 REVOKE ALL ON public.rider_status FROM PUBLIC, anon, authenticated;

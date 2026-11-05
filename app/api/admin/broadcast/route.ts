@@ -275,9 +275,32 @@ export async function POST(request: Request) {
             }
         }
 
-        if (!subscribers.length) {
+        const suppressedEmails = new Set<string>();
+        if (channel === 'email' && subscribers.length) {
+            for (let offset = 0; offset < subscribers.length; offset += 500) {
+                const batch = subscribers.slice(offset, offset + 500).map(subscriber => subscriber.email.trim().toLowerCase());
+                const { data: suppressed, error: suppressionError } = await adminDatabase
+                    .from('email_suppressions')
+                    .select('email')
+                    .in('email', batch);
+                if (suppressionError) {
+                    console.error('[AdminBroadcast] Could not verify email suppression list:', suppressionError);
+                    return NextResponse.json({
+                        error: 'Could not verify the email suppression list. Install EMAIL_COMMAND_CENTER_MIGRATION.sql before sending campaigns.'
+                    }, { status: 503 });
+                }
+                for (const item of suppressed || []) suppressedEmails.add(item.email.toLowerCase());
+            }
+        }
+        const eligibleSubscribers = subscribers.filter(subscriber =>
+            !suppressedEmails.has(subscriber.email.trim().toLowerCase())
+        );
+
+        if (!eligibleSubscribers.length) {
             return NextResponse.json({
-                error: emailAudience === 'waitlist'
+                error: subscribers.length && suppressedEmails.size
+                    ? 'All selected contacts are suppressed because of a previous bounce or complaint.'
+                    : emailAudience === 'waitlist'
                     ? 'No waitlist members with active email-marketing consent are available.'
                     : 'No opted-in newsletter subscribers are available for this email campaign.'
             }, { status: 409 });
@@ -317,8 +340,8 @@ export async function POST(request: Request) {
             let delivered = 0;
             let failed = 0;
             let deliveryAuditError: string | null = null;
-            for (let offset = 0; offset < subscribers.length; offset += 50) {
-                const batch = subscribers.slice(offset, offset + 50);
+            for (let offset = 0; offset < eligibleSubscribers.length; offset += 50) {
+                const batch = eligibleSubscribers.slice(offset, offset + 50);
                 const results = await Promise.all(batch.map(async (sub, index) => {
                     const unsubscribeUrl = `${origin}/newsletter/unsubscribe?token=${encodeURIComponent(createMarketingUnsubscribeToken(sub.email))}`;
                     try {
@@ -377,8 +400,8 @@ export async function POST(request: Request) {
                 );
                 await Promise.all(providerMessageUpdates);
             }
-            if (deliveryAuditError && delivered + failed < subscribers.length) {
-                failed += subscribers.length - delivered - failed;
+            if (deliveryAuditError && delivered + failed < eligibleSubscribers.length) {
+                failed += eligibleSubscribers.length - delivered - failed;
             }
             const campaignStatus = failed === 0 && !deliveryAuditError
                 ? 'Sent'
@@ -409,7 +432,12 @@ export async function POST(request: Request) {
                     campaignId: campaign.id
                 }, { status: 502 });
             }
-            return NextResponse.json({ success: true, count: delivered, campaignId: campaign.id });
+            return NextResponse.json({
+                success: true,
+                count: delivered,
+                suppressed: suppressedEmails.size,
+                campaignId: campaign.id
+            });
         }
 
         return NextResponse.json({ error: 'Unsupported campaign channel.' }, { status: 400 });

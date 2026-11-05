@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/lib/supabaseClient';
 import { DELIVERY_AREA_COLORS, DeliveryArea, getDeliveryAreaColor, parseDeliveryAreas, parseDeliveryPricing } from '@/lib/deliveryAreas';
+import { DEFAULT_SETTINGS } from '@/lib/useSettings';
 import 'leaflet/dist/leaflet.css';
 
 function BoundaryClickCapture({ onAddPoint }: { onAddPoint: (point: [number, number]) => void }) {
@@ -57,7 +58,11 @@ export default function DeliveryAreaManager() {
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
     const [message, setMessage] = React.useState<string | null>(null);
+    const [legacyAreaNames, setLegacyAreaNames] = React.useState<string[]>([]);
+    const [legacyAreasError, setLegacyAreasError] = React.useState<string | null>(null);
     const unmappedAreas = areas.filter(area => area.points.length < 3);
+    const availableImportedNames = [...new Set(legacyAreaNames)]
+        .filter(name => !areas.some(area => area.name.trim().toLowerCase() === name.trim().toLowerCase()));
 
     React.useEffect(() => {
         let active = true;
@@ -67,9 +72,10 @@ export default function DeliveryAreaManager() {
                 setLoading(false);
                 return;
             }
-            const [{ data, error }, { data: pricingData, error: pricingError }] = await Promise.all([
+            const [{ data, error }, { data: pricingData, error: pricingError }, { data: logisticsData, error: logisticsError }] = await Promise.all([
                 supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle(),
-                supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle()
+                supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle(),
+                supabase.from('settings').select('value').eq('key', 'logistics').maybeSingle()
             ]);
             if (!active) return;
             if (error || pricingError) {
@@ -78,6 +84,21 @@ export default function DeliveryAreaManager() {
                 try {
                     setAreas(parseDeliveryAreas(data?.value ?? []));
                     setFreeDeliveryOver(String(parseDeliveryPricing(pricingData?.value).free_delivery_over));
+                    if (logisticsError) {
+                        setLegacyAreasError(`Saved dispatch area names could not be loaded: ${logisticsError.message}`);
+                    } else {
+                        const configuredNames = logisticsData?.value
+                            && typeof logisticsData.value === 'object'
+                            && !Array.isArray(logisticsData.value)
+                            && Array.isArray((logisticsData.value as { dispatch_zones?: unknown }).dispatch_zones)
+                            ? (logisticsData.value as { dispatch_zones: unknown[] }).dispatch_zones
+                                .filter((name): name is string => typeof name === 'string' && Boolean(name.trim()))
+                                .map(name => name.trim())
+                            : logisticsData
+                                ? []
+                                : DEFAULT_SETTINGS.logistics.dispatch_zones;
+                        setLegacyAreaNames([...new Set(configuredNames)]);
+                    }
                 } catch (parseError) {
                     console.error('Saved delivery area data is invalid:', parseError);
                     setMessage(parseError instanceof Error ? parseError.message : 'Saved delivery areas are invalid.');
@@ -113,6 +134,23 @@ export default function DeliveryAreaManager() {
             return false;
         } finally {
             setSaving(false);
+        }
+    };
+
+    const importLegacyAreas = async () => {
+        if (!availableImportedNames.length) return;
+        const nextAreas = [
+            ...areas,
+            ...availableImportedNames.map((areaName, index): DeliveryArea => ({
+                id: crypto.randomUUID(),
+                name: areaName,
+                free_delivery: false,
+                color: DELIVERY_AREA_COLORS[(areas.length + index) % DELIVERY_AREA_COLORS.length],
+                points: []
+            }))
+        ];
+        if (await persistAreas(nextAreas)) {
+            setMessage(`${availableImportedNames.length} area names added. Set each fee and draw its map boundary before accepting mapped-zone checkout for it.`);
         }
     };
 
@@ -394,6 +432,23 @@ export default function DeliveryAreaManager() {
                 </div>
             </section>
             <section className="space-y-3">
+                {availableImportedNames.length > 0 && (
+                    <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h3 className="text-sm font-bold text-foreground">Area names from dispatch settings</h3>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                Import {availableImportedNames.length} saved area name{availableImportedNames.length === 1 ? '' : 's'} here, then set prices and map their coverage. Importing does not guess fees or boundaries.
+                            </p>
+                            {legacyAreasError && <p role="alert" className="mt-2 text-xs text-rose-700">{legacyAreasError}</p>}
+                        </div>
+                        <Button onClick={() => void importLegacyAreas()} disabled={saving || loading} variant="outline" className="shrink-0">
+                            <Plus className="mr-2 h-4 w-4" /> Add areas to map
+                        </Button>
+                    </div>
+                )}
+                {legacyAreasError && availableImportedNames.length === 0 && (
+                    <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{legacyAreasError}</p>
+                )}
                 <div>
                     <h3 className="text-sm font-black uppercase text-foreground">Configured fees</h3>
                     <p className="text-xs text-muted-foreground">Changes save when you leave a name or fee field. Use Edit boundary to change the GPS coverage on the map.</p>

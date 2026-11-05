@@ -3,7 +3,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 
 function getSecret() {
-  return process.env.RIDER_SESSION_SECRET?.trim();
+  return process.env.RIDER_SESSION_SECRET?.trim()
+    || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 }
 
 function signature(payload: string, secret: string) {
@@ -12,7 +13,7 @@ function signature(payload: string, secret: string) {
 
 export function createRiderSession(phone: string) {
   const secret = getSecret();
-  if (!secret) throw new Error('RIDER_SESSION_SECRET is not configured.');
+  if (!secret) throw new Error('RIDER_SESSION_SECRET and SUPABASE_SERVICE_ROLE_KEY are not configured.');
   const payload = Buffer.from(JSON.stringify({
     phone,
     expiresAt: Date.now() + SESSION_LIFETIME_MS

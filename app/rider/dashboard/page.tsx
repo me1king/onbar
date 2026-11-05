@@ -996,6 +996,7 @@ function RiderDashboardContent() {
 
                     <div className="space-y-6">
                         <div className="space-y-4">
+                            <p className="text-center text-xs leading-5 text-slate-500">Use the phone number and four-digit PIN from your rider approval email. Open this terminal any time from your approved Online Bar profile.</p>
                             <div className="relative">
                                 <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="07XXXXXXXX" className="h-16 rounded-2xl bg-slate-50 border-slate-100 text-foreground pl-14 text-sm font-black" />
                                 <PhoneCall className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />

@@ -1,5 +1,21 @@
 # Supabase migrations
 
+## Email Command Center
+
+After the core schema plus `OPERATIONAL_FEATURES_MIGRATION.sql`,
+`CRM_CONSENT_MESSAGING_MIGRATION.sql`, and
+`TICKETING_EMAIL_DELIVERY_MIGRATION.sql` are installed, apply
+`CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql`, then
+`JMSURF_EMAIL_WEBHOOK_MIGRATION.sql`, then
+`EMAIL_COMMAND_CENTER_MIGRATION.sql`. The sequence installs order-notification
+history, provider event tracking, direct operational-email audit records, and
+the bounce/complaint suppression list used by campaign sends. Configure the
+JMSURF sender key/from address and signed webhook secret in Vercel; set the
+provider callback URL to `/api/webhooks/jmsurf-mail`. The admin interface is
+available under **Patrons → Email Command Center**. Marketing sends stay limited
+to consented lists. Inbound email parsing requires a separate inbound provider
+and is not included in this outbound setup.
+
 ## Multi-level member referrals
 
 After applying `LOYALTY_POINTS_MIGRATION.sql`, run

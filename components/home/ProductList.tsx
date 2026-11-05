@@ -6,10 +6,6 @@ import ProductCard from './ProductCard';
 import { OB_OS } from '@/lib/onlineBarOS';
 import {
   LayoutGrid,
-  Wine,
-  Beer,
-  GlassWater,
-  Cookie,
   Search,
   ArrowUpDown,
   Filter,
@@ -27,32 +23,6 @@ import { useSettings, type StoreSettings } from '@/lib/useSettings';
 
 type Product = CatalogProduct;
 
-const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
-    wine: Wine,
-    spirits: Wine,
-    whiskey: GlassWater,
-    beer: Beer,
-    snacks: Cookie,
-    mixers: Zap,
-    extras: Zap
-};
-
-const CATEGORY_COLORS = [
-  { ids: ['wine', 'wines', 'vintages'], inactive: 'border-rose-200 bg-rose-50 text-rose-800 hover:border-rose-300 hover:bg-rose-100', active: 'border-rose-600 bg-rose-600 text-white shadow-rose-600/25', icon: 'bg-rose-100 text-rose-700' },
-  { ids: ['spirits', 'whiskey', 'whisky'], inactive: 'border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-300 hover:bg-violet-100', active: 'border-violet-600 bg-violet-600 text-white shadow-violet-600/25', icon: 'bg-violet-100 text-violet-700' },
-  { ids: ['snacks', 'munchies', 'food'], inactive: 'border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300 hover:bg-orange-100', active: 'border-orange-600 bg-orange-600 text-white shadow-orange-600/25', icon: 'bg-orange-100 text-orange-700' },
-  { ids: ['beer', 'beers'], inactive: 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300 hover:bg-sky-100', active: 'border-sky-600 bg-sky-600 text-white shadow-sky-600/25', icon: 'bg-sky-100 text-sky-700' },
-  { ids: ['mixers', 'extras'], inactive: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100', active: 'border-emerald-600 bg-emerald-600 text-white shadow-emerald-600/25', icon: 'bg-emerald-100 text-emerald-700' }
-] as const;
-
-const FALLBACK_CATEGORY_COLORS = [
-  { inactive: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:border-fuchsia-300 hover:bg-fuchsia-100', active: 'border-fuchsia-600 bg-fuchsia-600 text-white shadow-fuchsia-600/25', icon: 'bg-fuchsia-100 text-fuchsia-700' },
-  { inactive: 'border-cyan-200 bg-cyan-50 text-cyan-800 hover:border-cyan-300 hover:bg-cyan-100', active: 'border-cyan-600 bg-cyan-600 text-white shadow-cyan-600/25', icon: 'bg-cyan-100 text-cyan-700' },
-  { inactive: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100', active: 'border-amber-600 bg-amber-600 text-white shadow-amber-600/25', icon: 'bg-amber-100 text-amber-700' },
-  { inactive: 'border-indigo-200 bg-indigo-50 text-indigo-800 hover:border-indigo-300 hover:bg-indigo-100', active: 'border-indigo-600 bg-indigo-600 text-white shadow-indigo-600/25', icon: 'bg-indigo-100 text-indigo-700' },
-  { inactive: 'border-lime-200 bg-lime-50 text-lime-800 hover:border-lime-300 hover:bg-lime-100', active: 'border-lime-600 bg-lime-600 text-white shadow-lime-600/25', icon: 'bg-lime-100 text-lime-700' }
-] as const;
-
 export default function ProductList({
   initialProducts,
   kicker,
@@ -68,13 +38,12 @@ export default function ProductList({
 }) {
   const { settings } = useSettings();
   const categories = useMemo(() => [
-    { id: 'all', label: 'All Menu', icon: LayoutGrid },
+    { id: 'all', label: 'All menu' },
     ...(categoryFilters || settings.catalog.categories)
       .filter(category => category.id.trim() && category.label.trim())
       .map(category => ({
         id: category.id.toLowerCase(),
-        label: category.label,
-        icon: CATEGORY_ICONS[category.id.toLowerCase()] || LayoutGrid
+        label: category.label
       }))
   ], [categoryFilters, settings.catalog.categories]);
   const [products, setProducts] = useState<Product[]>(initialProducts || []);
@@ -93,6 +62,17 @@ export default function ProductList({
   const [error, setError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(24);
   const lastTrackedSearchRef = useRef<string | null>(null);
+  const categoryTabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const categoryCounts = useMemo(() => {
+    const visibleProducts = products.filter(isStorefrontProductVisible);
+    return new Map(categories.map(category => [
+      category.id,
+      category.id === 'all'
+        ? visibleProducts.length
+        : visibleProducts.filter(product => (product.category || '').toLowerCase() === category.id).length
+    ]));
+  }, [categories, products]);
 
   useEffect(() => {
     async function fetchInitialData() {
@@ -309,45 +289,46 @@ export default function ProductList({
       <p className="max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">{subtitle || 'Explore available products, compare prices, and find something for your occasion.'}</p>
     </header>
 
-      {/* 1. Category Tabs & Quick Munchies */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 px-4">
-          <div className="flex overflow-x-auto pb-2 gap-2.5 sm:gap-4 scrollbar-hide no-scrollbar -mx-4 px-4 flex-1">
-              {categories.map((cat, index) => {
-                  const color = cat.id === 'all'
-                    ? {
-                        inactive: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100',
-                        active: 'border-amber-500 bg-amber-500 text-white shadow-amber-500/25',
-                        icon: 'bg-amber-100 text-amber-700'
-                      }
-                    : CATEGORY_COLORS.find(group => group.ids.some(id => id === cat.id))
-                      || FALLBACK_CATEGORY_COLORS[(index - 1) % FALLBACK_CATEGORY_COLORS.length];
-                  const isActive = activeCategory === cat.id;
-                  return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    aria-pressed={isActive}
-                    onClick={() => {
-                        setActiveCategory(cat.id);
-                        setSearchQuery(''); // Reset search when switching categories
-                        setSelectedBrand('all'); // Reset brand
-                    }}
-                    className={cn(
-                        "flex items-center gap-2.5 px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all duration-200 shrink-0 border whitespace-nowrap shadow-sm hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary",
-                        isActive
-                            ? `${color.active} shadow-lg scale-[1.03]`
-                            : `${color.inactive} hover:shadow-md`
-                    )}
-                  >
-                      <span className={cn("flex h-7 w-7 items-center justify-center rounded-full transition-colors", isActive ? "bg-white/20" : color.icon)}>
-                        <cat.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                      </span>
-                      {cat.label}
-                  </button>
-                  );
-              })}
-          </div>
-      </div>
+      {/* 1. Category Tabs */}
+      <nav
+        aria-label="Menu categories"
+        className="sticky top-[68px] z-40 -mx-3 mb-8 border-b border-[#e7e0d4] bg-white/95 px-3 backdrop-blur sm:-mx-6 sm:top-[76px] sm:px-6 lg:-mx-8 lg:px-8"
+      >
+        <div className="scrollbar-hide no-scrollbar flex overflow-x-auto">
+          {categories.map(category => {
+            const isActive = activeCategory === category.id;
+            return (
+              <button
+                key={category.id}
+                ref={node => { categoryTabRefs.current[category.id] = node; }}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => {
+                  setActiveCategory(category.id);
+                  setSearchQuery('');
+                  setSelectedBrand('all');
+                  categoryTabRefs.current[category.id]?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest',
+                    inline: 'center'
+                  });
+                }}
+                className={cn(
+                  'mb-[-1px] shrink-0 border-b-[3px] border-transparent px-3 py-4 text-sm font-semibold capitalize whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500 sm:px-4 sm:text-base',
+                  isActive
+                    ? 'border-b-amber-500 font-extrabold text-[#1c140d]'
+                    : 'text-[#6b5a48] hover:text-[#1c140d]'
+                )}
+              >
+                {category.label}
+                <span className={cn('ml-1 text-xs font-medium', isActive ? 'text-[#8b735e]' : 'text-[#a39682]')}>
+                  {categoryCounts.get(category.id) ?? 0}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {/* 2. Pro Filters Bar */}
       <div className="space-y-6 mb-12 animate-in fade-in slide-in-from-top-4 duration-700">

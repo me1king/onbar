@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
 import {
   ShieldCheck,
   Lock,
@@ -59,31 +58,36 @@ export default function StaffProfilePage() {
     const [logs, setLogs] = React.useState<AuditLog[]>([]);
     const [orders, setOrders] = React.useState<StaffOrder[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState('');
+    const [auditLogsVisible, setAuditLogsVisible] = React.useState(true);
 
     const fetchData = React.useCallback(async () => {
-        if (!supabase || !id) return;
+        if (!id) {
+            setError('A staff member ID is required.');
+            setLoading(false);
+            return;
+        }
         setLoading(true);
+        setError('');
         try {
-            const { data: staffData, error: staffError } = await supabase
-                .from('staff')
-                .select('*')
-                .eq('id', id)
-                .single();
-
-            if (staffError) throw staffError;
-
-            const [logsResponse, ordersRes] = await Promise.all([
-                fetch(`/api/admin/audit-logs?actorId=${encodeURIComponent(id)}`, { cache: 'no-store' }),
-                supabase.from('orders').select('id, total_price, created_at, status').eq('captured_by', staffData.email).order('created_at', { ascending: false })
-            ]);
-            const logsResult = await logsResponse.json() as { logs?: AuditLog[]; error?: string };
-            if (!logsResponse.ok) throw new Error(logsResult.error || 'Could not load staff audit history.');
-
-            setStaff(staffData as StaffProfile);
-            setLogs(logsResult.logs || []);
-            setOrders(ordersRes.data || []);
-        } catch (err) {
-            console.error(err);
+            const response = await fetch(`/api/admin/staff?id=${encodeURIComponent(id)}`, { cache: 'no-store' });
+            const result = await response.json() as {
+                staff?: StaffProfile;
+                logs?: AuditLog[];
+                orders?: StaffOrder[];
+                auditLogsVisible?: boolean;
+                error?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Staff profile could not be loaded.');
+            if (!result.staff) throw new Error('Staff profile response was incomplete.');
+            setStaff(result.staff);
+            setLogs(result.logs || []);
+            setOrders(result.orders || []);
+            setAuditLogsVisible(result.auditLogsVisible !== false);
+        } catch (cause) {
+            console.error('[StaffProfile] Could not load staff profile:', cause);
+            setStaff(null);
+            setError(cause instanceof Error ? cause.message : 'Staff profile could not be loaded.');
         } finally {
             setLoading(false);
         }
@@ -107,8 +111,9 @@ export default function StaffProfilePage() {
     if (!staff) return (
         <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-white">
             <ShieldAlert className="h-12 w-12 text-rose-500 mb-4" />
-            <h1 className="text-2xl font-black uppercase text-foreground">Staff Node Not Found</h1>
-            <Button onClick={() => router.back()} variant="ghost" className="mt-4">Return to Directory</Button>
+            <h1 className="text-2xl font-black uppercase text-foreground">{error.includes('was not found') ? 'Staff Node Not Found' : 'Staff Profile Could Not Load'}</h1>
+            {error && <p role="alert" className="mt-3 max-w-lg text-sm text-rose-700">{error}</p>}
+            <Button onClick={() => router.push('/lord/staff')} variant="ghost" className="mt-4">Return to Directory</Button>
         </div>
     );
 
@@ -297,7 +302,7 @@ export default function StaffProfilePage() {
                                         <tr>
                                             <td colSpan={3} className="px-10 py-20 text-center opacity-30">
                                                 <History size={48} className="mx-auto mb-4" />
-                                                <p className="text-[10px] font-black uppercase tracking-widest italic">No operational logs recorded for this node.</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest italic">{auditLogsVisible ? 'No operational logs recorded for this node.' : 'Audit history requires audit-log permission.'}</p>
                                             </td>
                                         </tr>
                                     )}

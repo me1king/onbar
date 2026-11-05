@@ -43,9 +43,33 @@ export async function GET() {
   ]);
 
   if (settingResult.error || ordersResult.error || preferencesResult.error || deliveryResult.error) {
-    const error = settingResult.error || ordersResult.error || preferencesResult.error || deliveryResult.error;
-    console.error('[CustomerMessaging] Could not load automation settings:', error);
-    return NextResponse.json({ error: 'Could not load customer messaging settings. Apply the customer messaging migration and try again.' }, { status: 500 });
+    const failures = [
+      { source: 'settings', error: settingResult.error },
+      { source: 'orders', error: ordersResult.error },
+      { source: 'preferences', error: preferencesResult.error },
+      { source: 'deliveries', error: deliveryResult.error }
+    ].filter((entry): entry is { source: string; error: NonNullable<typeof settingResult.error> } => Boolean(entry.error));
+    console.error('[CustomerMessaging] Could not load automation settings:', failures);
+    const migrationFiles = new Set<string>();
+    for (const { source, error: failure } of failures) {
+      const detail = `${failure.code || ''} ${failure.message || ''}`;
+      if (source === 'preferences' || source === 'deliveries') {
+        migrationFiles.add('CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql');
+      }
+      if (/provider_delivery_status|provider_updated_at|provider_message_id/i.test(detail)) {
+        migrationFiles.add('JMSURF_EMAIL_WEBHOOK_MIGRATION.sql');
+      }
+      if (source === 'settings' || source === 'orders') {
+        migrationFiles.add('the base OnlineBar database migrations for settings and orders');
+      }
+    }
+    const migrationAdvice = migrationFiles.size
+      ? `Check/install: ${[...migrationFiles].join(', ')}.`
+      : 'Check the server log for the database error.';
+    return NextResponse.json({
+      error: `Could not load customer messaging settings. ${migrationAdvice}`,
+      migrationFiles: [...migrationFiles]
+    }, { status: 503 });
   }
 
   const deliveryOrderIds = [...new Set((deliveryResult.data || []).map(item => item.order_id))];

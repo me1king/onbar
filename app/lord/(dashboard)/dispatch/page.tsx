@@ -320,11 +320,16 @@ export default function AdminDispatchPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ phone })
             });
-            const result = await response.json() as { pin?: string; error?: string };
+            const result = await response.json() as { success?: boolean; pin?: string; emailSent?: boolean; emailWarning?: string; error?: string };
             if (!response.ok) throw new Error(result.error || 'Rider authorization failed.');
-            if (!result.pin) throw new Error('Rider authorization completed without issuing a PIN.');
+            if (!result.success) throw new Error('Rider authorization could not be confirmed.');
             setRiders(prev => prev.map(r => r.rider_phone === phone ? { ...r, verification_status: 'Verified' } : r));
-            setMessage({ type: 'success', text: `Unit Authorized. Issued PIN: ${result.pin}.` });
+            setMessage({
+                type: 'success',
+                text: result.emailSent
+                    ? 'Rider approved. Sign-in instructions were sent to their email.'
+                    : `${result.emailWarning || 'Rider approved, but email delivery failed.'}${result.pin ? ` Sign-in PIN: ${result.pin}.` : ''}`
+            });
             setTimeout(() => setMessage(null), 10000);
         } catch (err) {
             console.error('Rider authorization failed:', err);

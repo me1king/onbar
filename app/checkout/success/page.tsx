@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle2, PackageCheck, Smartphone, MessageSquare, ArrowRight, Truck, ShieldCheck, Heart, Zap, Clock3, MapPin } from "lucide-react";
 import Link from "next/link";
-import { formatPrice, getReferralLink } from "@/lib/utils";
+import { formatPrice } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useSettings } from "@/lib/useSettings";
 import ReceiptPrintButton from "@/components/receipt/ReceiptPrintButton";
@@ -52,7 +52,6 @@ function SuccessContent() {
     const orderId = searchParams?.get("orderId");
     const [order, setOrder] = useState<Order | null>(null);
     const [receiptDetailsLoaded, setReceiptDetailsLoaded] = useState(false);
-    const [referralCode, setReferralCode] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [loyaltyNotice, setLoyaltyNotice] = useState('');
     const [statusError, setStatusError] = useState('');
@@ -112,17 +111,28 @@ function SuccessContent() {
                     }
                 }
 
-                // 2. Fetch User Referral Code
-                if (session) {
-                    const { data: pData } = await client.from('profiles').select('referral_code').eq('id', session.user.id).single();
-                    if (pData) setReferralCode(pData.referral_code);
-                }
-
                 setLoading(false);
             };
             fetchData();
         }
     }, [orderId]);
+
+    const inviteFriendToSpin = async () => {
+        const url = new URL('/spin', window.location.origin).toString();
+        const title = 'Black November Spin | Online Bar';
+        const text = `Join Online Bar's Black November spin. If you are 18 or older, enter for a chance to win a free bottle and other campaign prizes. Terms apply: ${url}`;
+        if (navigator.share) {
+            try {
+                await navigator.share({ title, text, url });
+            } catch (error) {
+                if (!(error instanceof Error && error.name === 'AbortError')) {
+                    console.error('Could not open the share sheet:', error);
+                }
+            }
+            return;
+        }
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+    };
 
     useEffect(() => {
         let active = true;
@@ -415,29 +425,29 @@ function SuccessContent() {
             )}
 
             {/* Premium Invitation Section */}
-            {referralCode && (
-                <Card className="rounded-[2.5rem] border-2 border-primary/10 bg-primary/5 shadow-2xl p-10 mb-10 overflow-hidden relative group">
+            <Card className="rounded-[2.5rem] border-2 border-primary/10 bg-primary/5 shadow-2xl p-10 mb-10 overflow-hidden relative group">
                     <div className="relative z-10 text-center space-y-6">
                         <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center mx-auto text-primary shadow-xl group-hover:scale-110 transition-transform">
                             <Zap className="h-8 w-8 fill-current" />
                         </div>
                         <div>
-                            <h3 className="text-2xl font-black uppercase tracking-tighter text-foreground leading-none mb-2">Invite Friends, <br /> <span className="text-primary italic">Earn Ksh 200</span></h3>
-                            <p className="text-slate-500 text-xs font-medium leading-relaxed italic">&quot;Help your squad level up. Both of you get Ksh 200 credit upon their first mission.&quot;</p>
+                            <h3 className="text-2xl font-black uppercase tracking-tighter text-foreground leading-none mb-2">Invite a Friend, <br /> <span className="text-primary italic">Spin for Black November</span></h3>
+                            <p className="text-slate-500 text-xs font-medium leading-relaxed">
+                                Share the campaign with a friend. Participants aged 18+ can enter for a chance to win a free bottle and other configured prizes. Campaign dates, availability, and terms apply.
+                            </p>
                         </div>
                         <Button
-                            onClick={() => {
-                                const text = `Yo! I just secured premium drinks from Online Bar Nairobi. Use my link to get a member discount: ${getReferralLink(referralCode)}`;
-                                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-                            }}
+                            onClick={inviteFriendToSpin}
                             className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95"
                         >
-                            WhatsApp Invitation
+                            Invite a friend to spin
                         </Button>
+                        <Link href="/spin" className="inline-flex min-h-11 items-center gap-2 text-xs font-black uppercase tracking-wide text-primary hover:underline">
+                            Open Black November spin <ArrowRight className="h-4 w-4" />
+                        </Link>
                     </div>
                     <Zap className="absolute -bottom-10 -right-10 h-48 w-48 text-primary/5 rotate-12 -z-0" />
-                </Card>
-            )}
+            </Card>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-8 text-[10px] font-black uppercase tracking-widest text-slate-400">
                 <div className="flex items-center gap-2">

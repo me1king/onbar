@@ -47,6 +47,25 @@ export async function POST(request: Request) {
         if (fetchError) throw fetchError;
         if (!carts || carts.length === 0) return NextResponse.json({ message: "Ghost Worker: No idle bags found in pipeline." });
 
+        const cartEmails = [...new Set(carts.flatMap(cart => {
+            const email = typeof cart.customer_email === 'string' ? cart.customer_email.trim().toLowerCase() : '';
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? [email] : [];
+        }))];
+        const suppressedEmails = new Set<string>();
+        for (let offset = 0; offset < cartEmails.length; offset += 500) {
+            const { data: suppressed, error: suppressionError } = await supabase
+                .from('email_suppressions')
+                .select('email')
+                .in('email', cartEmails.slice(offset, offset + 500));
+            if (suppressionError) {
+                console.error('[CartRecovery] Could not verify email suppression list:', suppressionError);
+                return NextResponse.json({
+                    error: 'Could not verify the email suppression list. Install EMAIL_COMMAND_CENTER_MIGRATION.sql before sending recovery email.'
+                }, { status: 503 });
+            }
+            for (const item of suppressed || []) suppressedEmails.add(item.email.toLowerCase());
+        }
+
         let processed = 0;
         let skipped = 0;
 
@@ -62,6 +81,10 @@ export async function POST(request: Request) {
         for (const cart of carts) {
             const email = typeof cart.customer_email === 'string' ? cart.customer_email.trim() : '';
             const items = Array.isArray(cart.cart_items) ? cart.cart_items : [];
+            if (suppressedEmails.has(email.toLowerCase())) {
+                skipped++;
+                continue;
+            }
             if (!getTransactionalEmailConfig().configured
                 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
                 || items.length === 0) {
@@ -87,6 +110,7 @@ export async function POST(request: Request) {
                 await sendTransactionalEmail({
                     to: email,
                     subject: 'Your saved Online Bar cart',
+                    idempotencyKey: `cart-recovery-${cart.id}`,
                     html: `<div style="font-family:sans-serif;padding:20px;">
                         <h2 style="color:#ff6b00;">Hi ${safeName}, your saved cart is waiting.</h2>
                         <p>You left <b>${safeItems}</b> in your bag.</p>

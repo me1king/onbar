@@ -5,6 +5,7 @@ import {
   DEFAULT_LOCATION_CATALOG,
   normalizeLocationCatalogConfig
 } from '@/lib/locationCatalog';
+import { parseDeliveryAreas } from '@/lib/deliveryAreas';
 
 export async function POST(request: Request) {
   let body: { latitude?: unknown; longitude?: unknown; city?: unknown; county?: unknown; area?: unknown };
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   if (database) {
     const { data: settings, error } = await database.from('settings')
       .select('key,value')
-      .in('key', ['logistics', 'location_catalog']);
+      .in('key', ['logistics', 'location_catalog', 'free_delivery_areas']);
     if (error) {
       console.error('[Location] Could not load location and delivery settings:', error);
       return NextResponse.json({ error: 'Delivery coverage could not be checked right now. Your area was not saved.' }, { status: 503 });
@@ -36,11 +37,21 @@ export async function POST(request: Request) {
       catalog = savedCatalog;
     }
     const logisticsSetting = settings?.find((setting) => setting.key === 'logistics');
-    const configuredZones = logisticsSetting?.value && typeof logisticsSetting.value === 'object'
-      ? (logisticsSetting.value as { dispatch_zones?: unknown }).dispatch_zones
-      : null;
-    if (Array.isArray(configuredZones) && configuredZones.every(zone => typeof zone === 'string')) {
-      dispatchZones = configuredZones;
+    const deliveryAreasSetting = settings?.find((setting) => setting.key === 'free_delivery_areas');
+    if (deliveryAreasSetting) {
+      try {
+        dispatchZones = parseDeliveryAreas(deliveryAreasSetting.value).map(area => area.name);
+      } catch (parseError) {
+        console.error('[Location] Saved delivery area settings are invalid:', parseError);
+        return NextResponse.json({ error: 'Delivery area settings need to be reviewed by an administrator.' }, { status: 503 });
+      }
+    } else {
+      const configuredZones = logisticsSetting?.value && typeof logisticsSetting.value === 'object'
+        ? (logisticsSetting.value as { dispatch_zones?: unknown }).dispatch_zones
+        : null;
+      if (Array.isArray(configuredZones) && configuredZones.every(zone => typeof zone === 'string')) {
+        dispatchZones = configuredZones;
+      }
     }
   }
 

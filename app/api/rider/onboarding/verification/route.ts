@@ -112,6 +112,7 @@ export async function POST(request: Request) {
 
   const phone = normalizePhone(String(form.get('phone') || ''));
   const riderName = String(form.get('riderName') || '').trim();
+  const riderEmail = String(form.get('riderEmail') || '').trim().toLowerCase();
   const birthDate = String(form.get('birthDate') || '').trim();
   const idNumber = String(form.get('idNumber') || '').trim();
   const licenseNumber = String(form.get('licenseNumber') || '').trim();
@@ -123,6 +124,9 @@ export async function POST(request: Request) {
   if (!phone) return NextResponse.json({ error: 'Enter a valid Kenyan rider phone number.' }, { status: 400 });
   if (!riderName || riderName.length > 160) {
     return NextResponse.json({ error: 'Enter the rider’s full name (up to 160 characters).' }, { status: 400 });
+  }
+  if (riderEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(riderEmail)) {
+    return NextResponse.json({ error: 'Enter a valid email address for rider communications.' }, { status: 400 });
   }
   if (idNumber.length > 80 || licenseNumber.length > 80 || plateNumber.length > 40) {
     return NextResponse.json({ error: 'One or more identity or vehicle details are too long.' }, { status: 400 });
@@ -218,6 +222,7 @@ export async function POST(request: Request) {
     const application = {
       rider_phone: phone,
       rider_name: riderName,
+      rider_email: riderEmail,
       vehicle_type: vehicleType,
       vehicle_reg: plateNumber || null,
       plate_number: plateNumber || null,

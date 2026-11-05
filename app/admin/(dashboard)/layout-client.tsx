@@ -195,6 +195,7 @@ export default function AdminLayoutClient({
       { name: 'Waitlist Invitations', href: '/lord/waitlist/invitations', icon: Mail, permission: 'can_manage_communications' },
       { name: 'WhatsApp Command', href: '/lord/communications/whatsapp', icon: MessageCircle, permission: 'can_manage_communications' },
       { name: 'Message Command', href: '/lord/communications/command', icon: MessageSquare, permission: 'can_manage_communications' },
+      { name: 'Email Command Center', href: '/lord/communications/email', icon: Mail, permission: 'can_manage_communications' },
       { name: 'Message Automation', href: '/lord/communications/automation', icon: MessageCircle, permission: 'can_manage_communications' },
       { name: 'SMS Control', href: '/lord/communications/sms', icon: MessageSquare, permission: 'can_manage_communications' },
       { name: 'Popup Manager', href: '/lord/communications/popups', icon: Bell, permission: 'can_manage_communications' },

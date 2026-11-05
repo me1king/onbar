@@ -171,7 +171,7 @@ function AdminLoginContent() {
 
         <div className="text-center pt-6 border-t border-slate-100 flex flex-col gap-4">
           <Link
-            href="/rider/login"
+            href="/rider/dashboard"
             className="text-[10px] font-black text-slate-400 hover:text-primary uppercase tracking-widest transition-colors"
           >
             Runner Terminal Access

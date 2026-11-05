@@ -64,7 +64,7 @@ export async function POST(request: Request) {
 
   const event = body as {
     type: string;
-    data: { id: string; error?: unknown; link?: unknown };
+    data: { id: string; error?: unknown; link?: unknown; email?: unknown; to?: unknown };
     created_at?: unknown;
   };
   const eventType = event.type;
@@ -73,6 +73,15 @@ export async function POST(request: Request) {
   const safeEventData: Record<string, string> = {};
   if (typeof eventData.error === 'string') safeEventData.error = eventData.error.slice(0, 1000);
   if (typeof eventData.link === 'string' && /^https:\/\//i.test(eventData.link)) safeEventData.link = eventData.link.slice(0, 2000);
+  const rawRecipient = typeof eventData.email === 'string'
+    ? eventData.email
+    : Array.isArray(eventData.to) && typeof eventData.to[0] === 'string'
+      ? eventData.to[0]
+      : typeof eventData.to === 'string' ? eventData.to : '';
+  const recipientEmail = rawRecipient.trim().toLowerCase();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+    safeEventData.email = recipientEmail.slice(0, 254);
+  }
   const providerCreatedAt = typeof event.created_at === 'string' && !Number.isNaN(Date.parse(event.created_at))
     ? new Date(event.created_at).toISOString()
     : null;
@@ -103,7 +112,15 @@ export async function POST(request: Request) {
     deliveryUpdate.delivery_status = 'failed';
     deliveryUpdate.error_message = (safeEventData.error || eventType).slice(0, 500);
   }
-  const [{ error: notificationError }, { error: ticketError }, { error: campaignError }] = await Promise.all([
+  const centerStatus: Record<string, string> = {
+    'email.delivered': 'delivered',
+    'email.bounced': 'bounced',
+    'email.complained': 'complained',
+    'email.opened': 'opened',
+    'email.clicked': 'clicked',
+    'email.failed': 'failed'
+  };
+  const [{ error: notificationError }, { error: ticketError }, { error: campaignError }, { error: centerError }] = await Promise.all([
     database.from('customer_notification_deliveries')
       .update(deliveryUpdate)
       .eq('channel', 'email')
@@ -129,11 +146,26 @@ export async function POST(request: Request) {
           ? { status: 'failed', error_message: (safeEventData.error || eventType).slice(0, 500) }
           : {})
       })
+      .eq('provider_message_id', providerMessageId),
+    database.from('email_command_center_messages')
+      .update({ status: centerStatus[eventType], updated_at: providerCreatedAt || new Date().toISOString() })
       .eq('provider_message_id', providerMessageId)
   ]);
-  if (notificationError || ticketError || campaignError) {
-    console.error('[JMSURFWebhook] Could not update matching delivery:', notificationError || ticketError || campaignError);
+  if (notificationError || ticketError || campaignError || centerError) {
+    console.error('[JMSURFWebhook] Could not update matching delivery:', notificationError || ticketError || campaignError || centerError);
     return NextResponse.json({ error: 'Webhook was stored but a matching delivery record could not be updated.' }, { status: 500 });
+  }
+
+  if ((eventType === 'email.bounced' || eventType === 'email.complained') && safeEventData.email) {
+    const { error: suppressionError } = await database.from('email_suppressions').upsert({
+      email: safeEventData.email,
+      reason: eventType === 'email.complained' ? 'complaint' : 'bounce',
+      source: 'JMSURF email webhook'
+    }, { onConflict: 'email' });
+    if (suppressionError) {
+      console.error('[JMSURFWebhook] Could not suppress bounced or complained address:', suppressionError);
+      return NextResponse.json({ error: 'Webhook was stored but the recipient suppression could not be recorded.' }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ received: true, duplicate: !stored }, { status: 200 });

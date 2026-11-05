@@ -34,7 +34,6 @@ import {
     UserPlus,
     DollarSign,
     Home as HomeIcon,
-    MapPin,
     Bot,
     Wine,
     GlassWater,
@@ -90,7 +89,6 @@ const DEFAULTS = {
             { label: "Snacks", href: "/bites" }
         ]
     },
-    logistics: { dispatch_zones: ["CBD", "Westlands", "Kilimani", "Lavington", "Kileleshwa", "Karen", "Langata", "South C", "South B", "Embakasi", "Roysambu", "Kasarani", "Kahawa", "Githurai", "Zimmerman", "Utawala", "Syokimau", "Kitengela", "Rongai", "Ngong", "Kikuyu", "Thika Road", "Mombasa Road"] },
     catalog: {
         categories: [{ id: 'wine', label: 'Vintages' }, { id: 'spirits', label: 'Premium Spirits' }, { id: 'snacks', label: 'Late Night Snacks' }, { id: 'beer', label: 'Chilled Beers' }, { id: 'mixers', label: 'Mixers' }, { id: 'extras', label: 'Extras' }],
         navigation: DEFAULT_CATALOG_NAVIGATION.map(item => ({ ...item }))
@@ -164,7 +162,6 @@ export default function AdminSettingsPage() {
     const [branding, setBranding] = useState(DEFAULTS.branding);
     const [homepage, setHomepage] = useState(DEFAULTS.homepage);
     const [homepageProducts, setHomepageProducts] = useState<HomepageProduct[]>([]);
-    const [logistics, setLogistics] = useState(DEFAULTS.logistics);
     const [catalog, setCatalog] = useState(DEFAULTS.catalog);
     const [promotions, setPromotions] = useState(DEFAULTS.promotions);
     const [theme, setTheme] = useState(DEFAULTS.theme_config);
@@ -247,7 +244,6 @@ export default function AdminSettingsPage() {
                         const val = item.value as typeof DEFAULTS.homepage;
                         if (val.hero_image_url) setHeroPreview(val.hero_image_url);
                     }
-                    if (item.key === 'logistics') setLogistics(item.value as typeof DEFAULTS.logistics);
                     if (item.key === 'catalog') {
                         setCatalog({
                             ...DEFAULTS.catalog,
@@ -488,7 +484,6 @@ export default function AdminSettingsPage() {
                 { key: 'social_links', value: social },
                 { key: 'store_info', value: store },
                 { key: 'promotions', value: promotions },
-                { key: 'logistics', value: logistics },
                 { key: 'catalog', value: catalog },
                 { key: 'onboarding_config', value: onboarding },
                 { key: 'features', value: features },
@@ -1357,46 +1352,13 @@ export default function AdminSettingsPage() {
                                     <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3">
                                         <Truck className="h-5 w-5 text-primary" /> Delivery zone map
                                     </h2>
-                                    <p className="text-sm text-muted-foreground">Open the dedicated large map to draw delivery boundaries, assign fees, and choose from 30 zone colors.</p>
+                                    <p className="text-sm text-muted-foreground">Manage delivery-area names, map their boundaries, and set each delivery fee in one place.</p>
                                     <a href="/lord/delivery-zones" className="inline-flex min-h-12 w-fit items-center rounded-xl bg-primary px-5 text-xs font-black uppercase tracking-wide text-primary-foreground shadow-sm hover:opacity-90">
                                         Open delivery zone map
                                     </a>
                                 </div>
                             </div>
 
-                            <Card className="rounded-[3rem] border border-border p-10 bg-card shadow-sm space-y-8 mt-8 text-left">
-                                <div className="flex justify-between items-center text-left">
-                                    <div>
-                                        <h2 className="text-xl font-black text-foreground uppercase flex items-center gap-3"><MapPin className="h-5 w-5 text-primary" /> Rider dispatch labels</h2>
-                                        <p className="mt-1 text-xs text-muted-foreground">These labels help dispatchers sort orders; they do not set customer delivery fees.</p>
-                                    </div>
-                                    <a href="/lord/delivery-zones" className="inline-flex h-10 items-center rounded-xl bg-primary px-4 text-[9px] font-black uppercase text-primary-foreground">Set delivery prices</a>
-                                    <Button onClick={() => setLogistics({ ...logistics, dispatch_zones: [...logistics.dispatch_zones, ''] })} variant="outline" className="h-10 rounded-xl text-[8px] font-black uppercase"><Plus className="h-3 w-3 mr-2" /> Add Label</Button>
-                                </div>
-                                <p className="text-sm text-muted-foreground">These labels support rider operations. Customer-selectable areas and delivery fees are managed in the Delivery Zone Map.</p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 text-left">
-                                    {logistics.dispatch_zones.map((zone, idx) => (
-                                        <div key={idx} className="relative group text-left">
-                                            <Input
-                                                value={zone}
-                                                onChange={e => {
-                                                    const newZones = [...logistics.dispatch_zones];
-                                                    newZones[idx] = e.target.value;
-                                                    setLogistics({ ...logistics, dispatch_zones: newZones });
-                                                }}
-                                                className="h-12 w-full min-w-0 rounded-xl bg-secondary border-border px-4 pr-11 font-bold text-sm text-foreground"
-                                            />
-                                            <button
-                                                onClick={() => setLogistics({ ...logistics, dispatch_zones: logistics.dispatch_zones.filter((_, i) => i !== idx) })}
-                                                aria-label={`Remove dispatch label ${zone || idx + 1}`}
-                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-rose-500 opacity-100 transition-all"
-                                            >
-                                                <Trash2 className="h-3 w-3" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
                         </div>
                     )}
 

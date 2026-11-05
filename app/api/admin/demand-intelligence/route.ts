@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { loadDemandIntelligenceFallback } from '@/lib/demandIntelligenceFallback';
+import { parseDeliveryAreas } from '@/lib/deliveryAreas';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,22 +48,33 @@ export async function GET(request: Request) {
     }, { status: 503 });
   }
 
-  const { data: logistics, error: logisticsError } = await database
+  const { data: deliverySettings, error: logisticsError } = await database
     .from('settings')
-    .select('value')
-    .eq('key', 'logistics')
-    .maybeSingle();
+    .select('key,value')
+    .in('key', ['logistics', 'free_delivery_areas']);
   if (logisticsError) {
     console.error('[DemandIntelligence] Could not read dispatch coverage settings:', logisticsError);
     return NextResponse.json({ error: 'Demand data loaded, but configured service areas could not be checked.' }, { status: 503 });
   }
-  const configuredZones = logistics?.value && typeof logistics.value === 'object'
-    ? (logistics.value as { dispatch_zones?: unknown }).dispatch_zones
-    : null;
-  const dispatchZones = Array.isArray(configuredZones)
-    && configuredZones.every((zone) => typeof zone === 'string')
-    ? configuredZones as string[]
-    : ['CBD', 'Westlands', 'Kilimani', 'Lavington', 'Kileleshwa', 'Karen', 'Langata', 'South C', 'South B', 'Embakasi', 'Roysambu', 'Kasarani', 'Kahawa', 'Githurai', 'Zimmerman', 'Utawala', 'Syokimau', 'Kitengela', 'Rongai', 'Ngong', 'Kikuyu', 'Thika Road', 'Mombasa Road'];
+  const deliveryAreasSetting = deliverySettings?.find(setting => setting.key === 'free_delivery_areas');
+  const logisticsSetting = deliverySettings?.find(setting => setting.key === 'logistics');
+  let dispatchZones: string[];
+  if (deliveryAreasSetting) {
+    try {
+      dispatchZones = parseDeliveryAreas(deliveryAreasSetting.value).map(area => area.name);
+    } catch (parseError) {
+      console.error('[DemandIntelligence] Saved delivery zones are invalid:', parseError);
+      return NextResponse.json({ error: 'Configured delivery zones could not be checked. Review the Delivery Zone Map settings.' }, { status: 503 });
+    }
+  } else {
+    const configuredZones = logisticsSetting?.value && typeof logisticsSetting.value === 'object'
+      ? (logisticsSetting.value as { dispatch_zones?: unknown }).dispatch_zones
+      : null;
+    dispatchZones = Array.isArray(configuredZones)
+      && configuredZones.every((zone) => typeof zone === 'string')
+      ? configuredZones as string[]
+      : ['CBD', 'Westlands', 'Kilimani', 'Lavington', 'Kileleshwa', 'Karen', 'Langata', 'South C', 'South B', 'Embakasi', 'Roysambu', 'Kasarani', 'Kahawa', 'Githurai', 'Zimmerman', 'Utawala', 'Syokimau', 'Kitengela', 'Rongai', 'Ngong', 'Kikuyu', 'Thika Road', 'Mombasa Road'];
+  }
   const result = data as {
     days?: number;
     locations?: Array<{ area?: string }>;
