@@ -15,6 +15,8 @@ export function getPublicBaseUrl() {
     try {
         const parsedUrl = new URL(currentUrl);
         if (parsedUrl.hostname.endsWith('.onrender.com')
+            || parsedUrl.hostname === 'apexmarket.co.ke'
+            || parsedUrl.hostname.endsWith('.apexmarket.co.ke')
             || parsedUrl.hostname === 'onlinebar.co.ke'
             || parsedUrl.hostname === 'www.onlinebar.co.ke') return CANONICAL_PUBLIC_URL;
         return parsedUrl.origin;
