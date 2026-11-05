@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     'onboarding_link_opened',
     'onboarding_step_started',
     'onboarding_step_completed',
+    'onboarding_application_submitted',
     'onboarding_document_selected'
   ].includes(eventType as string);
   if (!/^[A-Za-z0-9_-]{40,64}$/.test(token)

@@ -87,7 +87,15 @@ async function sendEmail(
   message: string,
   trackingUrl: string,
   status: CustomerNotificationStatus,
-  order: { id: number; total_price: number | string },
+  order: {
+    id: number;
+    total_price: number | string;
+    customer_name?: string | null;
+    payment_method?: string | null;
+    created_at?: string | null;
+  },
+  items: Array<{ name: string; quantity: number; unitPrice: number; size?: string | null }>,
+  paymentReference: string,
   rule: CustomerNotificationRule
 ) {
   const design = getCustomerOrderEmailDesign(rule);
@@ -97,7 +105,14 @@ async function sendEmail(
     orderId: String(order.id),
     total: `KES ${Number(order.total_price).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     status,
-    trackingUrl
+    trackingUrl,
+    customerName: order.customer_name || undefined,
+    paymentMethod: order.payment_method || undefined,
+    paymentReference: paymentReference || undefined,
+    createdAt: order.created_at
+      ? new Date(order.created_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })
+      : undefined,
+    items
   };
   return sendTransactionalEmail({
     from: withTransactionalEmailSenderName(getTransactionalEmailConfig().from, 'Online Bar'),
@@ -240,7 +255,7 @@ export async function POST(request: Request) {
 
   const { data: order, error: orderError } = await database
     .from('orders')
-    .select('id, user_id, customer_email, customer_name, customer_phone, status, total_price, payment_method, checkout_request_id, rider_name, rider_phone, delivery_eta_minutes, notification_sms_opt_in, notification_whatsapp_opt_in')
+    .select('id, user_id, customer_email, customer_name, customer_phone, status, total_price, payment_method, checkout_request_id, rider_name, rider_phone, delivery_eta_minutes, notification_sms_opt_in, notification_whatsapp_opt_in, created_at')
     .eq('id', orderId)
     .maybeSingle();
   if (orderError) {
@@ -314,6 +329,31 @@ export async function POST(request: Request) {
   const channels = retryChannel
     ? [retryChannel as CustomerNotificationChannel]
     : allowedChannels;
+  let emailItems: Array<{ name: string; quantity: number; unitPrice: number; size?: string | null }> = [];
+  if (channels.includes('email')) {
+    const { data: orderItems, error: orderItemsError } = await database.from('order_items')
+      .select('product_id,quantity,unit_price,size,products(name)')
+      .eq('order_id', orderId);
+    if (orderItemsError) {
+      console.error('[CustomerNotification] Could not load itemized email receipt:', orderItemsError);
+      return NextResponse.json({ error: 'The itemized email receipt could not be loaded, so no notification was sent.' }, { status: 503 });
+    }
+    emailItems = (orderItems || []).map(item => {
+      const product = Array.isArray(item.products) ? item.products[0] : item.products;
+      const productName = typeof product?.name === 'string' && product.name.trim()
+        ? product.name.trim()
+        : `Product #${item.product_id}`;
+      return {
+        name: productName,
+        quantity: Math.max(1, Number(item.quantity) || 1),
+        unitPrice: Math.max(0, Number(item.unit_price) || 0),
+        size: typeof item.size === 'string' ? item.size : null
+      };
+    });
+    if (!emailItems.length) {
+      emailItems = [{ name: 'Online Bar Order', quantity: 1, unitPrice: Number(order.total_price) || 0 }];
+    }
+  }
   const trackingUrl = `${getPublicBaseUrl()}/track?id=${encodeURIComponent(String(orderId))}`;
   const name = order.customer_name || 'there';
   const subject = renderTemplate(rule.subject, name, order, trackingUrl, status as CustomerNotificationStatus, paymentReceipt, paymentMethod);
@@ -389,7 +429,7 @@ export async function POST(request: Request) {
       try {
         let providerMessageId: string | undefined;
         if (channel === 'email') {
-          const sent = await sendEmail(email, subject, message, trackingUrl, status as CustomerNotificationStatus, order, rule);
+          const sent = await sendEmail(email, subject, message, trackingUrl, status as CustomerNotificationStatus, order, emailItems, paymentReceipt, rule);
           providerMessageId = sent.messageId;
         }
         if (channel === 'whatsapp') await sendWhatsApp(phone, message);

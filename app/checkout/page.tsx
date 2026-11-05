@@ -1130,8 +1130,8 @@ function CheckoutContent() {
         </div>
       </div>
 
-      <div className="grid gap-12 lg:grid-cols-3">
-        <div className="space-y-10 lg:col-span-2">
+      <div className="grid min-w-0 gap-8 xl:grid-cols-3 xl:gap-12">
+        <div className="min-w-0 space-y-10 xl:col-span-2">
 
           {/* Customer Info */}
           <section className="space-y-6">
@@ -1483,7 +1483,7 @@ function CheckoutContent() {
           )}
         </div>
 
-        <div className="space-y-8 lg:sticky lg:top-8">
+        <div className="min-w-0 space-y-8 xl:sticky xl:top-8 xl:self-start">
 
           {/* Order Summary Card */}
           <Card className="rounded-[3rem] border-none shadow-2xl bg-slate-50 text-foreground p-2">
@@ -1614,8 +1614,15 @@ function CheckoutContent() {
                         <Loader2 className="h-5 w-5 animate-spin" />
                         Finalizing...
                     </div>
-                ) : paymentMethod === 'COD' ? "Confirm COD Order" : "Initiate Payment"}
+                ) : placedOrderId !== null ? "Order Submitted" : paymentMethod === 'COD' ? "Confirm COD Order" : "Initiate Payment"}
               </Button>
+
+              {placedOrderId !== null && (
+                <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-xs font-semibold text-amber-900">
+                  Order #{placedOrderId} has already been saved. Don&apos;t submit it again.
+                  {" "}<Link href={`/track?id=${placedOrderId}`} className="underline underline-offset-2">Track order</Link>
+                </p>
+              )}
 
               {checkoutStatus.type === 'processing' && (
                 <p className="bg-primary/5 text-primary p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest mt-4 text-center animate-pulse">

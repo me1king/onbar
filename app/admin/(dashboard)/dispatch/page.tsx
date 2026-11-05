@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { formatPrice, cn, getPublicBaseUrl } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
-import { useSettings } from '@/lib/useSettings';
+import { copyTextToClipboard, getKenyanWhatsAppNumber } from '@/lib/riderContact';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 
@@ -193,7 +193,6 @@ const WAREHOUSES = [
 
 export default function AdminDispatchPage() {
     const { role, permissions } = useAdmin();
-    const { settings } = useSettings();
     const [riders, setRiders] = useState<Rider[]>([]);
     const [orders, setOrders] = useState<DispatchJob[]>([]);
     const [loading, setLoading] = useState(true);
@@ -203,6 +202,7 @@ export default function AdminDispatchPage() {
     const [assigning, setAssigning] = useState<number | null>(null);
     const [retryingAllocation, setRetryingAllocation] = useState<number | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [retiringRiderPhone, setRetiringRiderPhone] = useState<string | null>(null);
     const [overrideRiders, setOverrideRiders] = useState<Record<number, string>>({});
     const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
     const [assignmentModes, setAssignmentModes] = useState<Record<number, 'automatic' | 'manual'>>({});
@@ -401,6 +401,39 @@ export default function AdminDispatchPage() {
             setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Rider authorization failed.' });
         }
     }, []);
+
+    const handleCopyRiderLink = async (phone: string) => {
+        const link = `${getPublicBaseUrl()}/rider/dashboard?phone=${encodeURIComponent(phone)}`;
+        try {
+            await copyTextToClipboard(link);
+            setMessage({ type: 'success', text: 'Rider sign-in link copied. The rider will still need their approval PIN.' });
+        } catch (error) {
+            setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Rider sign-in link could not be copied.' });
+        }
+    };
+
+    const handleRetireRider = async (phone: string) => {
+        if (!window.confirm('Deactivate this rider now? This removes terminal access. Reassign or complete any active delivery first.')) return;
+        setRetiringRiderPhone(phone);
+        try {
+            const response = await fetch('/api/admin/dispatch/riders', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone })
+            });
+            const result = await response.json() as { success?: boolean; error?: string };
+            if (!response.ok || !result.success) throw new Error(result.error || 'Rider could not be deactivated.');
+            setRiders(current => current.map(rider => rider.rider_phone === phone
+                ? { ...rider, verification_status: 'Rejected', status: 'Offline' }
+                : rider));
+            setSelectedRider(null);
+            setMessage({ type: 'success', text: 'Rider deactivated. They can apply again if they return to the fleet.' });
+        } catch (error) {
+            setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Rider could not be deactivated.' });
+        } finally {
+            setRetiringRiderPhone(null);
+        }
+    };
 
     return (
         <div className="p-8 space-y-8 bg-background min-h-screen text-left">
@@ -1014,14 +1047,18 @@ export default function AdminDispatchPage() {
                                 <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-muted-foreground ml-2">Communications</h3>
                                 <div className="flex flex-wrap gap-3">
                                     <Button
-                                        onClick={() => window.open(`tel:${selectedRider.rider_phone}`, '_self')}
+                                        onClick={() => window.location.href = `tel:${selectedRider.rider_phone.replace(/[^\d+]/g, '')}`}
                                         variant="outline"
                                         className="flex-1 h-14 rounded-2xl border-border text-foreground font-black uppercase text-[10px] hover:bg-secondary transition-all"
                                     >
                                         <Phone className="h-4 w-4 mr-2" /> Call Unit
                                     </Button>
                                     <Button
-                                        onClick={() => window.open(`https://wa.me/${selectedRider.rider_phone}`, '_blank')}
+                                        onClick={() => {
+                                            const number = getKenyanWhatsAppNumber(selectedRider.rider_phone);
+                                            const text = `Hi ${selectedRider.rider_name}, this is Online Bar dispatch.`;
+                                            window.open(`https://wa.me/${number}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+                                        }}
                                         className="flex-1 h-14 rounded-2xl bg-emerald-500 text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-emerald-100 active:scale-95 transition-all"
                                     >
                                         WhatsApp
@@ -1031,24 +1068,20 @@ export default function AdminDispatchPage() {
 
                             <div className="pt-8 border-t border-border flex flex-col gap-4">
                                 <Button
-                                    onClick={() => {
-                                        const baseUrl = getPublicBaseUrl();
-                                        const link = `${baseUrl}/rider/dashboard?phone=${selectedRider.rider_phone}`;
-                                        navigator.clipboard.writeText(link);
-                                        setMessage({ type: 'success', text: "Magic Link Copied!" });
-                                        setTimeout(() => setMessage(null), 3000);
-                                    }}
+                                    onClick={() => void handleCopyRiderLink(selectedRider.rider_phone)}
                                     variant="outline"
                                     className="w-full h-14 rounded-2xl border-indigo-200 text-indigo-600 font-black uppercase text-[10px] tracking-widest hover:bg-indigo-50 transition-all"
                                 >
-                                    Copy Runner Access Link
+                                    Copy Rider Sign-in Link
                                 </Button>
                                 <Button
                                     variant="outline"
-                                    onClick={() => window.open(`https://wa.me/${settings.contact.whatsapp}?text=Retire runner: ${selectedRider.rider_name}`, '_blank')}
-                                    className="w-full h-14 rounded-2xl border-rose-100 text-rose-400 font-black uppercase text-[10px] hover:bg-rose-50 transition-all"
+                                    onClick={() => void handleRetireRider(selectedRider.rider_phone)}
+                                    disabled={retiringRiderPhone === selectedRider.rider_phone || selectedRider.verification_status !== 'Verified'}
+                                    className="w-full h-14 rounded-2xl border-rose-100 text-rose-500 font-black uppercase text-[10px] hover:bg-rose-50 transition-all disabled:opacity-50"
                                 >
-                                    Retire Runner
+                                    {retiringRiderPhone === selectedRider.rider_phone ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    Deactivate Rider
                                 </Button>
                             </div>
                         </div>

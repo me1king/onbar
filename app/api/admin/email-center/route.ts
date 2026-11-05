@@ -26,6 +26,45 @@ function isMissingTable(error: { code?: string; message?: string } | null) {
     || /email_command_center_messages|email_suppressions/i.test(error.message || '')));
 }
 
+function escapeEmailHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character] || character);
+}
+
+function renderCommandCenterEmail(input: {
+  subject: string;
+  name: string;
+  message: string;
+  actionLink?: string;
+}) {
+  const paragraphs = input.message.split(/\n{2,}/).map(paragraph =>
+    `<p style="margin:0 0 16px;color:#334155;font-size:16px;line-height:1.7">${escapeEmailHtml(paragraph).replace(/\n/g, '<br>')}</p>`
+  ).join('');
+  const button = input.actionLink
+    ? `<tr><td align="center" style="padding:8px 28px 28px"><a href="${escapeEmailHtml(input.actionLink)}" style="display:inline-block;background:#f59e0b;border-radius:12px;color:#1c140d;font-size:15px;font-weight:700;padding:15px 25px;text-decoration:none">Continue onboarding</a></td></tr>`
+    : '';
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${escapeEmailHtml(input.subject)}</title></head>
+<body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f1f5f9;padding:28px 12px"><tr><td align="center">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background:#ffffff;border-radius:20px;overflow:hidden">
+      <tr><td style="background:#1c140d;padding:22px 28px;color:#ffffff"><p style="margin:0;font-size:13px;font-weight:700;letter-spacing:2px">ONLINE BAR KENYA</p></td></tr>
+      <tr><td style="padding:32px 28px 8px"><p style="margin:0 0 10px;color:#a39682;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase">A message from Online Bar</p>
+        <h1 style="margin:0 0 20px;color:#1c140d;font-size:26px;line-height:1.25">${escapeEmailHtml(input.subject)}</h1>
+        <p style="margin:0 0 16px;color:#334155;font-size:16px;line-height:1.7">Hello ${escapeEmailHtml(input.name || 'there')},</p>${paragraphs}
+      </td></tr>
+      ${button}
+      <tr><td style="border-top:1px solid #e2e8f0;padding:20px 28px 26px"><p style="margin:0;color:#64748b;font-size:12px;line-height:1.6">Online Bar Kenya · onlinebar.co.ke</p></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+}
+
 async function getDomainHealth() {
   const domain = 'onlinebar.co.ke';
   const selector = process.env.JMSURF_DKIM_SELECTOR?.trim() || '';
@@ -347,6 +386,7 @@ export async function POST(request: Request) {
 
   try {
     let deliveryText = message;
+    let actionLink: string | undefined;
     if (type === 'driver_invite') {
       const redirectTo = new URL('/rider/onboarding', getPublicBaseUrl()).toString();
       const { data, error } = await access.database.auth.admin.generateLink({
@@ -355,20 +395,17 @@ export async function POST(request: Request) {
         options: { redirectTo }
       });
       if (error) throw new Error(error.message);
-      const actionLink = data.properties?.action_link;
-      if (!actionLink) throw new Error('Supabase did not return a secure invitation link.');
-      deliveryText = `${message}\n\nContinue driver onboarding: ${actionLink}\n\nThis one-time link expires according to the authentication policy. If you did not expect this message, you can ignore it.`;
+      const invitationLink = data.properties?.action_link;
+      if (!invitationLink || !invitationLink.startsWith('https://')) throw new Error('Supabase did not return a secure invitation link.');
+      actionLink = invitationLink;
+      deliveryText = `${message}\n\nContinue driver onboarding: ${invitationLink}\n\nThis one-time link expires according to the authentication policy. If you did not expect this message, you can ignore it.`;
     }
-
-    const safeHtml = deliveryText.replace(/[&<>"']/g, character => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[character] || character).replace(/\r?\n/g, '<br>');
     const result = await sendTransactionalEmail({
       from: withTransactionalEmailSenderName(config.from, 'Online Bar'),
       to: email,
       subject,
       text: deliveryText,
-      html: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;padding:24px;color:#1f2937"><h1 style="font-size:22px">Online Bar Kenya</h1><p>${safeHtml}</p></div>`,
+      html: renderCommandCenterEmail({ subject, name, message, actionLink }),
       idempotencyKey: `email-center-${log.id}`
     });
     const { error: updateError } = await access.database.from('email_command_center_messages')

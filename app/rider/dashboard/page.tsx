@@ -11,7 +11,6 @@ import {
     Loader2,
     Star,
     Navigation,
-    Fingerprint,
     MessageCircle,
     Zap,
     Search,
@@ -28,10 +27,10 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
 import dynamic from 'next/dynamic';
 import EarningsCenter from '@/components/rider/EarningsCenter';
 import PerformanceHub from '@/components/rider/PerformanceHub';
-import { authenticateBiometrics } from '@/lib/biometricService';
 import MerchantConnectionsPanel from '@/components/rider/MerchantConnectionsPanel';
 
 const RiderDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
@@ -98,6 +97,7 @@ function decodeVapidKey(value: string): ArrayBuffer {
 function RiderDashboardContent() {
     const searchParams = useSearchParams();
     const phoneParam = searchParams?.get('phone');
+    const accountAccess = searchParams?.get('account') === '1';
     const supportOrderId = searchParams?.get('supportOrderId');
 
     const [phone, setPhone] = useState('');
@@ -148,7 +148,7 @@ function RiderDashboardContent() {
         setLoading(true);
         setAuthError(null);
         try {
-            const sessionResponse = await fetch(savedToken ? '/api/rider/session' : '/api/rider/session', {
+            const sessionResponse = await fetch('/api/rider/session', {
                 method: savedToken ? 'GET' : 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -234,11 +234,41 @@ function RiderDashboardContent() {
                 setAccentSaveMessage(error instanceof Error ? error.message : 'Rider theme could not be loaded.');
             });
         } catch (error) {
+            if (savedToken) {
+                localStorage.removeItem('ob_rider_token');
+                setSessionToken('');
+            }
             setAuthError(error instanceof Error ? error.message : 'Rider sign-in failed.');
         } finally {
             setLoading(false);
         }
     }, []);
+
+    const continueWithOnlineBarAccount = useCallback(async () => {
+        setLoading(true);
+        setAuthError(null);
+        try {
+            if (!supabase) throw new Error('OnlineBar account sign-in is unavailable. Use your rider phone and PIN instead.');
+            const { data, error } = await supabase.auth.getSession();
+            if (error) throw error;
+            const accessToken = data.session?.access_token;
+            if (!accessToken) throw new Error('Sign in to your OnlineBar account, then return to your rider profile to open the terminal.');
+
+            const response = await fetch('/api/rider/session/account', {
+                method: 'POST',
+                headers: riderAuthHeaders(accessToken),
+                cache: 'no-store'
+            });
+            const result = await response.json() as { token?: string; error?: string };
+            if (!response.ok || !result.token) {
+                throw new Error(result.error || 'Your OnlineBar account could not be linked to an approved rider.');
+            }
+            await verifyAndFetch('', '', result.token);
+        } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'OnlineBar account sign-in failed.');
+            setLoading(false);
+        }
+    }, [verifyAndFetch]);
 
     const respondToOffer = useCallback(async (orderId: number, responseValue: 'accepted' | 'declined', timedOut = false) => {
         if (!sessionToken) return;
@@ -747,9 +777,19 @@ function RiderDashboardContent() {
     useEffect(() => {
         if (!supportOrderId) {
             setSupportPreview(false);
+            if (accountAccess) {
+                void continueWithOnlineBarAccount();
+                return;
+            }
             const savedPhone = localStorage.getItem('ob_rider_phone');
             const savedToken = localStorage.getItem('ob_rider_token');
-            if (savedPhone && savedToken) {
+            const requestedDigits = phoneParam?.replace(/\D/g, '');
+            const savedDigits = savedPhone?.replace(/\D/g, '');
+            if (phoneParam && savedToken && requestedDigits !== savedDigits) {
+                localStorage.removeItem('ob_rider_token');
+                localStorage.removeItem('ob_rider_phone');
+                setPhone(phoneParam);
+            } else if (savedPhone && savedToken) {
                 setPhone(savedPhone);
                 setSessionToken(savedToken);
                 verifyAndFetch(savedPhone, '', savedToken);
@@ -865,7 +905,7 @@ function RiderDashboardContent() {
             active = false;
             window.clearInterval(timer);
         };
-    }, [phoneParam, supportOrderId, verifyAndFetch]);
+    }, [accountAccess, continueWithOnlineBarAccount, phoneParam, supportOrderId, verifyAndFetch]);
 
     useEffect(() => {
         if (!isOnline || !sessionToken) {
@@ -921,16 +961,6 @@ function RiderDashboardContent() {
             navigator.geolocation.clearWatch(watchId);
         };
     }, [hasActiveMission, isOnline, sessionToken, supportPreview]);
-
-    const handleBioAuth = async () => {
-        try {
-            const cred = await authenticateBiometrics();
-            if (cred && phone && pin) {
-                verifyAndFetch(phone, pin);
-            }
-        } catch {
-        }
-    };
 
     const handleToggleOnline = async () => {
         if (!sessionToken || !phone) return;
@@ -996,27 +1026,29 @@ function RiderDashboardContent() {
 
                     <div className="space-y-6">
                         <div className="space-y-4">
-                            <p className="text-center text-xs leading-5 text-slate-500">Use the phone number and four-digit PIN from your rider approval email. Open this terminal any time from your approved Online Bar profile.</p>
+                            <p className="text-center text-xs leading-5 text-slate-500">Continue with the verified OnlineBar account using the same email or phone from your rider application, or sign in with the phone number and four-digit PIN from your approval email.</p>
                             <div className="relative">
-                                <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="07XXXXXXXX" className="h-16 rounded-2xl bg-slate-50 border-slate-100 text-foreground pl-14 text-sm font-black" />
+                                <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="07XXXXXXXX or +254…" type="tel" inputMode="tel" autoComplete="tel" aria-label="Rider phone number" className="h-16 rounded-2xl bg-slate-50 border-slate-100 text-foreground pl-14 text-sm font-black" />
                                 <PhoneCall className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
                             </div>
                             <div className="relative">
-                                <Input type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="PIN" maxLength={4} className="h-16 rounded-2xl bg-slate-50 border-slate-100 text-foreground pl-14 text-sm font-black" />
+                                <Input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="Four-digit rider PIN" inputMode="numeric" autoComplete="one-time-code" maxLength={4} className="h-16 rounded-2xl bg-slate-50 border-slate-100 text-foreground pl-14 text-sm font-black" />
                                 <Zap className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
                             </div>
                         </div>
 
                         {authError && <p className="text-[9px] font-black uppercase text-rose-500 text-center">{authError}</p>}
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <Button onClick={() => verifyAndFetch(phone, pin)} disabled={loading} className="h-16 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 active:scale-95 transition-all">
-                                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Initialize"}
-                            </Button>
-                            <Button onClick={handleBioAuth} variant="outline" className="h-16 rounded-2xl border-slate-100 text-slate-400 hover:text-primary active:scale-95 transition-all">
-                                <Fingerprint className="h-6 w-6" />
+                        <div>
+                            <Button onClick={() => verifyAndFetch(phone, pin)} disabled={loading || !phone.trim() || !/^\d{4}$/.test(pin)} className="h-16 w-full rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 active:scale-95 transition-all">
+                                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Sign in with rider PIN"}
                             </Button>
                         </div>
+
+                        <Button type="button" variant="outline" onClick={() => void continueWithOnlineBarAccount()} disabled={loading} className="h-14 w-full rounded-2xl border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Continue with OnlineBar account
+                        </Button>
 
                         <div className="pt-4 text-center border-t border-slate-100">
                             <Link href="/rider/onboarding" className="text-[10px] font-black text-slate-400 hover:text-primary transition-colors uppercase tracking-widest">Apply for Duty &rarr;</Link>

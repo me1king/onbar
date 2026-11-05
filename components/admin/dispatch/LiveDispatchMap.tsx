@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { BatteryMedium, ChevronRight } from 'lucide-react';
+import { BatteryMedium, ChevronRight, Crosshair } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { decodePolyline } from '@/lib/utils/polyline';
 import { getCartoVoyagerTileUrl } from '@/lib/cartoMaps';
@@ -18,6 +18,7 @@ interface Rider {
     battery_level: number;
     current_speed?: number;
     active_batch_id?: string | null;
+    location_updated_at?: string | null;
 }
 
 interface DemandZone {
@@ -82,7 +83,34 @@ function FitActiveRoutes({ routes }: { routes: NonNullable<LiveDispatchMapProps[
   return null;
 }
 
+function FitRiderLocations({
+  riders,
+  onMapReady
+}: {
+  riders: Array<Rider & { lat: number; lng: number }>;
+  onMapReady: (map: L.Map) => void;
+}) {
+  const map = useMap();
+  const riderIds = riders.map(rider => String(rider.id)).sort().join(',');
+  const ridersRef = React.useRef(riders);
+  ridersRef.current = riders;
+
+  useEffect(() => {
+    onMapReady(map);
+  }, [map, onMapReady]);
+
+  useEffect(() => {
+    const currentRiders = ridersRef.current;
+    if (currentRiders.length === 0) return;
+    const bounds = L.latLngBounds(currentRiders.map(rider => [rider.lat, rider.lng]));
+    map.fitBounds(bounds, { padding: [48, 48], maxZoom: 13, animate: true });
+  }, [map, riderIds]);
+
+  return null;
+}
+
 export default function LiveDispatchMap({ riders, demandZones = [], showDemand = true, onSelectRider, activeRoutes = [] }: LiveDispatchMapProps) {
+  const [map, setMap] = React.useState<L.Map | null>(null);
   useEffect(() => {
     fixLeafletIcons();
   }, []);
@@ -90,10 +118,14 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
   const center: [number, number] = [-1.286389, 36.817223]; // Nairobi CBD
 
   const onlineRiders = riders.filter(r => r.status !== 'Offline');
-  const ridersWithLocation = riders.filter(
+  const now = Date.now();
+  const ridersWithLocation = onlineRiders.filter(
     (rider): rider is Rider & { lat: number; lng: number } =>
       typeof rider.lat === 'number' && Number.isFinite(rider.lat)
       && typeof rider.lng === 'number' && Number.isFinite(rider.lng)
+      && Boolean(rider.location_updated_at)
+      && now >= new Date(rider.location_updated_at as string).getTime()
+      && now - new Date(rider.location_updated_at as string).getTime() <= 5 * 60 * 1000
   );
 
   return (
@@ -104,6 +136,7 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
       >
+        <FitRiderLocations riders={ridersWithLocation} onMapReady={setMap} />
         <FitActiveRoutes routes={activeRoutes} />
         {/* 🗺️ Premium Voyager Tiles (Google Maps style) */}
         <TileLayer
@@ -186,6 +219,26 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
         ))}
       </MapContainer>
 
+      <button
+        type="button"
+        onClick={() => {
+          if (map && ridersWithLocation.length > 0) {
+            map.fitBounds(L.latLngBounds(ridersWithLocation.map(rider => [rider.lat, rider.lng])), {
+              padding: [48, 48],
+              maxZoom: 13,
+              animate: true
+            });
+          }
+        }}
+        disabled={ridersWithLocation.length === 0}
+        className="absolute left-3 top-3 z-[1000] inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-bold text-slate-800 shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <Crosshair className="h-4 w-4" />
+        {ridersWithLocation.length > 0
+          ? `Show ${ridersWithLocation.length} live rider pin${ridersWithLocation.length === 1 ? '' : 's'}`
+          : 'Waiting for fresh rider GPS'}
+      </button>
+
       {/* 📡 Tactical HUD Overlay */}
       <div className="absolute top-2 right-2 z-[1000] w-48 sm:top-6 sm:right-6 sm:w-64 max-h-[45%] sm:max-h-[80%] bg-white/90 backdrop-blur-xl rounded-2xl sm:rounded-[2.5rem] border border-white/50 shadow-2xl flex flex-col overflow-hidden transition-all duration-700 opacity-100 translate-x-0 lg:opacity-0 lg:group-hover:opacity-100 lg:translate-x-10 lg:group-hover:translate-x-0">
           <div className="p-6 border-b border-slate-100 bg-white/50">
@@ -211,6 +264,11 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
                           <div>
                               <p className="text-[10px] font-black uppercase text-foreground leading-none">{rider.rider_name}</p>
                               <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">{rider.status}</p>
+                              <p className="text-[8px] font-semibold text-slate-500 mt-1">
+                                {ridersWithLocation.some(located => located.id === rider.id)
+                                  ? `GPS updated ${new Date(rider.location_updated_at!).toLocaleTimeString()}`
+                                  : 'GPS waiting or older than 5 min'}
+                              </p>
                           </div>
                       </div>
                       <ChevronRight className="h-3 w-3 text-slate-300 group-hover/unit:text-primary transition-colors" />

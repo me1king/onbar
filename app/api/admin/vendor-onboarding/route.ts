@@ -36,6 +36,7 @@ function migrationMissing(error: { code?: string; message?: string }) {
   return ['42P01', 'PGRST202', 'PGRST205'].includes(error.code || '')
     || /relation ["']?(?:public\.)?vendor_onboarding_(?:leads|events|checklist)["']? does not exist/i.test(error.message || '')
     || /could not find the function public\.(?:advance_vendor_onboarding_lead|issue_vendor_onboarding_invite|set_vendor_onboarding_checklist_item|record_vendor_onboarding_checkin|schedule_vendor_onboarding_visit|set_vendor_onboarding_launch_checks|update_vendor_onboarding_lead|configure_vendor_onboarding_workflow|save_vendor_onboarding_draft)/i.test(error.message || '')
+    || /could not find the function public\.update_vendor_onboarding_contact/i.test(error.message || '')
     || /column .*onboarding_(?:mode|step_owners)|vendor_onboarding_drafts/i.test(error.message || '');
 }
 
@@ -63,15 +64,15 @@ function validateLead(value: unknown) {
   const source = typeof row.source === 'string' ? row.source.trim() : '';
   const notes = typeof row.notes === 'string' ? row.notes.trim() : '';
   if (
-    !businessName || businessName.length > 160 || !ownerName || ownerName.length > 160
-    || phone.length < 5 || phone.length > 40 || !area || area.length > 160
+    !businessName || businessName.length > 160 || ownerName.length > 160
+    || (phone && (phone.length < 5 || phone.length > 40)) || !area || area.length > 160
     || !vendorTypes.includes(vendorType as typeof vendorTypes[number])
     || agent.length > 160 || whatsapp.length > 40 || source.length > 160 || notes.length > 2000
   ) return null;
   return {
     business_name: businessName,
-    owner_name: ownerName,
-    phone,
+    owner_name: ownerName || null,
+    phone: phone || null,
     whatsapp: whatsapp || null,
     area,
     vendor_type: vendorType,
@@ -198,7 +199,7 @@ export async function POST(request: Request) {
   const validatedLeads = rows.map(validateLead);
   if (validatedLeads.some(lead => !lead)) {
     return NextResponse.json({
-      error: 'Every lead needs a business name, owner, phone (5–40 characters), area, and supported vendor type.'
+      error: 'Every lead needs a business name, area, and supported vendor type. Owner name and phone are optional; provided phone numbers must be 5–40 characters.'
     }, { status: 400 });
   }
   const leads = validatedLeads.filter((lead): lead is NonNullable<typeof lead> => lead !== null);
@@ -313,6 +314,18 @@ export async function PATCH(request: Request) {
       p_passed: body.passed,
       p_actor: access.actor
     }));
+  } else if (action === 'contact') {
+    const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
+    const whatsapp = typeof body.whatsapp === 'string' ? body.whatsapp.trim() : '';
+    if (phone.length < 5 || phone.length > 40 || whatsapp.length > 40) {
+      return NextResponse.json({ error: 'Enter a primary phone number between 5 and 40 characters; WhatsApp may be up to 40 characters.' }, { status: 400 });
+    }
+    ({ data: result, error } = await access.database.rpc('update_vendor_onboarding_contact', {
+      p_lead_id: id,
+      p_phone: phone,
+      p_whatsapp: whatsapp || null,
+      p_actor: access.actor
+    }));
   } else if (action === 'edit') {
     const agent = typeof body.agent === 'string' ? body.agent.trim() : '';
     const notes = typeof body.notes === 'string' ? body.notes.trim() : '';
@@ -330,6 +343,11 @@ export async function PATCH(request: Request) {
   }
 
   if (error) {
+    if (action === 'contact' && /update_vendor_onboarding_contact|schema cache/i.test(error.message || '')) {
+      return NextResponse.json({
+        error: 'Contact-number editing is not installed yet. Apply supabase/VENDOR_ONBOARDING_CONTACT_MIGRATION.sql after the vendor onboarding pipeline migration, then retry.'
+      }, { status: 503 });
+    }
     if (migrationMissing(error)) return migrationResponse();
     const message = error.message || '';
     const outdatedReviewGate = /second.person.{0,40}(?:review|confirm)|(?:review|confirm).{0,40}second.person/i.test(message);

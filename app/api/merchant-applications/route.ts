@@ -122,6 +122,25 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const publicKey = (
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )?.trim();
+  const accountToken = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!supabaseUrl || !publicKey || !accountToken) {
+    return NextResponse.json({ error: 'Sign in with a verified OnlineBar account before submitting your merchant application.' }, { status: 401 });
+  }
+  const authClient = createClient(supabaseUrl, publicKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+  const { data: accountData, error: accountError } = await authClient.auth.getUser(accountToken);
+  const accountUser = accountData.user;
+  if (accountError || !accountUser
+    || !(accountUser.email_confirmed_at || accountUser.phone_confirmed_at)) {
+    return NextResponse.json({ error: 'Verify your OnlineBar account, then return here and submit again.' }, { status: 401 });
+  }
+
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
     || request.headers.get('x-real-ip')?.trim()
     || 'unknown';
@@ -505,6 +524,7 @@ export async function POST(request: Request) {
 
     const applicationPayload = {
       id: applicationId,
+      account_user_id: accountUser.id,
       business_name: businessName,
       trading_name: tradingName || null,
       business_type: businessTypeValue,
@@ -574,6 +594,11 @@ export async function POST(request: Request) {
     }
     const { error: applicationCleanupError } = await database.from('merchant_applications').delete().eq('id', applicationId);
     if (applicationCleanupError) console.error('[MerchantApplications] Could not remove incomplete application:', applicationCleanupError);
+    if (error instanceof Error && /account_user_id/i.test(error.message)) {
+      return NextResponse.json({
+        error: 'Merchant account linking is not installed yet. Run supabase/MERCHANT_APPLICATION_ACCOUNT_LINK_MIGRATION.sql, then retry your application.'
+      }, { status: 503 });
+    }
     if (error instanceof Error && /onboarding_lead_id|complete_vendor_onboarding_invite|vendor_onboarding_leads|complete_merchant_business_branch_invite|merchant_business_branch_invites/i.test(error.message)) {
       return NextResponse.json({
         error: 'Private onboarding setup is incomplete. Apply supabase/ONBOARDING_INVITES_MIGRATION.sql, then retry with a newly issued company link.'

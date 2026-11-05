@@ -45,36 +45,70 @@ export async function GET(request: Request) {
   });
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   const user = authData.user;
-  if (authError || !user?.email || !(user.email_confirmed_at || user.confirmed_at)) {
+  const emailVerified = Boolean(user?.email && (user.email_confirmed_at || user.confirmed_at));
+  if (authError || !user || !(emailVerified || user.phone_confirmed_at)) {
     return NextResponse.json({ error: 'A verified account is required to view workspace access.' }, { status: 401 });
   }
 
   const database = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   });
-  const [{ data: applications, error: applicationsError }, { data: profile, error: profileError }] = await Promise.all([
-    database.from('merchant_applications')
-      .select('id, business_name, status, offered_goods, offered_goods_pricing')
-      .eq('email', user.email.toLowerCase())
-      .order('submitted_at', { ascending: false })
-      .limit(25),
-    database.from('profiles')
-      .select('phone_number')
-      .eq('id', user.id)
-      .maybeSingle()
-  ]);
+  const { data: linkedApplications, error: linkedApplicationsError } = await database
+    .from('merchant_applications')
+    .select('id, business_name, status, offered_goods, offered_goods_pricing')
+    .eq('account_user_id', user.id)
+    .order('submitted_at', { ascending: false })
+    .limit(25);
 
-  if (applicationsError || profileError) {
-    console.error('[ProfileWorkspaces] Could not load account workspace access:', applicationsError || profileError);
+  if (linkedApplicationsError) {
+    console.error('[ProfileWorkspaces] Could not load account workspace access:', linkedApplicationsError);
+    if (linkedApplicationsError && /account_user_id|schema cache/i.test(linkedApplicationsError.message)) {
+      return NextResponse.json({ error: 'Merchant account linking is not installed yet. Run supabase/MERCHANT_APPLICATION_ACCOUNT_LINK_MIGRATION.sql.' }, { status: 503 });
+    }
     return NextResponse.json({ error: 'Your approved workspace access could not be checked.' }, { status: 503 });
   }
 
-  const profilePhone = typeof profile?.phone_number === 'string'
-    ? normalizeTicketPhoneNumber(profile.phone_number)
+  let applications = linkedApplications || [];
+  if (!applications.length && emailVerified && user.email) {
+    const { data: legacyApplications, error: legacyApplicationsError } = await database.from('merchant_applications')
+      .select('id, business_name, status, offered_goods, offered_goods_pricing')
+      .eq('email', user.email.toLowerCase())
+      .order('submitted_at', { ascending: false })
+      .limit(25);
+    if (legacyApplicationsError) {
+      console.error('[ProfileWorkspaces] Could not load legacy merchant workspace access:', legacyApplicationsError);
+      return NextResponse.json({ error: 'Your approved workspace access could not be checked.' }, { status: 503 });
+    }
+    applications = legacyApplications || [];
+  }
+
+  const verifiedEmail = emailVerified && user.email ? user.email.trim().toLowerCase() : null;
+  const verifiedPhone = user.phone_confirmed_at && user.phone
+    ? normalizeTicketPhoneNumber(user.phone)
     : null;
-  const variants = profilePhone ? phoneVariants(profilePhone) : [];
   let riderApproved = false;
-  if (variants.length > 0) {
+  if (verifiedEmail) {
+    const { data: riders, error: ridersError } = await database
+      .from('rider_status')
+      .select('rider_phone, rider_email, verification_status')
+      .eq('verification_status', 'Verified')
+      .eq('rider_email', verifiedEmail)
+      .limit(3);
+    if (ridersError) {
+      console.error('[ProfileWorkspaces] Could not check rider email access:', ridersError);
+      if (!verifiedPhone || !/rider_email|schema cache/i.test(ridersError.message)) {
+        return NextResponse.json({
+          error: /rider_email|schema cache/i.test(ridersError.message)
+            ? 'Rider email linking is not installed. Apply supabase/RIDER_EMAIL_COMMUNICATIONS_MIGRATION.sql or use the verified phone on your OnlineBar account.'
+            : 'Your approved workspace access could not be checked.'
+        }, { status: 503 });
+      }
+    } else {
+      riderApproved = (riders || []).some(rider => rider.rider_email?.trim().toLowerCase() === verifiedEmail);
+    }
+  }
+  if (!riderApproved && verifiedPhone) {
+    const variants = phoneVariants(verifiedPhone);
     const { data: riders, error: ridersError } = await database
       .from('rider_status')
       .select('rider_phone, verification_status')
@@ -86,7 +120,7 @@ export async function GET(request: Request) {
     }
     riderApproved = (riders || []).some(rider =>
       rider.verification_status === 'Verified'
-      && normalizeTicketPhoneNumber(rider.rider_phone) === profilePhone
+      && normalizeTicketPhoneNumber(rider.rider_phone) === verifiedPhone
     );
   }
 

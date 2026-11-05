@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import Image from 'next/image';
+import { supabase } from '@/lib/supabaseClient';
 import {
   isFoodBusinessType,
   merchantVendorTypeForBusinessType,
@@ -164,6 +165,8 @@ function formatFriendlyUploadError(message: string | null | undefined): string {
 }
 
 export default function MerchantOnboarding() {
+  const [accountSession, setAccountSession] = useState<{ userId: string; email: string; accessToken: string; verified: boolean } | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
   const [step, setStep] = useState(0);
   const [businessType, setBusinessType] = useState<MerchantBusinessType>('bar');
   const [vendorType, setVendorType] = useState<MerchantVendorType>('retailer');
@@ -230,8 +233,51 @@ export default function MerchantOnboarding() {
   const [draftSaveError, setDraftSaveError] = useState<string | null>(null);
   const draftUpdatedAtRef = useRef<string | null>(null);
   const draftSaveRunningRef = useRef(false);
+  const draftSavePromiseRef = useRef<Promise<boolean> | null>(null);
   const latestDraftRef = useRef<{ formData: SharedDraftForm; currentStep: number } | null>(null);
-  const saveDraftNowRef = useRef<() => Promise<void>>(async () => {});
+  const saveDraftNowRef = useRef<() => Promise<boolean>>(async () => true);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) {
+      setAccountLoading(false);
+      return;
+    }
+    let active = true;
+    const syncAccount = async () => {
+      const { data, error } = await client.auth.getSession();
+      if (!active) return;
+      if (error) {
+        console.error('[MerchantOnboarding] Could not load the signed-in account:', error);
+        setError('Your OnlineBar account could not be checked. Refresh the page or sign in again.');
+      }
+      const user = data.session?.user;
+      setAccountSession(user && data.session ? {
+        userId: user.id,
+        email: user.email || '',
+        accessToken: data.session.access_token,
+        verified: Boolean(user.email_confirmed_at || user.phone_confirmed_at)
+      } : null);
+      setAccountLoading(false);
+    };
+    void syncAccount();
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      const user = session?.user;
+      setAccountSession(user && session ? {
+        userId: user.id,
+        email: user.email || '',
+        accessToken: session.access_token,
+        verified: Boolean(user.email_confirmed_at || user.phone_confirmed_at)
+      } : null);
+    });
+    window.addEventListener('focus', syncAccount);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', syncAccount);
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get('invite');
@@ -318,6 +364,7 @@ export default function MerchantOnboarding() {
       'onboarding_link_opened',
       'onboarding_step_started',
       'onboarding_step_completed',
+      'onboarding_application_submitted',
       'onboarding_document_selected'
     ].includes(eventType);
     if ((!journeyAnalyticsEnabled && !operationalEvent) || !inviteToken || !journeySessionId) return;
@@ -344,7 +391,7 @@ export default function MerchantOnboarding() {
   }, [inviteToken, journeyAnalyticsEnabled, journeySessionId]);
 
   useEffect(() => {
-    if (journeyAnalyticsEnabled && journeySessionId) {
+    if (journeySessionId) {
       void sendJourneyEvent('onboarding_analytics_consent', onboardingStages[0]);
     }
   }, [journeyAnalyticsEnabled, journeySessionId, sendJourneyEvent]);
@@ -443,8 +490,11 @@ export default function MerchantOnboarding() {
     void sendJourneyEvent('onboarding_document_selected', onboardingStages[3], { controlType: type });
   };
 
-  const moveToStep = (nextStep: number) => {
-    if (nextStep > step) void sendJourneyEvent('onboarding_step_completed', onboardingStages[step]);
+  const moveToStep = async (nextStep: number) => {
+    if (nextStep > step) {
+      if (invitation?.onboardingMode && !(await saveDraftNowRef.current())) return;
+      void sendJourneyEvent('onboarding_step_completed', onboardingStages[step]);
+    }
     setStep(nextStep);
   };
 
@@ -521,15 +571,26 @@ export default function MerchantOnboarding() {
     selectedGoods, offeredGoodsPrices
   ]);
 
-  const saveDraftNow = useCallback(async () => {
-    if (!inviteToken || !invitation?.onboardingMode || !draftLoaded || !draftPrivacyAcknowledged || submitted || draftSaveRunningRef.current) return;
+  const saveDraftNow = useCallback(async (): Promise<boolean> => {
+    if (!inviteToken || !invitation?.onboardingMode || submitted) return true;
+    if (!draftLoaded) return false;
+    if (!draftPrivacyAcknowledged) {
+      setDraftSaveError('Accept the private draft notice before moving on so this section can be resumed.');
+      return false;
+    }
     const snapshot = latestDraftRef.current;
-    if (!snapshot) return;
+    if (!snapshot) return false;
+    if (draftSaveRunningRef.current) {
+      const saved = await draftSavePromiseRef.current;
+      if (!saved) return false;
+      return latestDraftRef.current !== snapshot ? await saveDraftNowRef.current() : true;
+    }
     const stageKey = onboardingStages[snapshot.currentStep];
-    if (invitation.stepOwners?.[stageKey] !== invitation.editorRole) return;
+    if (invitation.stepOwners?.[stageKey] !== invitation.editorRole) return true;
     draftSaveRunningRef.current = true;
-    let failed = false;
-    try {
+    const operation = (async () => {
+      let failed = false;
+      try {
       const response = await fetch('/api/merchant-onboarding-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -555,8 +616,14 @@ export default function MerchantOnboarding() {
       setDraftSaveError(saveError instanceof Error ? saveError.message : 'Your onboarding progress could not be saved.');
     } finally {
       draftSaveRunningRef.current = false;
-      if (latestDraftRef.current !== snapshot && !failed) void saveDraftNowRef.current();
+      draftSavePromiseRef.current = null;
     }
+    return !failed;
+    })();
+    draftSavePromiseRef.current = operation;
+    const saved = await operation;
+    if (!saved) return false;
+    return latestDraftRef.current !== snapshot ? await saveDraftNowRef.current() : true;
   }, [inviteToken, invitation, draftLoaded, draftPrivacyAcknowledged, submitted]);
   useEffect(() => {
     saveDraftNowRef.current = saveDraftNow;
@@ -638,6 +705,14 @@ export default function MerchantOnboarding() {
   };
 
   const submitApplication = async () => {
+    if (accountLoading) {
+      setError('Checking your OnlineBar account. Please wait a moment and try again.');
+      return;
+    }
+    if (!accountSession || !accountSession.verified) {
+      setError('Sign in or create a verified OnlineBar account before submitting. Your account will be linked to this application so you can track its status from your profile.');
+      return;
+    }
     if (!requirementsLoaded || requirementsLoading) {
       setError('Wait for the current document checklist to load before submitting.');
       return;
@@ -707,14 +782,20 @@ export default function MerchantOnboarding() {
     }
 
     try {
-      const response = await fetch('/api/merchant-applications', { method: 'POST', body: payload });
+      const response = await fetch('/api/merchant-applications', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accountSession.accessToken}` },
+        body: payload
+      });
       const result = await readJsonResponse<{ id?: string; error?: string }>(response);
       if (!response.ok) throw new Error(result.error || 'Your application could not be submitted.');
-      if (journeyAnalyticsEnabled && journeySessionId) {
-        await sendJourneyEvent('onboarding_stage_exited', onboardingStages[step], {
-          durationMs: Math.max(0, Date.now() - stageEnteredAtRef.current)
-        });
-        stageEnteredAtRef.current = 0;
+      if (journeySessionId) {
+        if (journeyAnalyticsEnabled) {
+          await sendJourneyEvent('onboarding_stage_exited', onboardingStages[step], {
+            durationMs: Math.max(0, Date.now() - stageEnteredAtRef.current)
+          });
+          stageEnteredAtRef.current = 0;
+        }
         await sendJourneyEvent('onboarding_application_submitted', onboardingStages[step]);
       }
       const currentUrl = new URL(window.location.href);
@@ -768,6 +849,11 @@ export default function MerchantOnboarding() {
               </Link>
             </>
           )}
+          {invitation && (
+            <Link href="/profile#workspaces" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-primary px-6 text-sm font-black uppercase text-white hover:opacity-90">
+              Track from my OnlineBar account
+            </Link>
+          )}
           <Link href="/" className="mt-8 inline-flex text-sm font-bold text-primary hover:underline">Return to OnBar</Link>
         </Card>
       </main>
@@ -818,6 +904,39 @@ export default function MerchantOnboarding() {
             </p>
           )}
         </header>
+
+        <section className={`mb-5 flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+          accountSession?.verified ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
+        }`}>
+          <div className="flex items-start gap-3">
+            <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${accountSession?.verified ? 'text-emerald-700' : 'text-amber-700'}`} />
+            <div>
+              <p className={`text-sm font-bold ${accountSession?.verified ? 'text-emerald-950' : 'text-amber-950'}`}>
+                {accountLoading
+                  ? 'Checking OnlineBar account…'
+                  : accountSession?.verified
+                    ? `Application tracking linked to ${accountSession.email || 'your verified account'}`
+                    : 'Link this application to your OnlineBar account'}
+              </p>
+              <p className={`mt-1 text-xs leading-5 ${accountSession?.verified ? 'text-emerald-900' : 'text-amber-900'}`}>
+                {accountSession?.verified
+                  ? 'After submission, you can track its review and approval from your profile.'
+                  : 'Sign in or create an account in a new tab. Return here when you are done; your application stays open.'}
+              </p>
+            </div>
+          </div>
+          {!accountSession?.verified && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={accountLoading}
+              onClick={() => window.open('/auth?mode=signup', '_blank', 'noopener,noreferrer')}
+              className="shrink-0 border-amber-300 bg-white text-amber-950"
+            >
+              Open account sign-in
+            </Button>
+          )}
+        </section>
 
         <div className="mb-5 grid grid-cols-4 gap-2" aria-label="Application progress">
           {['Business', 'Contact & area', 'Operations', 'Goods & docs'].map((label, index) => (

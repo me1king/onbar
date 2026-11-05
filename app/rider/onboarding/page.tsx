@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import {
     ShieldCheck,
-    Fingerprint,
     Phone,
     User,
     Mail,
@@ -19,13 +18,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { registerBiometrics } from '@/lib/biometricService';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
 type Step = 'welcome' | 'phone' | 'identity' | 'vehicle' | 'verification' | 'agreement' | 'biometrics' | 'pending' | 'success';
 
 const normalizePhone = (p: string) => p.replace(/^\+254/, '').replace(/^0/, '').trim();
+const riderProgressSteps: Step[] = ['phone', 'identity', 'vehicle', 'verification', 'agreement', 'biometrics', 'pending'];
 
 async function withSupabaseTimeout<T>(
     taskFactory: () => Promise<T>,
@@ -102,34 +101,45 @@ export default function RiderOnboarding() {
 
     const fetchProgress = async (p: string) => {
         const client = supabase;
-        if (!client) return;
+        if (!client) {
+            setError('Saved rider progress could not be restored because onboarding storage is unavailable.');
+            return;
+        }
         const normalized = normalizePhone(p);
-        const result = await withSupabaseTimeout(
-            async () => {
-                const { data, error } = await client
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        try {
+            const result = await Promise.race([
+                client
                     .from('rider_onboarding_sessions')
                     .select('*')
                     .eq('rider_phone', normalized)
-                    .maybeSingle();
-                if (error) return { data: null, error };
-                return { data, error: null };
-            },
-            { data: null, error: null }
-        );
+                    .maybeSingle(),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('Loading saved progress timed out. Check your connection and refresh.')), 10000);
+                })
+            ]);
+            if (result.error) throw result.error;
 
-        const data = result.data as { current_step?: Step; form_data?: Record<string, string> } | null;
-        if (data) {
-            setStep(data.current_step || 'welcome');
-            if (data.form_data) {
-                const fd = data.form_data as Record<string, string>;
-                setRiderName(fd.riderName || '');
-                setRiderEmail(fd.riderEmail || '');
-                setBirthDate(fd.birthDate || '');
-                setIdNumber(fd.idNumber || '');
-                setLicenseNumber(fd.licenseNumber || '');
-                setPlateNumber(fd.plateNumber || '');
-                setVehicleType(fd.vehicleType || 'Motorbike');
+            const data = result.data as { current_step?: Step; form_data?: Record<string, string> } | null;
+            if (data) {
+                setStep(data.current_step || 'welcome');
+                if (data.form_data) {
+                    const fd = data.form_data as Record<string, string>;
+                    setRiderName(fd.riderName || '');
+                    setRiderEmail(fd.riderEmail || '');
+                    setBirthDate(fd.birthDate || '');
+                    setIdNumber(fd.idNumber || '');
+                    setLicenseNumber(fd.licenseNumber || '');
+                    setPlateNumber(fd.plateNumber || '');
+                    setVehicleType(fd.vehicleType || 'Motorbike');
+                }
             }
+        } catch (loadError) {
+            setError(loadError instanceof Error
+                ? `Your saved progress could not be restored: ${loadError.message}`
+                : 'Your saved progress could not be restored. Refresh and try again.');
+        } finally {
+            if (timer) clearTimeout(timer);
         }
     };
 
@@ -145,43 +155,51 @@ export default function RiderOnboarding() {
     };
 
     const saveProgress = async (nextStep: Step) => {
-        if (!phone) return;
+        if (!phone) {
+            setError('Enter your phone number before saving onboarding progress.');
+            return false;
+        }
         const normalized = normalizePhone(phone);
-        localStorage.setItem('ob_onboarding_phone', phone);
-
         const client = supabase;
         if (!client) {
-            setStep(nextStep);
-            return;
+            setError('Rider onboarding storage is unavailable. Your progress was not advanced; please try again later.');
+            return false;
         }
 
+        let timer: ReturnType<typeof setTimeout> | null = null;
         try {
-            await withSupabaseTimeout(
-                async () => {
-                    const { error } = await client.from('rider_onboarding_sessions').upsert({
-                        rider_phone: normalized,
-                        current_step: nextStep,
-                        form_data: {
-                            riderName,
-                            riderEmail,
-                            birthDate,
-                            idNumber,
-                            licenseNumber,
-                            plateNumber,
-                            vehicleType
-                        },
-                        updated_at: new Date().toISOString()
-                    });
-                    if (error) throw error;
-                    return null;
-                },
-                null
-            );
-        } catch {
-            // Keep the flow moving even if the persistence layer is slow or unavailable.
+            const saveResult = await Promise.race([
+                client.from('rider_onboarding_sessions').upsert({
+                    rider_phone: normalized,
+                    current_step: nextStep,
+                    form_data: {
+                        riderName,
+                        riderEmail,
+                        birthDate,
+                        idNumber,
+                        licenseNumber,
+                        plateNumber,
+                        vehicleType
+                    },
+                    updated_at: new Date().toISOString()
+                }),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('Saving your progress timed out. Check your connection and try again.')), 10000);
+                })
+            ]);
+            if (saveResult.error) throw saveResult.error;
+            localStorage.setItem('ob_onboarding_phone', phone);
+            setError(null);
+            setStep(nextStep);
+            return true;
+        } catch (saveError) {
+            setError(saveError instanceof Error
+                ? `Your progress was not saved: ${saveError.message}`
+                : 'Your progress was not saved. Check your connection and try again.');
+            return false;
+        } finally {
+            if (timer) clearTimeout(timer);
         }
-
-        setStep(nextStep);
     };
 
     const handleDownloadAgreement = async () => {
@@ -232,30 +250,10 @@ export default function RiderOnboarding() {
         }
     };
 
-    const handleBiometricEnroll = async () => {
+    const handleContinueWithPin = async () => {
         setLoading(true);
         setError(null);
         try {
-            const normalized = normalizePhone(phone);
-            const biometricKey = await registerBiometrics(normalized);
-            if (biometricKey) {
-                const biometricResponse = await fetch('/api/rider/onboarding/verification', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: normalized, biometricKey })
-                });
-                const biometricResult = await biometricResponse.json() as { error?: string };
-                if (!biometricResponse.ok) throw new Error(biometricResult.error || 'Biometric registration could not be saved.');
-            }
-            const response = await fetch(`/api/rider/onboarding/verification?phone=${encodeURIComponent(normalized)}`, {
-                cache: 'no-store'
-            });
-            const result = await response.json() as { verificationStatus?: string | null; error?: string };
-            if (!response.ok) throw new Error(result.error || 'Rider verification status could not be loaded.');
-            if (result.verificationStatus === 'Verified') setStep('success');
-            else await saveProgress('pending');
-        } catch (biometricError) {
-            setError(biometricError instanceof Error ? biometricError.message : 'Biometric registration could not be saved.');
             await saveProgress('pending');
         } finally {
             setLoading(false);
@@ -320,7 +318,7 @@ export default function RiderOnboarding() {
 
     return (
         <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 selection:bg-primary/20">
-            <div className="max-w-md w-full space-y-12 animate-in fade-in duration-700">
+            <div className="max-w-xl w-full space-y-6 sm:space-y-8 animate-in fade-in duration-700">
 
                 {/* 🛡️ ONLINE BAR BRANDING */}
                 <div className="text-center space-y-4">
@@ -334,8 +332,23 @@ export default function RiderOnboarding() {
                 </div>
 
                 {/* 🚀 PROGRESSIVE FLOW */}
-                <Card className="p-10 rounded-[3.5rem] bg-white border-2 border-slate-50 shadow-2xl relative overflow-hidden">
-                    <div className="relative z-10 space-y-10">
+                <Card className="p-5 sm:p-8 rounded-3xl bg-white border border-slate-100 shadow-xl relative overflow-hidden">
+                    <div className="relative z-10 space-y-7">
+                        {step !== 'welcome' && step !== 'success' && (
+                            <div className="space-y-2" aria-label="Onboarding progress">
+                                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                                    <span>Your progress</span>
+                                    <span>{Math.min(riderProgressSteps.indexOf(step) + 1, riderProgressSteps.length)} of {riderProgressSteps.length}</span>
+                                </div>
+                                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                                    <div
+                                        className="h-full rounded-full bg-primary transition-all"
+                                        style={{ width: `${((riderProgressSteps.indexOf(step) + 1) / riderProgressSteps.length) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                        {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p>}
 
                         {step === 'welcome' && (
                             <div className="space-y-8 text-center animate-in slide-in-from-bottom-4 duration-500">
@@ -502,36 +515,15 @@ export default function RiderOnboarding() {
                         {step === 'biometrics' && (
                             <div className="space-y-8 text-center animate-in slide-in-from-bottom-4 duration-500">
                                 <div className="h-24 w-24 rounded-full bg-primary/5 flex items-center justify-center text-primary mx-auto">
-                                    <Fingerprint className="h-12 w-12 animate-pulse" />
+                                    <ShieldCheck className="h-12 w-12" />
                                 </div>
                                 <div className="space-y-2">
-                                    <h2 className="text-2xl font-black text-foreground uppercase">Bio-Lock</h2>
-                                    <p className="text-sm text-slate-500 font-medium italic">&quot;Enable fingerprint or Face ID for zero-delay future logins.&quot;</p>
+                                    <h2 className="text-2xl font-black text-foreground uppercase">Secure sign-in</h2>
+                                    <p className="text-sm text-slate-500 font-medium">Biometric sign-in is not available yet. Your rider account uses the phone number and approval PIN sent after review.</p>
                                 </div>
-                                <div className="space-y-3">
-                                    <Button onClick={handleBiometricEnroll} disabled={loading} className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20">
-                                        Enable Biometrics
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        onClick={async () => {
-                                            const normalized = normalizePhone(phone);
-                                            try {
-                                                const response = await fetch(`/api/rider/onboarding/verification?phone=${encodeURIComponent(normalized)}`, {
-                                                    cache: 'no-store'
-                                                });
-                                                const result = await response.json() as { verificationStatus?: string | null; error?: string };
-                                                if (!response.ok) throw new Error(result.error || 'Rider verification status could not be loaded.');
-                                                setStep(result.verificationStatus === 'Verified' ? 'success' : getNextEnabledStep('biometrics'));
-                                            } catch (statusError) {
-                                                setError(statusError instanceof Error ? statusError.message : 'Rider verification status could not be loaded.');
-                                            }
-                                        }}
-                                        className="w-full text-slate-400 font-black uppercase text-[10px]"
-                                    >
-                                        Maybe Later
-                                    </Button>
-                                </div>
+                                <Button onClick={() => void handleContinueWithPin()} disabled={loading} className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20">
+                                    {loading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'Continue with PIN sign-in'}
+                                </Button>
                             </div>
                         )}
 
@@ -570,9 +562,11 @@ export default function RiderOnboarding() {
                                                 };
                                                 if (!response.ok) throw new Error(result.error || 'Rider verification status could not be loaded.');
                                                 if (result.verificationStatus === 'Verified') {
-                                                    localStorage.setItem('ob_rider_phone', normalized);
-                                                    if (result.riderName) localStorage.setItem('rider_name', result.riderName);
-                                                    setStep('success');
+                                                    const saved = await saveProgress('success');
+                                                    if (saved) {
+                                                        localStorage.setItem('ob_rider_phone', normalized);
+                                                        if (result.riderName) localStorage.setItem('rider_name', result.riderName);
+                                                    }
                                                 } else {
                                                     setError("Verification still pending. Check back soon.");
                                                     setTimeout(() => setError(null), 3000);

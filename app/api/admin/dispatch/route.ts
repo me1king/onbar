@@ -451,7 +451,33 @@ function recommendRiders(
   };
 }
 
-async function loadDispatchData(database: SupabaseClient) {
+function getRiderVerificationStoragePath(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const raw = value.trim();
+  if (raw.startsWith('riders/')) return raw;
+  try {
+    const pathname = new URL(raw).pathname;
+    const match = pathname.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/rider-verifications\/(.+)$/);
+    if (!match) return null;
+    const path = decodeURIComponent(match[1]);
+    return path.startsWith('riders/') ? path : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getRiderVerificationUrl(database: SupabaseClient, value: unknown, riderPhone: string, label: string) {
+  const path = getRiderVerificationStoragePath(value);
+  if (!path) return null;
+  const { data, error } = await database.storage.from('rider-verifications').createSignedUrl(path, 60 * 60);
+  if (error) {
+    console.error(`[AdminDispatch] Could not create a signed ${label} URL for rider ${riderPhone}:`, error);
+    return null;
+  }
+  return data.signedUrl;
+}
+
+async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderData: boolean) {
   const [ordersResult, ridersResult, loadResult, decisionResult, directoryRidersResult, zonesResult] = await Promise.all([
     database.from('orders')
       .select('id, status, payment_method, payment_verified_at, checkout_request_id, customer_name, customer_email, total_price, latitude, longitude, note, created_at, rider_name, rider_phone')
@@ -464,19 +490,19 @@ async function loadDispatchData(database: SupabaseClient) {
       .select('id, rider_name, rider_phone, status, verification_status, area_zone, current_location, last_known_lat, last_known_lng, max_deliveries, health_score, location_updated_at, updated_at'),
     database.from('orders')
       .select('rider_phone')
-      .in('status', ['Dispatched', 'Out for Delivery'])
+      .in('status', ['Dispatched', 'Picked Up', 'Out for Delivery'])
       .not('rider_phone', 'is', null),
     database.from('dispatch_decisions')
       .select('id, order_id, selected_rider_name, selected_rider_phone, selected_vendor_ids, decision_type, criteria, chosen_by, override_reason, created_at')
       .order('created_at', { ascending: false })
       .limit(50),
     database.from('rider_status').select(`
-      id, rider_name, rider_phone, vehicle_type, vehicle_reg, id_number, license_number,
-      plate_number, rider_photo_url, vehicle_photo_url, verification_status, current_location,
-      status, battery_level, total_deliveries, rating, area_zone, max_deliveries, weekly_salary,
-      health_score, runner_xp, runner_level, acceptance_rate, can_accept_orders, can_reject_orders,
-      can_view_earnings, last_known_lat, last_known_lng, location_updated_at, updated_at,
-      wallet:rider_wallets(balance, total_earned)
+      id, rider_name, rider_phone, vehicle_type, vehicle_reg, plate_number,
+      verification_status, current_location, status, battery_level, total_deliveries,
+      rating, area_zone, max_deliveries, weekly_salary, health_score, runner_xp,
+      runner_level, acceptance_rate, can_accept_orders, can_reject_orders,
+      can_view_earnings, last_known_lat, last_known_lng, location_updated_at,
+      updated_at, wallet:rider_wallets(balance, total_earned)
     `).order('rider_name', { ascending: true }),
     database.rpc('get_order_delivery_demand_zones')
   ]);
@@ -595,11 +621,34 @@ async function loadDispatchData(database: SupabaseClient) {
     };
   });
 
+  const { data: sensitiveRiderRows, error: sensitiveRiderError } = includeSensitiveRiderData
+    ? await database.from('rider_status')
+      .select('rider_phone,id_number,license_number,rider_photo_url,vehicle_photo_url')
+    : { data: [], error: null };
+  if (sensitiveRiderError) throw sensitiveRiderError;
+  const sensitiveRiders = new Map((sensitiveRiderRows || []).map(rider => [rider.rider_phone, rider]));
+  const directoryRiders = await Promise.all((directoryRidersResult.data || []).map(async rider => {
+    if (!includeSensitiveRiderData) return rider;
+    const sensitive = sensitiveRiders.get(rider.rider_phone);
+    if (!sensitive) return rider;
+    const [riderPhotoUrl, vehiclePhotoUrl] = await Promise.all([
+      getRiderVerificationUrl(database, sensitive.rider_photo_url, rider.rider_phone, 'rider photo'),
+      getRiderVerificationUrl(database, sensitive.vehicle_photo_url, rider.rider_phone, 'vehicle photo')
+    ]);
+    return {
+      ...rider,
+      id_number: sensitive.id_number,
+      license_number: sensitive.license_number,
+      rider_photo_url: riderPhotoUrl,
+      vehicle_photo_url: vehiclePhotoUrl
+    };
+  }));
+
   return {
     jobs,
     decisions: decisionResult.data || [],
     unverifiedPaymentCount: paidOrders.length - confirmedOrderIds.size,
-    riders: (directoryRidersResult.data || []).map(rider => ({
+    riders: directoryRiders.map(rider => ({
       ...rider,
       wallet: Array.isArray(rider.wallet) ? rider.wallet[0] || null : rider.wallet || null,
       lat: rider.last_known_lat === null || rider.last_known_lat === undefined ? null : Number(rider.last_known_lat),
@@ -618,7 +667,8 @@ async function loadDispatchData(database: SupabaseClient) {
 }
 
 export async function GET() {
-  if (!await getAdminSession()) {
+  const session = await getAdminSession();
+  if (!session) {
     return NextResponse.json({ error: 'Dispatch access requires an authorized admin session.' }, { status: 403 });
   }
   const database = getDatabase();
@@ -627,7 +677,10 @@ export async function GET() {
   }
 
   try {
-    return NextResponse.json(await loadDispatchData(database), {
+    return NextResponse.json(await loadDispatchData(
+      database,
+      session.role.toLowerCase() === 'owner' || session.permissions?.can_view_sensitive_rider_data === true
+    ), {
       headers: { 'Cache-Control': 'private, no-store, max-age=0' }
     });
   } catch (error) {
@@ -716,7 +769,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const dispatchData = await loadDispatchData(database);
+    const dispatchData = await loadDispatchData(database, false);
     const job = dispatchData.jobs.find(candidate => candidate.id === orderId);
     if (!job) {
       return NextResponse.json({ error: 'The order is no longer eligible for dispatch. Refresh the dispatch board.' }, { status: 409 });

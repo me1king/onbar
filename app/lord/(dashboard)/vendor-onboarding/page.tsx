@@ -59,8 +59,8 @@ const modeOwners: Record<OnboardingMode, StepOwners> = {
 interface Lead {
   id: string;
   business_name: string;
-  owner_name: string;
-  phone: string;
+  owner_name: string | null;
+  phone: string | null;
   whatsapp: string | null;
   area: string;
   vendor_type: VendorType;
@@ -171,6 +171,8 @@ export default function VendorOnboardingPage() {
   const [agentFilter, setAgentFilter] = useState('');
   const [agentDraft, setAgentDraft] = useState('');
   const [notesDraft, setNotesDraft] = useState('');
+  const [phoneDraft, setPhoneDraft] = useState('');
+  const [whatsappDraft, setWhatsappDraft] = useState('');
   const [visitDraft, setVisitDraft] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [bulkMode, setBulkMode] = useState(false);
@@ -196,6 +198,11 @@ export default function VendorOnboardingPage() {
   const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>('shared');
   const [stepOwners, setStepOwners] = useState<StepOwners>(modeOwners.shared);
   const selectedLead = leads.find(lead => lead.id === selectedId) || null;
+
+  useEffect(() => {
+    setPhoneDraft(selectedLead?.phone || '');
+    setWhatsappDraft(selectedLead?.whatsapp || '');
+  }, [selectedLead?.id, selectedLead?.phone, selectedLead?.whatsapp]);
 
   const loadPipeline = useCallback(async (keepSelection = true) => {
     setLoading(true);
@@ -309,13 +316,20 @@ export default function VendorOnboardingPage() {
       completed
     };
   }, [events]);
+  const completedOnboardingStages = useMemo(() => new Set(
+    events
+      .filter(event => event.event_type === 'onboarding_step_completed')
+      .map(event => event.details.stage)
+      .filter((stage): stage is string => typeof stage === 'string')
+  ), [events]);
+  const onboardingSubmitted = events.some(event => event.event_type === 'onboarding_application_submitted');
   const agents = useMemo(() => [...new Set(leads.map(lead => lead.agent).filter(Boolean))].sort(), [leads]);
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return leads.filter(lead =>
       (!typeFilter || lead.vendor_type === typeFilter)
       && (!agentFilter || lead.agent === agentFilter)
-      && (!term || [lead.business_name, lead.owner_name, lead.phone, lead.area, lead.agent]
+      && (!term || [lead.business_name, lead.owner_name || '', lead.phone || '', lead.whatsapp || '', lead.area, lead.agent]
         .some(value => value.toLowerCase().includes(term)))
     );
   }, [leads, typeFilter, agentFilter, search]);
@@ -428,10 +442,11 @@ export default function VendorOnboardingPage() {
           const columns = line.split(/\t|\|/).length > 1 ? line.split(/\t|\|/) : line.split(',');
           return {
             business_name: columns[0]?.trim(),
-            owner_name: columns[1]?.trim(),
-            phone: columns[2]?.trim(),
+            owner_name: columns[1]?.trim() || null,
+            phone: columns[2]?.trim() || null,
             area: columns[3]?.trim(),
-            vendor_type: columns[4]?.trim().toLowerCase().replace(/[\s-]+/g, '_')
+            vendor_type: columns[4]?.trim().toLowerCase().replace(/[\s-]+/g, '_'),
+            ...(columns[5]?.trim() ? { whatsapp: columns[5].trim() } : {})
           };
         });
         if (!rows.length) throw new Error('Paste at least one lead row first.');
@@ -506,8 +521,10 @@ export default function VendorOnboardingPage() {
     shared: 'OnBar and your team will complete the assigned sections together.',
     merchant_self_serve: 'Complete the application yourself using the secure link.'
   };
+  const messagePhone = selectedLead?.whatsapp || selectedLead?.phone || '';
+  const messageName = selectedLead?.owner_name || 'there';
   const messageHref = selectedLead
-    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, here is the private Online Bar onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} ${modeNames[onboardingMode]} You can save progress and return using this link. It expires after 7 days. Submitting an application does not activate the store; our team will review it and tell you the next steps.`)}`
+    ? `https://wa.me/${messagePhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${messageName}, here is the private Online Bar onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} ${modeNames[onboardingMode]} You can save progress and return using this link. It expires after 7 days. Submitting an application does not activate the store; our team will review it and tell you the next steps.`)}`
     : '';
   const next = selectedLead ? nextStage(selectedLead.stage) : null;
   const stageBlocked = selectedLead?.stage === 'phone_approved' && !selectedLead.visit_scheduled_at;
@@ -562,24 +579,39 @@ export default function VendorOnboardingPage() {
         <form onSubmit={submitLead} className="space-y-4">
           {bulkMode ? <>
             <label className="block text-sm text-slate-700">
-              One lead per line: business name, owner, phone, area, type. Separate columns with commas, tabs, or |.
+              One lead per line: business name, owner (optional), phone (optional), area, type, WhatsApp (optional). Separate columns with commas, tabs, or |.
               <textarea
                 required
                 value={bulkText}
                 onChange={event => setBulkText(event.target.value)}
                 rows={5}
-                placeholder={'The Corner Shop, Amina, +254700000000, Westlands, retailer\nFresh Bites | Peter | +254711111111 | Kilimani | street_food'}
+                placeholder={'The Corner Shop, Amina, +254700000000, Westlands, retailer, +254722222222\nFresh Bites | Peter | +254711111111 | Kilimani | street_food'}
                 className="mt-2 w-full rounded-md border border-slate-300 bg-white p-3 text-sm text-slate-900 placeholder:text-slate-400"
               />
             </label>
             <Input placeholder="Assigned agent (optional)" value={form.agent} onChange={event => setForm(current => ({ ...current, agent: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
           </> : <>
-            <div className="grid gap-3 md:grid-cols-3">
-              <Input required placeholder="Business / rider name" value={form.business_name} onChange={event => setForm(current => ({ ...current, business_name: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
-              <Input required placeholder="Owner / contact name" value={form.owner_name} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
-              <Input required type="tel" placeholder="Phone" value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
-              <Input placeholder="WhatsApp number (optional)" value={form.whatsapp} onChange={event => setForm(current => ({ ...current, whatsapp: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
-              <Input required placeholder="Area / town" value={form.area} onChange={event => setForm(current => ({ ...current, area: event.target.value }))} className="border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <label className="min-w-0 space-y-1 text-xs font-semibold text-slate-700">
+                Business / rider name
+                <Input required value={form.business_name} onChange={event => setForm(current => ({ ...current, business_name: event.target.value }))} className="w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              </label>
+              <label className="min-w-0 space-y-1 text-xs font-semibold text-slate-700">
+                Owner / contact name (optional)
+                <Input value={form.owner_name} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} className="w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              </label>
+              <label className="min-w-0 space-y-1 text-xs font-semibold text-slate-700">
+                Primary phone number (optional)
+                <Input type="tel" inputMode="tel" autoComplete="tel" placeholder="+254…" value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} className="w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              </label>
+              <label className="min-w-0 space-y-1 text-xs font-semibold text-slate-700">
+                WhatsApp number (optional)
+                <Input type="tel" inputMode="tel" autoComplete="tel" placeholder="Defaults to primary phone" value={form.whatsapp} onChange={event => setForm(current => ({ ...current, whatsapp: event.target.value }))} className="w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              </label>
+              <label className="min-w-0 space-y-1 text-xs font-semibold text-slate-700">
+                Area / town
+                <Input required value={form.area} onChange={event => setForm(current => ({ ...current, area: event.target.value }))} className="w-full border-slate-300 bg-white text-slate-900 placeholder:text-slate-400" />
+              </label>
               <select value={form.vendor_type} onChange={event => setForm(current => ({ ...current, vendor_type: event.target.value as VendorType }))} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900">
                 {types.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
               </select>
@@ -641,6 +673,7 @@ export default function VendorOnboardingPage() {
                       {lead.vendor_type === 'rider' ? <Truck className="h-3.5 w-3.5" /> : lead.vendor_type === 'street_food' ? <Utensils className="h-3.5 w-3.5" /> : <Wine className="h-3.5 w-3.5" />}
                       {typeLabel(lead.vendor_type)} · {lead.area}
                     </div>
+                    <p className="mt-2 break-all text-xs text-slate-600">{lead.phone || 'Phone not listed'}</p>
                     <div className="mt-2 flex justify-between text-[11px] text-slate-500">
                       <span>{lead.agent}</span><span>{percent}% checklist</span>
                     </div>
@@ -659,16 +692,16 @@ export default function VendorOnboardingPage() {
             <div>
               <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-emerald-800">{typeLabel(selectedLead.vendor_type)} · {stageLabel(selectedLead.stage)}</div>
               <h2 className="mt-1 text-xl font-semibold text-slate-950">{selectedLead.business_name}</h2>
-              <p className="mt-1 text-sm text-slate-600">{selectedLead.owner_name} · {selectedLead.phone} · {selectedLead.area}</p>
+              <p className="mt-1 text-sm text-slate-600">{selectedLead.owner_name || 'Contact name not listed'} · {selectedLead.area}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <a href={`tel:${selectedLead.phone}`} className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Call</a>
+              {selectedLead.phone && <a href={`tel:${selectedLead.phone}`} className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Call</a>}
               {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && !selectedLead.invite_application_id && (
                 <Button type="button" disabled={working || !sharedDraftsReady} onClick={() => void createInvite()} className="h-9 bg-emerald-700 px-3 text-sm text-white hover:bg-emerald-800">
                   <Link2 className="mr-2 h-4 w-4" /> {selectedLead.invite_expires_at && new Date(selectedLead.invite_expires_at).getTime() > Date.now() ? 'Reissue private link' : 'Create private link'}
                 </Button>
               )}
-              {inviteHref && <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Open WhatsApp</a>}
+              {inviteHref && (selectedLead.whatsapp || selectedLead.phone) && <a href={messageHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">Open WhatsApp</a>}
               {selectedLead.vendor_type !== 'rider' && selectedLead.stage !== 'live' && !selectedLead.invite_application_id && (
                 <Button type="button" variant="outline" disabled={working || !sharedDraftsReady} onClick={() => void copySpecificOnboardingLink()} className="h-9 border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">
                   <Copy className="mr-2 h-4 w-4" /> {inviteHref ? 'Copy onboarding link' : 'Create & copy link'}
@@ -676,6 +709,30 @@ export default function VendorOnboardingPage() {
               )}
               <button onClick={() => setSelectedId(null)} className="rounded-md border border-slate-300 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-900" aria-label="Close lead detail"><X className="h-4 w-4" /></button>
             </div>
+          </div>
+          <div className="mt-5 grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+            <label className="block space-y-1 text-xs font-semibold text-slate-700">
+              Primary phone number
+              <Input type="tel" inputMode="tel" autoComplete="tel" value={phoneDraft} onChange={event => setPhoneDraft(event.target.value)} maxLength={40} aria-label="Primary lead phone number" className="border-slate-300 bg-white text-slate-900" />
+            </label>
+            <label className="block space-y-1 text-xs font-semibold text-slate-700">
+              WhatsApp number (optional)
+              <Input type="tel" inputMode="tel" autoComplete="tel" value={whatsappDraft} onChange={event => setWhatsappDraft(event.target.value)} maxLength={40} placeholder="Use primary phone" aria-label="Lead WhatsApp number" className="border-slate-300 bg-white text-slate-900" />
+            </label>
+            <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+              <Button type="button" disabled={working || phoneDraft.trim().length < 5} onClick={() => void saveAction({
+                action: 'contact',
+                phone: phoneDraft.trim(),
+                whatsapp: whatsappDraft.trim()
+              }, 'Lead phone numbers saved.')} className="bg-emerald-700 text-white hover:bg-emerald-800">
+                Save contact numbers
+              </Button>
+              {selectedLead.phone && <a href={`tel:${selectedLead.phone}`} className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-100">Call primary</a>}
+              {messagePhone && (
+                <a href={`https://wa.me/${messagePhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-100">Open WhatsApp</a>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 sm:col-span-2">Run <strong>VENDOR_ONBOARDING_CONTACT_MIGRATION.sql</strong> once in Supabase to enable optional contact details on leads.</p>
           </div>
           {inviteHref && (
             <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
@@ -761,6 +818,26 @@ export default function VendorOnboardingPage() {
               )}
             </section>
           )}
+          <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="font-medium text-slate-900">Merchant section progress</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-600">These completion markers are saved for the onboarding team even when optional journey analytics are declined.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { id: 'business', label: 'Business details' },
+                { id: 'contact_area', label: 'Contact & location' },
+                { id: 'operations', label: 'Hours & operations' },
+                { id: 'goods_docs', label: 'Goods & documents' }
+              ].map(stage => {
+                const complete = onboardingSubmitted || completedOnboardingStages.has(stage.id);
+                return (
+                  <div key={stage.id} className={`rounded-lg border p-3 ${complete ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+                    <p className={`text-[11px] font-semibold ${complete ? 'text-emerald-900' : 'text-slate-700'}`}>{stage.label}</p>
+                    <p className={`mt-2 text-xs font-bold ${complete ? 'text-emerald-700' : 'text-slate-500'}`}>{complete ? 'Completed' : 'Not completed'}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
           <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -900,7 +977,7 @@ export default function VendorOnboardingPage() {
             <tbody>{filtered.map(lead => {
               const checklist = checklists.filter(item => item.lead_id === lead.id);
               return <tr key={lead.id} onClick={() => { setSelectedId(lead.id); setTab('pipeline'); }} className="cursor-pointer border-t border-slate-200 hover:bg-emerald-50">
-                <td className="p-2"><span className="block font-medium text-slate-900">{lead.business_name}</span><span className="text-xs text-slate-500">{lead.owner_name} · {lead.phone}</span></td>
+                <td className="p-2"><span className="block font-medium text-slate-900">{lead.business_name}</span><span className="text-xs text-slate-500">{lead.owner_name || 'Contact name not listed'} · {lead.phone || 'Phone not listed'}</span></td>
                 <td className="p-2">{typeLabel(lead.vendor_type)}<span className="block text-xs text-slate-500">{lead.area}</span></td>
                 <td className="p-2">{lead.agent}</td><td className="p-2">{stageLabel(lead.stage)}</td>
                 <td className="p-2">{progressFor(checklist)}%</td><td className="p-2">{daysBetween(lead.first_call_at, lead.launched_at)}d</td>

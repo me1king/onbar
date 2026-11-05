@@ -925,7 +925,7 @@ export default function ProfilePage() {
                             <p role="status" className="mt-4 text-sm text-slate-500">Checking approved workspace access…</p>
                         ) : workspaceAccess.error ? (
                             <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-                                Workspace access could not be checked. Refresh your profile or contact OnBar support.
+                                {workspaceAccess.error}
                             </p>
                         ) : (
                             <div className="mt-4 flex flex-wrap gap-3">
@@ -968,12 +968,15 @@ export default function ProfilePage() {
                                     </div>
                                 ))}
                                 {workspaceAccess.riderApproved && (
-                                    <Link
-                                        href="/rider/dashboard"
-                                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-foreground transition hover:border-primary/40 hover:text-primary"
-                                    >
-                                        <Truck size={15} /> Open rider dashboard
-                                    </Link>
+                                    <div className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                        <Link
+                                            href="/rider/dashboard?account=1"
+                                            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-foreground transition hover:border-primary/40 hover:text-primary"
+                                        >
+                                            <Truck size={15} /> Open rider terminal
+                                        </Link>
+                                        <p className="mt-2 text-xs text-slate-500">You can return here anytime. The terminal opens with this verified account; your approval PIN remains available as a backup sign-in.</p>
+                                    </div>
                                 )}
                             </div>
                         )}

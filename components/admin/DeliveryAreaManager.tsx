@@ -6,7 +6,6 @@ import { MapPin, Pencil, Plus, Save, Trash2, Undo2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { supabase } from '@/lib/supabaseClient';
 import { DELIVERY_AREA_COLORS, DeliveryArea, getDeliveryAreaColor, parseDeliveryAreas, parseDeliveryPricing } from '@/lib/deliveryAreas';
 import { DEFAULT_SETTINGS } from '@/lib/useSettings';
 import 'leaflet/dist/leaflet.css';
@@ -59,7 +58,6 @@ export default function DeliveryAreaManager() {
     const [saving, setSaving] = React.useState(false);
     const [message, setMessage] = React.useState<string | null>(null);
     const [legacyAreaNames, setLegacyAreaNames] = React.useState<string[]>([]);
-    const [legacyAreasError, setLegacyAreasError] = React.useState<string | null>(null);
     const zoneNameInput = React.useRef<HTMLInputElement>(null);
     const unmappedAreas = areas.filter(area => area.points.length < 3);
     const availableImportedNames = [...new Set(legacyAreaNames)]
@@ -68,64 +66,53 @@ export default function DeliveryAreaManager() {
     React.useEffect(() => {
         let active = true;
         async function loadAreas() {
-            if (!supabase) {
-                setMessage('Supabase is not configured. Delivery areas cannot be loaded.');
-                setLoading(false);
-                return;
-            }
-            const [{ data, error }, { data: pricingData, error: pricingError }, { data: logisticsData, error: logisticsError }] = await Promise.all([
-                supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle(),
-                supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle(),
-                supabase.from('settings').select('value').eq('key', 'logistics').maybeSingle()
-            ]);
-            if (!active) return;
-            if (error || pricingError) {
-                setMessage(`Could not load delivery settings: ${(error || pricingError)?.message}`);
-            } else {
-                try {
-                    setAreas(parseDeliveryAreas(data?.value ?? []));
-                    setFreeDeliveryOver(String(parseDeliveryPricing(pricingData?.value).free_delivery_over));
-                    if (logisticsError) {
-                        setLegacyAreasError(`Saved dispatch area names could not be loaded: ${logisticsError.message}`);
-                    } else {
-                        const configuredNames = logisticsData?.value
-                            && typeof logisticsData.value === 'object'
-                            && !Array.isArray(logisticsData.value)
-                            && Array.isArray((logisticsData.value as { dispatch_zones?: unknown }).dispatch_zones)
-                            ? (logisticsData.value as { dispatch_zones: unknown[] }).dispatch_zones
-                                .filter((name): name is string => typeof name === 'string' && Boolean(name.trim()))
-                                .map(name => name.trim())
-                            : logisticsData
-                                ? []
-                                : DEFAULT_SETTINGS.logistics.dispatch_zones;
-                        setLegacyAreaNames([...new Set(configuredNames)]);
-                    }
-                } catch (parseError) {
-                    console.error('Saved delivery area data is invalid:', parseError);
-                    setMessage(parseError instanceof Error ? parseError.message : 'Saved delivery areas are invalid.');
+            try {
+                const response = await fetch('/api/admin/delivery-areas', { cache: 'no-store' });
+                const result = await response.json() as {
+                    areas?: unknown;
+                    pricing?: unknown;
+                    logistics?: unknown;
+                    error?: string;
+                };
+                if (!response.ok) throw new Error(result.error || 'Delivery settings could not be loaded.');
+                if (!active) return;
+                setAreas(parseDeliveryAreas(result.areas ?? []));
+                setFreeDeliveryOver(String(parseDeliveryPricing(result.pricing).free_delivery_over));
+                const logisticsValue = result.logistics;
+                const configuredNames = logisticsValue
+                    && typeof logisticsValue === 'object'
+                    && !Array.isArray(logisticsValue)
+                    && Array.isArray((logisticsValue as { dispatch_zones?: unknown }).dispatch_zones)
+                    ? (logisticsValue as { dispatch_zones: unknown[] }).dispatch_zones
+                        .filter((areaName): areaName is string => typeof areaName === 'string' && Boolean(areaName.trim()))
+                        .map(areaName => areaName.trim())
+                    : logisticsValue
+                        ? []
+                        : DEFAULT_SETTINGS.logistics.dispatch_zones;
+                setLegacyAreaNames([...new Set(configuredNames)]);
+            } catch (loadError) {
+                if (active) {
+                    console.error('Delivery settings could not be loaded:', loadError);
+                    setMessage(loadError instanceof Error ? loadError.message : 'Delivery settings could not be loaded.');
                 }
             }
-            setLoading(false);
+            if (active) setLoading(false);
         }
         loadAreas();
         return () => { active = false; };
     }, []);
 
     const persistAreas = async (nextAreas: DeliveryArea[]) => {
-        if (!supabase) {
-            setMessage('Supabase is not configured. Delivery areas were not saved.');
-            return false;
-        }
         setSaving(true);
         setMessage(null);
         try {
-            const { error } = await supabase.from('settings').upsert({
-                key: 'free_delivery_areas',
-                value: nextAreas,
-                is_published: true,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'key' });
-            if (error) throw error;
+            const response = await fetch('/api/admin/delivery-areas', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: 'free_delivery_areas', value: nextAreas })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Delivery areas could not be saved.');
             setAreas(nextAreas);
             setMessage('Delivery zones saved.');
             return true;
@@ -161,20 +148,16 @@ export default function DeliveryAreaManager() {
             setMessage('Enter a whole-number free-delivery minimum of zero or more. Use zero to disable it.');
             return;
         }
-        if (!supabase) {
-            setMessage('Supabase is not configured. Delivery pricing was not saved.');
-            return;
-        }
         setSaving(true);
         setMessage(null);
         try {
-            const { error } = await supabase.from('settings').upsert({
-                key: 'delivery_pricing',
-                value: { free_delivery_over: threshold },
-                is_published: true,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'key' });
-            if (error) throw error;
+            const response = await fetch('/api/admin/delivery-areas', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: 'delivery_pricing', value: { free_delivery_over: threshold } })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Delivery pricing could not be saved.');
             setMessage(threshold > 0
                 ? `Free delivery will apply to item subtotals of KSh ${threshold.toLocaleString()} or more.`
                 : 'Free-delivery threshold disabled.');
@@ -454,15 +437,11 @@ export default function DeliveryAreaManager() {
                             <p className="mt-1 text-xs leading-5 text-muted-foreground">
                                 Import {availableImportedNames.length} saved area name{availableImportedNames.length === 1 ? '' : 's'} here, then set prices and map their coverage. Importing does not guess fees or boundaries.
                             </p>
-                            {legacyAreasError && <p role="alert" className="mt-2 text-xs text-rose-700">{legacyAreasError}</p>}
                         </div>
                         <Button onClick={() => void importLegacyAreas()} disabled={saving || loading} variant="outline" className="shrink-0">
                             <Plus className="mr-2 h-4 w-4" /> Add areas to map
                         </Button>
                     </div>
-                )}
-                {legacyAreasError && availableImportedNames.length === 0 && (
-                    <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{legacyAreasError}</p>
                 )}
                 <div>
                     <div className="flex flex-wrap items-center justify-between gap-3">
