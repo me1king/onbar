@@ -18,6 +18,8 @@ function decodeVapidKey(value: string): ArrayBuffer {
 export default function DeliveryPushPreferences() {
   const [supported, setSupported] = useState(false);
   const [enabled, setEnabled] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [pushConfigured, setPushConfigured] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,10 +33,24 @@ export default function DeliveryPushPreferences() {
         && 'PushManager' in window;
       if (!active) return;
       setSupported(browserSupported);
-      if (!browserSupported || !supabase) return;
+      if (!browserSupported) return;
+      if (!supabase) {
+        setSignedIn(false);
+        return;
+      }
 
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!active) return;
+      setSignedIn(Boolean(session));
+
+      const configResponse = await fetch('/api/push/config', { cache: 'no-store' });
+      const config = await configResponse.json() as { configured?: boolean; publicKey?: string | null; error?: string };
+      if (!configResponse.ok) throw new Error(config.error || 'Push alert setup could not be checked.');
+      if (!active) return;
+      const configured = config.configured === true && Boolean(config.publicKey);
+      setPushConfigured(configured);
+      if (!configured || !session) return;
+
       const response = await fetch('/api/push/subscriptions', {
         headers: { Authorization: `Bearer ${session.access_token}` },
         cache: 'no-store'
@@ -50,6 +66,9 @@ export default function DeliveryPushPreferences() {
     }
     void load().catch(loadError => {
       console.error('[DeliveryPushPreferences] Could not load push status:', loadError);
+      if (active) {
+        setError(loadError instanceof Error ? loadError.message : 'Delivery alert setup could not be checked.');
+      }
     });
     return () => { active = false; };
   }, []);
@@ -84,6 +103,14 @@ export default function DeliveryPushPreferences() {
         return;
       }
 
+      const configResponse = await fetch('/api/push/config', { cache: 'no-store' });
+      const config = await configResponse.json() as { configured?: boolean; publicKey?: string | null; error?: string };
+      if (!configResponse.ok || !config.configured || !config.publicKey) {
+        setPushConfigured(false);
+        throw new Error(config.error || 'Delivery alerts are not set up yet. The store needs to configure web-push keys on its server.');
+      }
+      setPushConfigured(true);
+
       if (Notification.permission === 'denied') {
         throw new Error('Notifications are blocked in browser settings. Allow them there, then try again.');
       }
@@ -92,11 +119,6 @@ export default function DeliveryPushPreferences() {
         : await Notification.requestPermission();
       if (permission !== 'granted') throw new Error('Notification permission was not granted.');
 
-      const configResponse = await fetch('/api/push/config', { cache: 'no-store' });
-      const config = await configResponse.json() as { configured?: boolean; publicKey?: string | null; error?: string };
-      if (!configResponse.ok || !config.configured || !config.publicKey) {
-        throw new Error(config.error || 'Web Push is not configured on the server yet.');
-      }
       const registration = await navigator.serviceWorker.register('/sw.js');
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -159,6 +181,12 @@ export default function DeliveryPushPreferences() {
           <p className="mt-1 text-xs text-slate-500">
             On iPhone or iPad, add this site to your Home Screen before enabling web push. Native widgets and lock-screen live tracking require a separate native app.
           </p>
+          {supported && signedIn === false && (
+            <p className="mt-2 text-xs font-semibold text-amber-700">Sign in to your Online Bar account to enable alerts for your orders.</p>
+          )}
+          {supported && signedIn && pushConfigured === false && (
+            <p className="mt-2 text-xs font-semibold text-amber-700">Delivery alerts are temporarily unavailable because the store has not finished server setup.</p>
+          )}
           {error && <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">{error}</p>}
           {notice && <p role="status" className="mt-2 text-xs font-semibold text-emerald-700">{notice}</p>}
           {!supported && <p className="mt-2 text-xs text-amber-700">This browser does not support web push notifications.</p>}
@@ -171,7 +199,13 @@ export default function DeliveryPushPreferences() {
             Send test
           </Button>
         )}
-        <Button type="button" onClick={() => void toggle()} disabled={!supported || busy || testing} variant={enabled ? 'outline' : 'default'} className="h-11 rounded-xl">
+        <Button
+          type="button"
+          onClick={() => void toggle()}
+          disabled={!supported || busy || testing || signedIn === false || (!enabled && pushConfigured === false)}
+          variant={enabled ? 'outline' : 'default'}
+          className="h-11 rounded-xl"
+        >
           {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {enabled ? 'Turn off alerts' : 'Enable alerts'}
         </Button>

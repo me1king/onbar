@@ -83,6 +83,11 @@ function CheckoutContent() {
   const customerNameInputRef = useRef<HTMLInputElement>(null);
   const customerPhoneInputRef = useRef<HTMLInputElement>(null);
   const customerEmailInputRef = useRef<HTMLInputElement>(null);
+  const quickCustomerNameInputRef = useRef<HTMLInputElement>(null);
+  const quickCustomerPhoneInputRef = useRef<HTMLInputElement>(null);
+  const quickCustomerEmailInputRef = useRef<HTMLInputElement>(null);
+  const quickDetailsPromptHandled = useRef(false);
+  const [showQuickDetails, setShowQuickDetails] = useState(false);
   const deliveryZoneSelectRef = useRef<HTMLSelectElement>(null);
   const [deliveryBuilding, setDeliveryBuilding] = useState("");
   const [deliveryLandmark, setDeliveryLandmark] = useState("");
@@ -129,6 +134,7 @@ function CheckoutContent() {
 
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [isPickingLocation, setIsPickingLocation] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [locationSaveNotice, setLocationSaveNotice] = useState<string | null>(null);
   const [isGift, setIsGift] = useState(false);
   const [giftMessage, setGiftMessage] = useState("");
@@ -218,6 +224,27 @@ function CheckoutContent() {
     deliveryInstructions,
     selectedDeliveryZoneId
   ]);
+
+  useEffect(() => {
+    if (!checkoutDraftLoaded || !accountProfileLoaded || quickDetailsPromptHandled.current) return;
+    quickDetailsPromptHandled.current = true;
+    const hasValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim());
+    if (!customerName.trim() || !customerPhone.trim() || (paymentMethod === 'M-Pesa' && !hasValidEmail)) {
+      setShowQuickDetails(true);
+    }
+  }, [accountProfileLoaded, checkoutDraftLoaded, customerEmail, customerName, customerPhone, paymentMethod]);
+
+  useEffect(() => {
+    if (!showQuickDetails) return;
+    const timer = window.setTimeout(() => {
+      if (!customerName.trim()) quickCustomerNameInputRef.current?.focus();
+      else if (!customerPhone.trim()) quickCustomerPhoneInputRef.current?.focus();
+      else if (paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+        quickCustomerEmailInputRef.current?.focus();
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [customerEmail, customerName, customerPhone, paymentMethod, showQuickDetails]);
 
   useEffect(() => {
     async function checkLockdown() {
@@ -323,7 +350,10 @@ function CheckoutContent() {
   // 0. Load Profile & Loyalty Points
   useEffect(() => {
     async function loadProfile() {
-        if (!supabase) return;
+        if (!supabase) {
+            setAccountProfileLoaded(true);
+            return;
+        }
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
             setCheckoutDraftOwnerId(null);
@@ -511,6 +541,39 @@ function CheckoutContent() {
     window.setTimeout(() => deliveryZoneSelectRef.current?.focus({ preventScroll: true }), 350);
   };
 
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationSaveNotice('This browser does not support GPS. Choose your delivery point on the map instead.');
+      return;
+    }
+
+    setIsLocating(true);
+    setLocationSaveNotice(null);
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const nextCoords = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setCoords(nextCoords);
+        setSelectedDeliveryZoneId('');
+        setCheckoutStatus({ type: 'idle', message: '' });
+        try {
+          localStorage.setItem('ob_delivery_location', JSON.stringify(nextCoords));
+        } catch (error) {
+          console.warn('Could not save delivery pin on this device:', error);
+        }
+        setLocationSaveNotice('Location added. We’ll use it to identify your delivery area and show its fee.');
+        setIsLocating(false);
+      },
+      error => {
+        console.error('[Checkout] Could not detect the customer delivery location:', error);
+        setLocationSaveNotice(error.code === error.PERMISSION_DENIED
+          ? 'Location permission is off. Allow location access in your browser, or choose your delivery point on the map.'
+          : 'We could not get your location right now. Try again or choose your delivery point on the map.');
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
+    );
+  };
+
   // 1. Abandoned Cart Recovery Logic
   useEffect(() => {
     const syncAbandonedCart = async () => {
@@ -621,6 +684,33 @@ function CheckoutContent() {
       return;
     }
 
+    if (!customerName.trim() || !customerPhone.trim()) {
+      setShowCustomerErrors(true);
+      setShowQuickDetails(true);
+      requestAnimationFrame(() => {
+        const firstMissingInput = !customerName.trim()
+          ? quickCustomerNameInputRef.current
+          : quickCustomerPhoneInputRef.current;
+        firstMissingInput?.focus({ preventScroll: true });
+      });
+      OB_OS.track('FORM_VALIDATION_FAILED', {
+        userId: user?.id,
+        details: { reason: 'MISSING_REQUIRED_FIELDS', field: !customerName.trim() ? 'customer_name' : 'customer_phone' }
+      });
+      return;
+    }
+
+    if (paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+      setShowCustomerErrors(true);
+      setShowQuickDetails(true);
+      requestAnimationFrame(() => quickCustomerEmailInputRef.current?.focus({ preventScroll: true }));
+      OB_OS.track('FORM_VALIDATION_FAILED', {
+        userId: user?.id,
+        details: { reason: 'INVALID_EMAIL', field: 'customer_email' }
+      });
+      return;
+    }
+
     if (!deliveryFeeReady) {
       setCheckoutStatus({
         type: "error",
@@ -641,29 +731,6 @@ function CheckoutContent() {
         message: "Enter your building or house name, or add a GPS pin so the rider can find you."
       });
       document.getElementById('checkout-delivery-building')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-
-    if (!customerName.trim() || !customerPhone.trim()) {
-      setShowCustomerErrors(true);
-      const firstMissingInput = !customerName.trim() ? customerNameInputRef.current : customerPhoneInputRef.current;
-      firstMissingInput?.scrollIntoView({ behavior: "smooth", block: "center" });
-      requestAnimationFrame(() => firstMissingInput?.focus({ preventScroll: true }));
-      OB_OS.track('FORM_VALIDATION_FAILED', {
-        userId: user?.id,
-        details: { reason: 'MISSING_REQUIRED_FIELDS', field: !customerName.trim() ? 'customer_name' : 'customer_phone' }
-      });
-      return;
-    }
-
-    if (paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
-      setShowCustomerErrors(true);
-      customerEmailInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      requestAnimationFrame(() => customerEmailInputRef.current?.focus({ preventScroll: true }));
-      OB_OS.track('FORM_VALIDATION_FAILED', {
-        userId: user?.id,
-        details: { reason: 'INVALID_EMAIL', field: 'customer_email' }
-      });
       return;
     }
 
@@ -909,6 +976,104 @@ function CheckoutContent() {
     <div className="container mx-auto px-4 py-12 max-w-7xl text-left min-h-screen">
       <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
       <DeliveryPushPreferences />
+      {showQuickDetails && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-checkout-details-title"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+          >
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Quick checkout</p>
+            <h2 id="quick-checkout-details-title" className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+              A few details before your order
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Add your contact details so we can confirm your order and coordinate delivery. You can review your delivery location and payment next.
+            </p>
+            <form
+              className="mt-6 space-y-4"
+              onSubmit={event => {
+                event.preventDefault();
+                setShowCustomerErrors(true);
+                if (!customerName.trim()) {
+                  quickCustomerNameInputRef.current?.focus();
+                  return;
+                }
+                if (!customerPhone.trim()) {
+                  quickCustomerPhoneInputRef.current?.focus();
+                  return;
+                }
+                if (paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+                  quickCustomerEmailInputRef.current?.focus();
+                  return;
+                }
+                setShowCustomerErrors(false);
+                setShowQuickDetails(false);
+              }}
+            >
+              <div className="space-y-2">
+                <label htmlFor="quick-checkout-name" className="text-xs font-bold text-slate-700">Full name *</label>
+                <Input
+                  id="quick-checkout-name"
+                  ref={quickCustomerNameInputRef}
+                  autoComplete="name"
+                  value={customerName}
+                  onChange={event => setCustomerName(event.target.value)}
+                  aria-invalid={showCustomerErrors && !customerName.trim()}
+                  placeholder="Your name"
+                  className="h-12 rounded-xl"
+                />
+                {showCustomerErrors && !customerName.trim() && <p role="alert" className="text-xs text-rose-600">Enter your full name.</p>}
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="quick-checkout-phone" className="text-xs font-bold text-slate-700">Phone number *</label>
+                <Input
+                  id="quick-checkout-phone"
+                  ref={quickCustomerPhoneInputRef}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={customerPhone}
+                  onChange={event => setCustomerPhone(event.target.value)}
+                  aria-invalid={showCustomerErrors && !customerPhone.trim()}
+                  placeholder="07XXXXXXXX"
+                  className="h-12 rounded-xl"
+                />
+                {showCustomerErrors && !customerPhone.trim() && <p role="alert" className="text-xs text-rose-600">Enter a phone number we can reach.</p>}
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="quick-checkout-email" className="text-xs font-bold text-slate-700">
+                  Email {paymentMethod === 'M-Pesa' ? '(required for online payment)' : '(optional receipt)'}
+                </label>
+                <Input
+                  id="quick-checkout-email"
+                  ref={quickCustomerEmailInputRef}
+                  type="email"
+                  autoComplete="email"
+                  required={paymentMethod === 'M-Pesa'}
+                  value={customerEmail}
+                  onChange={event => setCustomerEmail(event.target.value)}
+                  aria-invalid={showCustomerErrors && paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())}
+                  placeholder="you@example.com"
+                  className="h-12 rounded-xl"
+                />
+                {showCustomerErrors && paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && (
+                  <p role="alert" className="text-xs text-rose-600">Enter a valid email address for online payment.</p>
+                )}
+              </div>
+              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
+                <Button type="button" variant="outline" onClick={() => setShowQuickDetails(false)} className="h-12 rounded-xl sm:flex-1">
+                  I&apos;ll fill this in below
+                </Button>
+                <Button type="submit" className="h-12 rounded-xl font-bold sm:flex-1">
+                  Continue to delivery
+                </Button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
       {isPickingLocation && (
           <LocationPicker
             initialLat={coords.lat ?? undefined}
@@ -1037,9 +1202,8 @@ function CheckoutContent() {
                 )}
             </label>
             <Card
-                onClick={() => setIsPickingLocation(true)}
                 className={cn(
-                    "p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border-2 transition-all cursor-pointer group relative overflow-hidden",
+                    "p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border-2 transition-all group relative overflow-hidden",
                     gpsPinOutsideSelectedZone
                         ? "border-amber-200 bg-amber-50/50"
                         : hasConfirmedLocation
@@ -1058,27 +1222,37 @@ function CheckoutContent() {
                             </div>
                             <div>
                                 <h3 className="font-black uppercase text-foreground tracking-tight text-xs sm:text-base">
-                                    {gpsPinOutsideSelectedZone ? "Confirm GPS Pin in Zone" : hasConfirmedLocation ? "Delivery Area Set" : "Set GPS Pin (Optional)"}
+                                    {gpsPinOutsideSelectedZone ? "Location outside delivery zones" : hasConfirmedLocation ? "Delivery area found" : "Set delivery location"}
                                 </h3>
                                 <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                    {coords.lat !== null && coords.lng !== null ? `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}` : selectedZone?.name || "Use GPS or place a pin on the map"}
+                                    {coords.lat !== null && coords.lng !== null ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}` : selectedZone?.name || "Tap once to find your area and fee automatically"}
                                 </p>
                             </div>
                         </div>
                         <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 leading-relaxed max-w-xs">
-                            Select your estate to see its fee. Add a GPS pin for more accurate rider directions.
+                            {hasConfirmedLocation
+                                ? 'Your location is attached to the order for rider directions.'
+                                : 'Use your current location to find the delivery area and fee. You can choose a point on the map if GPS is unavailable.'}
                         </p>
                     </div>
-                    <Button
-                        type="button"
-                        onClick={() => setIsPickingLocation(true)}
-                        className={cn(
-                            "w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl font-black uppercase text-[9px] sm:text-[10px] tracking-widest transition-all shadow-xl active:scale-95",
-                            coords.lat !== null && coords.lng !== null ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
-                        )}
-                    >
-                        {coords.lat !== null && coords.lng !== null ? "Update GPS Pin" : "Add GPS Pin"}
-                    </Button>
+                    <div className="flex w-full flex-col gap-2 sm:w-auto">
+                        <Button
+                            type="button"
+                            onClick={handleUseCurrentLocation}
+                            disabled={isLocating || isPlacingOrder}
+                            className={cn(
+                                "w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 rounded-xl sm:rounded-2xl font-black uppercase text-[9px] sm:text-[10px] tracking-widest transition-all shadow-xl active:scale-95",
+                                hasConfirmedLocation ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-primary text-white hover:bg-primary/90 shadow-primary/20"
+                            )}
+                        >
+                            {isLocating
+                                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Finding location…</>
+                                : hasConfirmedLocation ? 'Refresh my location' : 'Use my current location'}
+                        </Button>
+                        <Button type="button" variant="outline" onClick={() => setIsPickingLocation(true)} disabled={isLocating || isPlacingOrder} className="h-10 rounded-xl text-[9px] font-bold uppercase tracking-wider">
+                            Choose on map
+                        </Button>
+                    </div>
                 </div>
                 <p role="status" className="relative z-10 text-sm font-semibold">
                     {deliveryAreasError

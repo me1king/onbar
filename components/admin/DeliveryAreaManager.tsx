@@ -19,6 +19,19 @@ function BoundaryClickCapture({ onAddPoint }: { onAddPoint: (point: [number, num
     return null;
 }
 
+function makeRadiusBoundary(center: [number, number], radiusMeters: number): [number, number][] {
+    const [latitude, longitude] = center;
+    const latitudeOffset = radiusMeters / 111_320;
+    const longitudeOffset = radiusMeters / (111_320 * Math.max(Math.cos(latitude * Math.PI / 180), 0.01));
+    return Array.from({ length: 32 }, (_, index) => {
+        const angle = (index / 32) * 2 * Math.PI;
+        return [
+            latitude + latitudeOffset * Math.sin(angle),
+            longitude + longitudeOffset * Math.cos(angle)
+        ];
+    });
+}
+
 function FocusDeliveryArea({ area }: { area: DeliveryArea | null }) {
     const map = useMap();
 
@@ -38,6 +51,8 @@ export default function DeliveryAreaManager() {
     const [editingAreaId, setEditingAreaId] = React.useState<string | null>(null);
     const [focusedAreaId, setFocusedAreaId] = React.useState<string | null>(null);
     const [drawingBoundary, setDrawingBoundary] = React.useState(false);
+    const [quickBoundaryMode, setQuickBoundaryMode] = React.useState(false);
+    const [quickBoundaryRadius, setQuickBoundaryRadius] = React.useState('1000');
     const [freeDeliveryOver, setFreeDeliveryOver] = React.useState('3000');
     const [loading, setLoading] = React.useState(true);
     const [saving, setSaving] = React.useState(false);
@@ -161,6 +176,7 @@ export default function DeliveryAreaManager() {
             setDraftPoints([]);
             setEditingAreaId(null);
             setDrawingBoundary(false);
+            setQuickBoundaryMode(false);
         }
     };
 
@@ -172,6 +188,7 @@ export default function DeliveryAreaManager() {
         setZoneColor(getDeliveryAreaColor(areas.indexOf(area), area.color));
         setDraftPoints(area.points);
         setDrawingBoundary(false);
+        setQuickBoundaryMode(false);
         setMessage(`Editing ${area.name}. Draw a new boundary or save its current boundary and fee.`);
     };
 
@@ -183,6 +200,7 @@ export default function DeliveryAreaManager() {
         setZoneColor(DELIVERY_AREA_COLORS[areas.length % DELIVERY_AREA_COLORS.length]);
         setDraftPoints([]);
         setDrawingBoundary(false);
+        setQuickBoundaryMode(false);
         setMessage(null);
     };
 
@@ -219,7 +237,7 @@ export default function DeliveryAreaManager() {
             <div>
                 <h2 className="text-lg font-black uppercase text-foreground">Delivery zones</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Map each delivery area and set its fee. GPS pins are charged by the mapped zone they fall inside. Use a separate color for each area so boundaries are easy to tell apart.
+                    Set the area name and fee, then choose a quick radius and click its center on the map once, or draw an exact boundary. GPS pins are charged by the mapped zone they fall inside.
                 </p>
             </div>
             {message && <p role="status" className="rounded-lg bg-secondary p-3 text-sm text-foreground">{message}</p>}
@@ -248,8 +266,8 @@ export default function DeliveryAreaManager() {
             <section className="space-y-4" aria-label="Delivery zone map editor">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                        <h3 className="text-sm font-black uppercase text-foreground">Draw zone boundaries</h3>
-                        <p className="text-xs text-muted-foreground">Select “Draw boundary”, then click at least three points around the place you want to cover. Pan and zoom the large map to reach other towns, then use Undo to correct points.</p>
+                        <h3 className="text-sm font-black uppercase text-foreground">Set delivery coverage</h3>
+                        <p className="text-xs text-muted-foreground">For a fast setup, enter the zone name and fee, choose a radius, select “Quick radius zone”, then click the center once on the map. Use “Draw boundary” when you need an exact outline.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                         {areas.map((area, index) => (
@@ -268,7 +286,19 @@ export default function DeliveryAreaManager() {
                             attribution='&copy; OpenStreetMap contributors'
                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                         />
-                        {drawingBoundary && <BoundaryClickCapture onAddPoint={point => setDraftPoints(points => [...points, point])} />}
+                        {(drawingBoundary || quickBoundaryMode) && (
+                            <BoundaryClickCapture onAddPoint={point => {
+                                if (quickBoundaryMode) {
+                                    const radius = Number(quickBoundaryRadius);
+                                    setDraftPoints(makeRadiusBoundary(point, radius));
+                                    setQuickBoundaryMode(false);
+                                    setDrawingBoundary(false);
+                                    setMessage(`Approximate ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} zone boundary created. Adjust the boundary or save it.`);
+                                    return;
+                                }
+                                setDraftPoints(points => [...points, point]);
+                            }} />
+                        )}
                         {areas.filter(area => area.points.length >= 3 && area.id !== editingAreaId).map(area => {
                             const index = areas.findIndex(item => item.id === area.id);
                             const color = getDeliveryAreaColor(index, area.color);
@@ -316,9 +346,33 @@ export default function DeliveryAreaManager() {
                     <div className="flex flex-wrap gap-2">
                         <Button onClick={() => {
                             if (!drawingBoundary && editingAreaId) setDraftPoints([]);
+                            setQuickBoundaryMode(false);
                             setDrawingBoundary(value => !value);
                         }} variant={drawingBoundary ? 'default' : 'outline'} disabled={loading || saving}>
                             <MapPin className="mr-2 h-4 w-4" /> {drawingBoundary ? 'Stop drawing' : 'Draw boundary'}
+                        </Button>
+                        <label className="flex items-center gap-2 text-xs font-semibold">
+                            Radius
+                            <select
+                                aria-label="Quick delivery zone radius"
+                                value={quickBoundaryRadius}
+                                onChange={event => setQuickBoundaryRadius(event.target.value)}
+                                disabled={loading || saving || quickBoundaryMode}
+                                className="h-10 rounded-md border border-input bg-background px-2 text-sm"
+                            >
+                                <option value="500">500 m</option>
+                                <option value="1000">1 km</option>
+                                <option value="2000">2 km</option>
+                                <option value="3000">3 km</option>
+                            </select>
+                        </label>
+                        <Button onClick={() => {
+                            if (!quickBoundaryMode && editingAreaId) setDraftPoints([]);
+                            setDrawingBoundary(false);
+                            setQuickBoundaryMode(value => !value);
+                            setMessage(quickBoundaryMode ? null : 'Click the map once to place the center of this approximate radius zone.');
+                        }} variant={quickBoundaryMode ? 'default' : 'outline'} disabled={loading || saving}>
+                            <MapPin className="mr-2 h-4 w-4" /> {quickBoundaryMode ? 'Cancel quick zone' : 'Quick radius zone'}
                         </Button>
                         <Button onClick={() => setDraftPoints(points => points.slice(0, -1))} variant="outline" disabled={!draftPoints.length || saving}>
                             <Undo2 className="mr-2 h-4 w-4" /> Undo point
@@ -326,7 +380,9 @@ export default function DeliveryAreaManager() {
                         <Button onClick={() => setDraftPoints([])} variant="outline" disabled={!draftPoints.length || saving}>Clear points</Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        {draftPoints.length} boundary points {drawingBoundary ? 'marked; click the map to add more' : 'ready'} {draftPoints.length > 0 && draftPoints.length < 3 ? '· add at least 3 to save' : ''}
+                        {quickBoundaryMode
+                            ? 'Click the map once to create the approximate radius boundary.'
+                            : `${draftPoints.length} boundary points ${drawingBoundary ? 'marked; click the map to add more' : 'ready'} ${draftPoints.length > 0 && draftPoints.length < 3 ? '· add at least 3 to save' : ''}`}
                     </p>
                     <div className="flex flex-wrap gap-2">
                         <Button onClick={saveArea} disabled={saving || loading} className="min-w-48">

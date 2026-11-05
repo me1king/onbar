@@ -50,7 +50,8 @@ import {
   Camera as CameraIcon,
   MapPin,
   PackageSearch,
-  UserRoundPlus
+  UserRoundPlus,
+  Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -198,6 +199,7 @@ export default function AdminLayoutClient({
       { name: 'SMS Control', href: '/lord/communications/sms', icon: MessageSquare, permission: 'can_manage_communications' },
       { name: 'Popup Manager', href: '/lord/communications/popups', icon: Bell, permission: 'can_manage_communications' },
       { name: 'Support Inbox', href: '/lord/messages', icon: MessageSquare, permission: 'can_manage_communications' },
+      { name: 'Support View', href: '/lord/support/view', icon: Eye, permission: 'can_manage_orders' },
       { name: 'Taste Reviews', href: '/lord/reviews', icon: Star, permission: 'can_manage_communications' },
       { name: 'VIP Rewards', href: '/lord/gamification', icon: Trophy, permission: 'can_manage_settings' },
     ]},

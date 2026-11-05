@@ -52,15 +52,33 @@ interface QuickSnack {
   category: string;
 }
 
-const STEPS = [
-  { id: 'Pending', label: 'Order Received', icon: Clock, detail: 'Securing your beverages in our cellar...' },
-  { id: 'Paid', label: 'Payment Verified', icon: ShieldCheck, detail: 'M-Pesa sync complete. Funds verified.' },
-  { id: 'Processing', label: 'Chill Check', icon: Package, detail: 'Temperature and quality inspection in progress.' },
-  { id: 'Dispatched', label: 'Rider Assigned', icon: Truck, detail: 'Your rider has been assigned.' },
-  { id: 'Picked Up', label: 'Picked Up', icon: Package, detail: 'Your order has been collected from the vendor.' },
-  { id: 'Out for Delivery', label: 'On the Way', icon: Truck, detail: 'Your rider is heading to your delivery location.' },
-  { id: 'Delivered', label: 'Handed Over', icon: CheckCircle, detail: 'Beverages secured. Welcome to the Bar Club.' },
+const PAYMENT_VERIFIED_STEP = {
+  id: 'Paid',
+  statuses: ['Paid'],
+  label: 'Payment Verified',
+  icon: ShieldCheck,
+  detail: 'Your online payment has been verified.'
+};
+
+const ORDER_STEPS = [
+  { id: 'Pending', statuses: ['Created', 'Pending', 'Payment Pending', 'Payment Failed'], label: 'Order Received', icon: Clock, detail: 'Your order has been received.' },
+  { id: 'Processing', statuses: ['Confirmed', 'Stock Reserved', 'Supplier Confirmed', 'Processing', 'Paid'], label: 'Preparing Order', icon: Package, detail: 'Your order is being prepared.' },
+  { id: 'Packed', statuses: ['Packed'], label: 'Packed & Ready', icon: Package, detail: 'Your order is packed and ready for dispatch.' },
+  { id: 'Dispatched', statuses: ['Dispatched'], label: 'Rider Assigned', icon: Truck, detail: 'Your rider has been assigned.' },
+  { id: 'Picked Up', statuses: ['Picked Up'], label: 'Picked Up', icon: Package, detail: 'Your order has been collected from the vendor.' },
+  { id: 'Out for Delivery', statuses: ['Out for Delivery'], label: 'On the Way', icon: Truck, detail: 'Your rider is heading to your delivery location.' },
+  { id: 'Delivered', statuses: ['Delivered', 'Completed'], label: 'Handed Over', icon: CheckCircle, detail: 'Your order has been handed over.' },
 ];
+
+function isPayAtDelivery(method: string) {
+  return ['cash', 'cash on delivery', 'cod'].includes(method.trim().toLowerCase());
+}
+
+function getTrackingSteps(paymentMethod: string) {
+  const steps = [...ORDER_STEPS];
+  if (!isPayAtDelivery(paymentMethod)) steps.splice(1, 0, PAYMENT_VERIFIED_STEP);
+  return steps;
+}
 
 function TrackingContent() {
   const [orderId, setOrderId] = useState('');
@@ -135,13 +153,39 @@ function TrackingContent() {
       setOrder(result.order);
     } catch (error) {
       console.error('[DeliveryTracking] Live refresh failed:', error);
+      setError(error instanceof Error ? error.message : 'Order tracking could not be loaded.');
     }
   }, []);
 
   useEffect(() => {
     const urlId = searchParams?.get('id');
+    const supportOrderId = searchParams?.get('supportOrderId');
 
     async function initialLoad() {
+      if (supportOrderId) {
+        setOrderId(supportOrderId);
+        setLoading(true);
+        setError(null);
+        try {
+          const response = await fetch(
+            `/api/admin/support-view/customer-session?orderId=${encodeURIComponent(supportOrderId)}`,
+            { cache: 'no-store' }
+          );
+          const result = await response.json() as { token?: string; error?: string };
+          if (!response.ok || !result.token) {
+            throw new Error(result.error || 'The customer tracking screen could not be opened.');
+          }
+          setTrackingToken(result.token);
+          await refreshTracking(result.token);
+        } catch (loadError) {
+          setError(loadError instanceof Error ? loadError.message : 'The customer tracking screen could not be opened.');
+          setOrder(null);
+          setTrackingToken('');
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
       if (urlId) setOrderId(urlId);
       if (!supabase) return;
       const { data: { session } } = await supabase.auth.getSession();
@@ -157,7 +201,7 @@ function TrackingContent() {
     }
 
     void initialLoad();
-  }, [searchParams, fetchOrder]);
+  }, [searchParams, fetchOrder, refreshTracking]);
 
   useEffect(() => {
     if (!trackingToken) return;
@@ -165,8 +209,9 @@ function TrackingContent() {
     return () => window.clearInterval(interval);
   }, [trackingToken, refreshTracking]);
 
+  const steps = order ? getTrackingSteps(order.payment_method) : [];
   const getStatusIndex = (status: string) => {
-    const idx = STEPS.findIndex((step) => step.id.toLowerCase() === status.toLowerCase());
+    const idx = steps.findIndex((step) => step.statuses.some(value => value.toLowerCase() === status.toLowerCase()));
     return idx === -1 ? 0 : idx;
   };
 
@@ -300,14 +345,14 @@ function TrackingContent() {
               <div className="p-8 sm:p-12">
                 <div className="relative mb-12 sm:mb-20">
                   <div className="absolute left-0 right-0 top-6 hidden h-1.5 rounded-full bg-slate-100 sm:block">
-                    <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{ width: `${(currentIndex / (STEPS.length - 1)) * 100}%` }} />
+                    <div className="h-full bg-primary transition-all duration-1000 ease-out" style={{ width: `${(currentIndex / (steps.length - 1)) * 100}%` }} />
                   </div>
                   <div className="sm:hidden absolute bottom-0 left-6 top-0 w-1 rounded-full bg-slate-100">
-                    <div className="h-full w-full origin-top bg-primary transition-all duration-1000 ease-out" style={{ height: `${(currentIndex / (STEPS.length - 1)) * 100}%` }} />
+                    <div className="h-full w-full origin-top bg-primary transition-all duration-1000 ease-out" style={{ height: `${(currentIndex / (steps.length - 1)) * 100}%` }} />
                   </div>
 
                   <div className="relative flex flex-col gap-8 sm:flex-row sm:justify-between sm:gap-0">
-                    {STEPS.map((step, idx) => (
+                    {steps.map((step, idx) => (
                       <div key={step.id} className="flex items-center gap-6 sm:flex-col sm:gap-0">
                         <div className={cn('z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-4 bg-white transition-all duration-700 sm:h-14 sm:w-14', currentIndex >= idx ? 'border-primary text-primary shadow-xl scale-110' : 'border-slate-100 text-slate-200')}>
                           <step.icon className={cn('h-5 w-5 sm:h-6 sm:w-6', currentIndex === idx && 'animate-pulse')} />
@@ -337,7 +382,9 @@ function TrackingContent() {
                     <p className="text-xs font-bold uppercase text-foreground">{order.payment_method}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Total Paid</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      {isPayAtDelivery(order.payment_method) && !['Delivered', 'Completed'].includes(order.status) ? 'Due at Delivery' : 'Order Total'}
+                    </p>
                     <p className="text-lg font-black text-foreground">{formatPrice(order.total_price)}</p>
                   </div>
                   <div className="space-y-1">

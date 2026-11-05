@@ -67,7 +67,8 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
   };
 
   const isBiteOpen = checkIsBiteOpen();
-  const canPurchase = !isLocked && isBiteOpen && (product.stock || 0) > 0;
+  const isAvailableNow = product.is_available_now !== false;
+  const canPurchase = !isLocked && isBiteOpen && isAvailableNow && (product.stock || 0) > 0;
   if (!allowUnpublishedPreview && !isStorefrontProductVisible(product)) return null;
   const beverageSpecs = product.beverage_specs;
   const abvDisplay = product.abv_label || beverageSpecs?.abv;
@@ -86,6 +87,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
 
   // ▮▮ Stock Logic
   const getStockStatus = () => {
+      if (!isAvailableNow) return { label: 'Currently unavailable', color: 'text-rose-500', bar: 'bg-rose-100' };
       if (product.stock === undefined || product.stock === null) return { label: 'Status Unknown', color: 'text-slate-400', bar: 'bg-slate-200' };
       if (product.stock === 0) return { label: 'Out of stock', color: 'text-rose-500', bar: 'bg-rose-100' };
       if (product.stock <= (product.stock_threshold_critical || 2)) return { label: `Only ${product.stock} left`, color: 'text-rose-600', bar: 'bg-rose-500' };
@@ -310,7 +312,7 @@ export default function ProductCard({ product, userTier = 'Explorer', allowUnpub
                     {isAdding ? <Loader2 size={12} className="animate-spin" /> : justAdded ? <Check size={12} /> : <ShoppingCart size={12} />}
                     <span className="truncate">
                         {!canPurchase
-                            ? (isLocked ? 'Locked' : !isBiteOpen ? 'Closed' : 'Sold out')
+                            ? (isLocked ? 'Locked' : !isAvailableNow ? 'Unavailable' : !isBiteOpen ? 'Closed' : 'Sold out')
                             : justAdded
                                 ? 'Added'
                                 : product.stock === 0
