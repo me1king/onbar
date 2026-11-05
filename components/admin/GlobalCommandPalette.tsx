@@ -243,7 +243,9 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen, pages }: Comma
                                 >
                                     <div className={cn(
                                         "h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm",
-                                        activeIndex === idx ? "bg-background/20 border-background/20" : "bg-background border-border"
+                                        activeIndex === idx
+                                            ? "bg-background/20 border-background/20 text-primary-foreground"
+                                            : "bg-background border-border text-slate-500"
                                     )}>
                                         {result.type === 'order' ? <ShoppingBag className="h-5 w-5" /> :
                                          result.type === 'rider' ? <Truck className="h-5 w-5" /> :
@@ -254,17 +256,25 @@ export default function GlobalCommandPalette({ isOpen, setIsOpen, pages }: Comma
                                          ) : <Users className="h-5 w-5" />}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-[11px] font-black uppercase tracking-tight truncate text-foreground group-hover:text-foreground">{result.title}</p>
+                                        <p className={cn(
+                                            "text-[11px] font-black uppercase tracking-tight truncate",
+                                            activeIndex === idx ? "text-primary-foreground" : "text-slate-700"
+                                        )}>{result.title}</p>
                                         <p className={cn(
                                             "text-[8px] font-black uppercase tracking-widest mt-1",
-                                            activeIndex === idx ? "text-background/60" : "text-muted-foreground"
+                                            activeIndex === idx ? "text-primary-foreground/70" : "text-slate-500"
                                         )}>{result.subtitle}</p>
                                     </div>
                                     <div className="text-right shrink-0">
-                                        <p className="text-[10px] font-black text-foreground group-hover:text-foreground">{result.meta}</p>
+                                        {result.meta && (
+                                            <p className={cn(
+                                                "text-[10px] font-black",
+                                                activeIndex === idx ? "text-primary-foreground" : "text-slate-700"
+                                            )}>{result.meta}</p>
+                                        )}
                                         <ArrowRight className={cn(
                                             "h-4 w-4 ml-auto mt-1 transition-transform group-hover:translate-x-1",
-                                            activeIndex === idx ? "text-background" : "text-muted"
+                                            activeIndex === idx ? "text-primary-foreground" : "text-slate-400"
                                         )} />
                                     </div>
                                 </button>
