@@ -5,10 +5,17 @@ export const metadata = {
   description: 'Premium onboarding for Nairobi\'s elite drinks grid.',
 };
 
-export default function AuthPage() {
+export default async function AuthPage({
+  searchParams
+}: {
+  searchParams: Promise<{ mode?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const initialMode = params.mode === 'signin' ? 'signin' : 'signup';
+
   return (
     <main className="min-h-screen bg-white selection:bg-primary/20">
-      <PremiumOnboarding />
+      <PremiumOnboarding initialMode={initialMode} />
     </main>
   );
 }

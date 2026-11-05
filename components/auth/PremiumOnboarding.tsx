@@ -45,10 +45,10 @@ function continueAffiliateInvitation(router: ReturnType<typeof useRouter>): bool
     }
 }
 
-export default function PremiumOnboarding() {
+export default function PremiumOnboarding({ initialMode = 'signup' }: { initialMode?: 'signin' | 'signup' }) {
     const router = useRouter();
-    const [step, setStep] = React.useState<OnboardingStep>('INTRO');
-    const [authMode, setAuthMode] = React.useState<'signin' | 'signup'>('signup');
+    const [step, setStep] = React.useState<OnboardingStep>(initialMode === 'signin' ? 'AUTH' : 'INTRO');
+    const [authMode, setAuthMode] = React.useState<'signin' | 'signup'>(initialMode);
     const [interests, setInterests] = React.useState<string[]>([]);
     const [preferredVibe, setPreferredVibe] = React.useState<string | null>(null);
     const [loading, setLoading] = React.useState(false);
