@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, FileText, Loader2, ShieldCheck, Store, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,23 @@ interface UploadChecklist {
 }
 
 export default function MerchantDocumentsPage() {
+  return (
+    <Suspense fallback={
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4 sm:p-8">
+        <Card className="w-full max-w-2xl rounded-3xl border-0 p-6 shadow-xl sm:p-10">
+          <div className="flex items-center justify-center py-16 text-sm font-semibold text-slate-500">
+            <Loader2 className="mr-2 animate-spin" />
+            Loading secure document upload...
+          </div>
+        </Card>
+      </main>
+    }>
+      <MerchantDocumentsContent />
+    </Suspense>
+  );
+}
+
+function MerchantDocumentsContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
   const [checklist, setChecklist] = useState<UploadChecklist | null>(null);
