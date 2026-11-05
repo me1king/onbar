@@ -424,20 +424,21 @@ export default function AdminCouponsPage() {
                       </div>
                       <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-amber-700">Keep margin above 18%</span>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                       {giftOptions.map((gift) => {
                           const giftCost = gift.cost;
                           const giftMarginImpact = discountedProfit - giftCost;
                           return (
-                              <div key={gift.name} className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-4 text-left">
+                              <div key={gift.name} className="group rounded-[1.75rem] border border-slate-200 bg-slate-50/80 p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-200 hover:bg-white hover:shadow-lg hover:shadow-slate-900/5">
                                   <div className="flex items-center justify-between">
                                       <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Gift</span>
-                                      <span className="rounded-full bg-white px-2 py-1 text-[8px] font-black uppercase tracking-[0.2em] text-primary">KES {giftCost}</span>
+                                      <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-700">KES {giftCost}</span>
                                   </div>
-                                  <p className="mt-3 text-lg font-black uppercase tracking-tight text-slate-900">{gift.name}</p>
-                                  <p className="mt-2 text-xs text-slate-500">{gift.note}</p>
-                                  <div className="mt-4 border-t border-slate-200 pt-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                                      Profit after gift: <span className={cn(giftMarginImpact < 0 ? 'text-rose-600' : 'text-slate-900')}>KES {giftMarginImpact.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                  <p className="mt-4 text-base font-black leading-snug tracking-tight text-slate-800">{gift.name}</p>
+                                  <p className="mt-2 min-h-10 text-sm leading-5 text-slate-500">{gift.note}</p>
+                                  <div className="mt-4 border-t border-slate-200 pt-3">
+                                      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Estimated profit after gift</p>
+                                      <p className={cn("mt-1 text-lg font-black tracking-tight", giftMarginImpact < 0 ? 'text-rose-600' : 'text-slate-700')}>KES {giftMarginImpact.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
                                   </div>
                               </div>
                           );

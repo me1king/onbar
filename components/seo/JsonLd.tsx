@@ -10,6 +10,7 @@ export default function JsonLd() {
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${baseUrl}/#org`,
     "name": storeName,
     "description": "Online Bar is an online store for drinks, snacks, and gifts. Customers can check current product availability and delivery options on the website.",
     "url": baseUrl,

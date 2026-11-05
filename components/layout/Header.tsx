@@ -404,7 +404,7 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
     { href: "/souvenirs", label: "Souvenirs" },
     { href: "/shop/category/sale", label: "Deals" },
     { href: "/shop/category/gifts", label: "Gifts" },
-    { href: "/build-my-night", label: "Build My Night" },
+    { href: "/build-the-night", label: "Build the Night" },
     { href: "/blog", label: "Mixology" },
     { href: "/track", label: "Track" }
   ];

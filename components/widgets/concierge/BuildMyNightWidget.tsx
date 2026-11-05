@@ -220,7 +220,7 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                 const parsed = JSON.parse(saved) as Partial<Preferences>;
                 if (typeof parsed.occasion === 'string' || parsed.occasion === null) setOccasion(parsed.occasion);
                 if (typeof parsed.guests === 'number' && parsed.guests >= 1 && parsed.guests <= 30) setGuests(parsed.guests);
-                if (typeof parsed.budget === 'number' && parsed.budget >= 500 && parsed.budget <= 50000) setBudget(parsed.budget);
+                if (typeof parsed.budget === 'number' && Number.isSafeInteger(parsed.budget) && parsed.budget >= 1) setBudget(parsed.budget);
                 if (Array.isArray(parsed.tastes)) setTastes(parsed.tastes.filter((taste): taste is Taste => TASTES.includes(taste as Taste)));
             }
         } catch (storageError) {
@@ -250,6 +250,10 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
             setError('Choose a valid occasion to get started.');
             return;
         }
+        if (!Number.isSafeInteger(preferences.budget) || preferences.budget < 1) {
+            setError('Enter a whole-number budget of at least KSh 1.');
+            return;
+        }
         if (preferences.tastes.some(taste => ['Beer', 'Wine', 'Spirits'].includes(taste)) && !ageConfirmed) {
             setError('Confirm that you are 18 or older before viewing alcohol recommendations.');
             return;
@@ -277,12 +281,6 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                 ? normalizeBuildMyNightConfig(plannerSetting.value)
                 : DEFAULT_BUILD_MY_NIGHT_CONFIG;
             if (!plannerConfig) throw new Error('Planner settings are invalid. Please contact support.');
-            if (plannerConfig.concierge_mode === 'managed'
-                && preferences.budget > plannerConfig.build_setup_limit) {
-                setBudget(plannerConfig.build_setup_limit);
-                setStep(2);
-                throw new Error(`The planner budget limit is ${formatPrice(plannerConfig.build_setup_limit)}. Your budget was adjusted; generate the plan again.`);
-            }
 
             const eligible = (result.products || [])
                 .filter(product => product.is_available_now !== false
@@ -653,15 +651,14 @@ export default function BuildMyNightWidget({ compact = false }: { compact?: bool
                                     </p>
                                     <input
                                         aria-label="Budget in Kenyan shillings"
-                                        type="range"
-                                        min="500"
-                                        max="50000"
-                                        step="500"
+                                        type="number"
+                                        min="1"
+                                        step="1"
                                         value={budget}
-                                        onChange={event => setBudget(Number(event.target.value))}
-                                        className="mt-8 w-full accent-amber-600"
+                                        onChange={event => setBudget(event.target.value === '' ? 0 : Number(event.target.value))}
+                                        className="mt-8 min-h-12 w-full rounded-lg border border-slate-300 px-4 text-center text-lg font-semibold text-slate-900 focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-200"
                                     />
-                                    <div className="mt-1 flex justify-between text-xs text-slate-500"><span>KES 500</span><span>KES 50,000</span></div>
+                                    <p className="mt-2 text-center text-xs text-slate-500">Enter any budget that works for you. There is no maximum.</p>
                                 </div>
                             )}
 

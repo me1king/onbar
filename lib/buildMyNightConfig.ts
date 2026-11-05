@@ -15,7 +15,6 @@ export type BuildMyNightCategory = typeof BUILD_MY_NIGHT_CATEGORIES[number];
 export interface BuildMyNightConfig {
     concierge_mode: 'classic' | 'managed';
     random_suggestions_enabled: boolean;
-    build_setup_limit: number;
     party_categories: BuildMyNightCategory[];
     date_night_categories: BuildMyNightCategory[];
     recommendation_limit: number;
@@ -25,7 +24,6 @@ export interface BuildMyNightConfig {
 export const DEFAULT_BUILD_MY_NIGHT_CONFIG: BuildMyNightConfig = {
     concierge_mode: 'classic',
     random_suggestions_enabled: false,
-    build_setup_limit: 5000,
     party_categories: ['spirits', 'snacks', 'mixers'],
     date_night_categories: ['wine', 'snacks', 'mixers'],
     recommendation_limit: 4,
@@ -61,11 +59,6 @@ export function normalizeBuildMyNightConfig(value: unknown): BuildMyNightConfig 
         if (typeof value.random_suggestions_enabled !== 'boolean') return null;
         config.random_suggestions_enabled = value.random_suggestions_enabled;
     }
-    if (value.build_setup_limit !== undefined) {
-        if (typeof value.build_setup_limit !== 'number' || !Number.isSafeInteger(value.build_setup_limit)
-            || value.build_setup_limit < 1 || value.build_setup_limit > 1_000_000) return null;
-        config.build_setup_limit = value.build_setup_limit;
-    }
     if (value.recommendation_limit !== undefined) {
         if (typeof value.recommendation_limit !== 'number' || !Number.isInteger(value.recommendation_limit)
             || value.recommendation_limit < 1 || value.recommendation_limit > 6) return null;
@@ -92,8 +85,7 @@ export function normalizeBuildMyNightConfig(value: unknown): BuildMyNightConfig 
         }
     }
     if (config.concierge_mode === 'managed'
-        && (value.build_setup_limit === undefined
-            || value.recommendation_limit === undefined
+        && (value.recommendation_limit === undefined
             || value.party_categories === undefined
             || value.date_night_categories === undefined)) {
         return null;
@@ -104,5 +96,5 @@ export function normalizeBuildMyNightConfig(value: unknown): BuildMyNightConfig 
 export function validateBuildMyNightConfig(value: Record<string, unknown>): string | null {
     return normalizeBuildMyNightConfig(value)
         ? null
-        : 'Planner settings are invalid. Check the managed budget, categories, recommendation limit, and occasion products.';
+        : 'Planner settings are invalid. Check the managed categories, recommendation limit, and occasion products.';
 }

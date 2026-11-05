@@ -86,6 +86,10 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
       links: [
         { href: "/about", label: "About Us" },
         { href: "/blog", label: "Mixology" },
+        { href: "/delivery", label: "Delivery Areas" },
+        { href: "/build-the-night", label: "Build the Night" },
+        { href: "/concierge", label: "Event Concierge" },
+        { href: "/guides/how-much-alcohol-for-a-party", label: "Party Drinks Guide" },
         { href: "/contact", label: "Support" },
       ],
     },
@@ -177,13 +181,13 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
                 Online<span className="text-primary">Bar</span>
               </Link>
               <p className="text-muted-foreground mt-4 mb-6 max-w-sm font-medium leading-relaxed">
-                Online Bar brings premium drinks, snacks and gifts to your door across Nairobi.
+                Online Bar is an online store for drinks, snacks and gifts. Delivery is available in configured service areas; check your address at checkout.
               </p>
 
               <div className="space-y-3">
                 <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium">
                   <MapPin className="h-4 w-4 text-primary" />
-                  <span>{loading ? '...' : (settings?.contact?.address || 'Nairobi, Kenya')}</span>
+                  <span>{loading ? '...' : (settings?.contact?.address || 'Online delivery service · Nairobi, Kenya')}</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium">
                   <Phone className="h-4 w-4 text-primary" />

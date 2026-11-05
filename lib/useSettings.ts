@@ -150,7 +150,6 @@ export interface StoreSettings {
         analytics_provider: 'app' | 'vercel' | 'both';
     };
     ai_config?: {
-        build_setup_limit: number;
         assistant_name: string;
         response_style: string;
         concierge_mode: 'classic' | 'managed';
@@ -289,7 +288,6 @@ export const DEFAULT_SETTINGS: StoreSettings = {
         analytics_provider: 'app'
     },
     ai_config: {
-        build_setup_limit: 5000,
         assistant_name: 'Online Bar AI',
         response_style: 'Premium',
         concierge_mode: 'classic',

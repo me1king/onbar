@@ -101,7 +101,6 @@ const DEFAULTS = {
     social_links: { instagram: "", tiktok: "", facebook: "", x: "", youtube: "", snapchat: "" },
     store_info: { name: "ONLINE BAR", hours: "24/7 Dispatch", google_maps: "", footer_copy: "© 2026 Online Bar™" },
     ai_config: {
-        build_setup_limit: 5000,
         assistant_name: "Bar AI",
         response_style: "Premium",
         concierge_mode: 'classic' as 'classic' | 'managed',
@@ -1494,17 +1493,7 @@ export default function AdminSettingsPage() {
                                                 />
                                                 <p className="text-[10px] text-muted-foreground">Enter product categories separated by commas.</p>
                                             </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase text-muted-foreground">Setup / gaming budget cap</label>
-                                                <Input
-                                                    type="number"
-                                                    min={1}
-                                                    value={aiConfig.build_setup_limit}
-                                                    disabled={aiConfig.concierge_mode !== 'managed'}
-                                                    onChange={e => setAiConfig({ ...aiConfig, build_setup_limit: Number(e.target.value) })}
-                                                    className="h-14 rounded-2xl bg-white border-border font-bold text-foreground"
-                                                />
-                                            </div>
+                                            <p className="text-sm text-muted-foreground sm:col-span-2">Customers choose their own planner budget. There is no maximum budget cap.</p>
                                             <div className="space-y-4 sm:col-span-2">
                                                 <div>
                                                     <label className="text-[10px] font-black uppercase text-muted-foreground">Curate products by occasion</label>

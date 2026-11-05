@@ -700,10 +700,10 @@ export default function AdminOrdersPage() {
             ) : (
               <div className="flex-1 overflow-hidden">
                 <div className="hidden lg:block overflow-x-auto no-scrollbar">
-                    <table className="w-full text-left text-sm border-separate border-spacing-y-2">
+                    <table className="w-full min-w-[920px] text-left text-sm border-separate border-spacing-y-2">
                     <thead>
                         <tr className="bg-slate-50 text-slate-400 font-black uppercase text-[9px] tracking-[0.2em] whitespace-nowrap border-none">
-                        <th className="px-6 py-5 w-12 text-center rounded-l-2xl">
+                        <th className="px-4 py-4 w-12 text-center rounded-l-2xl">
                             <button onClick={() => {
                                 if (selectedOrders.length === filteredOrders.length) {
                                     setSelectedOrders([]);
@@ -714,12 +714,12 @@ export default function AdminOrdersPage() {
                                 {selectedOrders.length === filteredOrders.length && filteredOrders.length > 0 ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-slate-200" />}
                             </button>
                         </th>
-                        <th className="px-8 py-5 min-w-[180px]">Customer Identity</th>
-                        <th className="px-8 py-5 min-w-[220px]">Beverage Details</th>
-                        <th className="px-8 py-5 w-32">Authorized By</th>
-                        {canSeeMoney && <th className="px-8 py-5 w-32">Order Margin</th>}
-                        <th className="px-8 py-5 w-48">Dispatch State</th>
-                        <th className="px-8 py-5 text-right rounded-r-2xl">Actions</th>
+                        <th className="px-5 py-4 min-w-[190px]">Customer Identity</th>
+                        <th className="px-5 py-4 min-w-[240px]">Beverage Details</th>
+                        <th className="px-5 py-4 w-32">Authorized By</th>
+                        {canSeeMoney && <th className="px-5 py-4 w-32">Order Margin</th>}
+                        <th className="px-5 py-4 w-44">Dispatch State</th>
+                        <th className="px-5 py-4 text-right rounded-r-2xl">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y-0">
@@ -730,15 +730,15 @@ export default function AdminOrdersPage() {
 
                             return (
                             <tr key={order.id} className={cn(
-                                "bg-white border border-slate-100 transition-all group text-left relative hover:shadow-lg hover:border-primary/20",
+                                "bg-white border border-slate-100 transition-all group text-left relative align-top hover:shadow-md hover:border-primary/20",
                                 isSelected && "bg-primary/5 border-primary/20"
                             )}>
-                                <td className="px-6 py-8 text-center rounded-l-[1.5rem]">
+                                <td className="px-4 py-5 align-top text-center rounded-l-[1.5rem]">
                                     <button onClick={() => toggleOrderSelection(order.id)}>
                                         {isSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-slate-200" />}
                                     </button>
                                 </td>
-                                <td className="px-8 py-8">
+                                <td className="px-5 py-5 align-top">
                                 <div className="flex flex-col text-left">
                                     <span className="font-black text-foreground flex items-center gap-2 uppercase text-xs tracking-tight whitespace-nowrap">
                                     <User className="h-3 w-3 text-slate-300" /> {order.customer_name}
@@ -749,7 +749,7 @@ export default function AdminOrdersPage() {
                                     {renderOrderFlow(order)}
 
                                     {(order.is_gift || order.gift_message || order.note?.includes('GIFT')) && (
-                                        <div className="mt-3 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-[10px] space-y-2 max-w-[240px]">
+                                        <div className="mt-3 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-[10px] space-y-2 max-w-[220px]">
                                             <div className="flex items-center gap-1.5 font-black uppercase text-amber-800 text-[9px] tracking-widest">
                                                 <Gift className="h-3 w-3" /> GIFT PACKAGE
                                             </div>
@@ -815,8 +815,8 @@ export default function AdminOrdersPage() {
                                     )}
                                 </div>
                                 </td>
-                                <td className="px-8 py-8">
-                                <div className="flex flex-col text-left gap-3">
+                                <td className="px-5 py-5 align-top">
+                                <div className="flex flex-col text-left gap-2.5">
                                     {order.order_items && order.order_items.length > 0 ? (
                                         order.order_items.map((item) => {
                                             const pName = productNameMap.get(item.product_id) || '';
@@ -826,10 +826,10 @@ export default function AdminOrdersPage() {
                                                              pName.toLowerCase().includes('soda');
 
                                             return (
-                                                <div key={item.id} className="pb-2 last:pb-0 border-b border-slate-50 last:border-none">
+                                                <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 last:pb-2.5">
                                                     <div className="flex justify-between items-start gap-3">
                                                         <div className="flex flex-col gap-1">
-                                                            <span className="font-black text-foreground uppercase text-[11px] block truncate max-w-[150px]">
+                                                            <span className="font-black text-foreground uppercase text-[11px] block break-words max-w-[190px]">
                                                                 {pName || `Item #${item.product_id}`}
                                                             </span>
                                                             <div className="flex items-center gap-1.5">
@@ -863,7 +863,7 @@ export default function AdminOrdersPage() {
                                     )}
                                 </div>
                                 </td>
-                                <td className="px-8 py-8">
+                                <td className="px-5 py-5 align-top">
                                     <span className={cn(
                                         "px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border shadow-sm",
                                         (order as unknown as Record<string, unknown>).captured_by === 'system' ? "bg-slate-50 text-slate-400 border-slate-100" : "bg-primary/5 text-primary border-primary/10"
@@ -872,11 +872,11 @@ export default function AdminOrdersPage() {
                                     </span>
                                 </td>
                                 {canSeeMoney && (
-                                    <td className="px-8 py-8 font-black text-primary text-sm whitespace-nowrap">
+                                    <td className="px-5 py-5 align-top font-black text-primary text-sm whitespace-nowrap">
                                         {formatPrice(profit)}
                                     </td>
                                 )}
-                                <td className="px-8 py-8 text-left">
+                                <td className="px-5 py-5 align-top text-left">
                                 <div className="flex flex-col gap-2.5">
                                     <select
                                         className={cn(
@@ -903,7 +903,7 @@ export default function AdminOrdersPage() {
                                     )}
                                 </div>
                                 </td>
-                                <td className="px-8 py-8 text-right rounded-r-[1.5rem]">
+                                <td className="px-5 py-5 align-top text-right rounded-r-[1.5rem]">
                                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <Button
                                             variant="ghost"

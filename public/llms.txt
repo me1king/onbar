@@ -5,8 +5,9 @@
 ## Pages
 - [Shop](https://www.onlinebar.co.ke/shop): browse the live catalog.
 - [Delivery areas and fees](https://www.onlinebar.co.ke/delivery): current mapped delivery areas and configured fees.
-- [Build a party drinks plan](https://www.onlinebar.co.ke/build-my-night): start a party-planning request.
+- [Build the Night](https://www.onlinebar.co.ke/build-the-night): start a house party drinks plan using the live catalog.
 - [Event drinks planning](https://www.onlinebar.co.ke/concierge): event-planning information.
+- [Party drinks planning guide](https://www.onlinebar.co.ke/guides/how-much-alcohol-for-a-party): plan around guest preferences, event details and alcohol-free options.
 - [Shipping and delivery information](https://www.onlinebar.co.ke/shipping)
 - [About Online Bar](https://www.onlinebar.co.ke/about)
 - [Contact](https://www.onlinebar.co.ke/contact)
