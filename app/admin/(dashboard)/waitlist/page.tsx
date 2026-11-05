@@ -235,7 +235,7 @@ export default function WaitlistPage() {
   const [page, setPage] = useState(0);
   const [referralCreditPage, setReferralCreditPage] = useState(0);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [invitationSubject, setInvitationSubject] = useState('You’re invited: Apex Halloween Private House Party 🎃');
+  const [invitationSubject, setInvitationSubject] = useState('You’re invited: Halloween Private House Party 🎃');
   const [invitationMessage, setInvitationMessage] = useState(
     'Hi {{name}},\n\nYou’re invited to the biggest Halloween private house party! 🎃\n\nGet your ticket here: {{tickets_link}}\n\nWe hope to see you there!'
   );
@@ -1146,7 +1146,7 @@ export default function WaitlistPage() {
               className="rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm leading-6"
             />
           </label>
-          <p className="text-[11px] leading-5 text-slate-600">Personalization tokens: <code>{'{{name}}'}</code> and <code>{'{{tickets_link}}'}</code>. If you omit the link token, the Apex Market ticket link is added automatically. Event date, time, and venue are optional.</p>
+          <p className="text-[11px] leading-5 text-slate-600">Personalization tokens: <code>{'{{name}}'}</code> and <code>{'{{tickets_link}}'}</code>. If you omit the link token, the Online Bar ticket link is added automatically. Event date, time, and venue are optional.</p>
           {invitationNotice && <p role="status" className="text-xs font-bold text-emerald-800">{invitationNotice}</p>}
           {error && <p role="alert" className="text-xs font-semibold text-rose-700">{error}</p>}
           <div>

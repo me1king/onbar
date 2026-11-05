@@ -9,10 +9,10 @@ import { useEffect, Suspense, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useSettings, type StoreSettings } from '@/lib/useSettings';
 import { applyThemeColors, normalizeThemeColors, THEME_UPDATED_EVENT, type ThemeColors } from '@/lib/themeColors';
-import { Loader2 } from 'lucide-react';
 import CustomerAnnouncementHost from './CustomerAnnouncementHost';
 import LocationOnboarding from './LocationOnboarding';
 import CustomerLiveLocationSharing from './CustomerLiveLocationSharing';
+import AgeVerification from './AgeVerification';
 
 // Lazy Load Non-Critical Components
 const LiveTicker = dynamic(() => import('./LiveTicker'), { ssr: false });
@@ -22,7 +22,6 @@ const ExitIntentPopup = dynamic(() => import('./ExitIntentPopup'), { ssr: false 
 const CompareBar = dynamic(() => import('../product/CompareBar'), { ssr: false });
 const AIConcierge = dynamic(() => import('../home/AIConcierge'), { ssr: false });
 const ThemeSynchronizer = dynamic(() => import('./ThemeSynchronizer'), { ssr: false });
-const AgeVerification = dynamic(() => import('./AgeVerification'), { ssr: false });
 const LevelUpCelebration = dynamic(() => import('../engagement/LevelUpCelebration'), { ssr: false });
 const CookieConsentBanner = dynamic(() => import('./CookieConsentBanner'), { ssr: false });
 
@@ -175,17 +174,6 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
 
     if (isMarket) {
         return <main className="flex-grow">{children}</main>;
-    }
-
-    if (!mounted) {
-        return (
-            <main className="flex-grow min-h-[100dvh] bg-white flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
-                <div className="space-y-4">
-                    <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto opacity-20" />
-                    <p className="text-[8px] font-black uppercase text-slate-300 tracking-[0.4em]">Node Protocol Secure</p>
-                </div>
-            </main>
-        );
     }
 
     return (

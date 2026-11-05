@@ -47,7 +47,7 @@ export default function PublicLaunchCountdown() {
       <div className="flex items-center gap-3">
         <Clock3 size={18} className="shrink-0" />
         <div>
-          <p className="ticket-theme-text text-sm font-black">More of Apex Market is opening soon</p>
+          <p className="ticket-theme-text text-sm font-black">More from Online Bar is opening soon</p>
           <p className="ticket-theme-copy mt-1 text-xs">Ticketing is open while the rest of the site prepares to launch.</p>
         </div>
       </div>

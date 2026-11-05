@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-const CANONICAL_PUBLIC_URL = 'https://onlinebar.onrender.com';
+const CANONICAL_PUBLIC_URL = 'https://www.onlinebar.co.ke';
 
 export function getPublicBaseUrl() {
     const configuredUrl = process.env.NEXT_PUBLIC_BASE_URL?.trim();
@@ -14,7 +14,9 @@ export function getPublicBaseUrl() {
 
     try {
         const parsedUrl = new URL(currentUrl);
-        if (parsedUrl.hostname === 'onlinebar-os.onrender.com') return CANONICAL_PUBLIC_URL;
+        if (parsedUrl.hostname.endsWith('.onrender.com')
+            || parsedUrl.hostname === 'onlinebar.co.ke'
+            || parsedUrl.hostname === 'www.onlinebar.co.ke') return CANONICAL_PUBLIC_URL;
         return parsedUrl.origin;
     } catch {
         return CANONICAL_PUBLIC_URL;

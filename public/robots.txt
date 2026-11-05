@@ -1,14 +1,22 @@
 User-agent: *
 Allow: /
-Disallow: /lord
-Disallow: /admin
-Disallow: /api
+Disallow: /cart
+Disallow: /checkout
+Disallow: /profile
+Disallow: /account
+Disallow: /api/
+Disallow: /lord/
+Disallow: /admin/
+Disallow: /*?sort=
+Disallow: /*?utm_
 
-# Explicitly allow AI Training & Search Bots
 User-agent: GPTBot
 Allow: /
 
 User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: Claude-SearchBot
 Allow: /
 
 User-agent: PerplexityBot
@@ -20,7 +28,7 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
-User-agent: Amazonbot
+User-agent: Googlebot
 Allow: /
 
-Sitemap: https://onlinebar.onrender.com/sitemap.xml
+Sitemap: https://www.onlinebar.co.ke/sitemap.xml

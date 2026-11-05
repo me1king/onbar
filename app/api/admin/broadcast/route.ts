@@ -325,15 +325,15 @@ export async function POST(request: Request) {
                         const result = await sendTransactionalEmail({
                             from: emailConfig.from,
                             to: sub.email,
-                            subject: subject || (emailAudience === 'waitlist' ? 'Apex Market ticket update' : 'Update from Online Bar Nairobi'),
-                            text: `${message}\n\nYou received this because you opted in to ${emailAudience === 'waitlist' ? 'Apex Market waitlist email updates' : 'Online Bar Nairobi newsletter emails'}. Unsubscribe: ${unsubscribeUrl}`,
+                            subject: subject || (emailAudience === 'waitlist' ? 'Online Bar ticket update' : 'Update from Online Bar Nairobi'),
+                            text: `${message}\n\nYou received this because you opted in to Online Bar ${emailAudience === 'waitlist' ? 'event email updates' : 'newsletter emails'}. Unsubscribe: ${unsubscribeUrl}`,
                             idempotencyKey: `campaign-${campaign.id}-${offset + index}`,
                             html: `
                             <div style="font-family: sans-serif; padding: 20px; color: #333;">
-                                <h2 style="color: #ff6b00;">${emailAudience === 'waitlist' ? 'Apex Market Ticket Update' : 'Online Bar Nairobi Premium Update'}</h2>
+                                <h2 style="color: #ff6b00;">${emailAudience === 'waitlist' ? 'Online Bar Ticket Update' : 'Online Bar Nairobi Premium Update'}</h2>
                                 <p>${safeMessage}</p>
                                 <hr style="border: 1px solid #eee; margin: 20px 0;" />
-                                <p style="font-size: 12px; color: #999;">You received this because you opted in to ${emailAudience === 'waitlist' ? 'Apex Market waitlist email updates' : 'Online Bar Nairobi newsletter emails'}.</p>
+                                <p style="font-size: 12px; color: #999;">You received this because you opted in to Online Bar ${emailAudience === 'waitlist' ? 'event email updates' : 'newsletter emails'}.</p>
                                 <p style="font-size: 12px;"><a href="${unsubscribeUrl}">Unsubscribe from marketing emails</a></p>
                             </div>
                             `

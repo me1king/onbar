@@ -299,6 +299,52 @@ export const DEFAULT_SETTINGS: StoreSettings = {
     }
 };
 
+type PublishedSettingsResponse = {
+    settings?: Array<{ key: string; value: Record<string, unknown> }>;
+};
+
+let publishedSettingsCache: { expiresAt: number; result: PublishedSettingsResponse } | null = null;
+let publishedSettingsRequest: Promise<PublishedSettingsResponse | null> | null = null;
+
+function getPublishedSettings() {
+    if (publishedSettingsCache && publishedSettingsCache.expiresAt > Date.now()) {
+        return Promise.resolve(publishedSettingsCache.result);
+    }
+
+    if (!publishedSettingsRequest) {
+        publishedSettingsRequest = (async () => {
+            const response = await fetch('/api/settings', {
+                cache: 'no-store',
+                signal: AbortSignal.timeout(10_000)
+            });
+            if (!response.ok) {
+                if (response.status >= 500) {
+                    console.warn(`[Settings] Published settings are unavailable (${response.status}); built-in defaults remain active.`);
+                    return null;
+                }
+                throw new Error(`Published store settings could not be loaded (${response.status}).`);
+            }
+
+            const result = await response.json() as PublishedSettingsResponse;
+            publishedSettingsCache = { result, expiresAt: Date.now() + 60_000 };
+            return result;
+        })()
+            .catch(error => {
+                if (error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError')) {
+                    console.warn('[Settings] Could not reach the published settings endpoint; built-in defaults remain active.', error);
+                } else {
+                    console.error('[Settings] Could not load published store settings:', error);
+                }
+                return null;
+            })
+            .finally(() => {
+                publishedSettingsRequest = null;
+            });
+    }
+
+    return publishedSettingsRequest;
+}
+
 /**
  * Hook to manage global store settings from Supabase
  */
@@ -307,13 +353,12 @@ export function useSettings() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        let mounted = true;
+
         async function loadSettings() {
             try {
-                const response = await fetch('/api/settings', { cache: 'no-store' });
-                if (!response.ok) throw new Error('Published store settings could not be loaded.');
-                const result = await response.json() as {
-                    settings?: Array<{ key: string; value: Record<string, unknown> }>;
-                };
+                const result = await getPublishedSettings();
+                if (!result || !mounted) return;
                 const data = result.settings || [];
 
                 if (data && data.length > 0) {
@@ -370,16 +415,17 @@ export function useSettings() {
                             } as NonNullable<StoreSettings['promotions']>;
                         }
                     });
-                    setSettings(newSettings);
+                    if (mounted) setSettings(newSettings);
                 }
             } catch (err) {
-                console.error("Settings Load Error:", err);
+                console.error('[Settings] Could not apply published store settings:', err);
             } finally {
-                setLoading(false);
+                if (mounted) setLoading(false);
             }
         }
 
         loadSettings();
+        return () => { mounted = false; };
     }, []);
 
     return { settings, loading };

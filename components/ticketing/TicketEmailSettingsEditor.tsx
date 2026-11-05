@@ -17,7 +17,7 @@ const textFields: Array<{
   maxLength: number;
 }> = [
   { key: 'brandTitle', label: 'Brand line', help: 'Displayed at the top of the ticket email.', maxLength: 100 },
-  { key: 'brandSubtitle', label: 'Brand explanation', help: 'A short line explaining the Apex Market and Online Bar collaboration.', maxLength: 180 },
+  { key: 'brandSubtitle', label: 'Brand subtitle', help: 'A short supporting line displayed beneath the Online Bar ticket email brand.', maxLength: 180 },
   { key: 'subjectTemplate', label: 'Email subject', help: 'Supports {event_title}, {event_date}, {buyer_name}, {ticket_count}, {order_reference}, {amount_paid}, {venue}, {organizer_name}.', maxLength: 200 },
   { key: 'headingTemplate', label: 'Email heading', help: 'Main heading shown above the ticket details.', maxLength: 180 },
   { key: 'introTemplate', label: 'Introduction', help: 'Shown after payment confirmation. Plain text only; line breaks are kept.', multiline: true, maxLength: 1200 },

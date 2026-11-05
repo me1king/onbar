@@ -26,8 +26,8 @@ export interface TicketEmailSettings {
 }
 
 export const DEFAULT_TICKET_EMAIL_SETTINGS: TicketEmailSettings = {
-  brandTitle: 'APEX MARKET · TICKETING BY ONLINE BAR',
-  brandSubtitle: 'Built in collaboration with the Apex Market team',
+  brandTitle: 'ONLINE BAR · TICKETING',
+  brandSubtitle: 'Nairobi events and experiences',
   subjectTemplate: 'Your tickets for {event_title} – {event_date}',
   headingTemplate: 'You’re in. Your ticket is ready.',
   introTemplate: 'Payment confirmed. Your printable tickets are attached. Save this email and present each ticket’s QR code at the entrance. Every ticket is valid for one scan.',
@@ -90,13 +90,14 @@ export function isTicketEmailSettings(value: unknown): value is TicketEmailSetti
 
 export function normalizeTicketEmailSettings(value: unknown): TicketEmailSettings | null {
   if (!isTicketEmailSettings(value)) return null;
+  const removeLegacyBrand = (text: string) => text.replace(/Apex\s*Market/gi, 'Online Bar');
   return {
-    brandTitle: value.brandTitle.trim(),
-    brandSubtitle: value.brandSubtitle.trim(),
-    subjectTemplate: value.subjectTemplate.trim(),
-    headingTemplate: value.headingTemplate.trim(),
-    introTemplate: value.introTemplate.trim(),
-    closingTemplate: value.closingTemplate.trim(),
+    brandTitle: removeLegacyBrand(value.brandTitle.trim()),
+    brandSubtitle: removeLegacyBrand(value.brandSubtitle.trim()),
+    subjectTemplate: removeLegacyBrand(value.subjectTemplate.trim()),
+    headingTemplate: removeLegacyBrand(value.headingTemplate.trim()),
+    introTemplate: removeLegacyBrand(value.introTemplate.trim()),
+    closingTemplate: removeLegacyBrand(value.closingTemplate.trim()),
     sections: { ...value.sections }
   };
 }

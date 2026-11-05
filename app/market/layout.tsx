@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './market.css';
 
 export const metadata: Metadata = {
-  title: 'Apex Market',
-  description: 'Discover products and services from verified Apex Market partners.',
+  title: 'Online Bar Market',
+  description: 'Discover products, services and delivery from Online Bar Nairobi.',
 };
 
 export default function MarketLayout({ children }: Readonly<{ children: React.ReactNode }>) {

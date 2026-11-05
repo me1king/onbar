@@ -220,7 +220,7 @@ function createTicketPdf(input: {
   pdf.setTextColor(palette.accent);
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(9);
-  pdf.text('APEX MARKET · ONLINE BAR', margin, headerY);
+  pdf.text('ONLINE BAR · TICKETING', margin, headerY);
   pdf.setTextColor(palette.foreground);
   pdf.setFontSize(20);
   const titleLines = pdf.splitTextToSize(input.event.title, textWidth);

@@ -274,7 +274,7 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
                                     <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-amber-400">A</div>
                                     <h4 className="pt-2 text-2xl font-black tracking-tight text-slate-950">What’s the plan tonight?</h4>
                                     <p className="mx-auto max-w-xs text-sm leading-6 text-slate-700">Tell me the occasion, how many people, and your budget. I’ll check the live catalog and help you choose.</p>
-                                    <p className="text-xs text-slate-500">Apex Market AI assistant · prices and stock come from the live catalog.</p>
+                                    <p className="text-xs text-slate-500">Online Bar AI assistant · prices and stock come from the live catalog.</p>
                                 </div>
                                 <div className="grid gap-2 px-1">
                                     {['House party for 10', 'Something for two, KES 3,000', 'Under KES 5,000', 'No alcohol, add snacks'].map(option => (
@@ -320,7 +320,7 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
                                         </div>
                                     )}
                                     {message.action === 'support' && (
-                                        <a href={supportNumber ? `https://wa.me/${supportNumber}?text=${encodeURIComponent('Hi Apex Market, I need help from the concierge. ')}` : '/contact'} target={supportNumber ? '_blank' : undefined} rel={supportNumber ? 'noopener noreferrer' : undefined} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
+                                        <a href={supportNumber ? `https://wa.me/${supportNumber}?text=${encodeURIComponent('Hi Online Bar, I need help from the concierge. ')}` : '/contact'} target={supportNumber ? '_blank' : undefined} rel={supportNumber ? 'noopener noreferrer' : undefined} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
                                             <Headphones size={16} /> Talk to a person
                                         </a>
                                     )}
@@ -359,7 +359,7 @@ export default function AIConcierge({ suppressLauncher = false }: { suppressLaun
                                 }}
                                 maxLength={500}
                                 rows={2}
-                                aria-label="Message the Apex Market concierge"
+                                aria-label="Message the Online Bar concierge"
                                 placeholder="Tell me the occasion, guests, or budget…"
                                 className="min-h-12 min-w-0 flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-950 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
                             />

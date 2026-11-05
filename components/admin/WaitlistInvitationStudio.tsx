@@ -22,7 +22,7 @@ export default function WaitlistInvitationStudio() {
     || permissions.can_manage_communications === true
     || permissions.can_manage_customer_care === true;
   const ready = Boolean(subject.trim() && message.trim());
-  const previewTicketUrl = 'https://www.apexmarket.co.ke/tickets';
+  const previewTicketUrl = 'https://onlinebar.co.ke/tickets';
   const previewMessage = `${message
     .replaceAll('{{name}}', 'Alex')
     .replaceAll('{{tickets_link}}', previewTicketUrl)}${message.includes('{{tickets_link}}') || message.includes(previewTicketUrl) ? '' : `\n\nGet your tickets: ${previewTicketUrl}`}\n\nWe’re sending this through Gmail for now while we finish setting up SMS and WhatsApp. Thanks for your patience.`;
@@ -147,7 +147,7 @@ export default function WaitlistInvitationStudio() {
 
           <div className="rounded-xl bg-orange-50 p-4 text-xs leading-5 text-orange-950">
             <p className="font-black">Personalization and ticket link</p>
-            <p className="mt-1">Use <code className="rounded bg-white px-1">{'{{name}}'}</code> to personalize the greeting and <code className="rounded bg-white px-1">{'{{tickets_link}}'}</code> for the Apex Market ticket page. If you leave the token out, the Apex Market ticket link is added automatically. Event date, time, and venue are optional—include them when you are ready.</p>
+            <p className="mt-1">Use <code className="rounded bg-white px-1">{'{{name}}'}</code> to personalize the greeting and <code className="rounded bg-white px-1">{'{{tickets_link}}'}</code> for the Online Bar ticket page. If you leave the token out, the Online Bar ticket link is added automatically. Event date, time, and venue are optional—include them when you are ready.</p>
           </div>
 
           {result && (
@@ -180,7 +180,7 @@ export default function WaitlistInvitationStudio() {
             </div>
           </div>
           <div className="border-t border-slate-100 px-5 py-3 text-[10px] leading-5 text-slate-500">
-            The ticket link opens Apex Market tickets. Emails include a marketing opt-out link. SMS and WhatsApp use their respective configured providers; WhatsApp requires an approved template. No invitation is sent until you tap Invite or confirm bulk send.
+            The ticket link opens Online Bar tickets. Emails include a marketing opt-out link. SMS and WhatsApp use their respective configured providers; WhatsApp requires an approved template. No invitation is sent until you tap Invite or confirm bulk send.
           </div>
         </aside>
       </div>

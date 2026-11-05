@@ -37,7 +37,10 @@ function isTicketingOrAdminPath(pathname: string) {
 }
 
 function isPublicAssetPath(pathname: string) {
-  return /\.(?:avif|gif|jpe?g|png|svg|webp|ico|woff2?|ttf|otf|eot)$/i.test(pathname);
+  return pathname === '/robots.txt'
+    || pathname === '/llms.txt'
+    || pathname === '/sitemap.xml'
+    || /\.(?:avif|gif|jpe?g|png|svg|webp|ico|woff2?|ttf|otf|eot)$/i.test(pathname);
 }
 
 async function readPublicLaunchGate() {
@@ -74,6 +77,14 @@ async function readPublicLaunchGate() {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (request.nextUrl.hostname === 'onlinebar.co.ke') {
+    const canonicalUrl = request.nextUrl.clone();
+    canonicalUrl.hostname = 'www.onlinebar.co.ke';
+    canonicalUrl.protocol = 'https:';
+    canonicalUrl.port = '';
+    return NextResponse.redirect(canonicalUrl, 308);
+  }
 
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
     const destination = request.nextUrl.clone();

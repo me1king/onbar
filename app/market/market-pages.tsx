@@ -75,8 +75,8 @@ function useCatalog(filters = '') {
 function MarketHeader() {
   return (
     <header className="mm-header">
-      <Link className="mm-brand" href="/market" aria-label="Apex Market home">
-        APEX <span>MARKET</span>
+      <Link className="mm-brand" href="/market" aria-label="Online Bar home">
+        ONLINE <span>BAR</span>
       </Link>
       <nav className="mm-nav" aria-label="Market navigation">
         <Link href="/market">Discover</Link>
@@ -121,7 +121,7 @@ function ProductGrid({ products }: { products: Product[] }) {
 function MarketFooter() {
   return (
     <footer className="mm-footer">
-      Apex Market — verified local vendors, partners, and delivery operations.
+      Online Bar — premium drinks, snacks and gifts delivered across Nairobi.
     </footer>
   );
 }
@@ -354,7 +354,7 @@ export function MarketCategoryPage({ slug }: { slug: string }) {
         <div className="mm-section-heading">
           <div>
             <Link className="mm-text-link" href="/market"><ArrowLeft size={14} /> Back to discover</Link>
-            <div className="mm-eyebrow" style={{ marginTop: 24 }}>Apex Market category</div>
+            <div className="mm-eyebrow" style={{ marginTop: 24 }}>Online Bar category</div>
             <h2>{category?.name || slug.replace(/-/g, ' ')}</h2>
             {category?.description && <p className="mm-product-meta">{category.description}</p>}
           </div>
@@ -404,7 +404,7 @@ export function MarketProductPage({ slug }: { slug: string }) {
                       <Link href={`/market/store/${product.merchant.slug}`} className="mm-text-link">
                         <Store size={15} /> {product.merchant.name}
                       </Link>
-                      <p className="mm-detail-description">{product.description || 'A verified offer from an Apex Market partner.'}</p>
+                      <p className="mm-detail-description">{product.description || 'A verified offer from an Online Bar partner.'}</p>
                       {product.variants.length > 1 && (
                         <label className="mm-variant-label">
                           Choose a size or colour

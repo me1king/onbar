@@ -41,7 +41,7 @@ export default function AdminBroadcastPage() {
         { id: 'flash', label: 'Flash Sale', content: `ALERT: Premium Flash Sale active now! Get 20% OFF all premium vintages for the next 4 hours only. Secure yours: ${getPublicBaseUrl()}/shop` },
         { id: 'weekend', label: 'Weekend Drop', content: `Hello! Our Weekend Drop is live. Restocked premium selections are ready for chilled dispatch. Nairobi fast dispatch active until 6 PM. Shop: ${getPublicBaseUrl()}` },
         { id: 'loyalty', label: 'Reward Boost', content: `Sparkle your bar! ✨ VIP rewards just boosted. Complete your profile to unlock a KSh 500 voucher instantly. Link: ${getPublicBaseUrl()}/profile` },
-        { id: 'tickets', label: 'Soul Fest ticket invitation', content: `Hello! Soul Fest ticket and winner updates are now available from Apex Market. Check the latest event details and ticket availability here: https://www.apexmarket.co.ke/tickets\n\nWe hope to see you there!` },
+        { id: 'tickets', label: 'Soul Fest ticket invitation', content: `Hello! Soul Fest ticket and winner updates are now available from Online Bar. Check the latest event details and ticket availability here: https://onlinebar.co.ke/tickets\n\nWe hope to see you there!` },
     ];
 
     const applyTemplate = (content: string) => {

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
-import { isMerchantOpenAt } from '@/lib/merchantAvailability';
+import { getMerchantMinutesUntilClose, isMerchantOpenAt } from '@/lib/merchantAvailability';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { routingEngine, type GeoPoint } from '@/lib/engines/routingEngine';
 import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
@@ -119,6 +119,15 @@ async function assessVendors(
   const reasons: string[] = [];
   const selectedVendorIds = new Set<string>();
   const selectedVendorNames = new Map<string, string>();
+  const selectedVendors = new Map<string, {
+    vendorId: string;
+    vendorName: string;
+    distanceKm: number | null;
+    isOpen: boolean;
+    acceptingOrders: boolean;
+    minutesUntilClose: number | null;
+    accepted: boolean;
+  }>();
   const selectedVendorLocations = new Map<string, {
     vendorId: string;
     vendorName: string;
@@ -225,6 +234,25 @@ async function assessVendors(
       if (merchant.id) {
         selectedVendorIds.add(merchant.id);
         selectedVendorNames.set(merchant.id, merchant.business_name || 'Approved merchant');
+        const isOpen = isMerchantOpenAt(merchant.operating_hours);
+        const merchantDistance = validCoordinates(orderLat, orderLng)
+          && validCoordinates(numberOrNull(merchant.latitude), numberOrNull(merchant.longitude))
+          ? distanceKm(
+            orderLat!,
+            orderLng!,
+            numberOrNull(merchant.latitude)!,
+            numberOrNull(merchant.longitude)!
+          )
+          : null;
+        selectedVendors.set(merchant.id, {
+          vendorId: merchant.id,
+          vendorName: merchant.business_name || 'Approved merchant',
+          distanceKm: merchantDistance === null ? null : Number(merchantDistance.toFixed(2)),
+          isOpen,
+          acceptingOrders: merchant.accepting_orders !== false,
+          minutesUntilClose: isOpen ? getMerchantMinutesUntilClose(merchant.operating_hours) : null,
+          accepted: merchantAccepted
+        });
       }
       const vendorLat = numberOrNull(merchant.latitude);
       const vendorLng = numberOrNull(merchant.longitude);
@@ -277,6 +305,7 @@ async function assessVendors(
     reasons: Array.from(new Set(reasons)),
     selectedVendorIds: Array.from(selectedVendorIds),
     selectedVendorNames: Array.from(selectedVendorNames.values()),
+    selectedVendors: Array.from(selectedVendors.values()),
     selectedVendorLocations: Array.from(selectedVendorLocations.values()),
     productChecks,
     priceBasis: 'Saved checkout price is shown beside the current catalogue price for reference; discounts or later price changes may explain differences. Merchant-specific pricing is not stored.'

@@ -382,7 +382,7 @@ export default function VendorOnboardingPage() {
       const link = new URL('/merchant/onboarding', window.location.origin);
       link.searchParams.set('invite', result.token);
       setInviteHref(link.toString());
-      setNotice(`A private 7-day Apex Market onboarding link was created for ${selectedLead.business_name}.`);
+      setNotice(`A private 7-day Online Bar onboarding link was created for ${selectedLead.business_name}.`);
       await loadPipeline();
       await loadDetail(selectedLead.id);
       return link.toString();
@@ -508,7 +508,7 @@ export default function VendorOnboardingPage() {
     merchant_self_serve: 'Complete the application yourself using the secure link.'
   };
   const messageHref = selectedLead
-    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, here is the private Apex Market onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} ${modeNames[onboardingMode]} You can save progress and return using this link. It expires after 7 days. Submitting an application does not activate the store; our team will review it and tell you the next steps.`)}`
+    ? `https://wa.me/${(selectedLead.whatsapp || selectedLead.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selectedLead.owner_name}, here is the private Online Bar onboarding link for ${selectedLead.business_name}: ${inviteHref || 'Please contact our team to request your link.'} ${modeNames[onboardingMode]} You can save progress and return using this link. It expires after 7 days. Submitting an application does not activate the store; our team will review it and tell you the next steps.`)}`
     : '';
   const next = selectedLead ? nextStage(selectedLead.stage) : null;
   const stageBlocked = selectedLead?.stage === 'phone_approved' && !selectedLead.visit_scheduled_at;
@@ -677,7 +677,7 @@ export default function VendorOnboardingPage() {
           </div>
           {inviteHref && (
             <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-xs font-semibold text-emerald-900">Private Apex Market link for {selectedLead.business_name} · expires in 7 days · one application</p>
+              <p className="text-xs font-semibold text-emerald-900">Private Online Bar link for {selectedLead.business_name} · expires in 7 days · one application</p>
               <p className="mt-1 text-xs text-emerald-800">Use this same link to prepare the shared draft, then send it to the merchant to continue or review.</p>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <input readOnly value={inviteHref} aria-label={`Private onboarding link for ${selectedLead.business_name}`}

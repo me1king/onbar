@@ -20,7 +20,8 @@ import {
   PackageCheck,
   CreditCard,
   Phone,
-  User
+  User,
+  Clock3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -93,6 +94,9 @@ interface DispatchJob {
     status: string;
     customer_name: string;
     customer_email?: string | null;
+    created_at: string;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
     payment_method: string;
     payment_verified_at: string;
     total_price: number | string;
@@ -101,6 +105,15 @@ interface DispatchJob {
         reasons: string[];
         selectedVendorIds: string[];
         selectedVendorNames: string[];
+        selectedVendors: Array<{
+            vendorId: string;
+            vendorName: string;
+            distanceKm: number | null;
+            isOpen: boolean;
+            acceptingOrders: boolean;
+            minutesUntilClose: number | null;
+            accepted: boolean;
+        }>;
         selectedVendorLocations: Array<{
             vendorId: string;
             vendorName: string;
@@ -126,6 +139,51 @@ interface DispatchJob {
     merchantRiderPriorityReady?: boolean;
 }
 
+function formatElapsedTime(milliseconds: number): string {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const time = [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
+    return days > 0 ? `${days}d ${time}` : time;
+}
+
+function OrderAgeTimer({ createdAt }: { createdAt: string }) {
+    const [now, setNow] = useState<number | null>(null);
+    const createdAtMs = new Date(createdAt).getTime();
+
+    useEffect(() => {
+        setNow(Date.now());
+        const interval = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const ageMs = now !== null && Number.isFinite(createdAtMs)
+        ? Math.max(0, now - createdAtMs)
+        : null;
+    const ageStyle = ageMs !== null && ageMs >= 60 * 60 * 1000
+        ? 'border-rose-200 bg-rose-50 text-rose-800'
+        : ageMs !== null && ageMs >= 15 * 60 * 1000
+            ? 'border-amber-200 bg-amber-50 text-amber-800'
+            : 'border-primary/20 bg-primary/5 text-primary';
+
+    return (
+        <div className={cn('mt-3 inline-flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-500', ageStyle)}>
+            <Clock3 className="h-5 w-5 shrink-0" />
+            <div>
+                <p className="text-[9px] font-black uppercase tracking-widest">Time since order placed</p>
+                <p className="font-mono text-xl font-black tabular-nums" aria-live="off">
+                    {ageMs === null ? '—' : formatElapsedTime(ageMs)}
+                </p>
+                <p className="text-[10px] font-semibold">
+                    {Number.isFinite(createdAtMs) ? new Date(createdAtMs).toLocaleString() : 'Order time unavailable'}
+                </p>
+            </div>
+        </div>
+    );
+}
+
 const WAREHOUSES = [
     { id: 'all', name: 'Global Network', city: 'All' },
     { id: 'nairobi', name: 'Nairobi Central Hub', city: 'Nairobi' },
@@ -147,14 +205,18 @@ export default function AdminDispatchPage() {
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [overrideRiders, setOverrideRiders] = useState<Record<number, string>>({});
     const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
+    const [assignmentModes, setAssignmentModes] = useState<Record<number, 'automatic' | 'manual'>>({});
     const [recentDecisions, setRecentDecisions] = useState<Array<{
         id: number;
         order_id: number;
         selected_rider_name: string;
+        selected_rider_phone: string | null;
+        selected_vendor_ids: string[];
         decision_type: string;
         chosen_by: string;
         override_reason: string | null;
         created_at: string;
+        criteria?: { selected_vendor_names?: string[] } | null;
     }>>([]);
     const [unverifiedPaymentCount, setUnverifiedPaymentCount] = useState(0);
 
@@ -234,7 +296,11 @@ export default function AdminDispatchPage() {
                     reason: mode === 'override' ? overrideReasons[orderId] : undefined
                 })
             });
-            const result = await response.json() as { error?: string };
+            const result = await response.json() as {
+                error?: string;
+                warning?: string;
+                assignment?: { rider_name?: string; rider_phone?: string; decision_type?: string };
+            };
             if (!response.ok) throw new Error(result.error || 'Dispatch assignment failed.');
 
             const targetOrder = orders.find(o => o.id === orderId);
@@ -265,8 +331,8 @@ export default function AdminDispatchPage() {
             setMessage({
                 type: notificationFailed ? 'error' : 'success',
                 text: notificationFailed
-                    ? 'Rider assignment was saved, but the customer notification failed.'
-                    : 'Rider assignment saved and recorded.'
+                    ? `Order #${orderId} was assigned to ${result.assignment?.rider_name || 'the selected rider'}, but the customer notification failed.${result.warning ? ` ${result.warning}` : ''}`
+                    : `Order #${orderId} sent to ${result.assignment?.rider_name || 'the selected rider'}${targetOrder?.fulfillment.selectedVendorNames.length ? ` for pickup at ${targetOrder.fulfillment.selectedVendorNames.join(', ')}` : ''}${mode === 'automatic' ? ' using automatic recommendation' : ' by manual override'}.${result.warning ? ` ${result.warning}` : ''}`
             });
             setTimeout(() => setMessage(null), 3000);
         } catch (err) {
@@ -451,27 +517,64 @@ export default function AdminDispatchPage() {
                                     <PackageCheck className="h-12 w-12 text-muted" />
                                     <p className="text-sm font-black text-muted-foreground uppercase italic">No eligible confirmed-payment orders.</p>
                                 </div>
-                            ) : orders.map(order => {
+                            ) : orders.map((order, orderIndex) => {
                                 const recommendation = order.recommendedRider;
+                                const assignmentMode = assignmentModes[order.id] || 'automatic';
+                                const progressSteps = [
+                                    { label: 'Payment confirmed', complete: true },
+                                    { label: 'Merchant ready', complete: order.fulfillment.ready },
+                                    { label: 'Rider available', complete: Boolean(recommendation) }
+                                ];
                                 return (
-                                    <Card key={order.id} className="p-7 rounded-[2rem] border border-border bg-card shadow-sm space-y-6">
+                                    <Card
+                                        key={order.id}
+                                        aria-busy={assigning === order.id}
+                                        style={{ animationDelay: `${Math.min(orderIndex, 8) * 60}ms` }}
+                                        className="animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none p-7 rounded-[2rem] border border-border bg-card shadow-sm transition-shadow hover:shadow-lg space-y-6"
+                                    >
                                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 text-left">
                                             <div>
                                                 <h3 className="font-black text-foreground uppercase text-lg tracking-tighter">Order #{order.id}</h3>
                                                 <p className="text-xs text-muted-foreground mt-1">{order.customer_name} · {formatPrice(Number(order.total_price))}</p>
                                                 <p className="text-[10px] text-emerald-700 font-bold uppercase mt-2">Payment confirmed · {order.payment_method}</p>
+                                                <OrderAgeTimer createdAt={order.created_at} />
                                             </div>
                                             {recommendation ? (
                                                 <div className="rounded-xl bg-primary/5 border border-primary/10 p-3 text-sm">
-                                                    <p className={`text-[9px] font-black uppercase ${recommendation.priorityMerchantConnection ? 'text-emerald-700' : 'text-primary'}`}>
-                                                        {recommendation.priorityMerchantConnection ? 'Connected merchant rider · priority' : 'OSRM road pickup'} · {recommendation.distanceKm} km{recommendation.etaMinutes == null ? '' : ` · ${recommendation.etaMinutes} min`}
+                                                    <p className="text-[9px] font-black uppercase text-primary">
+                                                        Automatic recommendation · pickup route
                                                     </p>
                                                     <p className="font-bold text-foreground">{recommendation.riderName} · {recommendation.activeLoad}/{recommendation.maxDeliveries} active</p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        {recommendation.priorityMerchantConnection ? 'Connected merchant rider · ' : ''}
+                                                        {recommendation.distanceKm} road km{recommendation.etaMinutes == null ? '' : ` · ${recommendation.etaMinutes} min`}
+                                                    </p>
                                                 </div>
                                             ) : (
                                                 <p className="text-xs text-amber-700 font-semibold">{order.riderAvailabilityReason || 'No rider recommendation available.'}</p>
                                             )}
                                         </div>
+
+                                        <ol aria-label="Order dispatch progress" className="flex flex-wrap items-center gap-2">
+                                            {progressSteps.map((step, index) => (
+                                                <li key={step.label} className="flex items-center gap-2">
+                                                    <span className={cn(
+                                                        'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-wide transition-colors duration-300',
+                                                        step.complete
+                                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                            : 'border-amber-200 bg-amber-50 text-amber-800'
+                                                    )}>
+                                                        <span className={cn(
+                                                            'h-2 w-2 rounded-full',
+                                                            step.complete ? 'bg-emerald-500' : 'bg-amber-500',
+                                                            !step.complete && index === progressSteps.findIndex(item => !item.complete) && 'animate-pulse motion-reduce:animate-none'
+                                                        )} />
+                                                        {step.label}
+                                                    </span>
+                                                    {index < progressSteps.length - 1 && <span aria-hidden="true" className="text-muted-foreground">→</span>}
+                                                </li>
+                                            ))}
+                                        </ol>
 
                                         <div className={`rounded-xl border p-4 text-left ${order.fulfillment.ready ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
                                             <p className="text-xs font-black uppercase">{order.fulfillment.ready ? 'Vendor fulfillment verified' : 'Vendor fulfillment has gaps'}</p>
@@ -483,6 +586,39 @@ export default function AdminDispatchPage() {
                                             {order.fulfillment.selectedVendorNames.length > 0 && (
                                                 <p className="mt-2 text-xs">Existing merchant allocations: {order.fulfillment.selectedVendorNames.join(', ')}</p>
                                             )}
+                                            <div className="mt-3 rounded-lg border border-border/70 bg-background/70 p-3">
+                                                <p className="text-[10px] font-black uppercase tracking-wide">Allocated merchant readiness</p>
+                                                {order.fulfillment.selectedVendors.length > 0 ? (
+                                                    <ul className="mt-2 space-y-2">
+                                                        {order.fulfillment.selectedVendors.map(vendor => (
+                                                            <li key={vendor.vendorId} className="text-xs">
+                                                                <span className="font-semibold">{vendor.vendorName}</span>
+                                                                {' · '}
+                                                                <span className={vendor.isOpen && vendor.acceptingOrders ? 'text-emerald-700' : 'text-amber-700'}>
+                                                                    {vendor.isOpen ? 'Open' : 'Closed'}
+                                                                    {!vendor.acceptingOrders ? ' · Not accepting orders' : ''}
+                                                                </span>
+                                                                {vendor.isOpen && vendor.minutesUntilClose !== null && (
+                                                                    <span>
+                                                                        {' · closes in '}
+                                                                        {Math.floor(vendor.minutesUntilClose / 60) > 0
+                                                                            ? `${Math.floor(vendor.minutesUntilClose / 60)}h ${vendor.minutesUntilClose % 60}m`
+                                                                            : `${vendor.minutesUntilClose}m`}
+                                                                    </span>
+                                                                )}
+                                                                {' · '}
+                                                                {vendor.distanceKm === null
+                                                                    ? 'customer distance unavailable'
+                                                                    : `${vendor.distanceKm.toFixed(2)} km straight-line from customer`}
+                                                                {' · '}
+                                                                {vendor.accepted ? 'accepted order' : 'awaiting acceptance'}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                ) : (
+                                                    <p className="mt-2 text-xs text-muted-foreground">No active merchant allocation is available to report for this order.</p>
+                                                )}
+                                            </div>
                                             {order.fulfillment.selectedVendorLocations.map(vendor => (
                                                 <p key={vendor.vendorId} className="mt-1 text-xs">
                                                     Pickup: {vendor.vendorName} · {vendor.latitude.toFixed(5)}, {vendor.longitude.toFixed(5)}
@@ -498,7 +634,50 @@ export default function AdminDispatchPage() {
                                             <p className="mt-2 text-[11px] opacity-80">{order.fulfillment.priceBasis}</p>
                                         </div>
 
-                                        <div className="flex flex-col md:flex-row gap-3">
+                                        <div className="rounded-xl border border-border bg-background/60 p-4 text-left">
+                                            <p className="text-[10px] font-black uppercase tracking-wide">Nearest eligible riders to pickup</p>
+                                            <p className="mt-1 text-[11px] text-muted-foreground">Road distance and ETA use fresh rider GPS and OSRM; they are unavailable when there is no routable fresh location.</p>
+                                            {order.riderCandidates
+                                                .filter(candidate => candidate.locationAvailable && candidate.distanceKm !== null)
+                                                .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+                                                .slice(0, 3)
+                                                .map((candidate, index) => (
+                                                    <p key={candidate.riderPhone} className="mt-2 text-xs">
+                                                        <span className="font-semibold">{index + 1}. {candidate.riderName}</span>
+                                                        {' · '}
+                                                        {candidate.distanceKm} road km
+                                                        {candidate.etaMinutes === null || candidate.etaMinutes === undefined ? '' : ` · ${candidate.etaMinutes} min`}
+                                                        {' · '}
+                                                        {candidate.activeLoad}/{candidate.maxDeliveries} active
+                                                        {candidate.priorityMerchantConnection ? ' · connected to merchant' : ''}
+                                                    </p>
+                                                ))}
+                                            {!order.riderCandidates.some(candidate => candidate.locationAvailable) && (
+                                                <p className="mt-2 text-xs text-amber-700">{order.riderAvailabilityReason || 'No eligible rider has a fresh, routable location.'}</p>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="mr-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Assignment mode</span>
+                                                <Button
+                                                    type="button"
+                                                    variant={assignmentMode === 'automatic' ? 'default' : 'outline'}
+                                                    onClick={() => setAssignmentModes(prev => ({ ...prev, [order.id]: 'automatic' }))}
+                                                    className="h-10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest transition-all duration-200 active:scale-95"
+                                                >
+                                                    Automatic
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant={assignmentMode === 'manual' ? 'default' : 'outline'}
+                                                    onClick={() => setAssignmentModes(prev => ({ ...prev, [order.id]: 'manual' }))}
+                                                    className="h-10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest transition-all duration-200 active:scale-95"
+                                                >
+                                                    Manual override
+                                                </Button>
+                                            </div>
+
                                             {!order.fulfillment.ready && order.fulfillment.productChecks.some(check => check.reservedQuantity < check.quantity) && (
                                                 <Button
                                                     variant="outline"
@@ -511,45 +690,65 @@ export default function AdminDispatchPage() {
                                                         : 'Retry available shops'}
                                                 </Button>
                                             )}
-                                            <Button
-                                                onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
-                                                disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
-                                                className="h-12 px-6 rounded-xl bg-primary text-white font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
-                                            >
-                                                {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : recommendation?.priorityMerchantConnection ? 'Assign connected rider · priority' : 'Assign recommended rider'}
-                                            </Button>
-                                            <div className="flex-1 grid sm:grid-cols-2 gap-2">
-                                                <p className="text-xs text-muted-foreground sm:col-span-2">
-                                                    Rider override changes only the rider. It cannot bypass confirmed payment or unverified merchant fulfillment.
-                                                </p>
-                                                <select
-                                                    value={overrideRiders[order.id] || ''}
-                                                    onChange={event => setOverrideRiders(prev => ({ ...prev, [order.id]: event.target.value }))}
-                                                    className="h-12 rounded-xl border border-border bg-background px-3 text-sm"
-                                                >
-                                                    <option value="">Choose rider for override</option>
-                                                    {order.riderCandidates.map(candidate => (
-                                                        <option key={candidate.riderPhone} value={candidate.riderPhone}>
-                                                            {candidate.priorityMerchantConnection ? 'Connected priority · ' : ''}{candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
-                                                            {candidate.locationAvailable ? ` · ${candidate.distanceKm} road km${candidate.etaMinutes == null ? '' : ` · ${candidate.etaMinutes} min`}` : ' · no OSRM route'}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <Input
-                                                    value={overrideReasons[order.id] || ''}
-                                                    onChange={event => setOverrideReasons(prev => ({ ...prev, [order.id]: event.target.value }))}
-                                                    placeholder="Override reason (required)"
-                                                    className="h-12 rounded-xl"
-                                                />
-                                            </div>
-                                            <Button
-                                                onClick={() => handleAssignRider(order.id, overrideRiders[order.id] || '', 'override')}
-                                                disabled={!order.fulfillment.ready || !overrideRiders[order.id] || (overrideReasons[order.id] || '').trim().length < 8 || assigning === order.id}
-                                                variant="outline"
-                                                className="h-12 px-6 rounded-xl border-amber-300 text-amber-800 font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
-                                            >
-                                                Override & assign
-                                            </Button>
+                                            {assignmentMode === 'automatic' ? (
+                                                <div className="flex flex-col gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div className="text-sm">
+                                                        <p className="font-black text-foreground">
+                                                            {recommendation
+                                                                ? `Will send to ${recommendation.riderName}`
+                                                                : 'No automatic rider can be selected yet'}
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                            Pickup: {order.fulfillment.selectedVendorNames.length
+                                                                ? order.fulfillment.selectedVendorNames.join(', ')
+                                                                : 'merchant not confirmed'}
+                                                            {' · '}Assignment is sent only after you confirm below.
+                                                        </p>
+                                                    </div>
+                                                    <Button
+                                                        onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
+                                                        disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
+                                                        className="h-12 shrink-0 rounded-xl bg-primary px-6 text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-50"
+                                                    >
+                                                        {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm automatic assignment'}
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50/60 p-4">
+                                                    <p className="text-xs text-amber-900">
+                                                        Choose a specific eligible rider. Manual override changes only the rider; it cannot bypass verified payment, rider eligibility, or merchant fulfillment.
+                                                    </p>
+                                                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                                                        <select
+                                                            value={overrideRiders[order.id] || ''}
+                                                            onChange={event => setOverrideRiders(prev => ({ ...prev, [order.id]: event.target.value }))}
+                                                            className="h-12 rounded-xl border border-border bg-background px-3 text-sm"
+                                                        >
+                                                            <option value="">Choose a rider</option>
+                                                            {order.riderCandidates.map(candidate => (
+                                                                <option key={candidate.riderPhone} value={candidate.riderPhone}>
+                                                                    {candidate.priorityMerchantConnection ? 'Connected · ' : ''}{candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
+                                                                    {candidate.locationAvailable ? ` · ${candidate.distanceKm} road km${candidate.etaMinutes == null ? '' : ` · ${candidate.etaMinutes} min`}` : ' · no fresh road route'}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <Input
+                                                            value={overrideReasons[order.id] || ''}
+                                                            onChange={event => setOverrideReasons(prev => ({ ...prev, [order.id]: event.target.value }))}
+                                                            placeholder="Why override? (8+ characters)"
+                                                            className="h-12 rounded-xl bg-background"
+                                                        />
+                                                        <Button
+                                                            onClick={() => handleAssignRider(order.id, overrideRiders[order.id] || '', 'override')}
+                                                            disabled={!order.fulfillment.ready || !overrideRiders[order.id] || (overrideReasons[order.id] || '').trim().length < 8 || assigning === order.id}
+                                                            variant="outline"
+                                                            className="h-12 rounded-xl border-amber-400 px-5 text-[10px] font-black uppercase tracking-widest text-amber-900 disabled:opacity-50"
+                                                        >
+                                                            {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send to chosen rider'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </Card>
                                 );
@@ -564,12 +763,20 @@ export default function AdminDispatchPage() {
                         ) : recentDecisions.slice(0, 8).map(decision => (
                             <div key={decision.id} className="rounded-xl border border-border bg-card p-4 text-sm">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="font-bold">Order #{decision.order_id} → {decision.selected_rider_name}</span>
+                                    <span className="font-bold">
+                                        Order #{decision.order_id} → {decision.selected_rider_name}
+                                        {decision.selected_rider_phone ? ` (${decision.selected_rider_phone})` : ''}
+                                    </span>
                                     <span className="text-xs text-muted-foreground">{new Date(decision.created_at).toLocaleString()}</span>
                                 </div>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    {decision.decision_type === 'admin_override' ? `Override by ${decision.chosen_by}: ${decision.override_reason}` : `Recommended assignment by ${decision.chosen_by}`}
+                                    {decision.decision_type === 'admin_override' ? `Manual override by ${decision.chosen_by}: ${decision.override_reason}` : `Automatic recommendation by ${decision.chosen_by}`}
                                 </p>
+                                {decision.criteria?.selected_vendor_names && decision.criteria.selected_vendor_names.length > 0 && (
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        Pickup merchant{decision.criteria.selected_vendor_names.length > 1 ? 's' : ''}: {decision.criteria.selected_vendor_names.join(', ')}
+                                    </p>
+                                )}
                             </div>
                         ))}
                     </section>

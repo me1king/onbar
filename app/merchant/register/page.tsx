@@ -116,7 +116,7 @@ export default function MerchantRegistrationPage() {
   return (
     <>
       <header className="mm-header">
-        <Link className="mm-brand" href="/market">APEX <span>MARKET</span></Link>
+        <Link className="mm-brand" href="/market">ONLINE <span>BAR</span></Link>
         <nav className="mm-nav"><Link href="/market">Discover</Link></nav>
       </header>
       <main className="mm-page mm-merchant-register">
@@ -145,7 +145,7 @@ export default function MerchantRegistrationPage() {
               : !signedIn
                 ? (
                   <div className="mm-state">
-                    <span>Apply once through the Apex Market partner application. Approved vendors use the Partner Workspace for their goods, availability, orders, and operations.</span>
+                    <span>Apply once through the Online Bar partner application. Approved merchants use the Partner Workspace for their goods, availability, orders, and operations.</span>
                     <Link href="/merchant/portal/login" className="mm-text-link">Sign in to seller account</Link>
                     <Link href="/merchant/portal/register" className="mm-text-link">Create seller account</Link>
                   </div>

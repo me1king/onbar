@@ -63,7 +63,41 @@ function intervalContains(hours: MerchantDayHours, minuteOfDay: number): boolean
   const closesAt = minutesOfDay(hours.close);
   return opensAt < closesAt
     ? minuteOfDay >= opensAt && minuteOfDay < closesAt
-    : minuteOfDay >= opensAt || minuteOfDay < closesAt;
+    : minuteOfDay >= opensAt;
+}
+
+export function getMerchantMinutesUntilClose(schedule: unknown, at: Date = new Date()): number | null {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Nairobi',
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(at).map(part => [part.type, part.value]));
+  const today = parts.weekday.toLowerCase() as MerchantWeekday;
+  const todayIndex = merchantWeekdays.indexOf(today);
+  const currentMinute = Number(parts.hour) * 60 + Number(parts.minute);
+  const hours = normalizeMerchantOperatingHours(schedule);
+  const todayHours = hours[today];
+
+  const previousDay = merchantWeekdays[(todayIndex + merchantWeekdays.length - 1) % merchantWeekdays.length];
+  const previousHours = hours[previousDay];
+  if (previousHours.enabled
+    && minutesOfDay(previousHours.open) > minutesOfDay(previousHours.close)
+    && currentMinute < minutesOfDay(previousHours.close)) {
+    return minutesOfDay(previousHours.close) - currentMinute;
+  }
+
+  if (intervalContains(todayHours, currentMinute)) {
+    const opensAt = minutesOfDay(todayHours.open);
+    const closesAt = minutesOfDay(todayHours.close);
+    return opensAt < closesAt
+      ? closesAt - currentMinute
+      : 24 * 60 - currentMinute + closesAt;
+  }
+
+  return null;
 }
 
 export function isMerchantOpenAt(schedule: unknown, at: Date = new Date()): boolean {

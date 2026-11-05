@@ -172,12 +172,12 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
               <Link
                 className="text-2xl tracking-tighter font-black text-foreground hover:text-primary transition-colors uppercase"
                 href="/"
-                aria-label="Apex Market home"
+                aria-label="Online Bar home"
               >
-                Apex<span className="text-primary">Market</span>
+                Online<span className="text-primary">Bar</span>
               </Link>
               <p className="text-muted-foreground mt-4 mb-6 max-w-sm font-medium leading-relaxed">
-                Apex Market is the customer-facing storefront. Its website and digital experience are built by Online Bar in collaboration with Apex Market.
+                Online Bar brings premium drinks, snacks and gifts to your door across Nairobi.
               </p>
 
               <div className="space-y-3">
@@ -269,7 +269,7 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
               <span>All Rights Reserved.</span>
             </div>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-2">
-                Built by <span className="text-primary">{loading ? "..." : "Online Bar in collaboration with Apex Market"}</span>
+                <span className="text-primary">{loading ? "..." : "Online Bar Nairobi"}</span>
             </p>
           </div>
 

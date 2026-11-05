@@ -41,7 +41,7 @@ export default function UnsubscribeForm({ token }: { token: string }) {
                     <p className="text-sm leading-relaxed text-slate-500">
                         {done
                             ? 'You will no longer receive Onbar marketing emails. Essential order and account updates are unchanged.'
-                            : 'Confirm to stop receiving Apex Market and Onbar marketing emails. Essential order and account updates are unchanged.'}
+                            : 'Confirm to stop receiving Online Bar marketing emails. Essential order and account updates are unchanged.'}
                     </p>
                 </div>
                 {!done && (

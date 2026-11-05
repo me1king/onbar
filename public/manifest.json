@@ -1,7 +1,7 @@
 {
-  "name": "Apex Market",
-  "short_name": "Apex Market",
-  "description": "Apex Market storefront, built by Online Bar in collaboration with the Apex Market team.",
+  "name": "Online Bar",
+  "short_name": "Online Bar",
+  "description": "Shop premium drinks, snacks and gifts from Online Bar Nairobi.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

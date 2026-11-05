@@ -4,8 +4,21 @@ import type { Metadata, Viewport } from "next";
 import "@/app/globals.css";
 
 export const metadata: Metadata = {
-  title: 'Apex Market | Built with Online Bar',
-  description: 'Apex Market is the storefront. Its digital experience is built by Online Bar in collaboration with the Apex Market team.',
+  metadataBase: new URL('https://www.onlinebar.co.ke'),
+  title: {
+    default: 'Alcohol Delivery in Nairobi | Beer, Wine & Spirits | Online Bar',
+    template: '%s | Online Bar',
+  },
+  description: 'Order beer, wine, whisky and spirits online from Online Bar. Check mapped delivery areas and fees, then pay with M-Pesa or card. 18+ only.',
+  openGraph: {
+    type: 'website',
+    siteName: 'Online Bar',
+    title: 'Alcohol Delivery in Nairobi | Online Bar',
+    description: 'Beer, wine and spirits delivered in Online Bar’s configured service areas. Check delivery fees and pay with M-Pesa or card.',
+    locale: 'en_KE',
+  },
+  twitter: { card: 'summary_large_image' },
+  robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large' } },
   manifest: '/manifest.json',
   icons: {
     icon: '/favicon.svg',
@@ -44,11 +57,7 @@ export default function RootLayout({
             <ErrorBoundary>
                 <CartProvider>
                     <WishlistProvider>
-                        <PublicLayoutShield>
-                            <Suspense fallback={<div className="min-h-screen bg-white" />}>
-                                {children}
-                            </Suspense>
-                        </PublicLayoutShield>
+                        <PublicLayoutShield>{children}</PublicLayoutShield>
 
                         <Suspense fallback={null}>
                             <AnalyticsSwitcher />

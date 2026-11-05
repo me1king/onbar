@@ -3,7 +3,7 @@ import 'server-only';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
-const publicBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar.onrender.com').replace(/\/+$/, '');
+const publicBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar.co.ke').replace(/\/+$/, '');
 
 export type MerchantVoiceToken = {
   orderId: number;

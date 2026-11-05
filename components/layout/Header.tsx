@@ -425,11 +425,11 @@ export default function Header({ initialSettings }: { initialSettings?: StoreSet
             <Link
               className="text-xl max-[430px]:text-base max-[360px]:text-base sm:text-2xl tracking-tighter font-black text-foreground hover:text-primary transition-colors flex items-center gap-2 max-[430px]:gap-1 max-[360px]:gap-1 uppercase whitespace-nowrap"
               href="/"
-              aria-label="Apex Market home, built with Online Bar"
+              aria-label="Online Bar home"
             >
-              <span>Apex<span className="text-primary">Market</span></span>
+              <span>Online<span className="text-primary">Bar</span></span>
             </Link>
-            <span className="hidden text-[8px] font-bold uppercase tracking-wider text-slate-400 sm:inline">Built with Online Bar</span>
+            <span className="hidden text-[8px] font-bold uppercase tracking-wider text-slate-400 sm:inline">Nairobi delivery</span>
 
           </div>
 

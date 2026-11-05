@@ -1,19 +1,18 @@
-# Online Bar - Premium Drinks & Snacks Nairobi
+# Online Bar
 
-Online Bar is Kenya's premium destination for premium wine, spirits, and late-night snacks. We provide 24/7 chilled dispatch across Nairobi.
+> Online Bar is an online store for drinks, snacks, and gifts. Customers must be 18 or older. Product availability, delivery eligibility, and fees are confirmed in the live store and checkout.
 
-## Key Categories
-- [Vintages](https://onlinebar.co.ke/shop/category/wine): Fine wine and champagne collections.
-- [Premium Spirits](https://onlinebar.co.ke/shop/category/whiskey): Whiskey, Gin, Vodka, and Cognac.
-- [Chilled Beers](https://onlinebar.co.ke/shop/category/beer): Local and international brews.
-- [Late Night Snacks](https://onlinebar.co.ke/shop/category/snacks): Perfect pairings for your drinks.
+## Pages
+- [Shop](https://www.onlinebar.co.ke/shop): browse the live catalog.
+- [Delivery areas and fees](https://www.onlinebar.co.ke/delivery): current mapped delivery areas and configured fees.
+- [Build a party drinks plan](https://www.onlinebar.co.ke/build-my-night): start a party-planning request.
+- [Event drinks planning](https://www.onlinebar.co.ke/concierge): event-planning information.
+- [Shipping and delivery information](https://www.onlinebar.co.ke/shipping)
+- [About Online Bar](https://www.onlinebar.co.ke/about)
+- [Contact](https://www.onlinebar.co.ke/contact)
+- [Returns](https://www.onlinebar.co.ke/returns)
+- [Privacy](https://www.onlinebar.co.ke/privacy)
+- [Terms](https://www.onlinebar.co.ke/terms)
+- [Sitemap](https://www.onlinebar.co.ke/sitemap.xml)
 
-## Our Values
-- **Genuine Products:** 100% authentic beverages with a quality guarantee.
-- **Chilled Dispatch:** Delivered cold and ready for your celebration.
-- **Fast Delivery:** 1-2 hour delivery standard within Nairobi.
-- **Secure Payment:** M-Pesa and card payments via secure gateways.
-
-## Support
-- [Customer Support](https://onlinebar.co.ke/contact): Instant help with your orders.
-- [Mixology Hub](https://onlinebar.co.ke/blog): Expert guides on drinks and pairings.
+Prices, stock, delivery coverage, and fees may change. Checkout is authoritative for a specific order.
