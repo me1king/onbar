@@ -10,7 +10,7 @@ import {
 import { getAdminSession, hasAdminPermission, isInternalRequest, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
-import { sendTransactionalEmail } from '@/lib/jmsurfMail.server';
+import { getTransactionalEmailConfig, sendTransactionalEmail, withTransactionalEmailSenderName } from '@/lib/jmsurfMail.server';
 import { getCustomerOrderEmailDesign, renderCustomerOrderEmail, renderCustomerOrderEmailText } from '@/lib/customerOrderEmail';
 import { isWebPushConfigured, sendWebPush } from '@/lib/webPush.server';
 
@@ -100,6 +100,7 @@ async function sendEmail(
     trackingUrl
   };
   return sendTransactionalEmail({
+    from: withTransactionalEmailSenderName(getTransactionalEmailConfig().from, 'Online Bar'),
     to,
     subject,
     html: renderCustomerOrderEmail(email),

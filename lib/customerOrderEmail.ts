@@ -24,7 +24,7 @@ function escapeHtml(value: string) {
 
 function emailParagraphs(message: string) {
   return message.split(/\n{2,}/).map(paragraph =>
-    `<p style="margin:0 0 16px;color:#334155;font-size:16px;line-height:1.7">${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`
+    `<p style="margin:0 0 16px;color:#334155;font-size:16px;font-weight:600;line-height:1.7">${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`
   ).join('');
 }
 
@@ -58,7 +58,7 @@ export function renderCustomerOrderEmail(input: CustomerOrderEmailInput) {
         </td></tr>
         <tr><td style="padding:32px 28px 8px">
           <p style="margin:0 0 10px;color:#64748b;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase">${escapeHtml(input.status)}</p>
-          <h1 style="margin:0 0 22px;color:#0f172a;font-size:28px;line-height:1.2">${escapeHtml(input.headline)}</h1>
+          <h1 style="margin:0 0 22px;color:#0f172a;font-size:28px;font-weight:700;line-height:1.2">${escapeHtml(input.headline)}</h1>
           ${emailParagraphs(input.message)}
         </td></tr>
         <tr><td style="padding:8px 28px 22px">

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
-import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
+import { getTransactionalEmailConfig, sendTransactionalEmail, withTransactionalEmailSenderName } from '@/lib/jmsurfMail.server';
 import {
   CUSTOMER_NOTIFICATION_STATUSES,
   DEFAULT_CUSTOMER_NOTIFICATION_CONFIG,
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
         testNotice: 'Messaging Center test · no customer notification was sent.'
       };
       await sendTransactionalEmail({
-        from: config.from,
+        from: withTransactionalEmailSenderName(config.from, 'Online Bar'),
         to: destination,
         subject: `[TEST] ${subject}`,
         text: renderCustomerOrderEmailText(email),

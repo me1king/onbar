@@ -37,6 +37,13 @@ export function getTransactionalEmailConfig() {
   };
 }
 
+export function withTransactionalEmailSenderName(from: string, name: string) {
+  const mailbox = from.match(/<([^<>]+)>/)?.[1] || from.trim();
+  if (!/^[^<>\s@]+@[^<>\s@]+$/.test(mailbox)) return from;
+  const safeName = name.replace(/[<>"]/g, '').trim();
+  return safeName ? `${safeName} <${mailbox}>` : from;
+}
+
 export async function sendTransactionalEmail(email: TransactionalEmail) {
   const jmsurfKey = process.env.JMSURF_MAIL_KEY?.trim();
   const jmsurfFrom = process.env.JMSURF_FROM_EMAIL?.trim();
