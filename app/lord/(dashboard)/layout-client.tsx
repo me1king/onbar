@@ -50,7 +50,8 @@ import {
   MapPin,
   PackageSearch,
   UserRoundPlus,
-  ClipboardList
+  ClipboardList,
+  Mail
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -192,15 +193,19 @@ export default function AdminLayoutClient({
       { name: 'Global Supply', href: '/lord/operations/sourcing', icon: Globe, permission: 'can_manage_inventory' },
       { name: 'Distributors', href: '/lord/operations/suppliers', icon: Beer, permission: 'can_manage_inventory' },
     ]},
-    { group: 'PATRONS', items: [
+    { group: 'COMMUNICATIONS', items: [
       { name: 'Directory', href: '/lord/customers', icon: Users, permission: 'can_manage_communications' },
       { name: 'Early Access Waitlist', href: '/lord/waitlist', icon: UserRoundPlus, permission: 'can_manage_communications' },
+      { name: 'Email Command Center', href: '/lord/communications/email', icon: Mail, permission: 'can_manage_communications' },
       { name: 'WhatsApp Command', href: '/lord/communications/whatsapp', icon: MessageCircle, permission: 'can_manage_communications' },
       { name: 'Message Command', href: '/lord/communications/command', icon: MessageSquare, permission: 'can_manage_communications' },
       { name: 'Message Automation', href: '/lord/communications/automation', icon: MessageCircle, permission: 'can_manage_communications' },
       { name: 'SMS Control', href: '/lord/communications/sms', icon: MessageSquare, permission: 'can_manage_communications' },
       { name: 'Popup Manager', href: '/lord/communications/popups', icon: Bell, permission: 'can_manage_communications' },
       { name: 'Support Inbox', href: '/lord/messages', icon: MessageSquare, permission: 'can_manage_communications' },
+      { name: 'AI Shift Log', href: '/lord/messages?filter=ai', icon: Bot, permission: 'can_manage_customer_care' },
+    ]},
+    { group: 'PATRONS', items: [
       { name: 'Taste Reviews', href: '/lord/reviews', icon: Star, permission: 'can_manage_communications' },
       { name: 'VIP Rewards', href: '/lord/gamification', icon: Trophy, permission: 'can_manage_settings' },
     ]},
@@ -228,7 +233,6 @@ export default function AdminLayoutClient({
       { name: 'Demand Intelligence', href: '/lord/demand', icon: MapPin, permission: 'can_view_revenue' },
       { name: 'Halloween Demand', href: '/lord/halloween-intelligence', icon: Activity, permission: 'can_view_revenue' },
       { name: 'Behavioral OS', href: '/lord/behavior', icon: Target, permission: 'can_view_revenue' },
-      { name: 'AI Shift Log', href: '/lord/messages?filter=ai', icon: Bot, permission: 'can_manage_customer_care' },
     ]},
     { group: 'ENTERPRISE', items: [
       { name: 'Launch Readiness', href: '/lord/launch', icon: ShieldCheck, minRole: 'admin' },

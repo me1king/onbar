@@ -60,6 +60,7 @@ export default function DeliveryAreaManager() {
     const [message, setMessage] = React.useState<string | null>(null);
     const [legacyAreaNames, setLegacyAreaNames] = React.useState<string[]>([]);
     const [legacyAreasError, setLegacyAreasError] = React.useState<string | null>(null);
+    const zoneNameInput = React.useRef<HTMLInputElement>(null);
     const unmappedAreas = areas.filter(area => area.points.length < 3);
     const availableImportedNames = [...new Set(legacyAreaNames)]
         .filter(name => !areas.some(area => area.name.trim().toLowerCase() === name.trim().toLowerCase()));
@@ -218,6 +219,20 @@ export default function DeliveryAreaManager() {
         }
     };
 
+    const startNewArea = () => {
+        setEditingAreaId(null);
+        setFocusedAreaId(null);
+        setName('');
+        setFee('');
+        setZoneColor(DELIVERY_AREA_COLORS[areas.length % DELIVERY_AREA_COLORS.length]);
+        setDraftPoints([]);
+        setQuickBoundaryMode(false);
+        setDrawingBoundary(false);
+        setMessage('Enter the area name and fee, then choose a radius and click the map to place its center.');
+        document.getElementById('delivery-area-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.setTimeout(() => zoneNameInput.current?.focus(), 350);
+    };
+
     const editArea = (area: DeliveryArea) => {
         setEditingAreaId(area.id);
         setFocusedAreaId(area.id);
@@ -301,7 +316,7 @@ export default function DeliveryAreaManager() {
                     <Save className="mr-2 h-4 w-4" /> Save free-delivery rule
                 </Button>
             </div>
-            <section className="space-y-4" aria-label="Delivery zone map editor">
+            <section id="delivery-area-editor" className="scroll-mt-24 space-y-4" aria-label="Delivery zone map editor">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                         <h3 className="text-sm font-black uppercase text-foreground">Set delivery coverage</h3>
@@ -356,7 +371,7 @@ export default function DeliveryAreaManager() {
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
                     <label className="block space-y-1 text-sm font-semibold">
                         <span>{editingAreaId ? 'Edit estate / zone name' : 'Estate / zone name'}</span>
-                        <Input value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Westlands" maxLength={80} disabled={loading || saving} />
+                        <Input ref={zoneNameInput} value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Westlands" maxLength={80} disabled={loading || saving} />
                     </label>
                     <label className="block space-y-1 text-sm font-semibold">
                         <span>Delivery fee (KSh)</span>
@@ -450,8 +465,15 @@ export default function DeliveryAreaManager() {
                     <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{legacyAreasError}</p>
                 )}
                 <div>
-                    <h3 className="text-sm font-black uppercase text-foreground">Configured fees</h3>
-                    <p className="text-xs text-muted-foreground">Changes save when you leave a name or fee field. Use Edit boundary to change the GPS coverage on the map.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h3 className="text-sm font-black uppercase text-foreground">Configured fees</h3>
+                            <p className="text-xs text-muted-foreground">Changes save when you leave a name or fee field. Use Edit boundary to change the GPS coverage on the map.</p>
+                        </div>
+                        <Button type="button" onClick={startNewArea} disabled={loading || saving} variant="outline">
+                            <Plus className="mr-2 h-4 w-4" /> Create area manually
+                        </Button>
+                    </div>
                 </div>
                 {loading ? <p className="text-xs text-muted-foreground">Loading saved areas…</p> : (
                     <ul className="grid gap-3 md:grid-cols-2">
@@ -495,7 +517,14 @@ export default function DeliveryAreaManager() {
                                     </div>
                                 </li>
                             ))}
-                            {!areas.length && <li className="text-sm text-muted-foreground">No delivery zones configured.</li>}
+                            {!areas.length && (
+                                <li className="flex flex-col gap-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4 text-sm text-foreground sm:flex-row sm:items-center sm:justify-between">
+                                    <span>No delivery zones yet. Create one manually, or import saved area names above. Imported areas still need a fee and map boundary.</span>
+                                    <Button type="button" onClick={startNewArea} disabled={saving} className="shrink-0">
+                                        <Plus className="mr-2 h-4 w-4" /> Add first area
+                                    </Button>
+                                </li>
+                            )}
                     </ul>
                 )}
             </section>
