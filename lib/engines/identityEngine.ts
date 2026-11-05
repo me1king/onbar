@@ -111,7 +111,7 @@ export function canAccessRoute(
         [['/lord/staff'], 'CAN_MANAGE_STAFF'],
         [['/lord/audit', '/lord/security'], 'CAN_VIEW_AUDIT_LOGS'],
         [['/lord/settings', '/lord/ticketing'], 'CAN_MANAGE_SETTINGS'],
-        [['/lord/marketing', '/lord/growth', '/lord/broadcast', '/lord/blog', '/lord/content', '/lord/subscribers', '/lord/coupons', '/lord/media', '/lord/experience'], 'CAN_MANAGE_MARKETING'],
+        [['/lord/marketing', '/lord/growth', '/lord/broadcast', '/lord/blog', '/lord/content', '/lord/subscribers', '/lord/coupons', '/lord/spin-campaign', '/lord/media', '/lord/experience'], 'CAN_MANAGE_MARKETING'],
         [['/lord/communications', '/lord/messages', '/lord/abandoned', '/lord/support', '/lord/customers'], 'CAN_MANAGE_COMMUNICATIONS'],
         [['/lord/orders', '/lord/dispatch', '/lord/delivery', '/lord/riders', '/lord/operations', '/lord/merchants', '/lord/traceability'], 'CAN_MANAGE_ORDERS'],
         [['/lord/inventory', '/lord/forge', '/lord/souvenirs', '/lord/bites', '/lord/munchies', '/lord/kitchen', '/lord/warranty', '/lord/ratings', '/lord/reviews', '/lord/upload', '/lord/vault'], 'CAN_MANAGE_INVENTORY']

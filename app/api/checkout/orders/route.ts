@@ -7,6 +7,7 @@ import { getStoredVariantPrices } from '@/lib/productPricing';
 import { getPublicBaseUrl } from '@/lib/utils';
 import { assertPayHeroOrderPaymentConfiguration, initializePayHeroOrderPayment } from '@/lib/payheroOrders.server';
 import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
+import { normalizeKenyanPhone } from '@/lib/spinCampaign';
 
 export const dynamic = 'force-dynamic';
 
@@ -497,7 +498,7 @@ export async function POST(request: Request) {
     });
     const qualifiesForFreeDelivery = deliveryPricing.free_delivery_over > 0
       && subtotal >= deliveryPricing.free_delivery_over;
-    const deliveryFee = qualifiesForFreeDelivery ? 0 : zoneFee;
+    let deliveryFee = qualifiesForFreeDelivery ? 0 : zoneFee;
 
     const requestedQuantities = new Map<string, number>();
     for (const item of normalizedLines) {
@@ -522,28 +523,63 @@ export async function POST(request: Request) {
     let couponDiscount = 0;
     let couponPercent = 0;
     let couponCode: string | null = null;
+    let spinCampaignWin: {
+      code: string;
+      phone: string;
+      prize_label: string;
+      prize_type: 'discount' | 'free_delivery' | 'free_bottle' | 'free_mixers';
+      value: number;
+      minimum_order: number;
+      expires_at: string;
+      redeemed_at: string | null;
+    } | null = null;
     if (body.couponCode) {
-      couponCode = body.couponCode.toUpperCase();
-      const { data: coupon, error: couponError } = await database
-        .from('coupons')
-        .select('*')
-        .eq('code', couponCode)
-        .eq('is_active', true)
-        .maybeSingle();
-      if (couponError) {
-        console.error('[CheckoutOrder] Could not verify coupon:', couponError);
-        return NextResponse.json({ error: 'The coupon could not be verified. Please try again.' }, { status: 503 });
+      couponCode = body.couponCode.trim().toUpperCase();
+      if (couponCode.startsWith('BN-')) {
+        const { data: win, error: winError } = await database.from('spin_campaign_wins')
+          .select('code,phone,prize_label,prize_type,value,minimum_order,expires_at,redeemed_at')
+          .eq('code', couponCode)
+          .maybeSingle();
+        if (winError) {
+          console.error('[CheckoutOrder] Could not verify campaign prize:', winError);
+          return NextResponse.json({ error: 'The campaign prize could not be verified. Please try again.' }, { status: 503 });
+        }
+        const orderPhone = normalizeKenyanPhone(body.customerPhone);
+        if (!win || win.phone !== orderPhone || win.redeemed_at || Date.parse(win.expires_at) <= Date.now()) {
+          return NextResponse.json({ error: 'This campaign code is invalid, expired, already used, or belongs to a different phone number.' }, { status: 400 });
+        }
+        if (subtotal < Number(win.minimum_order || 0)) {
+          return NextResponse.json({ error: `${win.prize_label} requires a minimum item subtotal of KSh ${Number(win.minimum_order).toLocaleString('en-KE')}.` }, { status: 400 });
+        }
+        spinCampaignWin = win;
+        if (win.prize_type === 'discount') couponDiscount = Math.min(subtotal, Number(win.value));
+        if (win.prize_type === 'free_delivery') deliveryFee = 0;
+      } else {
+        const { data: coupon, error: couponError } = await database
+          .from('coupons')
+          .select('*')
+          .eq('code', couponCode)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (couponError) {
+          console.error('[CheckoutOrder] Could not verify coupon:', couponError);
+          return NextResponse.json({ error: 'The coupon could not be verified. Please try again.' }, { status: 503 });
+        }
+        if (!coupon || (coupon.owner_profile_id && coupon.owner_profile_id !== userId)) {
+          return NextResponse.json({ error: 'This coupon is invalid or unavailable for this account.' }, { status: 400 });
+        }
+        couponPercent = Number(coupon.discount_percent) || 0;
+        const fixedDiscount = Number(coupon.discount_amount) || 0;
+        if (!Number.isFinite(couponPercent) || couponPercent < 0 || couponPercent > 100
+          || !Number.isFinite(fixedDiscount) || fixedDiscount < 0) {
+          return NextResponse.json({ error: 'This coupon has invalid discount settings. Please contact support.' }, { status: 503 });
+        }
+        couponDiscount = Math.min(subtotal, fixedDiscount || subtotal * couponPercent / 100);
       }
-      if (!coupon || (coupon.owner_profile_id && coupon.owner_profile_id !== userId)) {
-        return NextResponse.json({ error: 'This coupon is invalid or unavailable for this account.' }, { status: 400 });
-      }
-      couponPercent = Number(coupon.discount_percent) || 0;
-      const fixedDiscount = Number(coupon.discount_amount) || 0;
-      if (!Number.isFinite(couponPercent) || couponPercent < 0 || couponPercent > 100
-        || !Number.isFinite(fixedDiscount) || fixedDiscount < 0) {
-        return NextResponse.json({ error: 'This coupon has invalid discount settings. Please contact support.' }, { status: 503 });
-      }
-      couponDiscount = Math.min(subtotal, fixedDiscount || subtotal * couponPercent / 100);
+    }
+
+    if (spinCampaignWin && body.usePoints) {
+      return NextResponse.json({ error: 'Spin campaign codes cannot be combined with loyalty points. Turn off point redemption and try again.' }, { status: 400 });
     }
 
     let pointsDiscount = 0;
@@ -602,6 +638,7 @@ export async function POST(request: Request) {
       `Delivery zone: ${deliveryLabel}`,
       qualifiesForFreeDelivery ? `Free delivery over KSh ${deliveryPricing.free_delivery_over}` : null,
       couponCode ? `Coupon: ${couponCode}` : null,
+      spinCampaignWin ? `Campaign prize: ${spinCampaignWin.prize_label}` : null,
       pointsRedeemed > 0 ? `Used ${pointsRedeemed} points` : null,
       referralCode ? `Referred by ${referralCode}` : null,
       body.isGift ? `Gift: ${body.giftMessage || ''}` : null
@@ -758,6 +795,24 @@ export async function POST(request: Request) {
         }, { status: 503 });
       }
       return NextResponse.json({ error: 'The order items could not be saved. Please try again.' }, { status: 503 });
+    }
+
+    if (spinCampaignWin && couponCode) {
+      const { error: redeemError } = await database.rpc('redeem_spin_campaign_win', {
+        code_input: couponCode,
+        phone_input: spinCampaignWin.phone,
+        order_id_input: Number(order.id),
+        subtotal_input: subtotal
+      });
+      if (redeemError) {
+        const { error: cleanupError } = await database.from('orders').delete().eq('id', order.id);
+        if (cleanupError) console.error('[CheckoutOrder] Could not remove order after campaign code redemption failed:', cleanupError);
+        return NextResponse.json({
+          error: /invalid|expired|already used|minimum order/i.test(redeemError.message)
+            ? 'The campaign code was just used, expired, or no longer meets its minimum order. Refresh checkout and try again.'
+            : 'The campaign code could not be reserved. Please contact support before trying again.'
+        }, { status: /invalid|expired|already used|minimum order/i.test(redeemError.message) ? 409 : 503 });
+      }
     }
 
     if (body.paymentMethod === 'COD') {

@@ -5,15 +5,33 @@ export interface Coupon {
   code: string;
   discount_percent: number;
   is_active: boolean;
+  discount_amount?: number;
+  spin_prize_type?: 'discount' | 'free_delivery' | 'free_bottle' | 'free_mixers';
+  prize_label?: string;
+  minimum_order?: number;
+  expires_at?: string;
 }
 
 /**
  * Validates a coupon code against Supabase
  */
-export async function validateCoupon(code: string): Promise<Coupon | null> {
-  if (!supabase || !code.trim()) return null;
+export async function validateCoupon(code: string, phone = '', subtotal = 0): Promise<Coupon | null> {
+  if (!code.trim()) return null;
 
   try {
+    if (/^BN-/i.test(code.trim())) {
+      const response = await fetch('/api/spin-campaign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'validate', code, phone, subtotal }),
+        cache: 'no-store'
+      });
+      if (!response.ok) return null;
+      const result = await response.json() as { coupon?: Coupon };
+      return result.coupon || null;
+    }
+    if (!supabase) return null;
+
     const { data, error } = await supabase
       .from('coupons')
       .select('*')

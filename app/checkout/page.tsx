@@ -37,6 +37,10 @@ interface Coupon {
   code: string;
   discount_percent: number;
   discount_amount?: number;
+  spin_prize_type?: 'discount' | 'free_delivery' | 'free_bottle' | 'free_mixers';
+  prize_label?: string;
+  minimum_order?: number;
+  expires_at?: string;
 }
 
 interface PaystackResponse {
@@ -122,9 +126,12 @@ function CheckoutContent() {
       if (attributionSource) sessionStorage.setItem('ob_attribution_source', attributionSource);
     }
 
+    const campaignCoupon = params.get('coupon');
     const exitCoupon = localStorage.getItem('ob_exit_coupon');
+    if (campaignCoupon || exitCoupon) {
+      setCouponCode((campaignCoupon || exitCoupon || '').toUpperCase());
+    }
     if (exitCoupon) {
-      setCouponCode(exitCoupon);
       localStorage.removeItem('ob_exit_coupon');
     }
   }, []);
@@ -530,15 +537,18 @@ function CheckoutContent() {
     : null;
   const qualifiesForFreeDelivery = freeDeliveryOver > 0 && subtotal >= freeDeliveryOver;
   const deliveryFee = hasConfirmedLocation && zoneFee !== null && !qualifiesForFreeDelivery ? zoneFee : 0;
+  const promoFreeDelivery = activeCoupon?.spin_prize_type === 'free_delivery';
+  const payableDeliveryFee = promoFreeDelivery ? 0 : deliveryFee;
   const deliveryFeeReady = hasConfirmedLocation && zoneFee !== null;
   const deliveryLabel = selectedZone?.name || 'Not selected';
   const discount = activeCoupon
     ? Math.min(subtotal, Number(activeCoupon.discount_amount || 0) || (subtotal * activeCoupon.discount_percent) / 100)
     : 0;
   const pointsDiscount = usePoints ? Math.min(subtotal - discount, Math.floor(loyaltyPoints / pointsPerKsh)) : 0;
-  const totalSavings = discount + pointsDiscount;
+  const deliverySavings = promoFreeDelivery ? deliveryFee : 0;
+  const totalSavings = discount + pointsDiscount + deliverySavings;
   const originalTotal = subtotal + deliveryFee;
-  const total = originalTotal - totalSavings;
+  const total = subtotal + payableDeliveryFee - discount - pointsDiscount;
   const checkoutNeedsDeliveryLocation = /estate|delivery zone|delivery area|delivery fee|delivery pin|gps pin/i
     .test(checkoutStatus.message);
 
@@ -665,12 +675,13 @@ function CheckoutContent() {
   const handleApplyCoupon = async () => {
       if (!couponCode.trim()) return;
       setIsValidatingCoupon(true);
-      const coupon = await validateCoupon(couponCode);
+      const coupon = await validateCoupon(couponCode, customerPhone, subtotal);
       if (coupon) {
           setActiveCoupon(coupon);
+          setUsePoints(false);
           OB_OS.track('PROMO_CODE_USED', { details: { code: couponCode, status: 'SUCCESS', discount: coupon.discount_percent } });
       } else {
-          alert("Invalid or expired coupon code.");
+          setCheckoutStatus({ type: 'error', message: 'That code is invalid, expired, already used, below its minimum order, or tied to a different phone number.' });
           OB_OS.track('PROMO_CODE_USED', { details: { code: couponCode, status: 'FAILED' } });
       }
       setIsValidatingCoupon(false);
@@ -1489,12 +1500,17 @@ function CheckoutContent() {
                 </div>
                 <div className="flex justify-between text-xs font-black uppercase tracking-widest text-slate-500">
                   <span>Delivery ({deliveryLabel})</span>
-                  <span className="text-primary">{!hasConfirmedLocation ? 'Choose area' : !deliveryFeeReady ? 'Fee unavailable' : deliveryFee === 0 ? 'FREE' : formatPrice(deliveryFee)}</span>
+                  <span className="text-primary">{!hasConfirmedLocation ? 'Choose area' : !deliveryFeeReady ? 'Fee unavailable' : payableDeliveryFee === 0 ? 'FREE' : formatPrice(payableDeliveryFee)}</span>
                 </div>
                 {activeCoupon && (
                     <div className="flex justify-between text-xs font-black uppercase tracking-widest text-rose-500 bg-rose-50 p-2 rounded-lg">
-                        <span>Discount ({activeCoupon.code})</span>
+                        <span>{activeCoupon.prize_label || `Discount (${activeCoupon.code})`}</span>
                         <span>-{formatPrice(discount)}</span>
+                    </div>
+                )}
+                {deliverySavings > 0 && (
+                    <div className="flex justify-between rounded-lg bg-emerald-50 p-2 text-xs font-black uppercase tracking-widest text-emerald-700">
+                        <span>Campaign free delivery</span><span>-{formatPrice(deliverySavings)}</span>
                     </div>
                 )}
                 {usePoints && (
