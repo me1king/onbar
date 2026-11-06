@@ -15,13 +15,21 @@ const maxFileSize = 5 * 1024 * 1024;
 const maxTotalSize = 15 * 1024 * 1024;
 const allowedTypes = new Set([
   'business_registration', 'county_license', 'liquor_licence', 'wholesale_licence',
-  'kra_pin', 'medical_cert', 'food_hygiene', 'tax_document', 'premises_document', 'other_permit'
+  'online_alcohol_licence', 'government_id', 'selfie_photo', 'shopfront_photo',
+  'business_permit', 'supplier_invoice', 'kra_pin', 'medical_cert', 'food_hygiene',
+  'tax_document', 'premises_document', 'other_permit'
 ]);
 const labels: Record<string, string> = {
   business_registration: 'Business registration',
   county_license: 'County business licence',
   liquor_licence: 'Alcohol retail licence',
+  online_alcohol_licence: 'Nairobi online alcohol licence',
   wholesale_licence: 'Alcohol wholesale licence',
+  government_id: 'National ID document',
+  selfie_photo: 'Owner selfie for manual identity review',
+  shopfront_photo: 'Shopfront photo',
+  business_permit: 'Business permit',
+  supplier_invoice: 'Supplier invoice',
   kra_pin: 'KRA PIN certificate',
   medical_cert: 'Food handler medical certificate',
   food_hygiene: 'Food hygiene documentation',
@@ -61,15 +69,21 @@ async function getUploadContext(token: string) {
     return { error: 'This document upload link is invalid, expired, or has already been completed.', status: 410 as const };
   }
   const { data: application, error: applicationError } = await database.from('merchant_applications')
-    .select('id, business_name, business_type, vendor_type, county, documents, status')
+    .select('id, business_name, business_type, vendor_type, county, documents, status, documents_due_at, alcohol_onboarding')
     .eq('id', link.application_id)
     .maybeSingle();
   if (applicationError || !application) {
     console.error('[MerchantDocumentUpload] Could not load linked application:', applicationError);
+    if (applicationError?.code === '42703' || /documents_due_at/i.test(applicationError?.message || '')) {
+      return { error: 'The seven-day upload deadline is not installed. Run supabase/MERCHANT_DOCUMENT_COMPLETION_WINDOW_MIGRATION.sql in Supabase.', status: 503 as const };
+    }
     return { error: 'The merchant application for this upload link could not be loaded.', status: 503 as const };
   }
   if (!['submitted', 'under_review', 'information_requested'].includes(application.status)) {
     return { error: 'This application is no longer accepting document uploads.', status: 410 as const };
+  }
+  if (application.documents_due_at && new Date(application.documents_due_at).getTime() <= Date.now()) {
+    return { error: 'The seven-day document completion window has expired. Contact OnBar to request a new secure upload link.', status: 410 as const };
   }
   const { data: configuredRequirements, error: requirementsError } = await database.from('merchant_document_requirements')
     .select('id, business_type, county, document_type, label, is_required, is_active')
@@ -90,6 +104,30 @@ async function getUploadContext(token: string) {
   if (application.vendor_type === 'wholesaler' && !required.some(item => item.document_type === 'wholesale_licence')) {
     required.push({ document_type: 'wholesale_licence', label: labels.wholesale_licence, is_required: true } as MerchantDocumentRequirement);
   }
+  const alcoholProfile = application.alcohol_onboarding as Record<string, unknown> | null;
+  const hasAlcoholOnboarding = application.business_type === 'bar'
+    && application.vendor_type === 'retailer'
+    && Boolean(alcoholProfile && Object.keys(alcoholProfile).length);
+  if (hasAlcoholOnboarding) {
+    for (const documentType of [
+      'government_id',
+      'selfie_photo',
+      'shopfront_photo',
+      'online_alcohol_licence',
+      'business_permit',
+      'kra_pin',
+      'premises_document',
+      'supplier_invoice'
+    ]) {
+      if (!required.some(item => item.document_type === documentType)) {
+        required.push({
+          document_type: documentType,
+          label: labels[documentType] || documentType,
+          is_required: true
+        } as MerchantDocumentRequirement);
+      }
+    }
+  }
   const documents = Array.isArray(application.documents) ? application.documents as MerchantApplicationDocument[] : [];
   const missingTypes = new Set(getMissingMerchantDocumentTypes(
     required.map(requirement => requirement.document_type),
@@ -106,7 +144,7 @@ export async function GET(request: Request) {
   if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status });
   if (!context.missing.length) {
     const { error: completionError } = await context.database.from('merchant_applications')
-      .update({ documents_deferred: false })
+      .update({ documents_deferred: false, documents_due_at: null })
       .eq('id', context.application.id);
     if (completionError) {
       console.error('[MerchantDocumentUpload] Could not sync completed document status:', completionError);
@@ -126,9 +164,10 @@ export async function GET(request: Request) {
     requirements: context.missing.map(requirement => ({
       type: requirement.document_type,
       label: requirement.label || labels[requirement.document_type] || requirement.document_type,
-      requiresExpiry: ['liquor_licence', 'wholesale_licence'].includes(requirement.document_type)
+      requiresExpiry: ['liquor_licence', 'online_alcohol_licence', 'wholesale_licence'].includes(requirement.document_type)
     })),
-    expiresAt: context.link.expires_at
+    expiresAt: context.link.expires_at,
+    documentsDueAt: context.application.documents_due_at
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
 }
 
@@ -151,7 +190,7 @@ export async function POST(request: Request) {
   if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status });
   if (!context.missing.length) {
     const { error: completionError } = await context.database.from('merchant_applications')
-      .update({ documents_deferred: false })
+      .update({ documents_deferred: false, documents_due_at: null })
       .eq('id', context.application.id);
     if (completionError) {
       console.error('[MerchantDocumentUpload] Could not sync completed document status:', completionError);
@@ -179,6 +218,9 @@ export async function POST(request: Request) {
     if (value.size > maxFileSize || !['application/pdf', 'image/jpeg', 'image/png'].includes(value.type)) {
       return NextResponse.json({ error: 'Documents must be PDF, JPG, or PNG files no larger than 5 MB each.' }, { status: 400 });
     }
+    if ((type === 'selfie_photo' || type === 'shopfront_photo') && !['image/jpeg', 'image/png'].includes(value.type)) {
+      return NextResponse.json({ error: 'Selfie and shopfront photos must be JPEG or PNG images.' }, { status: 400 });
+    }
     const signature = new Uint8Array(await value.slice(0, 8).arrayBuffer());
     const validSignature = value.type === 'application/pdf'
       ? signature[0] === 0x25 && signature[1] === 0x50 && signature[2] === 0x44 && signature[3] === 0x46
@@ -190,7 +232,7 @@ export async function POST(request: Request) {
     if (totalSize > maxTotalSize) return NextResponse.json({ error: 'Documents exceed the 15 MB total upload limit.' }, { status: 413 });
     const expiresAt = form.get(`expiry:${type}`);
     const expiry = typeof expiresAt === 'string' && expiresAt ? expiresAt : null;
-    if (['liquor_licence', 'wholesale_licence'].includes(type)) {
+    if (['liquor_licence', 'online_alcohol_licence', 'wholesale_licence'].includes(type)) {
       const expiryDate = expiry ? new Date(`${expiry}T00:00:00.000Z`) : null;
       if (!expiry || !/^\d{4}-\d{2}-\d{2}$/.test(expiry) || !expiryDate
         || !Number.isFinite(expiryDate.getTime()) || expiryDate.toISOString().slice(0, 10) !== expiry
@@ -238,7 +280,10 @@ export async function POST(request: Request) {
       !documents.some(document => document.type === requirement.document_type)
     );
     const { error: deferredError } = await context.database.from('merchant_applications')
-      .update({ documents_deferred: remaining.length > 0 })
+      .update({
+        documents_deferred: remaining.length > 0,
+        documents_due_at: remaining.length > 0 ? context.application.documents_due_at : null
+      })
       .eq('id', context.application.id);
     if (deferredError) throw new Error(`Documents were uploaded, but completion status could not be updated: ${deferredError.message}`);
     if (!remaining.length) {

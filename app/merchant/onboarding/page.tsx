@@ -40,6 +40,7 @@ import {
   MAX_MERCHANT_DOCUMENT_TOTAL_SIZE
 } from '@/lib/merchantDocuments';
 import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
+import LiquorOnboardingForm from '@/components/merchant/LiquorOnboardingForm';
 
 type DocumentType =
   | 'business_registration'
@@ -228,6 +229,7 @@ export default function MerchantOnboarding() {
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState('');
+  const [liquorFlow, setLiquorFlow] = useState(false);
   const [journeyAnalyticsEnabled, setJourneyAnalyticsEnabled] = useState(false);
   const [journeySessionId, setJourneySessionId] = useState('');
   const [invitation, setInvitation] = useState<CompanyInvitation | null>(null);
@@ -241,6 +243,11 @@ export default function MerchantOnboarding() {
   const draftSavePromiseRef = useRef<Promise<boolean> | null>(null);
   const latestDraftRef = useRef<{ formData: SharedDraftForm; currentStep: number } | null>(null);
   const saveDraftNowRef = useRef<() => Promise<boolean>>(async () => true);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setLiquorFlow(params.get('flow') === 'liquor');
+  }, []);
 
   useEffect(() => {
     const client = supabase;
@@ -305,6 +312,14 @@ export default function MerchantOnboarding() {
         const payload = await readJsonResponse<{ invitation?: CompanyInvitation; error?: string }>(response);
         if (!response.ok || !payload.invitation) throw new Error(payload.error || 'This company link could not be verified.');
         setInvitation(payload.invitation);
+        if (payload.invitation.businessType === 'bar' && payload.invitation.vendorType === 'retailer') {
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.set('flow', 'liquor');
+          window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+          setLiquorFlow(true);
+          setDraftLoaded(true);
+          return;
+        }
         setBusinessType(payload.invitation.businessType);
         setVendorType(payload.invitation.vendorType);
         setBusinessName(payload.invitation.businessName);
@@ -830,6 +845,17 @@ export default function MerchantOnboarding() {
     }
   };
 
+  if (liquorFlow) return (
+    <LiquorOnboardingForm
+      inviteToken={inviteToken}
+      invitationBusinessName={invitation?.businessName}
+      invitationError={inviteError}
+      invitationLoaded={Boolean(invitation) && !inviteLoading}
+      initialBusinessName={businessName}
+      initialTradingName={tradingName}
+    />
+  );
+
   if (submitted) {
     return (
       <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -842,7 +868,7 @@ export default function MerchantOnboarding() {
           <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900">Review is now in progress</h1>
           <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
             {documentsMayBeDeferred && requiredDocumentTypes.some(type => !documents[type])
-              ? 'Your business details are with OnBar. The team will send you a secure link to upload the remaining documents; approval and activation wait until verification is complete.'
+              ? 'Your business details are with OnBar. The team will send you a secure link to upload the remaining documents; the link stays valid for seven days after it is issued. Approval and activation wait until verification is complete.'
               : 'OnBar will review your business details and documents. A merchant ID is assigned after approval. Your business will not become active automatically.'}
           </p>
           {submittedApplicationId && <p className="mt-4 text-xs font-semibold text-slate-500">Application reference: {submittedApplicationId}</p>}
@@ -851,7 +877,7 @@ export default function MerchantOnboarding() {
               <p className="text-sm font-bold text-slate-900">What happens next</p>
               <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-600">
                 <li>The OnBar team reviews the business details, proposed goods and required documents.</li>
-                <li>If anything is missing or needs correction, the team contacts you and can send a secure document-upload link.</li>
+                <li>If anything is missing or needs correction, the team contacts you and can send a secure document-upload link that stays valid for seven days.</li>
                 <li>Approval is only possible after required compliance documents are present and current. An approved application receives a merchant ID and can access the Partner Workspace.</li>
               </ol>
               <p className="mt-3 text-xs leading-5 text-slate-500">
@@ -919,7 +945,7 @@ export default function MerchantOnboarding() {
           </p>
           {!invitation && (
             <div className="mt-3 space-y-1 text-xs text-slate-500">
-              <p>Opening an alcohol shop? <Link href="/merchant/liquor-onboarding" className="font-bold text-primary underline">Use the eight-step liquor retailer application</Link></p>
+              <p>Opening an alcohol shop? <Link href="/merchant/onboarding?flow=liquor" className="font-bold text-primary underline">Use the liquor retailer application</Link></p>
               <p>Already approved and adding branches? <Link href="/merchant/business" className="font-bold text-primary underline">Manage business locations</Link></p>
             </div>
           )}
@@ -1107,7 +1133,7 @@ export default function MerchantOnboarding() {
               {!invitation && businessType === 'bar' && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
                   Alcohol retailers need the dedicated licensing, product-stamp, identity and manual-review checklist.
-                  <Link href="/merchant/liquor-onboarding" className="ml-1 font-black underline">Continue to the eight-step application</Link>
+                  <Link href="/merchant/onboarding?flow=liquor" className="ml-1 font-black underline">Continue to the alcohol application</Link>
                 </div>
               )}
               {invitation && (
@@ -1128,7 +1154,12 @@ export default function MerchantOnboarding() {
                 </>
               )}
               {businessType === 'bar' && !invitation
-                ? <Link href="/merchant/liquor-onboarding" className="flex h-12 w-full items-center justify-center rounded-xl bg-primary font-black uppercase text-white">Continue to liquor onboarding <ArrowRight size={16} className="ml-2" /></Link>
+                ? <button type="button" onClick={() => {
+                    const currentUrl = new URL(window.location.href);
+                    currentUrl.searchParams.set('flow', 'liquor');
+                    window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+                    setLiquorFlow(true);
+                  }} className="flex h-12 w-full items-center justify-center rounded-xl bg-primary font-black uppercase text-white">Continue to alcohol application <ArrowRight size={16} className="ml-2" /></button>
                 : <Button disabled={(!invitation && businessName.trim().length < 2) || (Boolean(invitation?.onboardingMode) && !draftPrivacyAcknowledged)} onClick={() => moveToStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
                   Continue <ArrowRight size={16} className="ml-2" />
                 </Button>}
@@ -1335,7 +1366,7 @@ export default function MerchantOnboarding() {
               </div>
               {documentsMayBeDeferred && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-                  Document upload is temporarily optional. You can submit now and upload outstanding documents later using a secure link from the OnBar team. Your merchant account cannot be approved or activated until all required documents are verified.
+                  You can submit now and upload outstanding documents later using a secure link from the OnBar team. The link stays valid for seven days after it is issued. Your merchant account cannot be approved or activated until all required documents are verified.
                 </div>
               )}
               {requirementsLoading && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">Loading the checklist for this business type and county...</p>}

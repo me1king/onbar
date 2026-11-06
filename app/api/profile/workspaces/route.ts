@@ -57,6 +57,7 @@ export async function GET(request: Request) {
     .from('merchant_applications')
     .select('id, business_name, status, offered_goods, offered_goods_pricing')
     .eq('account_user_id', user.id)
+    .eq('status', 'approved')
     .order('submitted_at', { ascending: false })
     .limit(25);
 
@@ -73,7 +74,8 @@ export async function GET(request: Request) {
     const { data: legacyApplications, error: legacyApplicationsError } = await database.from('merchant_applications')
       .select('id, business_name, status, offered_goods, offered_goods_pricing')
       .eq('email', user.email.toLowerCase())
-      .order('submitted_at', { ascending: false })
+    .eq('status', 'approved')
+    .order('submitted_at', { ascending: false })
       .limit(25);
     if (legacyApplicationsError) {
       console.error('[ProfileWorkspaces] Could not load legacy merchant workspace access:', legacyApplicationsError);

@@ -288,6 +288,7 @@ export async function GET(request: Request) {
       .from('merchant_applications')
       .select(fields)
       .eq('account_user_id', context.userId)
+      .eq('status', 'approved')
       .order('submitted_at', { ascending: false })
       .limit(25);
     if (linkedError) throw linkedError;
@@ -297,10 +298,20 @@ export async function GET(request: Request) {
         .from('merchant_applications')
         .select(fields)
         .eq('email', context.email)
+        .eq('status', 'approved')
         .order('submitted_at', { ascending: false })
         .limit(25);
       if (legacyError) throw legacyError;
       applications = legacyApplications || [];
+    }
+    if (!applications.length) {
+      return NextResponse.json({
+        applications: [],
+        error: 'Merchant terminal access is available only after admin approval.'
+      }, {
+        status: 403,
+        headers: { 'Cache-Control': 'private, no-store, max-age=0' }
+      });
     }
 
     const backgroundRefresh = new URL(request.url).searchParams.get('refresh') === '1';

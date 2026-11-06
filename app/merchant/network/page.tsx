@@ -969,7 +969,13 @@ export default function OnBarPartnerNetworkPage() {
         cache: 'no-store'
       });
       const payload = await response.json() as { applications?: PartnerApplication[]; error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Partner workspace could not be loaded.');
+      if (!response.ok) {
+        if (response.status === 403) {
+          setWorkspace([]);
+          setSelectedId('');
+        }
+        throw new Error(payload.error || 'Partner workspace could not be loaded.');
+      }
       const applications = payload.applications || [];
       setWorkspace(applications);
       setSelectedId(current => applications.some(item => item.application.id === current)
@@ -1586,22 +1592,21 @@ export default function OnBarPartnerNetworkPage() {
           <button onClick={() => { setError(''); setMessage(''); }} aria-label="Dismiss message">×</button>
         </div>}
 
-        <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
+        {overview && <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
           {(isFoodMerchant ? foodSections : isLiquorMerchant ? liquorSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
             const Icon = item.icon;
             return <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}</button>;
           })}
           <button onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
-        </nav>
+        </nav>}
 
         {loading && <div className="rounded-2xl bg-white p-12 text-center text-slate-500"><Loader2 className="mx-auto mb-3 animate-spin text-primary" /><p className="text-sm font-semibold">Loading your business workspace...</p></div>}
 
         {!loading && !overview && (
           <section className="rounded-2xl bg-white p-7 shadow-sm sm:p-10">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-800"><Clock3 /></div>
-            <h2 className="mt-4 text-xl font-black text-slate-900">No application is linked to this account</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">The signed-in email must exactly match the email submitted with your OnBar partner application. If you haven’t applied yet, start an application. If you used another address, sign out and use an account verified with that address.</p>
-            <Link href="/merchant/onboarding" className="mt-5 inline-flex h-11 items-center rounded-xl bg-primary px-4 text-sm font-black uppercase text-white">Start partner application</Link>
+            <h2 className="mt-4 text-xl font-black text-slate-900">Merchant terminal access requires approval</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Your merchant terminal and business data are available only after OnBar admins approve the application and link it to this verified account. If you have already been approved, sign in with the account used for the application or contact OnBar support.</p>
           </section>
         )}
 

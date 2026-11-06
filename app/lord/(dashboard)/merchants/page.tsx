@@ -64,6 +64,7 @@ interface Application {
   collection_available?: boolean;
   documents?: MerchantApplicationDocument[];
   documents_deferred?: boolean;
+  documents_due_at?: string | null;
   requiredDocuments?: string[];
   status: MerchantApplicationStatus;
   review_note?: string | null;
@@ -431,8 +432,8 @@ export default function MerchantApplicationsPage() {
           <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">Application document uploads</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
             {documentDeferralAllowed
-              ? 'Temporary deferral is on. Applicants can submit without documents; approval stays blocked until every required document is current and verified.'
-              : 'Required documents must be uploaded before applicants can submit. You can turn on a temporary deferral when a merchant needs more time.'}
+              ? 'Applicants may submit without required documents. When you issue a secure upload link, it expires after seven days; approval stays blocked until every required document is current and verified.'
+              : 'Required documents must be uploaded before applicants can submit. You can turn on document deferral when a merchant needs more time.'}
           </p>
         </div>
         <Button
@@ -570,7 +571,7 @@ export default function MerchantApplicationsPage() {
               {(selected.documents_deferred || missingRequiredDocs(selected).length > 0) && ['submitted', 'under_review', 'information_requested'].includes(selected.status) && (
                 <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs leading-5 text-amber-900">{selected.documents_deferred ? 'This application was submitted while document deferral was enabled.' : 'Required documents are missing or expired.'} It cannot be approved until required documents are uploaded and verified.</p>
+                    <p className="text-xs leading-5 text-amber-900">{selected.documents_deferred ? 'This application was submitted while document deferral was enabled.' : 'Required documents are missing or expired.'} It cannot be approved until required documents are uploaded and verified.{selected.documents_due_at ? ` Current upload deadline: ${new Date(selected.documents_due_at).toLocaleString()}.` : ''}</p>
                     <Button type="button" onClick={() => void requestMissingDocuments()} disabled={requestingDocumentLink} className="rounded-xl">
                       {requestingDocumentLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                       {requestingDocumentLink ? 'Preparing secure link...' : 'Request missing documents'}

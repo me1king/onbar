@@ -922,7 +922,10 @@ export default function ProfilePage() {
             <Zap className="absolute -bottom-10 -right-10 h-64 w-64 text-slate-100/50 rotate-12 -z-0" />
         </header>
 
-        <section id="workspaces" aria-labelledby="workspaces-title" className="scroll-mt-24 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+        {!workspaceAccess.loading
+            && !workspaceAccess.error
+            && (workspaceAccess.riderApproved || workspaceAccess.merchantApplications.some(application => application.status === 'approved'))
+            && <section id="workspaces" aria-labelledby="workspaces-title" className="scroll-mt-24 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
                 <div className="flex items-start gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                         <Store size={22} />
@@ -938,7 +941,7 @@ export default function ProfilePage() {
                             </p>
                         ) : (
                             <div className="mt-4 flex flex-wrap gap-3">
-                                {workspaceAccess.merchantApplications.map(application => application.status === 'approved' ? (
+                                {workspaceAccess.merchantApplications.filter(application => application.status === 'approved').map(application => (
                                     <div key={application.id} className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
                                         <Link
                                             href="/merchant/network"
@@ -946,23 +949,6 @@ export default function ProfilePage() {
                                         >
                                             <Store size={15} /> Open {application.businessName} merchant terminal
                                         </Link>
-                                        <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Goods offered</p>
-                                        {application.offeredGoodsPricing.length ? (
-                                            <ul className="mt-2 space-y-1">
-                                                {application.offeredGoodsPricing.map(good => (
-                                                    <li key={good.product_id} className="flex justify-between gap-3 text-sm text-slate-700">
-                                                        <span>{good.product_name}</span>
-                                                        <strong className="shrink-0">{good.currency} {Number(good.price).toLocaleString()}</strong>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : <p className="mt-1 text-sm text-slate-700">{application.offeredGoods.length ? `${application.offeredGoods.join(', ')} · Proposed prices not recorded.` : 'No goods selected on this application.'}</p>}
-                                    </div>
-                                ) : (
-                                    <div key={application.id} className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                                        <p className="text-sm text-slate-600">
-                                            Merchant application for <strong>{application.businessName}</strong>: {application.status.replaceAll('_', ' ')}.
-                                        </p>
                                         <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Goods offered</p>
                                         {application.offeredGoodsPricing.length ? (
                                             <ul className="mt-2 space-y-1">
@@ -992,27 +978,11 @@ export default function ProfilePage() {
                                         {workspaceAccess.riderAccessUnavailableReason}
                                     </p>
                                 )}
-                                {!workspaceAccess.riderApproved
-                                    && !workspaceAccess.merchantApplications.some(application => application.status === 'approved')
-                                    && !workspaceAccess.riderAccessUnavailableReason && (
-                                        <div className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                                            <p className="text-sm font-semibold text-slate-700">No approved terminals are linked to this account yet.</p>
-                                            <p className="mt-1 text-xs text-slate-500">Once your rider or merchant application is approved, sign in with the same verified email or phone and the terminal will appear here.</p>
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                                <Link href="/rider/onboarding" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-primary/40 hover:text-primary">
-                                                    <Truck size={14} /> Rider application
-                                                </Link>
-                                                <Link href="/merchant/onboarding" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-primary/40 hover:text-primary">
-                                                    <Store size={14} /> Merchant application
-                                                </Link>
-                                            </div>
-                                        </div>
-                                    )}
                             </div>
                         )}
                     </div>
                 </div>
-            </section>
+            </section>}
 
         {/* 📦 MY ORDERS & DISPATCH HISTORY */}
         <section id="orders" className="space-y-6 scroll-mt-24">

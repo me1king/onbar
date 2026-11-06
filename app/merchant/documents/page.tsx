@@ -22,6 +22,7 @@ interface UploadChecklist {
   businessName: string;
   requirements: RequiredDocument[];
   expiresAt: string;
+  documentsDueAt?: string | null;
 }
 
 export default function MerchantDocumentsPage() {
@@ -169,7 +170,7 @@ function MerchantDocumentsContent() {
         ) : (
           <>
             <p className="text-sm leading-6 text-slate-600">
-              Upload the remaining compliance documents for <strong className="text-slate-900">{checklist?.businessName}</strong>. This private link expires {checklist?.expiresAt ? new Date(checklist.expiresAt).toLocaleDateString() : 'soon'}.
+              Upload the remaining compliance documents for <strong className="text-slate-900">{checklist?.businessName}</strong> by {(checklist?.documentsDueAt || checklist?.expiresAt) ? new Date(String(checklist.documentsDueAt || checklist.expiresAt)).toLocaleString() : 'the deadline shown in your secure email'}. This link expires after seven days.
             </p>
             <div className="mt-4 flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-950">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />

@@ -33,6 +33,7 @@ const applicationListFields = [
   'operating_areas',
   'status',
   'documents_deferred',
+  'documents_due_at',
   'submitted_at',
   'reviewed_at',
   'reviewed_by'
@@ -242,6 +243,22 @@ export async function GET(request: Request) {
     if (application.vendor_type === 'wholesaler' && !requiredDocuments.includes('wholesale_licence')) {
       requiredDocuments.push('wholesale_licence');
     }
+    const alcoholProfile = application.alcohol_onboarding as Record<string, unknown> | null;
+    if (application.business_type === 'bar' && application.vendor_type === 'retailer'
+      && alcoholProfile && Object.keys(alcoholProfile).length > 0) {
+      for (const documentType of [
+        'government_id',
+        'selfie_photo',
+        'shopfront_photo',
+        'online_alcohol_licence',
+        'business_permit',
+        'kra_pin',
+        'premises_document',
+        'supplier_invoice'
+      ]) {
+        if (!requiredDocuments.includes(documentType)) requiredDocuments.push(documentType);
+      }
+    }
     const combinedEvents = [
       ...(events || []),
       ...(journeyEvents || []).map(event => ({
@@ -270,7 +287,7 @@ export async function GET(request: Request) {
     const migrationMissing = error.code === '42P01' || /merchant_applications/i.test(error.message);
     return NextResponse.json({
       error: migrationMissing
-        ? 'Merchant operations schema is not installed. Run supabase/MERCHANT_OPERATIONS_MIGRATION.sql in Supabase.'
+        ? 'Merchant operations schema is not installed. Run the required merchant operations migrations, including supabase/MERCHANT_DOCUMENT_COMPLETION_WINDOW_MIGRATION.sql.'
         : 'Could not load merchant applications.'
     }, { status: 503 });
   }
@@ -386,7 +403,7 @@ export async function POST(request: Request) {
   }
 
   const { data: application, error: applicationError } = await access.database.from('merchant_applications')
-    .select('id, business_name, email, status')
+    .select('id, business_name, email, status, documents_due_at')
     .eq('id', body.id)
     .maybeSingle();
   if (applicationError) {
@@ -400,7 +417,7 @@ export async function POST(request: Request) {
 
   const token = randomBytes(32).toString('base64url');
   const tokenHash = createHash('sha256').update(token).digest('hex');
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const { error: revokeError } = await access.database.from('merchant_document_upload_links')
     .update({ revoked_at: new Date().toISOString() })
     .eq('application_id', application.id)
@@ -418,6 +435,21 @@ export async function POST(request: Request) {
   if (linkError) {
     console.error('[MerchantAdmin] Could not save document upload link:', linkError);
     return NextResponse.json({ error: 'A secure document upload link could not be saved.' }, { status: 503 });
+  }
+  const { error: deadlineError } = await access.database.from('merchant_applications')
+    .update({ documents_due_at: expiresAt })
+    .eq('id', application.id);
+  if (deadlineError) {
+    console.error('[MerchantAdmin] Could not save document completion deadline:', deadlineError);
+    const { error: revokeError } = await access.database.from('merchant_document_upload_links')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('token_hash', tokenHash);
+    if (revokeError) console.error('[MerchantAdmin] Could not revoke link after deadline save failed:', revokeError);
+    return NextResponse.json({
+      error: deadlineError.code === '42703' || /documents_due_at/i.test(deadlineError.message)
+        ? 'The seven-day upload deadline is not installed. Run supabase/MERCHANT_DOCUMENT_COMPLETION_WINDOW_MIGRATION.sql in Supabase, then retry.'
+        : 'The document deadline could not be saved, so no upload link was issued.'
+    }, { status: 503 });
   }
   const { error: eventError } = await access.database.from('merchant_application_events').insert({
     application_id: application.id,
@@ -447,8 +479,8 @@ export async function POST(request: Request) {
         from: emailConfig.from,
         to: application.email,
         subject: `Documents needed to complete ${application.business_name}'s OnBar application`,
-        text: `Please securely upload the remaining documents for ${application.business_name} using this link. It expires in 30 days: ${uploadUrl}`,
-        html: `<p>Please securely upload the remaining documents for <strong>${escapeHtml(application.business_name)}</strong> using the link below. It expires in 30 days.</p><p><a href="${escapeHtml(uploadUrl)}">Upload documents securely</a></p>`,
+        text: `Please securely upload the remaining documents for ${application.business_name} using this link within seven days: ${uploadUrl}`,
+        html: `<p>Please securely upload the remaining documents for <strong>${escapeHtml(application.business_name)}</strong> using the link below within seven days.</p><p><a href="${escapeHtml(uploadUrl)}">Upload documents securely</a></p>`,
         idempotencyKey: `merchant-document-upload-${application.id}-${tokenHash.slice(0, 16)}`
       });
       emailSent = true;
