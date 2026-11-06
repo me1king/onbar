@@ -37,28 +37,29 @@ export default function AnalyticsTracker() {
 
     // 0. Emergency Auth Sync Node
     useEffect(() => {
-        if (!supabase) return;
+        const client = supabase;
+        if (!client) return;
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
             if (event === 'SIGNED_IN' && session && isAllowed('analytics') && isTrackablePath(pathname)) {
-                const activeSessId = OB_OS.getSessionId();
-                const anonId = localStorage.getItem('ob_anonymous_id');
+                // Supabase awaits async auth listeners while holding its auth lock.
+                void (async () => {
+                    const activeSessId = OB_OS.getSessionId();
+                    const anonId = localStorage.getItem('ob_anonymous_id');
 
-                // 1. Link Session Immediately
-                if (activeSessId && supabase) {
-                    await supabase.from('customer_sessions').update({
-                        user_id: session.user.id,
-                        updated_at: new Date().toISOString()
-                    }).eq('id', activeSessId);
-                }
+                    if (activeSessId) {
+                        const { error } = await client.from('customer_sessions').update({
+                            user_id: session.user.id,
+                            updated_at: new Date().toISOString()
+                        }).eq('id', activeSessId);
+                        if (error) throw error;
+                    }
 
-                // 2. Identity Stitching
-                if (anonId) {
-                    await OB_OS.stitchIdentity(anonId, session.user.id);
-                }
-
-                // 3. Track Event
-                OB_OS.track('USER_LOGIN', { userId: session.user.id });
+                    if (anonId) await OB_OS.stitchIdentity(anonId, session.user.id);
+                    await OB_OS.track('USER_LOGIN', { userId: session.user.id });
+                })().catch(error => {
+                    console.warn('[Analytics] Post-sign-in synchronization failed:', error);
+                });
             }
         });
 

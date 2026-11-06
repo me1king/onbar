@@ -64,7 +64,6 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
   const [showOtpField, setShowOtpField] = useState(false);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'idle', text: string }>({ type: 'idle', text: '' });
-  const [debugInfo, setDebugInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
@@ -159,7 +158,6 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
 
     setLoading(true);
     setMessage({ type: 'idle', text: '' });
-    setDebugInfo(null);
 
     try {
       if (!supabase) throw new Error('Supabase not configured. Check your environment variables.');
@@ -204,7 +202,6 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
             const userExists = error.message?.includes("already registered") || error.code === '23505' || error.message?.includes("user_already_exists");
             if (userExists) errorText = "Identity already exists on the grid. Switch to Login mode below.";
             setMessage({ type: 'error', text: errorText });
-            setDebugInfo(JSON.stringify({ code: error.code || 'UNKNOWN', message: error.message, name: error.name }));
             setLoading(false);
             return;
         }
@@ -232,7 +229,6 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
             let errorText = error.message || "Uplink Failure";
             if (error.message?.includes("Invalid login credentials")) errorText = "Credential Mismatch. Incorrect key or identity not found.";
             setMessage({ type: 'error', text: errorText });
-            setDebugInfo(JSON.stringify({ code: error.code || 'UNKNOWN', message: error.message, name: error.name }));
             setLoading(false);
             return;
         }
@@ -277,11 +273,6 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
       }
 
       setMessage({ type: 'error', text: errorText });
-      setDebugInfo(JSON.stringify({
-          code: err.code || 'UNKNOWN',
-          message: err.message,
-          name: err.name
-      }));
     } finally {
       setLoading(false);
     }
@@ -639,12 +630,6 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
                   </div>
               </div>
 
-              {debugInfo && (
-                  <div className="p-6 bg-slate-50 border border-slate-100 rounded-3xl text-left overflow-hidden shadow-inner group">
-                      <p className="text-[9px] font-black uppercase text-slate-300 mb-2 tracking-[0.3em]">Telemetry Debug Data</p>
-                      <code className="text-[10px] text-slate-400 font-mono break-all opacity-60 group-hover:opacity-100 transition-opacity">{debugInfo}</code>
-                  </div>
-              )}
           </div>
       )}
 

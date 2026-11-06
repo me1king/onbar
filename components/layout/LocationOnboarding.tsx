@@ -185,8 +185,9 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
 
   useEffect(() => {
     if (!supabase) return;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event !== 'SIGNED_IN' || !session?.access_token) return;
+      void (async () => {
       const anonymousId = localStorage.getItem('ob_anonymous_id');
       if (!anonymousId || !localStorage.getItem(LOCATION_KEY)) return;
       try {
@@ -206,6 +207,9 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       } catch (error) {
         console.error('[LocationOnboarding] Could not link opted-in location to account:', error);
       }
+      })().catch(error => {
+        console.error('[LocationOnboarding] Could not read the opted-in location:', error);
+      });
     });
     return () => subscription.unsubscribe();
   }, []);
