@@ -101,7 +101,8 @@ export default function LiquorOnboardingForm({
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
   const [productDetails, setProductDetails] = useState<Record<number, ProductDetails>>({});
   const [acceptedRules, setAcceptedRules] = useState<boolean[]>(requiredRules.map(() => false));
-  const [documentsMayBeDeferred, setDocumentsMayBeDeferred] = useState(false);
+  const [documentUploadUrl, setDocumentUploadUrl] = useState('');
+  const [documentUploadNotice, setDocumentUploadNotice] = useState('');
   const [invitationValidated, setInvitationValidated] = useState(!inviteToken);
 
   useEffect(() => {
@@ -165,20 +166,6 @@ export default function LiquorOnboardingForm({
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    fetch(`/api/merchant-applications?businessType=bar&county=${encodeURIComponent(form.county)}&vendorType=retailer`, {
-      cache: 'no-store'
-    }).then(async response => {
-      const payload = await response.json() as { documentsMayBeDeferred?: boolean; error?: string };
-      if (!response.ok) throw new Error(payload.error || 'The document checklist could not be loaded.');
-      if (active) setDocumentsMayBeDeferred(payload.documentsMayBeDeferred === true);
-    }).catch(requirementError => {
-      if (active) setError(requirementError instanceof Error ? requirementError.message : 'The document checklist could not be loaded.');
-    });
-    return () => { active = false; };
-  }, [form.county]);
-
   const selectedProductRecords = useMemo(() => selectedProducts.map(id => ({
     productId: id,
     ...productDetails[id],
@@ -213,6 +200,16 @@ export default function LiquorOnboardingForm({
     setProductDetails(current => ({ ...current, [id]: { ...current[id], ...patch } }));
   };
 
+  const advanceStep = () => {
+    const validationError = getStepValidationError();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError('');
+    setStep(value => value + 1);
+  };
+
   const getStepValidationError = () => {
     if (step === 0) {
       if (form.businessName.trim().length < 2) return 'Enter the registered shop name.';
@@ -221,26 +218,19 @@ export default function LiquorOnboardingForm({
     }
     if (step === 1) {
       if (!/^\d{4}$/.test(form.idLast4)) return 'Enter the last four digits of the National ID.';
-      if (!documentsMayBeDeferred && !files.government_id) return 'Choose the National ID document.';
-      if (!documentsMayBeDeferred && !files.selfie_photo) return 'Choose the owner selfie.';
     }
     if (step === 2) {
       if (form.address.trim().length < 4) return 'Enter the shop street address or estate.';
       if (form.town.trim().length < 2) return 'Enter the town or city.';
       if (!/^\d+(\.\d+)?$/.test(form.distanceToSchoolMeters)) return 'Enter the approximate distance to the nearest school or place of worship.';
-      if (!documentsMayBeDeferred && !files.shopfront_photo) return 'Choose a shopfront photo.';
     }
     if (step === 3) {
       if (!/^NCC\/OFF\/\d{4}\/\d{5}$/.test(form.countyLicenceNumber)) {
         return 'Enter the county off-licence in the format NCC/OFF/YYYY/12345.';
       }
       if (form.onlineLicenceNumber.trim().length < 4) return 'Enter the Nairobi online alcohol licence reference.';
-      if (!documentsMayBeDeferred) {
-        const missing = uploadTypes.slice(3).filter(([type]) => !files[type]).map(([, label]) => label);
-        if (missing.length) return `Choose the required documents: ${missing.join(', ')}.`;
-      }
-      if ((files.liquor_licence || !documentsMayBeDeferred) && !expiryDates.liquor_licence) return 'Enter the county licence expiry date.';
-      if ((files.online_alcohol_licence || !documentsMayBeDeferred) && !expiryDates.online_alcohol_licence) return 'Enter the online licence expiry date.';
+      if (files.liquor_licence && !expiryDates.liquor_licence) return 'Enter the county licence expiry date.';
+      if (files.online_alcohol_licence && !expiryDates.online_alcohol_licence) return 'Enter the online licence expiry date.';
     }
     if (step === 4) {
       if (form.mpesaTill.trim().length < 5) return 'Enter the business M-Pesa till or paybill number.';
@@ -271,10 +261,6 @@ export default function LiquorOnboardingForm({
     }
     if (!invitationValidated) {
       setError('Verifying your company invitation. Please wait a moment and try again.');
-      return;
-    }
-    if (!documentsMayBeDeferred && uploadTypes.some(([type]) => !files[type])) {
-      setError('Upload each required identity, premises and licensing document before submitting.');
       return;
     }
     setBusy(true);
@@ -346,8 +332,21 @@ export default function LiquorOnboardingForm({
         headers: { Authorization: `Bearer ${session.token}` },
         body: formData
       });
-      const payload = await response.json() as { id?: string; error?: string };
+      const payload = await response.json() as {
+        id?: string;
+        error?: string;
+        documentsUploadUrl?: string;
+        documentsUploadEmailSent?: boolean;
+        documentsUploadWarning?: string;
+      };
       if (!response.ok || !payload.id) throw new Error(readError(response, payload));
+      setDocumentUploadUrl(payload.documentsUploadUrl || '');
+      const missingDocuments = uploadTypes.some(([type]) => !files[type]);
+      if (missingDocuments) {
+        setDocumentUploadNotice(payload.documentsUploadEmailSent
+          ? 'Your secure upload link was emailed to you. Upload the remaining documents within seven days.'
+          : payload.documentsUploadWarning || 'Your application was submitted. Contact OnBar if you do not receive a secure document upload link.');
+      }
       setSubmitted(payload.id);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'The application could not be submitted.');
@@ -362,7 +361,9 @@ export default function LiquorOnboardingForm({
         <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-400" />
         <p className="mt-5 text-xs font-black uppercase tracking-[0.2em] text-emerald-300">Application received</p>
         <h1 className="mt-2 text-3xl font-black">Your shop is in admin review</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-300">Licence, identity, till-name and premises checks are not performed by an external provider here. OnBar must review the submitted documents and confirm these details before approval. Your shop is not live yet{documentsMayBeDeferred && uploadTypes.some(([type]) => !files[type]) ? '. OnBar will send a secure upload link; remaining documents must be uploaded within seven days after it is issued.' : '.'}</p>
+        <p className="mt-3 text-sm leading-6 text-slate-300">Licence, identity, till-name and premises checks are not performed by an external provider here. OnBar must review the submitted documents and confirm these details before approval. Your shop is not live yet.</p>
+        {documentUploadNotice && <p className="mt-4 rounded-xl border border-amber-300/30 bg-amber-300/10 p-4 text-left text-sm leading-6 text-amber-100">{documentUploadNotice}</p>}
+        {documentUploadUrl && <a href={documentUploadUrl} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-300 px-5 text-sm font-bold text-amber-200 hover:bg-amber-300/10">Upload missing documents</a>}
         <p className="mt-4 text-xs text-slate-400">Application reference: {submitted}</p>
         <Link href="/merchant/network" className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-400 px-5 text-sm font-black text-slate-950">Track application status</Link>
       </section>
@@ -381,9 +382,9 @@ export default function LiquorOnboardingForm({
       </header>
 
       <section className="rounded-3xl bg-white p-5 text-slate-900 shadow-2xl sm:p-8">
-        {documentsMayBeDeferred && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          You may skip missing files and submit the application now. OnBar will send a secure upload link that expires seven days after it is issued. Your shop stays inactive until every required document is uploaded and verified.
-        </div>}
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+          You can skip any document uploads for now and continue your application. After you submit, we’ll email a secure upload link; complete the missing files within seven days. Your shop stays inactive until documents are received and verified.
+        </div>
         {step === 0 && <div className="space-y-4">
           <h2 className="text-xl font-black">Account and shop</h2>
           <p className="text-sm text-slate-500">A verified OnBar account is used instead of a demo OTP. Check that the signed-in email is the one you want attached to this business.</p>
@@ -402,7 +403,7 @@ export default function LiquorOnboardingForm({
           <h2 className="text-xl font-black">Identity and owner documents</h2>
           <p className="text-sm text-slate-500">Only the last four ID digits are recorded in the application. The ID image and selfie go to a private document store for authorized admin review; no automatic face match is claimed.</p>
           <Input required inputMode="numeric" maxLength={4} placeholder="Last 4 digits of National ID" value={form.idLast4} onChange={event => updateForm('idLast4', event.target.value.replace(/\D/g, '').slice(0, 4))} />
-          {uploadTypes.slice(0, 2).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label}{!documentsMayBeDeferred && ' *'}<Input required={!documentsMayBeDeferred} type="file" accept={type === 'selfie_photo' ? 'image/jpeg,image/png' : 'image/jpeg,image/png,application/pdf'} onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
+          {uploadTypes.slice(0, 2).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input type="file" accept={type === 'selfie_photo' ? 'image/jpeg,image/png' : 'image/jpeg,image/png,application/pdf'} onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
         </div>}
 
         {step === 2 && <div className="space-y-4">
@@ -413,7 +414,7 @@ export default function LiquorOnboardingForm({
           <div className="grid gap-3 sm:grid-cols-2"><Input type="number" step="any" min="-90" max="90" placeholder="Latitude (optional)" value={form.latitude} onChange={event => updateForm('latitude', event.target.value)} /><Input type="number" step="any" min="-180" max="180" placeholder="Longitude (optional)" value={form.longitude} onChange={event => updateForm('longitude', event.target.value)} /></div>
           <Input required type="number" min="0" max="100000" placeholder="Approx. metres from nearest school / worship place" value={form.distanceToSchoolMeters} onChange={event => updateForm('distanceToSchoolMeters', event.target.value)} />
           {Number(form.distanceToSchoolMeters) < 300 && form.distanceToSchoolMeters !== '' && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">This self-reported distance will be flagged for manual review.</p>}
-          {uploadTypes.slice(2, 3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label}{!documentsMayBeDeferred && ' *'}<Input required={!documentsMayBeDeferred} type="file" accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
+          {uploadTypes.slice(2, 3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input type="file" accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
         </div>}
 
         {step === 3 && <div className="space-y-4">
@@ -423,11 +424,14 @@ export default function LiquorOnboardingForm({
           <p className="text-xs text-slate-500">Format: NCC/OFF/YYYY/12345</p>
           <Input required placeholder="Nairobi online alcohol licence reference" value={form.onlineLicenceNumber} onChange={event => updateForm('onlineLicenceNumber', event.target.value)} />
           <div className="grid gap-3 sm:grid-cols-2">
-            {uploadTypes.slice(3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label}{!documentsMayBeDeferred && ' *'}<Input required={!documentsMayBeDeferred} type="file" accept="image/jpeg,image/png,application/pdf" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
+            {uploadTypes.slice(3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input type="file" accept="image/jpeg,image/png,application/pdf" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {(['liquor_licence', 'online_alcohol_licence'] as const).map(type => <label key={type} className="block text-sm font-bold text-slate-700">{type === 'liquor_licence' ? 'County licence expiry' : 'Online licence expiry'}<Input required={!documentsMayBeDeferred || Boolean(files[type])} type="date" min={new Date().toISOString().slice(0, 10)} value={expiryDates[type]} onChange={event => setExpiryDates(current => ({ ...current, [type]: event.target.value }))} /></label>)}
+            {(['liquor_licence', 'online_alcohol_licence'] as const).map(type => <label key={type} className="block text-sm font-bold text-slate-700">{type === 'liquor_licence' ? 'County licence expiry' : 'Online licence expiry'}{files[type] ? ' *' : ' (optional until uploaded)'}<Input required={Boolean(files[type])} type="date" min={new Date().toISOString().slice(0, 10)} value={expiryDates[type]} onChange={event => setExpiryDates(current => ({ ...current, [type]: event.target.value }))} /></label>)}
           </div>
+          <Button type="button" variant="outline" onClick={advanceStep} disabled={busy} className="w-full border-amber-300 text-amber-900">
+            Skip document uploads for now <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>}
 
         {step === 4 && <div className="space-y-4">
@@ -483,7 +487,7 @@ export default function LiquorOnboardingForm({
           ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><p className="mt-1 font-bold">{value}</p></div>)}</div>
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">Manual review required: identity/selfie match, licence status, till-name ownership, premises distance and product stamp declarations are not verified automatically.</div>
           <label className="flex items-start gap-3 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-700"><input type="checkbox" checked={privacyAcknowledged} onChange={event => setPrivacyAcknowledged(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-amber-500" /><span>I have read the <Link href="/privacy" target="_blank" className="font-bold underline">privacy notice</Link> and agree to submit these business details and documents for merchant verification. ID, selfie, till and licence information is private and is made available only to authorized reviewers and this business.</span></label>
-          <Button type="button" disabled={busy || !session?.verified || !privacyAcknowledged || !invitationValidated || (!documentsMayBeDeferred && uploadTypes.some(([type]) => !files[type]))} onClick={() => void submitApplication()} className="h-12 w-full rounded-xl bg-amber-400 font-black uppercase text-slate-950 hover:bg-amber-300">
+          <Button type="button" disabled={busy || !session?.verified || !privacyAcknowledged || !invitationValidated} onClick={() => void submitApplication()} className="h-12 w-full rounded-xl bg-amber-400 font-black uppercase text-slate-950 hover:bg-amber-300">
             {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting…</> : 'Submit application for review'}
           </Button>
         </div>}
@@ -491,15 +495,7 @@ export default function LiquorOnboardingForm({
         {error && <p role="alert" className="mt-5 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
         <div className="mt-7 flex justify-between border-t border-slate-100 pt-5">
           <Button type="button" variant="outline" disabled={step === 0 || busy} onClick={() => setStep(value => value - 1)}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>
-          {step < steps.length - 1 && <Button type="button" disabled={busy} onClick={() => {
-            const validationError = getStepValidationError();
-            if (validationError) {
-              setError(validationError);
-              return;
-            }
-            setError('');
-            setStep(value => value + 1);
-          }} className="bg-amber-400 font-black text-slate-950 hover:bg-amber-300">Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+          {step < steps.length - 1 && <Button type="button" disabled={busy} onClick={advanceStep} className="bg-amber-400 font-black text-slate-950 hover:bg-amber-300">Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>}
         </div>
       </section>
       <p className="mt-5 text-center text-xs text-slate-400">Licensing rules can change. Seek Kenyan legal advice before launch.</p>

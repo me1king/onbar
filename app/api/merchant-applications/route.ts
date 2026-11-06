@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
@@ -19,6 +19,8 @@ import {
   type MerchantOperatingHours
 } from '@/lib/merchantAvailability';
 import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
+import { getPublicBaseUrl } from '@/lib/utils';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -605,7 +607,8 @@ export async function POST(request: Request) {
   }
 
   const missingRequiredTypes = getMissingMerchantDocumentTypes(requiredTypes, fileEntries);
-  if (missingRequiredTypes.length && !onboardingControls.allow_document_deferral) {
+  const isLiquorRetailerApplication = businessTypeValue === 'bar' && vendorTypeValue === 'retailer' && Boolean(alcoholOnboarding);
+  if (missingRequiredTypes.length && !onboardingControls.allow_document_deferral && !isLiquorRetailerApplication) {
     const applicableRequirements = resolveMerchantDocumentRequirements(
       (configuredRequirements || []) as MerchantDocumentRequirement[],
       businessTypeValue,
@@ -624,6 +627,9 @@ export async function POST(request: Request) {
   }
 
   const applicationId = crypto.randomUUID();
+  const documentsDueAt = missingRequiredTypes.length
+    ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    : null;
   const uploadedPaths: string[] = [];
   try {
     const documents: MerchantApplicationDocument[] = [];
@@ -679,6 +685,7 @@ export async function POST(request: Request) {
       ...(alcoholOnboarding ? { alcohol_onboarding: alcoholOnboarding } : {}),
       documents,
       documents_deferred: missingRequiredTypes.length > 0,
+      ...(documentsDueAt ? { documents_due_at: documentsDueAt } : {}),
       privacy_notice_version: 'merchant-application-v1',
       privacy_acknowledged_at: new Date().toISOString(),
       status: 'submitted'
@@ -715,7 +722,68 @@ export async function POST(request: Request) {
       });
       if (completionError) throw new Error(`Could not link the branch application to its business account: ${completionError.message}`);
     }
-    return NextResponse.json({ id: applicationId, status: 'submitted' }, { status: 201 });
+
+    let documentsUploadUrl: string | undefined;
+    let documentsUploadEmailSent = false;
+    let documentsUploadWarning: string | undefined;
+    if (missingRequiredTypes.length) {
+      const uploadToken = randomBytes(32).toString('base64url');
+      const uploadTokenHash = createHash('sha256').update(uploadToken).digest('hex');
+      const { error: linkError } = await database.from('merchant_document_upload_links').insert({
+        application_id: applicationId,
+        token_hash: uploadTokenHash,
+        expires_at: documentsDueAt,
+        created_by: 'applicant_submission'
+      });
+      if (linkError) {
+        console.error('[MerchantApplications] Could not create the applicant document upload link:', linkError);
+        documentsUploadWarning = 'Your application was submitted, but we could not create the document link. Contact OnBar support to finish uploading your documents.';
+      } else {
+        const { error: linkEventError } = await database.from('merchant_application_events').insert({
+          application_id: applicationId,
+          event_type: 'document_upload_link_issued',
+          actor: 'system',
+          details: { expires_at: documentsDueAt, source: 'application_submission' }
+        });
+        if (linkEventError) {
+          console.error('[MerchantApplications] Could not audit the applicant document upload link:', linkEventError);
+          const { error: revokeError } = await database.from('merchant_document_upload_links')
+            .update({ revoked_at: new Date().toISOString() })
+            .eq('token_hash', uploadTokenHash);
+          if (revokeError) console.error('[MerchantApplications] Could not revoke unaudited applicant upload link:', revokeError);
+          documentsUploadWarning = 'Your application was submitted, but we could not safely issue the document link. Contact OnBar support to finish uploading your documents.';
+        } else {
+          documentsUploadUrl = `${getPublicBaseUrl()}/merchant/documents?token=${encodeURIComponent(uploadToken)}`;
+          const emailConfig = getTransactionalEmailConfig();
+          if (!emailConfig.configured) {
+            documentsUploadWarning = 'Your application was submitted. Email delivery is not configured, so use the secure link below to upload your documents within seven days.';
+          } else {
+            try {
+              await sendTransactionalEmail({
+                from: emailConfig.from,
+                to: email,
+                subject: `Complete ${businessName}'s OnBar merchant documents`,
+                text: `Your OnBar application was received. Upload the remaining required documents within seven days using this secure link: ${documentsUploadUrl}`,
+                html: `<p>Your OnBar application was received. Upload the remaining required documents within seven days using this secure link:</p><p><a href="${documentsUploadUrl}">Upload your documents</a></p>`,
+                idempotencyKey: `merchant-document-upload-${applicationId}-${uploadTokenHash.slice(0, 16)}`
+              });
+              documentsUploadEmailSent = true;
+            } catch (emailError) {
+              console.error('[MerchantApplications] Could not email the applicant document upload link:', emailError);
+              documentsUploadWarning = 'Your application was submitted, but the email could not be sent. Use the secure link below to upload your documents within seven days.';
+            }
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({
+      id: applicationId,
+      status: 'submitted',
+      documentsUploadUrl,
+      documentsUploadEmailSent,
+      documentsUploadWarning
+    }, { status: 201 });
   } catch (error) {
     console.error('[MerchantApplications] Submission failed:', error);
     if (uploadedPaths.length) {
@@ -732,6 +800,11 @@ export async function POST(request: Request) {
     if (error instanceof Error && /alcohol_onboarding|online_alcohol_licence|government_id|selfie_photo|shopfront_photo|business_permit|supplier_invoice/i.test(error.message)) {
       return NextResponse.json({
         error: 'Liquor retailer onboarding is not installed yet. Run supabase/MERCHANT_LIQUOR_ONBOARDING_MIGRATION.sql after supabase/MERCHANT_OPERATIONS_MIGRATION.sql, then retry.'
+      }, { status: 503 });
+    }
+    if (error instanceof Error && /documents_due_at/i.test(error.message)) {
+      return NextResponse.json({
+        error: 'The seven-day document upload setup is not installed yet. Run supabase/MERCHANT_DOCUMENT_COMPLETION_WINDOW_MIGRATION.sql in Supabase, then try again.'
       }, { status: 503 });
     }
     if (error instanceof Error && /onboarding_lead_id|complete_vendor_onboarding_invite|vendor_onboarding_leads|complete_merchant_business_branch_invite|merchant_business_branch_invites/i.test(error.message)) {
