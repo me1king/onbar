@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import AuthForm from './AuthForm';
 
 type OnboardingStep = 'INTRO' | 'AUTH' | 'PERSONALIZE' | 'COMPLETE';
+const ONBOARDING_REQUEST_TIMEOUT_MS = 8_000;
 
 function continueAffiliateInvitation(router: ReturnType<typeof useRouter>): boolean {
     try {
@@ -62,37 +63,55 @@ export default function PremiumOnboarding({
     const [saveError, setSaveError] = React.useState<string | null>(null);
 
     const anonId = React.useMemo(() => typeof window !== 'undefined' ? localStorage.getItem('ob_anonymous_id') : null, []);
+    const handledAuthUserRef = React.useRef<string | null>(null);
+
+    const continueForUser = React.useCallback(async (authenticatedUserId: string) => {
+        if (handledAuthUserRef.current === authenticatedUserId) return;
+        handledAuthUserRef.current = authenticatedUserId;
+        setUserId(authenticatedUserId);
+        setSaveError(null);
+        if (returnTo) {
+            router.replace(returnTo);
+            return;
+        }
+        if (continueAffiliateInvitation(router)) return;
+
+        if (!supabase) {
+            setStep('PERSONALIZE');
+            return;
+        }
+
+        try {
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('interests')
+                .eq('id', authenticatedUserId)
+                .abortSignal(AbortSignal.timeout(ONBOARDING_REQUEST_TIMEOUT_MS))
+                .maybeSingle();
+            if (error) throw error;
+
+            if (Array.isArray(profile?.interests) && profile.interests.length > 0) {
+                router.replace('/shop');
+                return;
+            }
+            setStep('PERSONALIZE');
+            void OB_OS.track('ONBOARDING_STEP_COMPLETED', {
+                userId: authenticatedUserId,
+                anonymousId: anonId || undefined,
+                details: { step: 'ACCOUNT' }
+            });
+        } catch (error) {
+            console.error('Could not check saved onboarding preferences:', error);
+            setSaveError('We could not load your saved preferences. Choose your preferences below to continue setup.');
+            setStep('PERSONALIZE');
+        }
+    }, [anonId, returnTo, router]);
 
     // 🛡️ [IDENTITY_SYNC] Session Monitor
     // If a session is established (even via background trigger), advance the onboarding.
     React.useEffect(() => {
         const client = supabase;
         if (!client) return;
-
-        const continueForUser = async (authenticatedUserId: string) => {
-            setUserId(authenticatedUserId);
-            if (returnTo) {
-                router.replace(returnTo);
-                return;
-            }
-            if (continueAffiliateInvitation(router)) return;
-            const { data: profile, error } = await client
-                .from('profiles')
-                .select('interests')
-                .eq('id', authenticatedUserId)
-                .maybeSingle();
-            if (error) {
-                console.error('Could not check saved onboarding preferences:', error);
-                setSaveError('We could not load your saved preferences. Please try again.');
-                setStep('PERSONALIZE');
-                return;
-            }
-            if (Array.isArray(profile?.interests) && profile.interests.length > 0) {
-                router.replace('/shop');
-                return;
-            }
-            setStep('PERSONALIZE');
-        };
 
         client.auth.getSession().then(({ data: { session } }) => {
             if (session?.user && (step === 'INTRO' || step === 'AUTH')) {
@@ -110,41 +129,14 @@ export default function PremiumOnboarding({
         });
 
         return () => subscription.unsubscribe();
-    }, [returnTo, router, step]);
+    }, [continueForUser, step]);
 
     React.useEffect(() => {
         OB_OS.track('ONBOARDING_STARTED', { anonymousId: anonId || undefined });
     }, [anonId]);
 
     const handleAuthSuccess = (uId: string) => {
-        setUserId(uId);
-        setSaveError(null);
-        if (returnTo) {
-            router.replace(returnTo);
-            return;
-        }
-        if (continueAffiliateInvitation(router)) return;
-        void (async () => {
-            if (!supabase) {
-                setStep('PERSONALIZE');
-                return;
-            }
-            const { data: profile, error } = await supabase
-                .from('profiles')
-                .select('interests')
-                .eq('id', uId)
-                .maybeSingle();
-            if (error) {
-                console.error('Could not check saved onboarding preferences:', error);
-                setSaveError('We could not load your saved preferences. Please try again.');
-                setStep('PERSONALIZE');
-            } else if (Array.isArray(profile?.interests) && profile.interests.length > 0) {
-                router.replace('/shop');
-            } else {
-                setStep('PERSONALIZE');
-                OB_OS.track('ONBOARDING_STEP_COMPLETED', { userId: uId, anonymousId: anonId || undefined, details: { step: 'ACCOUNT' } });
-            }
-        })();
+        void continueForUser(uId);
     };
 
     const toggleInterest = (id: string) => {
@@ -168,7 +160,8 @@ export default function PremiumOnboarding({
             const { error } = await supabase.from('profiles').update({
                 interests,
                 preferred_vibe: preferredVibe
-            }).eq('id', currentUserId);
+            }).eq('id', currentUserId)
+              .abortSignal(AbortSignal.timeout(ONBOARDING_REQUEST_TIMEOUT_MS));
             if (error) throw error;
 
             void OB_OS.track('PREFERENCES_UPDATED', { userId: currentUserId, details: { interests, preferredVibe } });
