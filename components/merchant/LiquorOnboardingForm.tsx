@@ -73,6 +73,7 @@ export default function LiquorOnboardingForm({
   const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
   const [catalogueError, setCatalogueError] = useState('');
   const [files, setFiles] = useState<Record<string, File>>({});
+  const [fileInputResetKey, setFileInputResetKey] = useState(0);
   const [expiryDates, setExpiryDates] = useState({ liquor_licence: '', online_alcohol_licence: '' });
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [form, setForm] = useState({
@@ -202,12 +203,28 @@ export default function LiquorOnboardingForm({
     setProductDetails(current => ({ ...current, [id]: { ...current[id], ...patch } }));
   };
 
+  const getLicenceDetailsValidationError = () => {
+    if (!/^NCC\/OFF\/\d{4}\/\d{5}$/.test(form.countyLicenceNumber.trim())) {
+      return 'Enter the county off-licence in the format NCC/OFF/YYYY/12345.';
+    }
+    if (form.onlineLicenceNumber.trim().length < 4) return 'Enter the Nairobi online alcohol licence reference.';
+    return null;
+  };
+
   const advanceStep = () => {
     const validationError = getStepValidationError();
     if (validationError) {
       setError(validationError);
       return;
     }
+    setError('');
+    setStep(value => value + 1);
+  };
+
+  const skipDocumentUploads = () => {
+    setFiles({});
+    setFileInputResetKey(value => value + 1);
+    setExpiryDates({ liquor_licence: '', online_alcohol_licence: '' });
     setError('');
     setStep(value => value + 1);
   };
@@ -227,10 +244,8 @@ export default function LiquorOnboardingForm({
       if (!/^\d+(\.\d+)?$/.test(form.distanceToSchoolMeters)) return 'Enter the approximate distance to the nearest school or place of worship.';
     }
     if (step === 3) {
-      if (!/^NCC\/OFF\/\d{4}\/\d{5}$/.test(form.countyLicenceNumber)) {
-        return 'Enter the county off-licence in the format NCC/OFF/YYYY/12345.';
-      }
-      if (form.onlineLicenceNumber.trim().length < 4) return 'Enter the Nairobi online alcohol licence reference.';
+      const licenceError = getLicenceDetailsValidationError();
+      if (licenceError) return licenceError;
       if (files.liquor_licence && !expiryDates.liquor_licence) return 'Enter the county licence expiry date.';
       if (files.online_alcohol_licence && !expiryDates.online_alcohol_licence) return 'Enter the online licence expiry date.';
     }
@@ -253,6 +268,12 @@ export default function LiquorOnboardingForm({
   };
 
   const submitApplication = async () => {
+    const licenceError = getLicenceDetailsValidationError();
+    if (licenceError) {
+      setError(`${licenceError} You can defer the document uploads, but both licence references are required before submission.`);
+      setStep(3);
+      return;
+    }
     if (!session?.verified) {
       setError('Sign in with a verified OnlineBar account before submitting.');
       return;
@@ -405,7 +426,7 @@ export default function LiquorOnboardingForm({
           <h2 className="text-xl font-black">Identity and owner documents</h2>
           <p className="text-sm text-slate-500">Only the last four ID digits are recorded in the application. The ID image and selfie go to a private document store for authorized admin review; no automatic face match is claimed.</p>
           <Input required inputMode="numeric" maxLength={4} placeholder="Last 4 digits of National ID" value={form.idLast4} onChange={event => updateForm('idLast4', event.target.value.replace(/\D/g, '').slice(0, 4))} />
-          {uploadTypes.slice(0, 2).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input type="file" accept={type === 'selfie_photo' ? 'image/jpeg,image/png' : 'image/jpeg,image/png,application/pdf'} onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
+          {uploadTypes.slice(0, 2).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input key={`${type}-${fileInputResetKey}`} type="file" accept={type === 'selfie_photo' ? 'image/jpeg,image/png' : 'image/jpeg,image/png,application/pdf'} onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
         </div>}
 
         {step === 2 && <div className="space-y-4">
@@ -416,23 +437,23 @@ export default function LiquorOnboardingForm({
           <div className="grid gap-3 sm:grid-cols-2"><Input type="number" step="any" min="-90" max="90" placeholder="Latitude (optional)" value={form.latitude} onChange={event => updateForm('latitude', event.target.value)} /><Input type="number" step="any" min="-180" max="180" placeholder="Longitude (optional)" value={form.longitude} onChange={event => updateForm('longitude', event.target.value)} /></div>
           <Input required type="number" min="0" max="100000" placeholder="Approx. metres from nearest school / worship place" value={form.distanceToSchoolMeters} onChange={event => updateForm('distanceToSchoolMeters', event.target.value)} />
           {Number(form.distanceToSchoolMeters) < 300 && form.distanceToSchoolMeters !== '' && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">This self-reported distance will be flagged for manual review.</p>}
-          {uploadTypes.slice(2, 3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input type="file" accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
+          {uploadTypes.slice(2, 3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input key={`${type}-${fileInputResetKey}`} type="file" accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
         </div>}
 
         {step === 3 && <div className="space-y-4">
           <h2 className="text-xl font-black">Licences and documents</h2>
-          <p className="text-sm text-slate-500">The number format is checked locally. LiquorPay, county, KRA and other government records are not queried automatically.</p>
+          <p className="text-sm text-slate-500">You can skip all file uploads and provide them within seven days after submitting. The county and Nairobi licence reference numbers are still required before submission; their format is checked locally only.</p>
           <Input required placeholder="County off-licence, e.g. NCC/OFF/2026/01482" value={form.countyLicenceNumber} onChange={event => updateForm('countyLicenceNumber', event.target.value.toUpperCase())} />
           <p className="text-xs text-slate-500">Format: NCC/OFF/YYYY/12345</p>
           <Input required placeholder="Nairobi online alcohol licence reference" value={form.onlineLicenceNumber} onChange={event => updateForm('onlineLicenceNumber', event.target.value)} />
           <div className="grid gap-3 sm:grid-cols-2">
-            {uploadTypes.slice(3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input type="file" accept="image/jpeg,image/png,application/pdf" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
+            {uploadTypes.slice(3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input key={`${type}-${fileInputResetKey}`} type="file" accept="image/jpeg,image/png,application/pdf" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {(['liquor_licence', 'online_alcohol_licence'] as const).map(type => <label key={type} className="block text-sm font-bold text-slate-700">{type === 'liquor_licence' ? 'County licence expiry' : 'Online licence expiry'}{files[type] ? ' *' : ' (optional until uploaded)'}<Input required={Boolean(files[type])} type="date" min={new Date().toISOString().slice(0, 10)} value={expiryDates[type]} onChange={event => setExpiryDates(current => ({ ...current, [type]: event.target.value }))} /></label>)}
           </div>
-          <Button type="button" variant="outline" onClick={advanceStep} disabled={busy} className="w-full border-amber-300 text-amber-900">
-            Skip document uploads for now <ArrowRight className="ml-2 h-4 w-4" />
+          <Button type="button" variant="outline" onClick={skipDocumentUploads} disabled={busy} className="w-full border-amber-300 text-amber-900">
+            Skip all file uploads for now <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </div>}
 
