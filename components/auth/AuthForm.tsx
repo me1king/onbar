@@ -25,6 +25,7 @@ type AuthMethod = 'email' | 'phone';
 interface AuthFormProps {
     initialMode?: 'signin' | 'signup';
     onSuccess?: (userId: string) => void;
+    returnTo?: string;
 }
 
 interface AuthError {
@@ -35,7 +36,7 @@ interface AuthError {
   name?: string;
 }
 
-export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthFormProps) {
+export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }: AuthFormProps) {
   const [method, setAuthMethod] = useState<AuthMethod>('email');
   const [isSignUp, setIsSignUp] = useState(initialMode === 'signup');
 
@@ -153,8 +154,8 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
         const referralCode = typeof window !== 'undefined'
           ? sessionStorage.getItem('ob_referral_code')
           : null;
-        let nextPath = '/profile';
-        if (typeof window !== 'undefined') {
+        let nextPath = returnTo || '/profile';
+        if (!returnTo && typeof window !== 'undefined') {
           try {
             const savedRedirect = sessionStorage.getItem('ob_auth_redirect') || '';
             const target = new URL(savedRedirect, window.location.origin);
@@ -635,7 +636,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess }: AuthForm
                 setLoading(true);
                 try {
                     const redirectUrl = new URL('/auth/callback', window.location.origin);
-                    redirectUrl.searchParams.set('next', '/profile');
+                    redirectUrl.searchParams.set('next', returnTo || '/profile');
                     const referralCode = sessionStorage.getItem('ob_referral_code');
                     if (isSignUp && referralCode) redirectUrl.searchParams.set('ref', referralCode);
                     const { error } = await supabase.auth.signInWithOAuth({

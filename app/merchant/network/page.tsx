@@ -1448,7 +1448,7 @@ export default function OnBarPartnerNetworkPage() {
               </button>
             </form>
             <p className="mt-7 border-t border-slate-100 pt-5 text-sm text-slate-600">
-              New to OnBar? <Link href="/auth" className="font-bold text-primary underline">Create a verified OnBar account</Link>, then return here to track your application.
+              New to OnBar? <Link href="/auth?mode=signup" className="font-bold text-primary underline">Create a verified OnBar account</Link>, then return here to track your application.
             </p>
           </section>
         </div>

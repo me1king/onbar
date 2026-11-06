@@ -104,6 +104,8 @@ export default function LiquorOnboardingForm({
   const [documentUploadUrl, setDocumentUploadUrl] = useState('');
   const [documentUploadNotice, setDocumentUploadNotice] = useState('');
   const [invitationValidated, setInvitationValidated] = useState(!inviteToken);
+  const onboardingReturnPath = `/merchant/onboarding?flow=liquor${inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : ''}`;
+  const signInHref = `/auth?mode=signin&next=${encodeURIComponent(onboardingReturnPath)}`;
 
   useEffect(() => {
     if (!inviteToken) {
@@ -356,28 +358,28 @@ export default function LiquorOnboardingForm({
   };
 
   if (submitted) {
-    return <main className="min-h-screen bg-slate-950 px-4 py-12 text-white">
-      <section className="mx-auto max-w-2xl rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
-        <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-400" />
-        <p className="mt-5 text-xs font-black uppercase tracking-[0.2em] text-emerald-300">Application received</p>
+    return <main className="min-h-screen bg-slate-50 px-4 py-12 text-slate-900">
+      <section className="mx-auto max-w-2xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl">
+        <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
+        <p className="mt-5 text-xs font-black uppercase tracking-[0.2em] text-emerald-700">Application received</p>
         <h1 className="mt-2 text-3xl font-black">Your shop is in admin review</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-300">Licence, identity, till-name and premises checks are not performed by an external provider here. OnBar must review the submitted documents and confirm these details before approval. Your shop is not live yet.</p>
-        {documentUploadNotice && <p className="mt-4 rounded-xl border border-amber-300/30 bg-amber-300/10 p-4 text-left text-sm leading-6 text-amber-100">{documentUploadNotice}</p>}
-        {documentUploadUrl && <a href={documentUploadUrl} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-300 px-5 text-sm font-bold text-amber-200 hover:bg-amber-300/10">Upload missing documents</a>}
-        <p className="mt-4 text-xs text-slate-400">Application reference: {submitted}</p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">Licence, identity, till-name and premises checks are not performed by an external provider here. OnBar must review the submitted documents and confirm these details before approval. Your shop is not live yet.</p>
+        {documentUploadNotice && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-950">{documentUploadNotice}</p>}
+        {documentUploadUrl && <a href={documentUploadUrl} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-400 px-5 text-sm font-bold text-amber-900 hover:bg-amber-50">Upload missing documents</a>}
+        <p className="mt-4 text-xs text-slate-500">Application reference: {submitted}</p>
         <Link href="/merchant/network" className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-400 px-5 text-sm font-black text-slate-950">Track application status</Link>
       </section>
     </main>;
   }
 
-  return <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 sm:px-6 sm:py-12">
+  return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:px-6 sm:py-12">
     <div className="mx-auto max-w-4xl">
-      <Link href="/merchant/onboarding" className="inline-flex items-center gap-2 text-sm font-bold text-slate-300 hover:text-white"><ArrowLeft size={16} /> All partner applications</Link>
-      <header className="mb-7 mt-6 rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
-        <div className="flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-400 text-slate-950"><Store /></span><div><p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300">OnBar alcohol retailer</p><h1 className="mt-1 text-2xl font-black sm:text-3xl">Shop onboarding</h1></div></div>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Eight steps to prepare a secure application. Submitted licence numbers are format-checked only; all identity, till, distance and licensing validation remains pending admin review.</p>
+      <Link href="/merchant/onboarding" className="inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-950"><ArrowLeft size={16} /> All partner applications</Link>
+      <header className="mb-7 mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-400 text-slate-950"><Store /></span><div><p className="text-xs font-black uppercase tracking-[0.2em] text-amber-700">OnBar alcohol retailer</p><h1 className="mt-1 text-2xl font-black sm:text-3xl">Shop onboarding</h1></div></div>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">Eight steps to prepare a secure application. Submitted licence numbers are format-checked only; all identity, till, distance and licensing validation remains pending admin review.</p>
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {steps.map((label, index) => <button key={label} type="button" onClick={() => index < step && setStep(index)} className={`rounded-xl px-2 py-3 text-left text-[10px] font-black uppercase sm:text-xs ${step === index ? 'bg-amber-400 text-slate-950' : index < step ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/5 text-slate-400'}`}><span className="block opacity-70">Step {index + 1}</span>{label}</button>)}
+          {steps.map((label, index) => <button key={label} type="button" onClick={() => index < step && setStep(index)} className={`rounded-xl px-2 py-3 text-left text-[10px] font-black uppercase sm:text-xs ${step === index ? 'bg-amber-400 text-slate-950' : index < step ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}><span className="block opacity-70">Step {index + 1}</span>{label}</button>)}
         </div>
       </header>
 
@@ -388,7 +390,7 @@ export default function LiquorOnboardingForm({
         {step === 0 && <div className="space-y-4">
           <h2 className="text-xl font-black">Account and shop</h2>
           <p className="text-sm text-slate-500">A verified OnBar account is used instead of a demo OTP. Check that the signed-in email is the one you want attached to this business.</p>
-          <div className={`rounded-xl p-3 text-sm ${session?.verified ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}><ShieldCheck className="mr-2 inline h-4 w-4" />{session?.verified ? `Verified account: ${session.email}` : <>Sign in and verify your OnlineBar account before submission. <Link href="/auth" className="font-bold underline">Sign in / create account</Link>.</>}</div>
+          <div className={`rounded-xl p-3 text-sm ${session?.verified ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}><ShieldCheck className="mr-2 inline h-4 w-4" />{session?.verified ? `Verified account: ${session.email}` : <>Sign in and verify your OnlineBar account before submission. <Link href={signInHref} className="font-bold underline">Sign in / create account</Link>.</>}</div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Input required placeholder="Registered shop name *" value={form.businessName} onChange={event => updateForm('businessName', event.target.value)} />
             <Input placeholder="Trading name" value={form.tradingName} onChange={event => updateForm('tradingName', event.target.value)} />
@@ -498,7 +500,7 @@ export default function LiquorOnboardingForm({
           {step < steps.length - 1 && <Button type="button" disabled={busy} onClick={advanceStep} className="bg-amber-400 font-black text-slate-950 hover:bg-amber-300">Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>}
         </div>
       </section>
-      <p className="mt-5 text-center text-xs text-slate-400">Licensing rules can change. Seek Kenyan legal advice before launch.</p>
+      <p className="mt-5 text-center text-xs text-slate-600">Licensing rules can change. Seek Kenyan legal advice before launch.</p>
     </div>
   </main>;
 }

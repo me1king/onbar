@@ -45,7 +45,13 @@ function continueAffiliateInvitation(router: ReturnType<typeof useRouter>): bool
     }
 }
 
-export default function PremiumOnboarding({ initialMode = 'signup' }: { initialMode?: 'signin' | 'signup' }) {
+export default function PremiumOnboarding({
+    initialMode = 'signup',
+    returnTo
+}: {
+    initialMode?: 'signin' | 'signup';
+    returnTo?: string;
+}) {
     const router = useRouter();
     const [step, setStep] = React.useState<OnboardingStep>(initialMode === 'signin' ? 'AUTH' : 'INTRO');
     const [authMode, setAuthMode] = React.useState<'signin' | 'signup'>(initialMode);
@@ -65,6 +71,10 @@ export default function PremiumOnboarding({ initialMode = 'signup' }: { initialM
 
         const continueForUser = async (authenticatedUserId: string) => {
             setUserId(authenticatedUserId);
+            if (returnTo) {
+                router.replace(returnTo);
+                return;
+            }
             if (continueAffiliateInvitation(router)) return;
             const { data: profile, error } = await client
                 .from('profiles')
@@ -100,7 +110,7 @@ export default function PremiumOnboarding({ initialMode = 'signup' }: { initialM
         });
 
         return () => subscription.unsubscribe();
-    }, [router, step]);
+    }, [returnTo, router, step]);
 
     React.useEffect(() => {
         OB_OS.track('ONBOARDING_STARTED', { anonymousId: anonId || undefined });
@@ -109,6 +119,10 @@ export default function PremiumOnboarding({ initialMode = 'signup' }: { initialM
     const handleAuthSuccess = (uId: string) => {
         setUserId(uId);
         setSaveError(null);
+        if (returnTo) {
+            router.replace(returnTo);
+            return;
+        }
         if (continueAffiliateInvitation(router)) return;
         void (async () => {
             if (!supabase) {
@@ -226,6 +240,7 @@ export default function PremiumOnboarding({ initialMode = 'signup' }: { initialM
                     <AuthForm
                         initialMode={authMode}
                         onSuccess={handleAuthSuccess}
+                        returnTo={returnTo}
                     />
                 </div>
             </div>
