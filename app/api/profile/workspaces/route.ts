@@ -45,7 +45,7 @@ export async function GET(request: Request) {
   });
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   const user = authData.user;
-  const emailVerified = Boolean(user?.email && (user.email_confirmed_at || user.confirmed_at));
+  const emailVerified = Boolean(user?.email && user.email_confirmed_at);
   if (authError || !user || !(emailVerified || user.phone_confirmed_at)) {
     return NextResponse.json({ error: 'A verified account is required to view workspace access.' }, { status: 401 });
   }

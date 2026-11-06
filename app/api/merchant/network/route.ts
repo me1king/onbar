@@ -11,6 +11,8 @@ type Clients = {
 };
 
 type MerchantContext = {
+  userId: string;
+  email: string | null;
   actor: string;
   database: SupabaseClient;
 };
@@ -53,9 +55,17 @@ async function getMerchantContext(request: Request, clients: Clients): Promise<M
 
   const { data, error } = await clients.auth.auth.getUser(token);
   const user = data.user;
-  if (error || !user?.email || !(user.email_confirmed_at || user.confirmed_at)) return null;
+  const email = user?.email && user.email_confirmed_at
+    ? user.email.trim().toLowerCase()
+    : null;
+  if (error || !user || (!email && !user.phone_confirmed_at)) return null;
 
-  return { actor: user.email.toLowerCase(), database: clients.database };
+  return {
+    userId: user.id,
+    email,
+    actor: email || `account:${user.id}`,
+    database: clients.database
+  };
 }
 
 function isUuid(value: unknown): value is string {
@@ -69,13 +79,23 @@ function validDate(value: unknown): value is string {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
-async function findApplication(database: SupabaseClient, id: unknown, actor: string) {
+async function findApplication(database: SupabaseClient, id: unknown, context: MerchantContext) {
   if (!isUuid(id)) return { application: null, error: null };
+  const fields = 'id, status, email, business_type, vendor_type, offered_goods_pricing, alcohol_onboarding';
+  const { data: linkedApplication, error: linkedError } = await database
+    .from('merchant_applications')
+    .select(fields)
+    .eq('id', id)
+    .eq('account_user_id', context.userId)
+    .maybeSingle();
+  if (linkedError) return { application: null, error: linkedError };
+  if (linkedApplication) return { application: linkedApplication, error: null };
+  if (!context.email) return { application: null, error: null };
   const { data, error } = await database
     .from('merchant_applications')
-    .select('id, status, email, business_type, vendor_type, offered_goods_pricing, alcohol_onboarding')
+    .select(fields)
     .eq('id', id)
-    .eq('email', actor)
+    .eq('email', context.email)
     .maybeSingle();
   return { application: data, error };
 }
@@ -263,16 +283,28 @@ export async function GET(request: Request) {
   if (!context) return NextResponse.json({ error: 'Sign in with a verified OnBar account to access the Partner Workspace.' }, { status: 401 });
 
   try {
-    const { data: applications, error } = await context.database
+    const fields = 'id, merchant_code, business_name, trading_name, business_type, vendor_type, prep_target_minutes, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, offered_goods, offered_goods_pricing, documents, alcohol_onboarding, status, review_note, submitted_at, reviewed_at, updated_at';
+    const { data: linkedApplications, error: linkedError } = await context.database
       .from('merchant_applications')
-      .select('id, merchant_code, business_name, trading_name, business_type, vendor_type, prep_target_minutes, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, offered_goods, offered_goods_pricing, documents, alcohol_onboarding, status, review_note, submitted_at, reviewed_at, updated_at')
-      .eq('email', context.actor)
+      .select(fields)
+      .eq('account_user_id', context.userId)
       .order('submitted_at', { ascending: false })
       .limit(25);
-    if (error) throw error;
+    if (linkedError) throw linkedError;
+    let applications = linkedApplications || [];
+    if (!applications.length && context.email) {
+      const { data: legacyApplications, error: legacyError } = await context.database
+        .from('merchant_applications')
+        .select(fields)
+        .eq('email', context.email)
+        .order('submitted_at', { ascending: false })
+        .limit(25);
+      if (legacyError) throw legacyError;
+      applications = legacyApplications || [];
+    }
 
     const backgroundRefresh = new URL(request.url).searchParams.get('refresh') === '1';
-    if (applications?.length && !backgroundRefresh) {
+    if (applications.length && !backgroundRefresh) {
       const { error: auditError } = await context.database.from('merchant_application_events').insert(
         applications.map(application => ({
           application_id: application.id,
@@ -284,7 +316,7 @@ export async function GET(request: Request) {
       if (auditError) throw auditError;
     }
 
-    const workspaces = await Promise.all((applications || []).map(application =>
+    const workspaces = await Promise.all(applications.map(application =>
       getApplicationWorkspace(context.database, application as unknown as Record<string, unknown>)
     ));
     return NextResponse.json({ applications: workspaces }, {
@@ -314,7 +346,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'A valid request body is required.' }, { status: 400 });
   }
 
-  const { application, error: applicationError } = await findApplication(context.database, body.applicationId, context.actor);
+  const { application, error: applicationError } = await findApplication(context.database, body.applicationId, context);
   if (applicationError) {
     console.error('[MerchantNetwork] Could not verify partner ownership:', applicationError);
     return NextResponse.json({

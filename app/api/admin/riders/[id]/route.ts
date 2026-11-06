@@ -90,7 +90,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .eq('status', 'Delivered')
       .gte('delivered_at', weekStart),
     database.from('orders')
-      .select('id,status,total_price,created_at,delivered_at,delivery_eta_minutes')
+      .select('id,status,total_price,created_at,picked_up_at,delivered_at,delivery_eta_minutes')
       .eq('rider_phone', rider.rider_phone)
       .order('created_at', { ascending: false })
       .limit(10)
@@ -108,15 +108,36 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const sensitiveAllowed = session.role.toLowerCase() === 'owner'
     || hasAdminPermission(session, 'can_view_sensitive_data');
   let documents: { id_number_last4: string | null; license_number: string | null; rider_photo_url: string | null } | null = null;
+  let profileDetails: Record<string, unknown> | null = null;
+  let profileDetailsUnavailable = false;
   if (sensitiveAllowed) {
-    const { data: sensitive, error: sensitiveError } = await database
-      .from('rider_status')
-      .select('id_number,license_number,rider_photo_url')
-      .eq('id', riderId)
-      .maybeSingle();
+    const [
+      { data: sensitive, error: sensitiveError },
+      { data: details, error: detailsError }
+    ] = await Promise.all([
+      database.from('rider_status')
+        .select('id_number,license_number,rider_photo_url')
+        .eq('id', riderId)
+        .maybeSingle(),
+      database.from('rider_profile_details')
+        .select('whatsapp_number,emergency_contact_name,emergency_contact_phone,guarantor_name,guarantor_phone,delivery_zones,max_distance_km,shift_days,shift_start_time,shift_end_time,mpesa_number,mpesa_registered_name,mpesa_name_verified_at,license_expiry_date,insurance_expiry_date,age_check_training_completed_at,rider_agreement_accepted_at,rider_agreement_version')
+        .eq('rider_phone', rider.rider_phone)
+        .maybeSingle()
+    ]);
     if (sensitiveError) {
       console.error('[AdminRiderProfile] Could not load authorized verification details:', sensitiveError);
       return NextResponse.json({ error: 'Authorized rider verification details could not be loaded.' }, { status: 503 });
+    }
+    if (detailsError) {
+      if (detailsError.code === '42P01' || detailsError.code === 'PGRST205'
+        || /rider_profile_details|schema cache/i.test(detailsError.message)) {
+        profileDetailsUnavailable = true;
+      } else {
+        console.error('[AdminRiderProfile] Could not load authorized rider account details:', detailsError);
+        return NextResponse.json({ error: 'Authorized rider account details could not be loaded.' }, { status: 503 });
+      }
+    } else {
+      profileDetails = details;
     }
 
     const photoPath = getVerificationStoragePath(sensitive?.rider_photo_url);
@@ -140,14 +161,29 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     };
   }
 
+  const recentDurations = (recentOrdersResult.data || []).flatMap(order => {
+    if (order.status !== 'Delivered' || !order.picked_up_at || !order.delivered_at) return [];
+    const minutes = (new Date(order.delivered_at).getTime() - new Date(order.picked_up_at).getTime()) / 60_000;
+    return Number.isFinite(minutes) && minutes >= 0
+      ? [{ minutes, deliveredAt: order.delivered_at }]
+      : [];
+  }).filter(order => new Date(order.deliveredAt).getTime() >= now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
   return NextResponse.json({
     rider: { ...rider, created_at: null },
     wallet: walletResult.data || null,
+    profileDetails,
+    profileDetailsRestricted: !sensitiveAllowed,
+    profileDetailsUnavailable,
     performance: {
       total_deliveries: deliveredResult.count || 0,
       deliveries_this_week: weeklyResult.count || 0,
-      average_delivery_minutes: null,
-      on_time_rate: null
+      average_delivery_minutes: recentDurations.length
+        ? Math.round(recentDurations.reduce((total, delivery) => total + delivery.minutes, 0) / recentDurations.length)
+        : null,
+      on_time_rate: recentDurations.length
+        ? Math.round(recentDurations.filter(delivery => delivery.minutes <= 30).length / recentDurations.length * 100)
+        : null
     },
     orders: recentOrdersResult.data || [],
     documents,

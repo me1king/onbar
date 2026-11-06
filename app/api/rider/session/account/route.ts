@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   });
   const { data: authData, error: authError } = await auth.auth.getUser(accessToken);
   const user = authData.user;
-  const verifiedEmail = user?.email && (user.email_confirmed_at || user.confirmed_at)
+  const verifiedEmail = user?.email && user.email_confirmed_at
     ? user.email.trim().toLowerCase()
     : null;
   const verifiedPhone = user?.phone_confirmed_at && user.phone

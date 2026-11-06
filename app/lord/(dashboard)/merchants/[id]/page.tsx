@@ -22,6 +22,7 @@ interface MerchantApplication {
   business_name: string;
   trading_name: string | null;
   business_type: string;
+  vendor_type: string | null;
   email: string;
   phone: string;
   owner_name: string;
@@ -39,6 +40,33 @@ interface MerchantApplication {
   preparation_capacity: number | null;
   delivery_radius_km: number | null;
   collection_available: boolean;
+  offered_goods_pricing: Array<{
+    product_id: number;
+    product_name: string;
+    price: number;
+    currency: string;
+  }> | null;
+  alcohol_onboarding: {
+    nationalIdLast4?: string;
+    countyLicenceNumber?: string;
+    onlineLicenceNumber?: string;
+    mpesaTill?: string;
+    mpesaRegisteredName?: string;
+    distanceToSchoolMeters?: number;
+    schoolReviewRequired?: boolean;
+    products?: Array<{
+      productId: number;
+      size: string;
+      abv: number;
+      exciseStampConfirmed: boolean;
+    }>;
+    rules?: {
+      minimumAge?: number;
+      maximumBottlesPerOrder?: number;
+      schoolBufferMeters?: number;
+    };
+    manualReview?: Record<string, unknown>;
+  } | null;
   documents: MerchantDocument[];
   status: string;
   review_note: string | null;
@@ -237,6 +265,46 @@ export default function MerchantStorePage() {
         <Detail label="Application submitted" value={dateTime(application.submitted_at)} />
         <Detail label="Last reviewed" value={application.reviewed_at ? `${dateTime(application.reviewed_at)} by ${application.reviewed_by || 'Admin'}` : null} />
         <Detail label="Latest review note" value={application.review_note} />
+      </section>
+
+      <section className="mb-6 grid gap-6 xl:grid-cols-2">
+        <Card className="rounded-2xl border-0 p-5 shadow-sm">
+          <h2 className="mb-4 text-sm font-black uppercase text-slate-900">Merchant account mirror · read only</h2>
+          <p className="mb-4 text-xs leading-5 text-slate-500">This admin snapshot uses the merchant&apos;s saved account and workspace records. It does not sign in as the merchant or enable merchant actions.</p>
+          <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Approved catalogue offers</p>
+          <div className="space-y-2">
+            {(application.offered_goods_pricing || []).map(offer => (
+              <div key={offer.product_id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm">
+                <span className="font-semibold text-slate-800">{offer.product_name}</span>
+                <strong className="shrink-0">{offer.currency} {Number(offer.price).toLocaleString()}</strong>
+              </div>
+            ))}
+            {!application.offered_goods_pricing?.length && <p className="text-sm text-slate-500">No catalogue offers recorded.</p>}
+          </div>
+        </Card>
+        {application.alcohol_onboarding && (
+          <Card className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm">
+            <h2 className="mb-2 text-sm font-black uppercase text-slate-900">Alcohol retailer account</h2>
+            <p className="mb-4 text-xs leading-5 text-slate-600">Applicant declarations are shown as submitted. Licence, identity, M-Pesa, location and excise checks are only verified if recorded in the admin review.</p>
+            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+              <Detail label="County licence" value={application.alcohol_onboarding.countyLicenceNumber} />
+              <Detail label="Online licence" value={application.alcohol_onboarding.onlineLicenceNumber} />
+              <Detail label="M-Pesa till" value={application.alcohol_onboarding.mpesaTill} />
+              <Detail label="Registered till name" value={application.alcohol_onboarding.mpesaRegisteredName} />
+              <Detail label="Reported distance to restricted site" value={application.alcohol_onboarding.distanceToSchoolMeters == null ? null : `${application.alcohol_onboarding.distanceToSchoolMeters} m`} />
+              <Detail label="Manual review" value={application.alcohol_onboarding.manualReview?.reviewedAt ? `Completed ${dateTime(String(application.alcohol_onboarding.manualReview.reviewedAt))}` : 'Pending / not recorded'} />
+              <Detail label="Age and order cap" value={application.alcohol_onboarding.rules ? `${application.alcohol_onboarding.rules.minimumAge ?? '—'}+ · up to ${application.alcohol_onboarding.rules.maximumBottlesPerOrder ?? '—'} bottles` : null} />
+              <Detail label="School buffer setting" value={application.alcohol_onboarding.rules?.schoolBufferMeters == null ? null : `${application.alcohol_onboarding.rules.schoolBufferMeters} m`} />
+            </dl>
+            <div className="mt-4 space-y-2">
+              {(application.alcohol_onboarding.products || []).map(product => (
+                <p key={product.productId} className="rounded-lg bg-white p-3 text-xs text-slate-700">
+                  Product #{product.productId} · {product.size} · {product.abv}% ABV · {product.exciseStampConfirmed ? 'Merchant attested excise stamp' : 'Stamp not confirmed'}
+                </p>
+              ))}
+            </div>
+          </Card>
+        )}
       </section>
 
       <section className="mb-6 grid gap-6 xl:grid-cols-2">

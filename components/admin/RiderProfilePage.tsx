@@ -67,6 +67,28 @@ interface RiderProfileData {
     license_number: string | null;
     rider_photo_url: string | null;
   } | null;
+  profileDetails: {
+    whatsapp_number: string | null;
+    emergency_contact_name: string | null;
+    emergency_contact_phone: string | null;
+    guarantor_name: string | null;
+    guarantor_phone: string | null;
+    delivery_zones: string[];
+    max_distance_km: number | null;
+    shift_days: string[];
+    shift_start_time: string | null;
+    shift_end_time: string | null;
+    mpesa_number: string | null;
+    mpesa_registered_name: string | null;
+    mpesa_name_verified_at: string | null;
+    license_expiry_date: string | null;
+    insurance_expiry_date: string | null;
+    age_check_training_completed_at: string | null;
+    rider_agreement_accepted_at: string | null;
+    rider_agreement_version: string | null;
+  } | null;
+  profileDetailsRestricted: boolean;
+  profileDetailsUnavailable: boolean;
 }
 
 function display(value: string | number | null | undefined) {
@@ -189,6 +211,27 @@ export default function RiderProfilePage() {
       <div className="grid gap-5 xl:grid-cols-3">
         <div className="space-y-5 xl:col-span-1">
           <Card className="rounded-2xl p-5 shadow-sm">
+            <h2 className="mb-4 text-base font-bold">Rider account mirror · read only</h2>
+            {data.profileDetailsRestricted
+              ? <p className="text-sm leading-6 text-slate-600">Private contact and payout details are restricted. An owner or staff member with sensitive-data permission can view these fields.</p>
+              : data.profileDetailsUnavailable
+                ? <p className="text-sm leading-6 text-amber-800">Rider profile details are not available yet. Apply supabase/RIDER_PROFILE_DETAILS_MIGRATION.sql to enable this section.</p>
+                : data.profileDetails
+                  ? <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                      <div><dt className="text-xs text-slate-500">WhatsApp</dt><dd className="font-semibold">{display(data.profileDetails.whatsapp_number)}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Emergency contact</dt><dd className="font-semibold">{display(data.profileDetails.emergency_contact_name)} · {display(data.profileDetails.emergency_contact_phone)}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Guarantor</dt><dd className="font-semibold">{display(data.profileDetails.guarantor_name)} · {display(data.profileDetails.guarantor_phone)}</dd></div>
+                      <div><dt className="text-xs text-slate-500">M-Pesa payout</dt><dd className="font-semibold">{display(data.profileDetails.mpesa_number)} · {display(data.profileDetails.mpesa_registered_name)}{data.profileDetails.mpesa_name_verified_at ? ' · verified' : ' · not verified'}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Delivery zones</dt><dd className="font-semibold">{data.profileDetails.delivery_zones?.join(', ') || 'Not recorded'}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Max distance</dt><dd className="font-semibold">{data.profileDetails.max_distance_km === null ? 'Not recorded' : `${data.profileDetails.max_distance_km} km`}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Availability</dt><dd className="font-semibold">{data.profileDetails.shift_days?.join(', ') || 'Not recorded'}{data.profileDetails.shift_start_time && data.profileDetails.shift_end_time ? ` · ${data.profileDetails.shift_start_time.slice(0, 5)}–${data.profileDetails.shift_end_time.slice(0, 5)}` : ''}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Licence / insurance expiry</dt><dd className="font-semibold">{display(data.profileDetails.license_expiry_date)} / {display(data.profileDetails.insurance_expiry_date)}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Age-check training</dt><dd className="font-semibold">{data.profileDetails.age_check_training_completed_at ? new Date(data.profileDetails.age_check_training_completed_at).toLocaleDateString() : 'Not completed'}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Rider agreement</dt><dd className="font-semibold">{data.profileDetails.rider_agreement_accepted_at ? `${data.profileDetails.rider_agreement_version || 'Accepted'} · ${new Date(data.profileDetails.rider_agreement_accepted_at).toLocaleDateString()}` : 'Not accepted'}</dd></div>
+                    </dl>
+                  : <p className="text-sm leading-6 text-slate-600">No additional rider account details have been saved.</p>}
+          </Card>
+          <Card className="rounded-2xl p-5 shadow-sm">
             <h2 className="mb-4 flex items-center gap-2 text-base font-bold"><Truck size={18} />Identity & vehicle</h2>
             <dl className="space-y-3 text-sm">
               <div className="flex justify-between gap-4"><dt className="text-slate-500">Phone</dt><dd className="text-right font-semibold">{displayPhone}</dd></div>
@@ -252,9 +295,9 @@ export default function RiderProfilePage() {
           </Card>
 
           <Card className="rounded-2xl p-5 shadow-sm">
-            <h2 className="mb-3 font-bold">Not yet tracked</h2>
+            <h2 className="mb-3 font-bold">Other profile data</h2>
             <p className="text-sm leading-6 text-slate-600">
-              Delivery time and on-time rate, shifts, emergency contacts, M-Pesa name verification, incidents, equipment, and document expiry dates are not recorded yet. They are intentionally shown as unavailable rather than estimated or filled with sample values.
+              Rating and customer compliments, equipment history, and a complete rider-visible delivery archive are not available in the admin profile yet. The delivery time, on-time rate, contact, payout, zones, shifts, training, and agreement fields above are drawn from saved records where available; missing fields are not estimated.
             </p>
           </Card>
         </div>

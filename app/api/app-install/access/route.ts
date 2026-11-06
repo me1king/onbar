@@ -16,9 +16,14 @@ function isEnabled(value: unknown) {
 }
 
 export async function GET(request: Request) {
-  const role = new URL(request.url).searchParams.get('role');
+  const params = new URL(request.url).searchParams;
+  const role = params.get('role');
+  const workspace = params.get('workspace');
   if (role !== 'rider' && role !== 'merchant') {
     return NextResponse.json({ allowed: false, error: 'Invalid app role.' }, { status: 400 });
+  }
+  if (role === 'merchant' && workspace !== null && workspace !== 'onbar') {
+    return NextResponse.json({ allowed: false, error: 'Invalid merchant workspace.' }, { status: 400 });
   }
   const config = configuration();
   if (!config) return NextResponse.json({ allowed: false, error: 'App access is not configured.' }, { status: 503 });
@@ -49,17 +54,51 @@ export async function GET(request: Request) {
 
   const authClient = createClient(config.url, config.publicKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
-  if (authError || !authData.user?.email_confirmed_at) {
+  const user = authData.user;
+  const email = user?.email && user.email_confirmed_at ? user.email.trim().toLowerCase() : null;
+  if (authError || !user || (!email && !user.phone_confirmed_at)) {
     return NextResponse.json({ allowed: false, reason: 'not_signed_in' }, { status: 401 });
   }
+  if (workspace === 'onbar') {
+    const { data: linkedApplication, error: linkedError } = await database
+      .from('merchant_applications')
+      .select('id')
+      .eq('account_user_id', user.id)
+      .eq('status', 'approved')
+      .limit(1)
+      .maybeSingle();
+    if (linkedError) {
+      console.error('[AppInstall] Could not verify OnBar merchant access:', linkedError);
+      return NextResponse.json({ allowed: false, error: 'Merchant app access could not be checked.' }, { status: 503 });
+    }
+    let application = linkedApplication;
+    if (!application && email) {
+      const { data: legacyApplication, error: legacyError } = await database
+        .from('merchant_applications')
+        .select('id')
+        .eq('email', email)
+        .eq('status', 'approved')
+        .limit(1)
+        .maybeSingle();
+      if (legacyError) {
+        console.error('[AppInstall] Could not verify legacy OnBar merchant access:', legacyError);
+        return NextResponse.json({ allowed: false, error: 'Merchant app access could not be checked.' }, { status: 503 });
+      }
+      application = legacyApplication;
+    }
+    if (!application) return NextResponse.json({ allowed: false, reason: 'not_approved' }, { status: 403 });
+    return NextResponse.json({ allowed: true, role, account: user.id }, { headers: { 'Cache-Control': 'private, no-store' } });
+  }
+
+  if (!email) return NextResponse.json({ allowed: false, reason: 'not_signed_in' }, { status: 401 });
   const { data: membership, error: membershipError } = await database
     .from('mm_merchant_memberships')
     .select('merchant_id')
-    .eq('user_id', authData.user.id)
+    .eq('user_id', user.id)
     .eq('status', 'active')
     .maybeSingle();
   if (membershipError || !membership) {
     return NextResponse.json({ allowed: false, reason: 'not_approved' }, { status: 403 });
   }
-  return NextResponse.json({ allowed: true, role, account: authData.user.id }, { headers: { 'Cache-Control': 'private, no-store' } });
+  return NextResponse.json({ allowed: true, role, account: user.id }, { headers: { 'Cache-Control': 'private, no-store' } });
 }

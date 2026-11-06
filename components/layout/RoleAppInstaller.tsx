@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Download, Smartphone, X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { marketSupabase } from '@/lib/marketSupabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -27,13 +28,14 @@ const appConfig: Record<AppRole, { manifest: string; name: string; description: 
 
 function getRole(pathname: string | null): AppRole | null {
   if (pathname?.startsWith('/rider/')) return 'rider';
-  if (pathname?.startsWith('/merchant/dashboard')) return 'merchant';
+  if (pathname === '/merchant/network' || pathname?.startsWith('/merchant/dashboard')) return 'merchant';
   return null;
 }
 
 export default function RoleAppInstaller() {
   const pathname = usePathname();
   const role = getRole(pathname);
+  const isOnBarMerchant = role === 'merchant' && pathname === '/merchant/network';
   const [promptEvent, setPromptEvent] = React.useState<BeforeInstallPromptEvent | null>(null);
   const [visible, setVisible] = React.useState(false);
   const [ios, setIos] = React.useState(false);
@@ -64,12 +66,17 @@ export default function RoleAppInstaller() {
     };
     window.addEventListener('beforeinstallprompt', onPrompt);
     async function checkAccess() {
+      if (!role) return;
       try {
         const token = role === 'rider'
           ? localStorage.getItem('ob_rider_token')
-          : (await marketSupabase?.auth.getSession())?.data.session?.access_token;
+          : isOnBarMerchant
+            ? (await supabase?.auth.getSession())?.data.session?.access_token
+            : (await marketSupabase?.auth.getSession())?.data.session?.access_token;
         if (!token) return;
-        const response = await fetch(`/api/app-install/access?role=${role}`, {
+        const query = new URLSearchParams({ role });
+        if (isOnBarMerchant) query.set('workspace', 'onbar');
+        const response = await fetch(`/api/app-install/access?${query}`, {
           headers: { Authorization: `Bearer ${token}` },
           cache: 'no-store'
         });
@@ -85,7 +92,7 @@ export default function RoleAppInstaller() {
     }
     void checkAccess();
     return () => { active = false; window.removeEventListener('beforeinstallprompt', onPrompt); };
-  }, [role]);
+  }, [isOnBarMerchant, role]);
 
   if (!role || standalone || !visible) return null;
   const config = appConfig[role];

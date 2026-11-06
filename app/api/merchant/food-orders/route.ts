@@ -9,6 +9,11 @@ type Clients = {
   database: SupabaseClient;
 };
 
+type MerchantAccount = {
+  id: string;
+  email: string;
+};
+
 function getClients(): Clients | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -32,25 +37,44 @@ async function authorize(request: Request) {
   const token = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return { error: 'Sign in to view your food orders.', status: 401 as const };
   const { data, error } = await clients.auth.auth.getUser(token);
-  const email = data.user?.email?.toLowerCase();
-  if (error || !email || !(data.user?.email_confirmed_at || data.user?.confirmed_at)) {
+  const user = data.user;
+  const email = user?.email && user.email_confirmed_at
+    ? user.email.trim().toLowerCase()
+    : null;
+  if (error || !user || (!email && !user.phone_confirmed_at)) {
     return { error: 'A verified merchant account is required.', status: 401 as const };
   }
+  const account: MerchantAccount = { id: user.id, email: email || '' };
 
   const applicationId = new URL(request.url).searchParams.get('applicationId') || '';
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(applicationId)) {
     return { error: 'Choose a valid merchant business.', status: 400 as const };
   }
 
-  const { data: application, error: applicationError } = await clients.database
+  const fields = 'id, status, email, business_type, vendor_type, offered_goods_pricing';
+  const { data: linkedApplication, error: linkedError } = await clients.database
     .from('merchant_applications')
-    .select('id, status, email, business_type, vendor_type, offered_goods_pricing')
+    .select(fields)
     .eq('id', applicationId)
-    .eq('email', email)
+    .eq('account_user_id', account.id)
     .maybeSingle();
-  if (applicationError) {
-    console.error('[MerchantFoodOrders] Could not verify merchant ownership:', applicationError);
+  if (linkedError) {
+    console.error('[MerchantFoodOrders] Could not verify merchant account ownership:', linkedError);
     return { error: 'Your merchant access could not be verified.', status: 503 as const };
+  }
+  let application = linkedApplication;
+  if (!application && account.email) {
+    const { data: legacyApplication, error: legacyError } = await clients.database
+      .from('merchant_applications')
+      .select(fields)
+      .eq('id', applicationId)
+      .eq('email', account.email)
+      .maybeSingle();
+    if (legacyError) {
+      console.error('[MerchantFoodOrders] Could not verify legacy merchant ownership:', legacyError);
+      return { error: 'Your merchant access could not be verified.', status: 503 as const };
+    }
+    application = legacyApplication;
   }
   if (!application || application.status !== 'approved') {
     return { error: 'An approved business linked to your account is required.', status: 404 as const };
