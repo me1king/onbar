@@ -86,11 +86,11 @@ export async function GET(request: Request) {
   const verifiedPhone = user.phone_confirmed_at && user.phone
     ? normalizeTicketPhoneNumber(user.phone)
     : null;
-  let riderApproved = false;
+  const riderCandidates: Array<{ rider_phone: string; rider_name: string; rider_email?: string | null }> = [];
   if (verifiedEmail) {
     const { data: riders, error: ridersError } = await database
       .from('rider_status')
-      .select('rider_phone, rider_email, verification_status')
+      .select('rider_phone, rider_name, rider_email, verification_status')
       .eq('verification_status', 'Verified')
       .eq('rider_email', verifiedEmail)
       .limit(3);
@@ -104,25 +104,32 @@ export async function GET(request: Request) {
         }, { status: 503 });
       }
     } else {
-      riderApproved = (riders || []).some(rider => rider.rider_email?.trim().toLowerCase() === verifiedEmail);
+      riderCandidates.push(...(riders || []).filter(rider =>
+        rider.rider_email?.trim().toLowerCase() === verifiedEmail
+      ));
     }
   }
-  if (!riderApproved && verifiedPhone) {
+  if (verifiedPhone) {
     const variants = phoneVariants(verifiedPhone);
     const { data: riders, error: ridersError } = await database
       .from('rider_status')
-      .select('rider_phone, verification_status')
+      .select('rider_phone, rider_name, verification_status')
       .in('rider_phone', variants)
       .limit(10);
     if (ridersError) {
       console.error('[ProfileWorkspaces] Could not check rider approval:', ridersError);
       return NextResponse.json({ error: 'Your approved workspace access could not be checked.' }, { status: 503 });
     }
-    riderApproved = (riders || []).some(rider =>
+    riderCandidates.push(...(riders || []).filter(rider =>
       rider.verification_status === 'Verified'
       && normalizeTicketPhoneNumber(rider.rider_phone) === verifiedPhone
-    );
+    ));
   }
+  const approvedRiders = [...new Map(riderCandidates
+    .filter(rider => rider.rider_phone)
+    .map(rider => [normalizeTicketPhoneNumber(rider.rider_phone) || rider.rider_phone, rider])
+  ).values()];
+  const riderApproved = approvedRiders.length === 1;
 
   return NextResponse.json({
     merchantApplications: (applications || []).map(application => ({
@@ -143,7 +150,11 @@ export async function GET(request: Request) {
         )
         : []
     })),
-    riderApproved
+    riderApproved,
+    riderName: riderApproved ? approvedRiders[0].rider_name : null,
+    riderAccessUnavailableReason: approvedRiders.length > 1
+      ? 'More than one approved rider account matches this profile. Contact dispatch to correct the account link.'
+      : null
   }, {
     headers: { 'Cache-Control': 'private, no-store, max-age=0' }
   });

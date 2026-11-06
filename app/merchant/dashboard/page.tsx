@@ -461,8 +461,11 @@ export default function MerchantDashboardPage() {
             <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="mm-eyebrow">Vendor routing controls</div>
-                  <h2 className="text-xl font-semibold">Operational coverage & dispatch</h2>
+                  <div className="mm-eyebrow">Local planning preferences</div>
+                  <h2 className="text-xl font-semibold">Delivery preferences</h2>
+                  <p className="mt-2 max-w-3xl text-sm text-amber-800">
+                    These preferences are saved only in this browser and do not change your live merchant settings or order dispatch. Dispatch uses the approved workspace settings managed by Market Operations.
+                  </p>
                 </div>
                 <button
                   type="button"

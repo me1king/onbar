@@ -489,7 +489,7 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
     database.from('rider_status')
       .select('id, rider_name, rider_phone, status, verification_status, area_zone, current_location, last_known_lat, last_known_lng, max_deliveries, health_score, location_updated_at, updated_at'),
     database.from('orders')
-      .select('rider_phone')
+      .select('id,rider_phone,status,customer_name,latitude,longitude,created_at')
       .in('status', ['Dispatched', 'Picked Up', 'Out for Delivery'])
       .not('rider_phone', 'is', null),
     database.from('dispatch_decisions')
@@ -537,8 +537,29 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
   const orders = paidOrders.filter(order => confirmedOrderIds.has(order.id));
   const riders = (ridersResult.data || []) as Rider[];
   const loads = new Map<string, number>();
+  const activeOrdersByRider = new Map<string, Array<{
+    id: number;
+    status: string;
+    customer_name: string;
+    latitude: number | null;
+    longitude: number | null;
+    created_at: string;
+  }>>();
   for (const row of loadResult.data || []) {
-    if (row.rider_phone) loads.set(row.rider_phone, (loads.get(row.rider_phone) || 0) + 1);
+    if (!row.rider_phone) continue;
+    loads.set(row.rider_phone, (loads.get(row.rider_phone) || 0) + 1);
+    const activeOrders = activeOrdersByRider.get(row.rider_phone) || [];
+    const latitude = numberOrNull(row.latitude);
+    const longitude = numberOrNull(row.longitude);
+    activeOrders.push({
+      id: Number(row.id),
+      status: row.status || 'Unknown',
+      customer_name: row.customer_name || 'Customer',
+      latitude: validCoordinates(latitude, longitude) ? latitude : null,
+      longitude: validCoordinates(latitude, longitude) ? longitude : null,
+      created_at: row.created_at
+    });
+    activeOrdersByRider.set(row.rider_phone, activeOrders);
   }
   const demandZones = (zonesResult.data || []) as Array<{
     latitude: number | string | null;
@@ -652,7 +673,8 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
       ...rider,
       wallet: Array.isArray(rider.wallet) ? rider.wallet[0] || null : rider.wallet || null,
       lat: rider.last_known_lat === null || rider.last_known_lat === undefined ? null : Number(rider.last_known_lat),
-      lng: rider.last_known_lng === null || rider.last_known_lng === undefined ? null : Number(rider.last_known_lng)
+      lng: rider.last_known_lng === null || rider.last_known_lng === undefined ? null : Number(rider.last_known_lng),
+      activeOrders: activeOrdersByRider.get(rider.rider_phone) || []
     })),
     demandZones: zonesResult.error ? [] : demandZones.flatMap(zone => {
       const latitude = Number(zone.latitude);

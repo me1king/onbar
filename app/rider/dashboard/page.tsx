@@ -9,7 +9,6 @@ import {
     LogOut,
     PhoneCall,
     Loader2,
-    Star,
     Navigation,
     MessageCircle,
     Zap,
@@ -29,9 +28,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import dynamic from 'next/dynamic';
-import EarningsCenter from '@/components/rider/EarningsCenter';
-import PerformanceHub from '@/components/rider/PerformanceHub';
 import MerchantConnectionsPanel from '@/components/rider/MerchantConnectionsPanel';
+import RiderTerminalProfile from '@/components/rider/RiderTerminalProfile';
 
 const RiderDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
     ssr: false,
@@ -139,8 +137,6 @@ function RiderDashboardContent() {
     // Online Bar Pro States
     const [isOnline, setIsOnline] = useState(false);
     const [rider, setRider] = useState<Record<string, unknown> | null>(null);
-    const [wallet, setWallet] = useState({ balance: 0, total_earned: 0 });
-    const [stats, setStats] = useState({ tier: 'Bronze', rating: 5.0, acceptance: 100, maintenance: 'Healthy' });
     const [activeMission, setActiveMission] = useState<Mission | null>(null);
     const hasActiveMission = activeMission !== null;
 
@@ -178,25 +174,15 @@ function RiderDashboardContent() {
             if (!activeToken) throw new Error('The server did not issue a rider session.');
             const canonicalPhone = sessionData.rider.phone;
 
-            // Fetch Real Stats & Wallet
-            setStats({
-                tier: sessionData.rider.currentTier || 'Bronze',
-                rating: sessionData.rider.rating || 5.0,
-                acceptance: sessionData.rider.acceptanceRate || 100,
-                maintenance: 'Healthy'
-            });
-
             const missionsResponse = await fetch('/api/rider/missions', {
                 headers: { Authorization: `Bearer ${activeToken}` },
                 cache: 'no-store'
             });
             const missionData = await missionsResponse.json() as {
                 missions?: Mission[];
-                wallet?: { balance: number; total_earned: number };
                 error?: string;
             };
             if (!missionsResponse.ok) throw new Error(missionData.error || 'Rider missions could not be loaded.');
-            if (missionData.wallet) setWallet(missionData.wallet);
 
             // AUTO-SELECT ACTIVE MISSION
             const currentMissions = missionData.missions || [];
@@ -571,7 +557,6 @@ function RiderDashboardContent() {
                 });
                 const result = await response.json() as {
                     missions?: Mission[];
-                    wallet?: { balance: number; total_earned: number };
                     error?: string;
                 };
                 if (!response.ok) throw new Error(result.error || 'Rider missions could not be refreshed.');
@@ -595,7 +580,6 @@ function RiderDashboardContent() {
                     }
                 }
                 setMissions(refreshedMissions);
-                if (result.wallet) setWallet(result.wallet);
                 setActiveMission(current => {
                     const activeStatuses = ['Dispatched', 'Picked Up', 'Out for Delivery'];
                     const currentMission = current && refreshedMissions.find(mission =>
@@ -744,12 +728,10 @@ function RiderDashboardContent() {
                 status?: string;
                 error?: string;
                 warning?: string;
-                wallet?: { balance: number; total_earned: number };
             };
             if (!response.ok || !result.status) throw new Error(result.error || 'Delivery status could not be updated.');
 
             setMissions(prev => prev.map(m => m.id === orderId ? { ...m, status: result.status! } : m));
-            if (result.wallet) setWallet(result.wallet);
             if (result.status === 'Delivered') {
                 setActiveMission(null);
                 setCustomerIdVerified(false);
@@ -1107,6 +1089,7 @@ function RiderDashboardContent() {
                 {gpsMessage && <p role="status" className="mx-auto mt-2 max-w-7xl text-[11px] text-white/50">{gpsMessage}</p>}
             </header>
 
+            <RiderTerminalProfile token={sessionToken} riderName={riderName} phone={phone} isOnline={isOnline} accentColor={accentColor}>
             <div className="mx-auto grid max-w-7xl gap-5 p-4 sm:p-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.85fr)]">
                 <section className="space-y-5">
                     <div className="relative h-[288px] overflow-hidden rounded-2xl border border-white/10 bg-[#101614] sm:h-[340px]">
@@ -1349,28 +1332,17 @@ function RiderDashboardContent() {
                 <aside className="space-y-5">
                     {sessionToken && <MerchantConnectionsPanel sessionToken={sessionToken} accentColor={accentColor} />}
                     <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
-                        <div className="flex items-center justify-between gap-3">
-                            <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white/70">Rider profile</h2>
-                            <span className="flex items-center gap-1 text-xs font-bold text-amber-300"><Star className="h-3.5 w-3.5 fill-current" /> {stats.rating}</span>
+                        <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-white/65"><Palette className="h-4 w-4" /> Terminal color</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {RIDER_ACCENT_PRESETS.map(color => (
+                                <button key={color} type="button" aria-label={`Choose ${color} accent`} aria-pressed={accentColor === color} onClick={() => void saveAccentColor(color)} className={`h-8 w-8 rounded-full border-2 ${accentColor === color ? 'border-white' : 'border-transparent'}`} style={{ backgroundColor: color }} />
+                            ))}
+                            <label aria-label="Choose custom accent color" className="relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10">
+                                <Palette className="h-4 w-4 text-white/70" />
+                                <input type="color" value={accentColor} onChange={event => void saveAccentColor(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                            </label>
                         </div>
-                        <div className="mt-4 grid grid-cols-2 gap-3">
-                            <div className="rounded-xl bg-black/20 p-3"><p className="text-[9px] uppercase tracking-widest text-white/40">Tier</p><p className="mt-1 font-bold">{stats.tier}</p></div>
-                            <div className="rounded-xl bg-black/20 p-3"><p className="text-[9px] uppercase tracking-widest text-white/40">Wallet</p><p className="mt-1 font-bold">{formatKsh(wallet.balance)}</p></div>
-                        </div>
-                        <PerformanceHub tier={stats.tier} rating={stats.rating} acceptance={stats.acceptance} maintenanceStatus={stats.maintenance} />
-                        <div className="mt-5 border-t border-white/10 pt-4">
-                            <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-white/65"><Palette className="h-4 w-4" /> Terminal color</div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                {RIDER_ACCENT_PRESETS.map(color => (
-                                    <button key={color} type="button" aria-label={`Choose ${color} accent`} aria-pressed={accentColor === color} onClick={() => void saveAccentColor(color)} className={`h-8 w-8 rounded-full border-2 ${accentColor === color ? 'border-white' : 'border-transparent'}`} style={{ backgroundColor: color }} />
-                                ))}
-                                <label aria-label="Choose custom accent color" className="relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10">
-                                    <Palette className="h-4 w-4 text-white/70" />
-                                    <input type="color" value={accentColor} onChange={event => void saveAccentColor(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                                </label>
-                            </div>
-                            {accentSaveMessage && <p role="status" className="mt-2 text-[11px] text-white/50">{accentSaveMessage}</p>}
-                        </div>
+                        {accentSaveMessage && <p role="status" className="mt-2 text-[11px] text-white/50">{accentSaveMessage}</p>}
                     </section>
 
                     <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
@@ -1398,10 +1370,10 @@ function RiderDashboardContent() {
                         </div>
                     </section>
 
-                    <EarningsCenter balance={wallet.balance} totalEarned={wallet.total_earned} orders={missions} />
                     <Link href="/rider/onboarding" className="block rounded-xl border border-white/10 px-4 py-3 text-center text-xs font-bold text-white/45 hover:text-white">Rider account and onboarding</Link>
                 </aside>
             </div>
+            </RiderTerminalProfile>
             </div>
         </main>
     );

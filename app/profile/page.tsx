@@ -139,6 +139,8 @@ interface WorkspaceAccess {
     offeredGoodsPricing: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
   }>;
   riderApproved: boolean;
+  riderName: string | null;
+  riderAccessUnavailableReason: string | null;
 }
 
 interface Coupon {
@@ -227,7 +229,9 @@ export default function ProfilePage() {
     loading: true,
     error: null,
     merchantApplications: [],
-    riderApproved: false
+    riderApproved: false,
+    riderName: null,
+    riderAccessUnavailableReason: null
   });
   const [abandonedBag, setAbandonedBag] = useState<AbandonedCart | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -280,6 +284,8 @@ export default function ProfilePage() {
                 const result = await response.json() as {
                     merchantApplications?: WorkspaceAccess['merchantApplications'];
                     riderApproved?: boolean;
+                    riderName?: string | null;
+                    riderAccessUnavailableReason?: string | null;
                     error?: string;
                 };
                 if (!response.ok) throw new Error(result.error || 'Workspace access could not be checked.');
@@ -287,7 +293,9 @@ export default function ProfilePage() {
                     loading: false,
                     error: null,
                     merchantApplications: result.merchantApplications || [],
-                    riderApproved: result.riderApproved === true
+                    riderApproved: result.riderApproved === true,
+                    riderName: result.riderName || null,
+                    riderAccessUnavailableReason: result.riderAccessUnavailableReason || null
                 });
             } catch (workspaceError) {
                 console.error('[Profile] Could not load approved workspace access:', workspaceError);
@@ -295,7 +303,9 @@ export default function ProfilePage() {
                     loading: false,
                     error: workspaceError instanceof Error ? workspaceError.message : 'Workspace access could not be checked.',
                     merchantApplications: [],
-                    riderApproved: false
+                    riderApproved: false,
+                    riderName: null,
+                    riderAccessUnavailableReason: null
                 });
             }
         })();
@@ -912,15 +922,14 @@ export default function ProfilePage() {
             <Zap className="absolute -bottom-10 -right-10 h-64 w-64 text-slate-100/50 rotate-12 -z-0" />
         </header>
 
-        {(workspaceAccess.loading || workspaceAccess.error || workspaceAccess.merchantApplications.length > 0 || workspaceAccess.riderApproved) && (
-            <section id="workspaces" aria-labelledby="workspaces-title" className="scroll-mt-24 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+        <section id="workspaces" aria-labelledby="workspaces-title" className="scroll-mt-24 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
                 <div className="flex items-start gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                         <Store size={22} />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <h2 id="workspaces-title" className="text-lg font-black uppercase tracking-tight text-foreground">Your workspaces</h2>
-                        <p className="mt-1 text-sm text-slate-500">Dashboard access appears here after OnBar approves the matching business or rider account.</p>
+                        <h2 id="workspaces-title" className="text-lg font-black uppercase tracking-tight text-foreground">Your rider & merchant terminals</h2>
+                        <p className="mt-1 text-sm text-slate-500">Approved workspaces appear here automatically when your verified account matches the phone or email on your application.</p>
                         {workspaceAccess.loading ? (
                             <p role="status" className="mt-4 text-sm text-slate-500">Checking approved workspace access…</p>
                         ) : workspaceAccess.error ? (
@@ -935,7 +944,7 @@ export default function ProfilePage() {
                                             href="/merchant/network"
                                             className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-xs font-black uppercase tracking-wide text-white transition hover:opacity-90"
                                         >
-                                            <Store size={15} /> {application.businessName} workspace
+                                            <Store size={15} /> Open {application.businessName} merchant terminal
                                         </Link>
                                         <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Goods offered</p>
                                         {application.offeredGoodsPricing.length ? (
@@ -973,17 +982,37 @@ export default function ProfilePage() {
                                             href="/rider/dashboard?account=1"
                                             className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-foreground transition hover:border-primary/40 hover:text-primary"
                                         >
-                                            <Truck size={15} /> Open rider terminal
+                                            <Truck size={15} /> Open {workspaceAccess.riderName ? `${workspaceAccess.riderName}'s` : 'your'} rider terminal
                                         </Link>
                                         <p className="mt-2 text-xs text-slate-500">You can return here anytime. The terminal opens with this verified account; your approval PIN remains available as a backup sign-in.</p>
                                     </div>
                                 )}
+                                {workspaceAccess.riderAccessUnavailableReason && (
+                                    <p role="alert" className="w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                                        {workspaceAccess.riderAccessUnavailableReason}
+                                    </p>
+                                )}
+                                {!workspaceAccess.riderApproved
+                                    && !workspaceAccess.merchantApplications.some(application => application.status === 'approved')
+                                    && !workspaceAccess.riderAccessUnavailableReason && (
+                                        <div className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                            <p className="text-sm font-semibold text-slate-700">No approved terminals are linked to this account yet.</p>
+                                            <p className="mt-1 text-xs text-slate-500">Once your rider or merchant application is approved, sign in with the same verified email or phone and the terminal will appear here.</p>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <Link href="/rider/onboarding" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-primary/40 hover:text-primary">
+                                                    <Truck size={14} /> Rider application
+                                                </Link>
+                                                <Link href="/merchant/onboarding" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-primary/40 hover:text-primary">
+                                                    <Store size={14} /> Merchant application
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    )}
                             </div>
                         )}
                     </div>
                 </div>
             </section>
-        )}
 
         {/* 📦 MY ORDERS & DISPATCH HISTORY */}
         <section id="orders" className="space-y-6 scroll-mt-24">

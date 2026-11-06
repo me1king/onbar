@@ -66,10 +66,18 @@ interface Rider {
     area_zone: string;
     max_deliveries: number;
     weekly_salary: number;
-    health_score: number;
+    health_score: number | null;
     runner_xp: number;
     runner_level: number;
     acceptance_rate?: number;
+    activeOrders: Array<{
+        id: number;
+        status: string;
+        customer_name: string;
+        latitude: number | null;
+        longitude: number | null;
+        created_at: string;
+    }>;
     wallet?: { balance: number; total_earned: number };
     can_accept_orders: boolean;
     can_reject_orders: boolean;
@@ -268,9 +276,12 @@ export default function AdminDispatchPage() {
         const delivering = riders.filter(r => r.status === 'Delivering').length;
         const standby = riders.filter(r => r.status === 'Idle').length;
 
-        const avgHealth = total > 0
-            ? Math.round(riders.reduce((sum, r) => sum + (r.health_score || 100), 0) / total)
-            : 100;
+        const healthScores = riders.flatMap(r =>
+            typeof r.health_score === 'number' && Number.isFinite(r.health_score) ? [r.health_score] : []
+        );
+        const avgHealth = healthScores.length
+            ? Math.round(healthScores.reduce((sum, score) => sum + score, 0) / healthScores.length)
+            : null;
 
         return { total, active, delivering, standby, avgHealth };
     }, [riders]);
@@ -524,7 +535,7 @@ export default function AdminDispatchPage() {
                     { label: 'Active', val: stats.active, icon: Activity },
                     { label: 'Delivering', val: stats.delivering, icon: Truck },
                     { label: 'Standby', val: stats.standby, icon: Zap },
-                    { label: 'Team Health', val: `${stats.avgHealth}%`, icon: ShieldCheck },
+                    { label: 'Average health score', val: stats.avgHealth === null ? 'Not tracked' : `${stats.avgHealth}%`, icon: ShieldCheck },
                 ].map((item) => (
                     <Card key={item.label} className="p-6 rounded-3xl border border-border bg-card shadow-sm flex items-center gap-4 group hover:shadow-xl transition-all h-full">
                         <div className="h-12 w-12 rounded-xl bg-primary/5 flex items-center justify-center text-primary transition-transform group-hover:scale-110">
@@ -1029,43 +1040,54 @@ export default function AdminDispatchPage() {
                                 </div>
                             )}
 
-                            {selectedRider.status === 'Delivering' && (
+                            {selectedRider.activeOrders.length > 0 && (
                                 <div className="p-8 rounded-[2.5rem] bg-primary/5 border-2 border-primary/20 space-y-8 relative overflow-hidden">
                                     <div className="flex items-center justify-between relative z-10">
                                         <div className="flex items-center gap-3">
                                             <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-white"><Package className="h-5 w-5" /></div>
-                                            <h3 className="text-lg font-black uppercase text-foreground">Mission Live</h3>
+                                            <h3 className="text-lg font-black uppercase text-foreground">Active deliveries</h3>
                                         </div>
-                                        <span className="px-3 py-1 bg-primary text-white text-[8px] font-black rounded-full animate-pulse uppercase">Tactical Pursuit</span>
+                                        <span className="px-3 py-1 bg-primary text-white text-[8px] font-black rounded-full uppercase">{selectedRider.activeOrders.length} assigned</span>
                                     </div>
 
-                                    <div className="space-y-6 relative z-10">
-                                        <div className="flex justify-between items-center pb-4 border-b border-primary/10">
-                                            <span className="text-[10px] font-black uppercase text-muted-foreground">Active Order</span>
-                                            <span className="text-xs font-black text-foreground">#10492</span>
-                                        </div>
-                                        <div className="flex justify-between items-center pb-4 border-b border-primary/10">
-                                            <span className="text-[10px] font-black uppercase text-muted-foreground">Payload</span>
-                                            <span className="text-xs font-bold text-foreground truncate max-w-[150px]">AMAYA AM-05 + 1 Other</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[10px] font-black uppercase text-muted-foreground">ETA to Delivery</span>
-                                            <span className="text-sm font-black text-primary uppercase">12 Minutes</span>
-                                        </div>
+                                    <div className="space-y-4 relative z-10">
+                                        {selectedRider.activeOrders.map(order => {
+                                            const hasDestination = order.latitude !== null && order.longitude !== null;
+                                            const hasOrigin = selectedRider.lat !== null && selectedRider.lat !== undefined
+                                                && selectedRider.lng !== null && selectedRider.lng !== undefined
+                                                && selectedRider.lat >= -90 && selectedRider.lat <= 90
+                                                && selectedRider.lng >= -180 && selectedRider.lng <= 180;
+                                            const mapUrl = hasDestination
+                                                ? `https://www.google.com/maps/dir/?api=1${hasOrigin ? `&origin=${selectedRider.lat},${selectedRider.lng}` : ''}&destination=${order.latitude},${order.longitude}&travelmode=driving`
+                                                : null;
+                                            return (
+                                                <div key={order.id} className="rounded-xl border border-primary/10 bg-background/70 p-4">
+                                                    <div className="flex justify-between gap-3 text-sm">
+                                                        <span className="font-black">Order #{order.id}</span>
+                                                        <span className="text-right font-semibold text-primary">{order.status}</span>
+                                                    </div>
+                                                    <p className="mt-1 text-xs text-muted-foreground">Customer: {order.customer_name}</p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        Delivery ETA is not available from the current live data.
+                                                    </p>
+                                                    {mapUrl && (
+                                                        <Button asChild variant="outline" className="mt-3 w-full">
+                                                            <a href={mapUrl} target="_blank" rel="noreferrer">Open delivery destination</a>
+                                                        </Button>
+                                                    )}
+                                                    {!hasDestination && <p className="mt-2 text-xs text-amber-700">Customer delivery pin is not recorded for this order.</p>}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-
-                                    <Button
-                                        onClick={() => {
-                                            // Real-time redirection to maps if coordinates exist
-                                            window.open(`https://www.google.com/maps/search/?api=1&query=${selectedRider.current_location || 'Nairobi'}`, '_blank');
-                                        }}
-                                        className="w-full h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest relative z-10 shadow-xl shadow-primary/20"
-                                    >
-                                        View Delivery Path
-                                    </Button>
 
                                     <Zap className="absolute -bottom-10 -right-10 h-48 w-48 text-primary/5 rotate-12" />
                                 </div>
+                            )}
+                            {selectedRider.status === 'Delivering' && selectedRider.activeOrders.length === 0 && (
+                                <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                                    Rider status says delivering, but no active assigned order is recorded.
+                                </p>
                             )}
 
                             <div className="space-y-4">
