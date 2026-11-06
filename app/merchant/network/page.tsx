@@ -10,16 +10,22 @@ import {
   Building2,
   CheckCircle2,
   Clock3,
+  CreditCard,
   FileText,
+  History,
   Loader2,
   LogOut,
+  Megaphone,
   PackageCheck,
   Palette,
   RefreshCw,
   ShieldCheck,
+  Star,
   Store,
   TrendingUp,
   Truck,
+  UtensilsCrossed,
+  Users,
   UserRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -163,7 +169,8 @@ type MerchantPerformance = {
   limitations: { responseTime: string; timeouts: string; ratingsAndComplaints: string };
 };
 
-type Section = 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders';
+type Section = 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders'
+  | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff';
 type RiderConnection = {
   id: string;
   phone: string;
@@ -258,6 +265,17 @@ const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'incidents', label: 'Reports', icon: AlertTriangle },
   { id: 'business', label: 'Business profile', icon: Building2 }
 ];
+const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
+  { id: 'food-live', label: 'Live', icon: Store },
+  { id: 'food-menu', label: 'Menu', icon: UtensilsCrossed },
+  { id: 'inventory', label: 'Inventory', icon: Box },
+  { id: 'food-promotions', label: 'Black November Offers', icon: Megaphone },
+  { id: 'food-payments', label: 'Payments', icon: CreditCard },
+  { id: 'food-history', label: 'Order history', icon: History },
+  { id: 'food-reviews', label: 'Reviews', icon: Star },
+  { id: 'food-business', label: 'Business profile', icon: Building2 },
+  { id: 'food-staff', label: 'Staff & riders', icon: Users }
+];
 const weekdayLabels: Record<MerchantWeekday, string> = {
   monday: 'Monday',
   tuesday: 'Tuesday',
@@ -312,6 +330,249 @@ function PerformanceMetricCard({
   );
 }
 
+function FoodMerchantTerminal({
+  section,
+  application,
+  overview,
+  canOperate,
+  working,
+  performance,
+  performanceLoading,
+  performanceError,
+  onAction,
+  onSectionChange
+}: {
+  section: Section;
+  application: PartnerApplication['application'];
+  overview: PartnerApplication;
+  canOperate: boolean;
+  working: boolean;
+  performance: MerchantPerformance | null;
+  performanceLoading: boolean;
+  performanceError: string;
+  onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
+  onSectionChange: (section: Section) => void;
+}) {
+  const [campaignName, setCampaignName] = useState('');
+  const [campaignOffer, setCampaignOffer] = useState('');
+  const [campaignStart, setCampaignStart] = useState('');
+  const [campaignEnd, setCampaignEnd] = useState('');
+  const [campaignDiscount, setCampaignDiscount] = useState('');
+  const currency = (amount: number) => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
+  const currentFulfillment = (order: PartnerOrder) => latestFulfillment(order.fulfillment);
+  const isClosed = (order: PartnerOrder) => ['delivered', 'cancelled', 'rejected'].includes(currentFulfillment(order));
+  const openOrders = overview.orders.filter(order => !isClosed(order));
+  const products = application.offered_goods_pricing;
+  const foodReviewSection = section === 'food-reviews';
+
+  const submitCampaign = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const saved = await onAction({
+      operation: 'request_food_campaign',
+      applicationId: application.id,
+      campaignName,
+      offerDescription: campaignOffer,
+      startDate: campaignStart,
+      endDate: campaignEnd,
+      discountPercent: campaignDiscount === '' ? null : Number(campaignDiscount)
+    }, 'Black November offer request sent to OnBar for review.');
+    if (saved) {
+      setCampaignName('');
+      setCampaignOffer('');
+      setCampaignStart('');
+      setCampaignEnd('');
+      setCampaignDiscount('');
+    }
+  };
+
+  const orderCard = (order: PartnerOrder, allowActions: boolean) => {
+    const latest = currentFulfillment(order);
+    const nextEvents = fulfillmentNext[latest] || [];
+    return <article id={`merchant-order-${order.id}`} key={order.id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest text-amber-400">Order #{order.id}</p>
+          <h3 className="mt-1 font-bold text-white">{order.customer_name || 'Customer'}</h3>
+          <p className="mt-1 text-xs text-zinc-400">{dateTime(order.created_at)} · {order.status}</p>
+        </div>
+        <span className="rounded-full bg-amber-400/10 px-3 py-1.5 text-[10px] font-black uppercase text-amber-300">
+          {fulfillmentLabels[latest] || 'Awaiting response'}
+        </span>
+      </div>
+      <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
+        {order.items.map((item, index) => <p key={`${item.product_name}-${index}`} className="text-sm text-zinc-200">
+          <strong>{item.merchant_quantity} × {item.product_name}</strong>{item.size ? ` · ${item.size}` : ''}
+          <span className="ml-2 text-xs text-zinc-400">{currency(item.selling_price)} each</span>
+        </p>)}
+        <p className="text-xs text-zinc-400">Customer <a className="text-amber-300 underline" href={`tel:${order.customer_phone}`}>{order.customer_phone}</a></p>
+      </div>
+      {allowActions && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2">
+        {nextEvents.map(eventType => <button key={eventType} disabled={working} onClick={() => void onAction({
+          operation: 'fulfillment',
+          applicationId: application.id,
+          orderId: order.id,
+          eventType
+        }, `Order ${order.id}: ${fulfillmentLabels[eventType].toLowerCase()} recorded.`)}
+          className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase disabled:opacity-50 ${eventType === 'rejected' || eventType === 'cancelled' ? 'border border-rose-400/40 text-rose-300' : 'bg-amber-400 text-zinc-950'}`}>
+          {fulfillmentLabels[eventType]}
+        </button>)}
+      </div>}
+    </article>;
+  };
+
+  const shell = (title: string, intro: string, children: React.ReactNode) => <section className="space-y-5 text-zinc-100">
+    <header>
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-400">{application.trading_name || application.business_name}</p>
+      <h2 className="mt-2 text-2xl font-black text-white">{title}</h2>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">{intro}</p>
+    </header>
+    {children}
+  </section>;
+
+  if (section === 'food-live') {
+    const awaiting = overview.orders.filter(order => !currentFulfillment(order)).length;
+    const preparing = overview.orders.filter(order => ['accepted', 'preparing', 'ready', 'handed_to_rider', 'collected'].includes(currentFulfillment(order))).length;
+    return shell('Live orders', 'A live view of orders assigned to your approved business. Update each order as your kitchen prepares and hands it off.', <>
+      <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> Refreshes every 20 seconds</p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ['Needs response', awaiting, Clock3],
+          ['In progress', preparing, UtensilsCrossed],
+          ['Menu items', products.length, Box],
+          ['Open reports', overview.incidents.filter(item => !['resolved', 'closed'].includes(item.status)).length, AlertTriangle]
+        ].map(([label, value, Icon]) => {
+          const MetricIcon = Icon as typeof Store;
+          return <div key={String(label)} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+            <MetricIcon size={18} className="text-amber-400" />
+            <p className="mt-4 text-3xl font-black text-white">{value as number}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-wide text-zinc-400">{label as string}</p>
+          </div>;
+        })}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-lg font-black text-white">Current queue</h3>
+        <button onClick={() => onSectionChange('food-history')} className="text-xs font-bold text-amber-300 hover:text-amber-200">Order history →</button>
+      </div>
+      {openOrders.length ? <div className="grid gap-3 lg:grid-cols-2">{openOrders.map(order => orderCard(order, true))}</div>
+        : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-center text-sm text-zinc-400">No open traced orders are assigned to this business right now.</div>}
+      <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-4 text-xs leading-5 text-zinc-400">
+        Orders shown here are sourced from OnBar’s merchant allocation and inventory trace records. No sample orders or simulated timers are used.
+      </div>
+    </>);
+  }
+
+  if (section === 'food-menu') {
+    const batchTotals = new Map<number, number>();
+    for (const batch of overview.batches) {
+      const current = new Date().toISOString().slice(0, 10);
+      if (!batch.on_hold && (!batch.expiry_at || batch.expiry_at >= current)) {
+        batchTotals.set(batch.product_id, (batchTotals.get(batch.product_id) || 0) + Math.max(0, batch.available_quantity));
+      }
+    }
+    return shell('Menu', 'Products linked to your approved OnBar menu, with the recorded selling price and traceable stock. Contact OnBar to change catalog names or prices.', <>
+      {products.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {products.map(product => {
+          const stock = batchTotals.get(product.product_id) || 0;
+          return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div><p className="font-black text-white">{product.product_name}</p><p className="mt-1 text-xs text-zinc-500">Catalog price {currency(product.listed_price)}</p></div>
+              <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stock > 0 ? 'bg-emerald-400/10 text-emerald-300' : 'bg-rose-400/10 text-rose-300'}`}>{stock > 0 ? 'In stock' : 'No tracked stock'}</span>
+            </div>
+            <p className="mt-5 text-2xl font-black text-amber-300">{currency(product.selling_price)}</p>
+            <p className="mt-1 text-xs text-zinc-400">Recorded batch availability: {stock}</p>
+          </article>;
+        })}
+      </div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No menu products have been linked to this business yet. Contact OnBar to connect approved catalog items.</div>}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+        <div><h3 className="font-bold text-white">Stock and expiry tracking</h3><p className="mt-1 text-xs text-zinc-400">Add received batches, record lot numbers, and review expiry dates.</p></div>
+        <button onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Open inventory</button>
+      </div>
+    </>);
+  }
+
+  if (section === 'food-promotions') {
+    return shell('Black November Offer Promotions', 'Prepare a food offer request for OnBar review. Submitting this form records a campaign request; it does not activate a customer discount or change checkout prices.', <>
+      <div className="rounded-2xl border border-amber-400/30 bg-amber-400/5 p-5 text-sm leading-6 text-amber-100">
+        <strong className="text-amber-300">Review required.</strong> Customer-facing promotion activation and checkout discounting are not currently connected to this merchant workspace. OnBar will review the request before any offer is advertised.
+      </div>
+      <form onSubmit={submitCampaign} className="grid gap-4 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 md:grid-cols-2">
+        <label className="text-xs font-bold text-zinc-300">Campaign name
+          <Input required minLength={3} maxLength={100} value={campaignName} onChange={event => setCampaignName(event.target.value)} placeholder="Black November lunch offer" className="mt-2 border-white/10 bg-[#111214] text-white" />
+        </label>
+        <label className="text-xs font-bold text-zinc-300">Proposed discount percent (optional)
+          <Input type="number" min="1" max="90" step="1" value={campaignDiscount} onChange={event => setCampaignDiscount(event.target.value)} placeholder="e.g. 10" className="mt-2 border-white/10 bg-[#111214] text-white" />
+        </label>
+        <label className="text-xs font-bold text-zinc-300 md:col-span-2">Offer details
+          <textarea required minLength={10} maxLength={1000} value={campaignOffer} onChange={event => setCampaignOffer(event.target.value)} placeholder="Describe eligible menu items, conditions, and any limits." className="mt-2 min-h-24 w-full rounded-xl border border-white/10 bg-[#111214] p-3 text-sm text-white placeholder:text-zinc-500" />
+        </label>
+        <label className="text-xs font-bold text-zinc-300">Requested start date
+          <Input required type="date" value={campaignStart} onChange={event => setCampaignStart(event.target.value)} className="mt-2 border-white/10 bg-[#111214] text-white" />
+        </label>
+        <label className="text-xs font-bold text-zinc-300">Requested end date
+          <Input required type="date" min={campaignStart || undefined} value={campaignEnd} onChange={event => setCampaignEnd(event.target.value)} className="mt-2 border-white/10 bg-[#111214] text-white" />
+        </label>
+        <div className="md:col-span-2">
+          <button type="submit" disabled={!canOperate || working} className="rounded-xl bg-amber-400 px-5 py-3 text-xs font-black uppercase text-zinc-950 disabled:opacity-50">
+            {working ? 'Sending request…' : 'Send offer for review'}
+          </button>
+          {!canOperate && <p className="mt-2 text-xs text-amber-300">Only approved businesses can submit a campaign request.</p>}
+        </div>
+      </form>
+      <section className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+        <h3 className="font-black text-white">Recent requests</h3>
+        <div className="mt-4 space-y-3">
+          {overview.events.filter(item => item.event_type === 'food_campaign_requested').map((item, index) => <article key={`${item.created_at}-${index}`} className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 pb-3 last:border-0 last:pb-0">
+            <div>
+              <p className="text-sm font-bold text-zinc-100">{typeof item.details?.campaign_name === 'string' ? item.details.campaign_name : 'Food campaign'}</p>
+              <p className="mt-1 text-xs text-zinc-400">{typeof item.details?.requested_start_date === 'string' ? item.details.requested_start_date : 'Start date pending'} – {typeof item.details?.requested_end_date === 'string' ? item.details.requested_end_date : 'End date pending'}</p>
+            </div>
+            <span className="rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase text-amber-300">Pending OnBar review · {dateTime(item.created_at)}</span>
+          </article>)}
+          {!overview.events.some(item => item.event_type === 'food_campaign_requested') && <p className="text-sm text-zinc-400">No campaign requests have been submitted.</p>}
+        </div>
+      </section>
+    </>);
+  }
+
+  if (section === 'food-payments') {
+    return shell('Payments', 'Payment and settlement records for this merchant.', <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-6">
+      <div className="flex items-start gap-3"><CreditCard className="mt-1 text-amber-400" /><div>
+        <h3 className="font-black text-white">Settlement history is not connected yet</h3>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">This workspace does not currently have a merchant payout ledger or verified settlement status. We are not showing order totals as earnings or withdrawable balance. Contact OnBar finance for payout statements.</p>
+      </div></div>
+    </div>);
+  }
+
+  if (section === 'food-history') {
+    const historyOrders = [...overview.orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return shell('Order history', 'Previously assigned and current orders recorded against your traced menu stock.', <>
+      <p className="text-xs text-zinc-500">Showing {historyOrders.length} orders currently available in the linked trace records.</p>
+      {historyOrders.length ? <div className="grid gap-3 lg:grid-cols-2">{historyOrders.map(order => orderCard(order, false))}</div>
+        : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-center text-sm text-zinc-400">No traced order history is available yet.</div>}
+    </>);
+  }
+
+  if (foodReviewSection) {
+    const window = performance?.windows[7];
+    return shell('Reviews & customer feedback', 'Only recorded OnBar scorecard data is shown. Individual review text and reply tools are not currently available.', <>
+      {performanceLoading && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-6 text-sm text-zinc-400">Loading recorded scorecard…</div>}
+      {performanceError && <div role="alert" className="rounded-2xl border border-rose-400/30 bg-rose-400/5 p-4 text-sm text-rose-200">{performanceError}</div>}
+      {!performanceLoading && window && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ['Average rating', window.averageRating === null ? 'Not recorded' : `${window.averageRating.toFixed(1)} / 5`],
+          ['Completed orders', window.delivered],
+          ['Recorded complaints', window.vendorComplaints],
+          ['Ready on time', window.onTimePercent === null ? 'Not recorded' : `${window.onTimePercent}%`]
+        ].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5"><p className="text-2xl font-black text-white">{value}</p><p className="mt-2 text-xs font-bold uppercase text-zinc-400">{label}</p></div>)}
+      </div>}
+      {!performanceLoading && !performanceError && !window && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-6 text-sm text-zinc-400">No recorded customer scorecard data is available yet.</div>}
+      <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-4 text-xs leading-5 text-zinc-400">This is aggregate scorecard data, not a feed of individual customer reviews. No ratings are generated when none have been recorded.</div>
+    </>);
+  }
+
+  return null;
+}
+
 export default function OnBarPartnerNetworkPage() {
   const [accessToken, setAccessToken] = useState('');
   const [email, setEmail] = useState('');
@@ -348,6 +609,15 @@ export default function OnBarPartnerNetworkPage() {
 
   const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
   const canOperate = selected?.application.status === 'approved';
+  const isFoodMerchant = Boolean(selected && (
+    ['kitchen', 'restaurant', 'food_vendor'].includes(selected.application.business_type)
+    || selected.application.vendor_type === 'street_food'
+  ));
+
+  useEffect(() => {
+    if (isFoodMerchant && !foodSections.some(item => item.id === section)) setSection('food-live');
+    if (!isFoodMerchant && foodSections.some(item => item.id === section)) setSection('overview');
+  }, [isFoodMerchant, section]);
 
   useEffect(() => {
     if (!accessToken || !canOperate || !selected?.application.id) return;
@@ -395,7 +665,8 @@ export default function OnBarPartnerNetworkPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedSection = params.get('section');
-    const validSections: Section[] = ['overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts', 'riders'];
+    const validSections: Section[] = ['overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts', 'riders',
+      'food-live', 'food-menu', 'food-promotions', 'food-payments', 'food-history', 'food-reviews', 'food-business', 'food-staff'];
     if (requestedSection && validSections.includes(requestedSection as Section)) setSection(requestedSection as Section);
     setDeepLinkApplicationId(params.get('applicationId') || '');
     setDeepLinkOrderId(params.get('orderId') || '');
@@ -403,14 +674,17 @@ export default function OnBarPartnerNetworkPage() {
 
   useEffect(() => {
     if (!deepLinkApplicationId || !workspace.length) return;
-    if (workspace.some(item => item.application.id === deepLinkApplicationId)) {
+    const linkedWorkspace = workspace.find(item => item.application.id === deepLinkApplicationId);
+    if (linkedWorkspace) {
       setSelectedId(deepLinkApplicationId);
-      setSection('orders');
+      const foodBusiness = ['kitchen', 'restaurant', 'food_vendor'].includes(linkedWorkspace.application.business_type)
+        || linkedWorkspace.application.vendor_type === 'street_food';
+      setSection(foodBusiness ? 'food-history' : 'orders');
     }
   }, [deepLinkApplicationId, workspace]);
 
   useEffect(() => {
-    if (!deepLinkOrderId || section !== 'orders' || !selected?.orders.some(order => String(order.id) === deepLinkOrderId)) return;
+    if (!deepLinkOrderId || !['orders', 'food-history'].includes(section) || !selected?.orders.some(order => String(order.id) === deepLinkOrderId)) return;
     const frame = window.requestAnimationFrame(() => {
       document.getElementById(`merchant-order-${deepLinkOrderId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
@@ -423,11 +697,11 @@ export default function OnBarPartnerNetworkPage() {
     setAcceptingOrdersDraft(selected.application.accepting_orders);
   }, [selectedId, selected]);
 
-  const loadWorkspace = useCallback(async (token: string) => {
-    setLoading(true);
+  const loadWorkspace = useCallback(async (token: string, silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/merchant/network', {
+      const response = await fetch(silent ? '/api/merchant/network?refresh=1' : '/api/merchant/network', {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store'
       });
@@ -441,9 +715,15 @@ export default function OnBarPartnerNetworkPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Partner workspace could not be loaded.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!accessToken || section !== 'food-live') return;
+    const interval = window.setInterval(() => void loadWorkspace(accessToken, true), 20_000);
+    return () => window.clearInterval(interval);
+  }, [accessToken, loadWorkspace, section]);
 
   useEffect(() => {
     if (!supabase) {
@@ -495,7 +775,7 @@ export default function OnBarPartnerNetworkPage() {
 
   useEffect(() => {
     const applicationId = selected?.application.id;
-    if (section !== 'performance' || !accessToken || !applicationId || selected?.application.status !== 'approved') {
+    if (!['performance', 'food-reviews'].includes(section) || !accessToken || !applicationId || selected?.application.status !== 'approved') {
       setPerformance(null);
       setPerformanceError('');
       setPerformanceLoading(false);
@@ -554,7 +834,7 @@ export default function OnBarPartnerNetworkPage() {
   }, [accessToken, selected?.application.id, selected?.application.status]);
 
   useEffect(() => {
-    if (section === 'riders') void loadRiderConnections();
+    if (section === 'riders' || section === 'food-staff') void loadRiderConnections();
   }, [section, loadRiderConnections]);
 
   const addRider = async (event: FormEvent<HTMLFormElement>) => {
@@ -927,20 +1207,20 @@ export default function OnBarPartnerNetworkPage() {
 
   return (
     <main
-      className="min-h-screen bg-slate-50"
+      className={isFoodMerchant ? 'min-h-screen bg-[#111214] text-zinc-100' : 'min-h-screen bg-slate-50'}
       style={{
         '--primary': merchantAccentColor,
         '--primary-foreground': getContrastForeground(merchantAccentColor)
       } as CSSProperties}
     >
-      <header className="border-b border-slate-200 bg-white">
+      <header className={isFoodMerchant ? 'border-b border-white/10 bg-[#18191c]' : 'border-b border-slate-200 bg-white'}>
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-primary">OnBar Merchant Network</p>
-            <h1 className="mt-1 text-2xl font-black text-slate-900 sm:text-3xl">Partner Workspace</h1>
+            <p className={`text-xs font-black uppercase tracking-[0.25em] ${isFoodMerchant ? 'text-amber-400' : 'text-primary'}`}>{isFoodMerchant ? 'OnBar Food Partner' : 'OnBar Merchant Network'}</p>
+            <h1 className={`mt-1 text-2xl font-black sm:text-3xl ${isFoodMerchant ? 'text-white' : 'text-slate-900'}`}>{isFoodMerchant ? 'Merchant Terminal' : 'Partner Workspace'}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-slate-500 sm:inline">{email}</span>
+            <span className={`hidden text-sm sm:inline ${isFoodMerchant ? 'text-zinc-400' : 'text-slate-500'}`}>{email}</span>
             <Button variant="outline" onClick={() => void signOut()} className="rounded-xl"><LogOut size={16} className="mr-2" /> Sign out</Button>
           </div>
         </div>
@@ -948,15 +1228,15 @@ export default function OnBarPartnerNetworkPage() {
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
         {workspace.length > 1 && (
-          <label className="mb-5 block max-w-lg text-xs font-black uppercase tracking-wide text-slate-500">
+          <label className={`mb-5 block max-w-lg text-xs font-black uppercase tracking-wide ${isFoodMerchant ? 'text-zinc-400' : 'text-slate-500'}`}>
             Business
-            <select value={selectedId} onChange={event => setSelectedId(event.target.value)} className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold normal-case text-slate-800">
+            <select value={selectedId} onChange={event => setSelectedId(event.target.value)} className={`mt-2 h-12 w-full rounded-xl border px-3 text-sm font-bold normal-case ${isFoodMerchant ? 'border-white/10 bg-[#1a1b1e] text-white' : 'border-slate-200 bg-white text-slate-800'}`}>
               {workspace.map(item => <option key={item.application.id} value={item.application.id}>{item.application.business_name} · {statusLabels[item.application.status] || item.application.status}</option>)}
             </select>
           </label>
         )}
 
-        {canOperate && selected && (
+        {canOperate && selected && !isFoodMerchant && (
           <section aria-label="Merchant appearance" className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4">
             <div className="mr-2">
               <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-700"><Palette size={15} /> Workspace color</p>
@@ -985,17 +1265,17 @@ export default function OnBarPartnerNetworkPage() {
           </section>
         )}
 
-        {(error || message) && <div role={error ? 'alert' : 'status'} className={`mb-5 flex items-start justify-between gap-3 rounded-xl p-4 text-sm ${error ? 'bg-rose-50 text-rose-800' : 'bg-emerald-50 text-emerald-800'}`}>
+        {(error || message) && <div role={error ? 'alert' : 'status'} className={`mb-5 flex items-start justify-between gap-3 rounded-xl p-4 text-sm ${error ? (isFoodMerchant ? 'border border-rose-400/30 bg-rose-400/10 text-rose-200' : 'bg-rose-50 text-rose-800') : (isFoodMerchant ? 'border border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'bg-emerald-50 text-emerald-800')}`}>
           <span>{error || message}</span>
           <button onClick={() => { setError(''); setMessage(''); }} aria-label="Dismiss message">×</button>
         </div>}
 
-        <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label="Merchant workspace sections">
-          {sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type)).map(item => {
+        <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
+          {(isFoodMerchant ? foodSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
             const Icon = item.icon;
-            return <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? 'bg-primary text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><Icon size={16} />{item.label}</button>;
+            return <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}</button>;
           })}
-          <button onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-slate-600 hover:bg-slate-100"><RefreshCw size={16} /></button>
+          <button onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isFoodMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
         </nav>
 
         {loading && <div className="rounded-2xl bg-white p-12 text-center text-slate-500"><Loader2 className="mx-auto mb-3 animate-spin text-primary" /><p className="text-sm font-semibold">Loading your business workspace...</p></div>}
@@ -1007,6 +1287,21 @@ export default function OnBarPartnerNetworkPage() {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">The signed-in email must exactly match the email submitted with your OnBar partner application. If you haven’t applied yet, start an application. If you used another address, sign out and use an account verified with that address.</p>
             <Link href="/merchant/onboarding" className="mt-5 inline-flex h-11 items-center rounded-xl bg-primary px-4 text-sm font-black uppercase text-white">Start partner application</Link>
           </section>
+        )}
+
+        {!loading && overview && application && isFoodMerchant && (
+          <FoodMerchantTerminal
+            section={section}
+            application={application}
+            overview={overview}
+            canOperate={canOperate}
+            working={working}
+            performance={performance}
+            performanceLoading={performanceLoading}
+            performanceError={performanceError}
+            onAction={apiAction}
+            onSectionChange={setSection}
+          />
         )}
 
         {!loading && overview && section === 'performance' && (
@@ -1190,7 +1485,7 @@ export default function OnBarPartnerNetworkPage() {
           />
         )}
 
-        {!loading && overview && section === 'riders' && application && (
+        {!loading && overview && ['riders', 'food-staff'].includes(section) && application && (
           <section className="space-y-5">
             <header className="rounded-2xl bg-white p-6 shadow-sm">
               <p className="text-xs font-black uppercase tracking-wide text-primary">Your delivery team</p>
@@ -1340,7 +1635,7 @@ export default function OnBarPartnerNetworkPage() {
           </section>
         )}
 
-        {!loading && overview && section === 'business' && (
+        {!loading && overview && ['business', 'food-business'].includes(section) && (
           <section className="space-y-5">
             <div><h2 className="text-xl font-black text-slate-900">Business profile</h2><p className="mt-1 text-sm text-slate-500">Application and contact details submitted to OnBar.</p></div>
             <form onSubmit={submitAvailability} className="rounded-2xl bg-white p-6 shadow-sm">

@@ -70,7 +70,7 @@ async function findApplication(database: SupabaseClient, id: unknown, actor: str
   if (!isUuid(id)) return { application: null, error: null };
   const { data, error } = await database
     .from('merchant_applications')
-    .select('id, status, email')
+    .select('id, status, email, business_type, vendor_type')
     .eq('id', id)
     .eq('email', actor)
     .maybeSingle();
@@ -88,7 +88,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
@@ -268,7 +268,8 @@ export async function GET(request: Request) {
       .limit(25);
     if (error) throw error;
 
-    if (applications?.length) {
+    const backgroundRefresh = new URL(request.url).searchParams.get('refresh') === '1';
+    if (applications?.length && !backgroundRefresh) {
       const { error: auditError } = await context.database.from('merchant_application_events').insert(
         applications.map(application => ({
           application_id: application.id,
@@ -339,6 +340,48 @@ export async function POST(request: Request) {
       }, { status: 503 });
     }
     return NextResponse.json({ application: data });
+  }
+
+  if (body.operation === 'request_food_campaign') {
+    if (!['kitchen', 'restaurant', 'food_vendor'].includes(String(application.business_type))
+      && application.vendor_type !== 'street_food') {
+      return NextResponse.json({ error: 'The Black November offer page is only available to food businesses.' }, { status: 403 });
+    }
+
+    const campaignName = typeof body.campaignName === 'string' ? body.campaignName.trim() : '';
+    const offerDescription = typeof body.offerDescription === 'string' ? body.offerDescription.trim() : '';
+    const startDate = body.startDate;
+    const endDate = body.endDate;
+    const discountPercent = body.discountPercent === null || body.discountPercent === ''
+      ? null
+      : Number(body.discountPercent);
+    const today = new Date().toISOString().slice(0, 10);
+    if (campaignName.length < 3 || campaignName.length > 100
+      || offerDescription.length < 10 || offerDescription.length > 1000
+      || !validDate(startDate) || !validDate(endDate)
+      || startDate < today || endDate < startDate
+      || (discountPercent !== null && (!Number.isInteger(discountPercent) || discountPercent < 1 || discountPercent > 90))) {
+      return NextResponse.json({ error: 'Enter a campaign name, clear offer details, valid future dates, and an optional whole-number discount between 1% and 90%.' }, { status: 400 });
+    }
+
+    const { error } = await context.database.from('merchant_application_events').insert({
+      application_id: application.id,
+      event_type: 'food_campaign_requested',
+      actor: context.actor,
+      details: {
+        campaign_name: campaignName,
+        offer_description: offerDescription,
+        requested_start_date: startDate,
+        requested_end_date: endDate,
+        requested_discount_percent: discountPercent,
+        status: 'pending_review'
+      }
+    });
+    if (error) {
+      console.error('[MerchantNetwork] Could not record food campaign request:', error);
+      return NextResponse.json({ error: 'The offer request could not be saved. Please try again or contact OnBar support.' }, { status: 503 });
+    }
+    return NextResponse.json({ requested: true }, { status: 201 });
   }
 
   if (body.operation === 'receive_batch') {
