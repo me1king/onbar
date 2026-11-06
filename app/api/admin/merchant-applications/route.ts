@@ -282,7 +282,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const access = await getAuthorizedDatabase();
   if ('response' in access) return access.response;
-  let body: { id?: unknown; status?: unknown; note?: unknown };
+  let body: { id?: unknown; status?: unknown; note?: unknown; alcoholChecks?: unknown };
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -302,25 +302,71 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Add a review note of at least 5 characters for this decision.' }, { status: 400 });
   }
 
-  const { data, error } = await access.database.rpc('review_merchant_application', {
-    p_application_id: body.id,
-    p_status: body.status,
-    p_review_note: note || null,
-    p_actor: access.actor
-  });
+  let isAlcoholRetailer = false;
+  if (body.status === 'approved') {
+    const { data: application, error: applicationError } = await access.database
+      .from('merchant_applications')
+      .select('business_type, vendor_type, alcohol_onboarding')
+      .eq('id', body.id)
+      .maybeSingle();
+    if (applicationError) {
+      console.error('[MerchantAdmin] Could not determine application approval workflow:', applicationError);
+      return NextResponse.json({ error: 'Could not load the application approval requirements.' }, { status: 503 });
+    }
+    if (!application) return NextResponse.json({ error: 'Merchant application not found.' }, { status: 404 });
+    isAlcoholRetailer = application.business_type === 'bar'
+      && application.vendor_type === 'retailer'
+      && application.alcohol_onboarding !== null;
+  }
+
+  if (isAlcoholRetailer) {
+    const checkKeys = [
+      'identity_verified',
+      'county_licence_verified',
+      'online_licence_verified',
+      'till_name_verified',
+      'premises_distance_verified',
+      'excise_and_supplier_documents_verified'
+    ] as const;
+    const checks = body.alcoholChecks;
+    if (
+      typeof checks !== 'object'
+      || checks === null
+      || checkKeys.some(key => (checks as Record<string, unknown>)[key] !== true)
+    ) {
+      return NextResponse.json({ error: 'All six manual alcohol retailer verification checks must be completed before approval.' }, { status: 400 });
+    }
+  }
+
+  const { data, error } = isAlcoholRetailer
+    ? await access.database.rpc('approve_alcohol_merchant_application', {
+      p_application_id: body.id,
+      p_review_note: note || null,
+      p_actor: access.actor,
+      p_checks: body.alcoholChecks
+    })
+    : await access.database.rpc('review_merchant_application', {
+      p_application_id: body.id,
+      p_status: body.status,
+      p_review_note: note || null,
+      p_actor: access.actor
+    });
   if (error) {
     console.error('[MerchantAdmin] Review decision failed:', error);
     const isNotFound = /not found/i.test(error.message);
     const invalidTransition = /transition is not permitted/i.test(error.message);
     const complianceError = /required compliance documents/i.test(error.message);
+    const alcoholCheckError = /alcohol retailer manual verification checks/i.test(error.message);
     return NextResponse.json({ error: isNotFound
       ? 'Merchant application not found.'
       : invalidTransition
         ? 'That status transition is not permitted. Refresh and review the current application status.'
         : complianceError
           ? error.message
+          : alcoholCheckError
+            ? error.message
         : 'The review decision could not be saved. Confirm the merchant operations migration is installed.'
-    }, { status: isNotFound ? 404 : invalidTransition || complianceError ? 409 : 503 });
+    }, { status: isNotFound ? 404 : invalidTransition || complianceError || alcoholCheckError ? 409 : 503 });
   }
   return NextResponse.json({ application: data });
 }

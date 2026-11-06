@@ -202,4 +202,6 @@ REVOKE ALL ON FUNCTION public.configure_vendor_onboarding_workflow(UUID, TEXT, J
 GRANT EXECUTE ON FUNCTION public.configure_vendor_onboarding_workflow(UUID, TEXT, JSONB, TEXT)
     TO service_role;
 
+NOTIFY pgrst, 'reload schema';
+
 COMMIT;

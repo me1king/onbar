@@ -48,7 +48,7 @@ export function getMissingMerchantDocumentTypes(
   return requiredTypes.filter(type => {
     const document = documents.find(item => item.type === type);
     if (!document) return true;
-    if ((type === 'liquor_licence' || type === 'wholesale_licence') && !document.expiresAt) return true;
+    if ((type === 'liquor_licence' || type === 'wholesale_licence' || type === 'online_alcohol_licence') && !document.expiresAt) return true;
     return Boolean(document.expiresAt && document.expiresAt < today);
   });
 }

@@ -39,6 +39,7 @@ import {
   MAX_MERCHANT_DOCUMENT_FILE_SIZE,
   MAX_MERCHANT_DOCUMENT_TOTAL_SIZE
 } from '@/lib/merchantDocuments';
+import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
 
 type DocumentType =
   | 'business_registration'
@@ -215,6 +216,10 @@ export default function MerchantOnboarding() {
     cataloguePrice: number;
     stock: number;
     sizes: string[];
+    is_bite?: boolean | null;
+    is_snack?: boolean | null;
+    is_souvenir?: boolean | null;
+    sub_category?: string | null;
   }>>([]);
   const [selectedGoods, setSelectedGoods] = useState<number[]>([]);
   const [offeredGoodsPrices, setOfferedGoodsPrices] = useState<Record<number, string>>({});
@@ -514,6 +519,10 @@ export default function MerchantOnboarding() {
             price?: number | string | null;
             stock?: number | null;
             sizes?: string[] | null;
+            is_bite?: boolean | null;
+            is_snack?: boolean | null;
+            is_souvenir?: boolean | null;
+            sub_category?: string | null;
           }>
         }>(response);
         if (!response.ok || !payload.products) throw new Error('Could not load the available goods list.');
@@ -527,8 +536,18 @@ export default function MerchantOnboarding() {
           brand: product.brand || '',
           cataloguePrice: Number(product.price || 0),
           stock: Number(product.stock || 0),
-          sizes: Array.isArray(product.sizes) ? product.sizes : []
-        })).filter(product => product.id > 0 && product.name.trim().length > 0));
+          sizes: Array.isArray(product.sizes) ? product.sizes : [],
+          is_bite: product.is_bite,
+          is_snack: product.is_snack,
+          is_souvenir: product.is_souvenir,
+          sub_category: product.sub_category
+        })).filter(product => product.id > 0 && product.name.trim().length > 0)
+          .filter(product => businessType === 'delivery_partner'
+            || (businessType === 'kitchen' || businessType === 'restaurant' || businessType === 'food_vendor'
+              ? isKitchenFoodProduct(product)
+              : businessType === 'bar' || businessType === 'supplier'
+                ? isBeverageInventoryProduct(product)
+                : true)));
       } catch {
         if (active) {
           setCatalogOptions([]);
@@ -542,7 +561,7 @@ export default function MerchantOnboarding() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [businessType]);
 
   const sharedDraftForm = useMemo<SharedDraftForm>(() => ({
     businessName,
@@ -899,9 +918,10 @@ export default function MerchantOnboarding() {
             Choose the partner lane that matches what you actually offer: alcohol, prepared food, street food, wholesale supply, or delivery. We review your documents before activation.
           </p>
           {!invitation && (
-            <p className="mt-3 text-xs text-slate-500">
-              Already approved and adding branches? <Link href="/merchant/business" className="font-bold text-primary underline">Manage business locations</Link>
-            </p>
+            <div className="mt-3 space-y-1 text-xs text-slate-500">
+              <p>Opening an alcohol shop? <Link href="/merchant/liquor-onboarding" className="font-bold text-primary underline">Use the eight-step liquor retailer application</Link></p>
+              <p>Already approved and adding branches? <Link href="/merchant/business" className="font-bold text-primary underline">Manage business locations</Link></p>
+            </div>
           )}
         </header>
 
@@ -1084,6 +1104,12 @@ export default function MerchantOnboarding() {
                   <Input value={tradingName} onChange={event => setTradingName(event.target.value)} maxLength={160} placeholder="Trading name (if different)" className="h-12 rounded-xl" />
                 </>
               )}
+              {!invitation && businessType === 'bar' && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                  Alcohol retailers need the dedicated licensing, product-stamp, identity and manual-review checklist.
+                  <Link href="/merchant/liquor-onboarding" className="ml-1 font-black underline">Continue to the eight-step application</Link>
+                </div>
+              )}
               {invitation && (
                 <>
                   <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600">
@@ -1101,9 +1127,11 @@ export default function MerchantOnboarding() {
                   {invitation.onboardingMode && !draftSaveError && draftSavedAt && <p role="status" className="text-xs font-semibold text-emerald-700">Progress saved securely at {new Date(draftSavedAt).toLocaleTimeString()}.</p>}
                 </>
               )}
-              <Button disabled={(!invitation && businessName.trim().length < 2) || (Boolean(invitation?.onboardingMode) && !draftPrivacyAcknowledged)} onClick={() => moveToStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
-                Continue <ArrowRight size={16} className="ml-2" />
-              </Button>
+              {businessType === 'bar' && !invitation
+                ? <Link href="/merchant/liquor-onboarding" className="flex h-12 w-full items-center justify-center rounded-xl bg-primary font-black uppercase text-white">Continue to liquor onboarding <ArrowRight size={16} className="ml-2" /></Link>
+                : <Button disabled={(!invitation && businessName.trim().length < 2) || (Boolean(invitation?.onboardingMode) && !draftPrivacyAcknowledged)} onClick={() => moveToStep(1)} className="h-12 w-full rounded-xl font-black uppercase">
+                  Continue <ArrowRight size={16} className="ml-2" />
+                </Button>}
             </section>
           )}
 

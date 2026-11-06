@@ -26,7 +26,10 @@ const fulfillmentEvents = new Set([
   'cancelled',
   'exception'
 ]);
-const incidentCategories = new Set(['product_quality', 'food_safety', 'delivery', 'conduct', 'other']);
+const incidentCategories = new Set([
+  'product_quality', 'food_safety', 'delivery', 'conduct', 'other',
+  'age_check_failed', 'suspected_counterfeit'
+]);
 
 function getClients(): Clients | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -70,7 +73,7 @@ async function findApplication(database: SupabaseClient, id: unknown, actor: str
   if (!isUuid(id)) return { application: null, error: null };
   const { data, error } = await database
     .from('merchant_applications')
-    .select('id, status, email, business_type, vendor_type')
+    .select('id, status, email, business_type, vendor_type, offered_goods_pricing, alcohol_onboarding')
     .eq('id', id)
     .eq('email', actor)
     .maybeSingle();
@@ -88,11 +91,11 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
-      .select('id, product_id, lot_code, supplier_name, received_at, expiry_at, quantity_received')
+      .select('id, product_id, lot_code, supplier_name, received_at, expiry_at, quantity_received, excise_stamp_confirmed')
       .eq('application_id', applicationId)
       .order('received_at', { ascending: false })
       .limit(500),
@@ -262,7 +265,7 @@ export async function GET(request: Request) {
   try {
     const { data: applications, error } = await context.database
       .from('merchant_applications')
-      .select('id, merchant_code, business_name, trading_name, business_type, vendor_type, prep_target_minutes, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, offered_goods, offered_goods_pricing, documents, status, review_note, submitted_at, reviewed_at, updated_at')
+      .select('id, merchant_code, business_name, trading_name, business_type, vendor_type, prep_target_minutes, email, phone, owner_name, owner_role, address, country, county, town, latitude, longitude, operating_areas, operating_hours, accepting_orders, availability_updated_at, cuisine_or_category, preparation_capacity, delivery_radius_km, collection_available, offered_goods, offered_goods_pricing, documents, alcohol_onboarding, status, review_note, submitted_at, reviewed_at, updated_at')
       .eq('email', context.actor)
       .order('submitted_at', { ascending: false })
       .limit(25);
@@ -289,8 +292,10 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error('[MerchantNetwork] Could not load partner workspace:', error);
-    const message = error instanceof Error && /merchant_|does not exist|schema cache/i.test(error.message)
-      ? 'Merchant operations data is unavailable. Confirm supabase/MERCHANT_OPERATIONS_MIGRATION.sql and supabase/DISPATCH_MIGRATION.sql are installed.'
+    const message = error instanceof Error && /alcohol_onboarding|excise_stamp_confirmed/i.test(error.message)
+      ? 'Alcohol retailer workspace is not installed. Run supabase/MERCHANT_LIQUOR_ONBOARDING_MIGRATION.sql after merchant operations.'
+      : error instanceof Error && /merchant_|does not exist|schema cache/i.test(error.message)
+        ? 'Merchant operations data is unavailable. Confirm supabase/MERCHANT_OPERATIONS_MIGRATION.sql and supabase/DISPATCH_MIGRATION.sql are installed.'
       : 'Your merchant workspace could not be loaded. Please try again.';
     return NextResponse.json({ error: message }, { status: 503 });
   }
@@ -312,7 +317,11 @@ export async function POST(request: Request) {
   const { application, error: applicationError } = await findApplication(context.database, body.applicationId, context.actor);
   if (applicationError) {
     console.error('[MerchantNetwork] Could not verify partner ownership:', applicationError);
-    return NextResponse.json({ error: 'Your business access could not be verified.' }, { status: 503 });
+    return NextResponse.json({
+      error: /alcohol_onboarding|schema cache/i.test(applicationError.message)
+        ? 'Alcohol retailer workspace is not installed. Run supabase/MERCHANT_LIQUOR_ONBOARDING_MIGRATION.sql after merchant operations.'
+        : 'Your business access could not be verified.'
+    }, { status: 503 });
   }
   if (!application) return NextResponse.json({ error: 'That business is not linked to your verified account.' }, { status: 404 });
   if (application.status !== 'approved') {
@@ -384,6 +393,73 @@ export async function POST(request: Request) {
     return NextResponse.json({ requested: true }, { status: 201 });
   }
 
+  if (body.operation === 'request_alcohol_campaign') {
+    if (application.business_type !== 'bar' || application.vendor_type !== 'retailer') {
+      return NextResponse.json({ error: 'Alcohol promotions are only available to approved alcohol retailers.' }, { status: 403 });
+    }
+
+    const campaignName = typeof body.campaignName === 'string' ? body.campaignName.trim() : '';
+    const offerDescription = typeof body.offerDescription === 'string' ? body.offerDescription.trim() : '';
+    const startDate = body.startDate;
+    const endDate = body.endDate;
+    const discountPercent = body.discountPercent === null || body.discountPercent === ''
+      ? null
+      : Number(body.discountPercent);
+    const today = new Date().toISOString().slice(0, 10);
+    if (campaignName.length < 3 || campaignName.length > 100
+      || offerDescription.length < 10 || offerDescription.length > 1000
+      || !validDate(startDate) || !validDate(endDate)
+      || startDate < today || endDate < startDate
+      || (discountPercent !== null && (!Number.isInteger(discountPercent) || discountPercent < 1 || discountPercent > 90))) {
+      return NextResponse.json({ error: 'Enter a campaign name, clear offer details, valid future dates, and an optional whole-number discount between 1% and 90%.' }, { status: 400 });
+    }
+
+    const { error } = await context.database.from('merchant_application_events').insert({
+      application_id: application.id,
+      event_type: 'alcohol_campaign_requested',
+      actor: context.actor,
+      details: {
+        campaign_name: campaignName,
+        offer_description: offerDescription,
+        requested_start_date: startDate,
+        requested_end_date: endDate,
+        requested_discount_percent: discountPercent,
+        status: 'pending_review'
+      }
+    });
+    if (error) {
+      console.error('[MerchantNetwork] Could not record alcohol campaign request:', error);
+      return NextResponse.json({ error: 'The alcohol offer request could not be saved.' }, { status: 503 });
+    }
+    return NextResponse.json({ requested: true }, { status: 201 });
+  }
+
+  if (body.operation === 'update_alcohol_rules') {
+    if (application.business_type !== 'bar' || application.vendor_type !== 'retailer') {
+      return NextResponse.json({ error: 'Compliance rules can only be updated by an alcohol retailer.' }, { status: 403 });
+    }
+    const minimumAge = Number(body.minimumAge);
+    const maximumBottlesPerOrder = Number(body.maximumBottlesPerOrder);
+    const schoolBufferMeters = Number(body.schoolBufferMeters);
+    if (![18, 21].includes(minimumAge)
+      || !Number.isInteger(maximumBottlesPerOrder) || maximumBottlesPerOrder < 1 || maximumBottlesPerOrder > 100
+      || !Number.isInteger(schoolBufferMeters) || schoolBufferMeters < 0 || schoolBufferMeters > 5000) {
+      return NextResponse.json({ error: 'Choose a minimum age of 18 or 21, up to 100 bottles, and a school buffer from 0 to 5000 metres.' }, { status: 400 });
+    }
+    const { data: saved, error: updateError } = await context.database.rpc('update_merchant_alcohol_rules', {
+      p_application_id: application.id,
+      p_actor: context.actor,
+      p_minimum_age: minimumAge,
+      p_maximum_bottles: maximumBottlesPerOrder,
+      p_school_buffer_meters: schoolBufferMeters
+    });
+    if (updateError || saved !== true) {
+      console.error('[MerchantNetwork] Could not save alcohol compliance rules:', updateError || 'RPC did not confirm the update.');
+      return NextResponse.json({ error: 'Alcohol compliance settings could not be saved. Confirm the liquor onboarding migration is installed.' }, { status: 503 });
+    }
+    return NextResponse.json({ saved: true });
+  }
+
   if (body.operation === 'receive_batch') {
     const productId = Number(body.productId);
     const quantity = Number(body.quantity);
@@ -401,20 +477,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Enter a valid linked product, lot code, quantity and optional expiry date that is not in the past.' }, { status: 400 });
     }
 
-    const { data: existingBatch, error: productError } = await context.database
-      .from('merchant_product_batches')
+    const offers = Array.isArray(application.offered_goods_pricing)
+      ? application.offered_goods_pricing as Array<{ product_id?: unknown }>
+      : [];
+    if (!offers.some(offer => Number(offer.product_id) === productId)) {
+      return NextResponse.json({ error: 'Choose a product listed in your approved business catalogue.' }, { status: 403 });
+    }
+
+    const { data: linkedProduct, error: productError } = await context.database
+      .from('products')
       .select('id')
-      .eq('application_id', application.id)
-      .eq('product_id', productId)
-      .limit(1)
+      .eq('id', productId)
       .maybeSingle();
     if (productError) {
       console.error('[MerchantNetwork] Could not verify merchant product:', productError);
       return NextResponse.json({ error: 'The linked product could not be verified.' }, { status: 503 });
     }
-    if (!existingBatch) return NextResponse.json({ error: 'This product has not been assigned to your business. Contact OnBar to link it first.' }, { status: 403 });
+    if (!linkedProduct) return NextResponse.json({ error: 'This catalogue product is no longer available. Contact OnBar to update your approved catalogue.' }, { status: 404 });
 
-    const { data, error } = await context.database.rpc('receive_merchant_product_batch', {
+    const isAlcoholRetailer = application.business_type === 'bar' && application.vendor_type === 'retailer';
+    if (isAlcoholRetailer && body.exciseStampConfirmed !== true) {
+      return NextResponse.json({ error: 'Confirm the excise stamp for this specific received batch before recording alcohol stock.' }, { status: 400 });
+    }
+
+    const rpcArguments = {
       p_application_id: application.id,
       p_product_id: productId,
       p_lot_code: lotCode,
@@ -423,13 +509,21 @@ export async function POST(request: Request) {
       p_quantity: quantity,
       p_storage_notes: notes || null,
       p_actor: context.actor
-    });
+    };
+    const { data, error } = isAlcoholRetailer
+      ? await context.database.rpc('receive_merchant_product_batch_with_excise', {
+        ...rpcArguments,
+        p_excise_stamp_confirmed: true
+      })
+      : await context.database.rpc('receive_merchant_product_batch', rpcArguments);
     if (error) {
       console.error('[MerchantNetwork] Could not receive inventory batch:', error);
       return NextResponse.json({
         error: /duplicate key|merchant_product_batches_application_id_product_id_lot_code_key/i.test(error.message)
           ? 'That lot code is already recorded for this product. Use a unique lot code.'
-          : 'The inventory batch could not be recorded. Confirm merchant operations are installed.'
+            : /receive_merchant_product_batch_with_excise|excise_stamp_confirmed|schema cache/i.test(error.message)
+              ? 'Excise-stamp stock recording is not installed. Run supabase/MERCHANT_LIQUOR_ONBOARDING_MIGRATION.sql.'
+              : 'The inventory batch could not be recorded. Confirm merchant operations are installed.'
       }, { status: 503 });
     }
     return NextResponse.json({ batch: data }, { status: 201 });
@@ -551,6 +645,30 @@ export async function POST(request: Request) {
       || (batchId === null && orderId === null)
     ) {
       return NextResponse.json({ error: 'Choose a linked order or batch, an incident category and a description of at least 10 characters.' }, { status: 400 });
+    }
+    const isAlcoholRetailer = application.business_type === 'bar' && application.vendor_type === 'retailer';
+    if ((category === 'age_check_failed' || category === 'suspected_counterfeit') && !isAlcoholRetailer) {
+      return NextResponse.json({ error: 'Alcohol compliance incident categories are only available to alcohol retailers.' }, { status: 403 });
+    }
+    if (category === 'suspected_counterfeit') {
+      if (!batchId || orderId !== null) {
+        return NextResponse.json({ error: 'A suspected counterfeit report must be linked to the affected product batch.' }, { status: 400 });
+      }
+      const { data: report, error } = await context.database.rpc('report_merchant_counterfeit_incident', {
+        p_application_id: application.id,
+        p_batch_id: batchId,
+        p_description: description,
+        p_actor: context.actor
+      });
+      if (error) {
+        console.error('[MerchantNetwork] Could not place the counterfeit batch on hold:', error);
+        return NextResponse.json({
+          error: /already on hold/i.test(error.message)
+            ? 'This batch is already on hold. Review the existing incident with OnBar.'
+            : 'The counterfeit report and batch hold could not be saved.'
+        }, { status: 409 });
+      }
+      return NextResponse.json({ incident: report }, { status: 201 });
     }
     const incident = {
       application_id: application.id,

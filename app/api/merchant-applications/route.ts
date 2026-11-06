@@ -18,6 +18,7 @@ import {
   normalizeMerchantOperatingHours,
   type MerchantOperatingHours
 } from '@/lib/merchantAvailability';
+import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,13 @@ const allowedDocuments = new Set([
   'business_registration',
   'county_license',
   'liquor_licence',
+  'online_alcohol_licence',
   'wholesale_licence',
+  'government_id',
+  'selfie_photo',
+  'shopfront_photo',
+  'business_permit',
+  'supplier_invoice',
   'kra_pin',
   'medical_cert',
   'food_hygiene',
@@ -36,6 +43,14 @@ const allowedDocuments = new Set([
   'premises_document',
   'other_permit'
 ]);
+const alcoholRetailerRules = [
+  'Do not sell or deliver alcohol to anyone below the configured legal minimum age.',
+  'Ask for and verify an original government ID at the door.',
+  'Do not complete a delivery when the customer appears intoxicated.',
+  'Do not sell outside the approved terminal or alter product labels.',
+  'Keep excise-stamp evidence and supplier invoices for every stock batch.',
+  'Follow the approved county trading hours and platform delivery rules.'
+];
 const applicationAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function getDatabase() {
@@ -184,6 +199,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The vendor category must match the selected business type.' }, { status: 400 });
   }
   const vendorTypeValue = expectedVendorType;
+  let alcoholOnboarding: Record<string, unknown> | null = null;
+  const alcoholOnboardingRaw = value(form, 'alcoholOnboarding', 16_000);
+  if (businessTypeValue === 'bar' && vendorTypeValue === 'retailer') {
+    try {
+      const parsed = JSON.parse(alcoholOnboardingRaw) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid alcohol profile.');
+      alcoholOnboarding = parsed as Record<string, unknown>;
+    } catch {
+      return NextResponse.json({ error: 'Complete the alcohol retailer onboarding checklist before submitting.' }, { status: 400 });
+    }
+  } else if (alcoholOnboardingRaw) {
+    return NextResponse.json({ error: 'Alcohol retailer details can only be submitted by a bar / retailer application.' }, { status: 400 });
+  }
   const businessName = value(form, 'businessName', 160);
   const inviteToken = value(form, 'inviteToken', 128);
   const tradingName = value(form, 'tradingName', 160);
@@ -229,6 +257,81 @@ export async function POST(request: Request) {
     }
   } catch {
     return NextResponse.json({ error: 'Choose available goods and enter a valid offer price for each selected product.' }, { status: 400 });
+  }
+  if (alcoholOnboarding) {
+    const products = alcoholOnboarding.products;
+    const rules = alcoholOnboarding.rules;
+    const acceptedRules = alcoholOnboarding.acceptedRules;
+    const distance = alcoholOnboarding.distanceToSchoolMeters;
+    const invalidProducts = !Array.isArray(products)
+      || products.length < 3
+      || products.length !== offeredGoodsIds.length
+      || !products.every(item => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+        const product = item as Record<string, unknown>;
+        return typeof product.productId === 'number'
+          && Number.isSafeInteger(product.productId)
+          && offeredGoodsIds.includes(Number(product.productId))
+          && typeof product.size === 'string'
+          && product.size.trim().length > 0
+          && typeof product.abv === 'number'
+          && Number.isFinite(product.abv)
+          && product.abv >= 0
+          && product.abv <= 100
+          && typeof product.price === 'number'
+          && Number.isFinite(product.price)
+          && product.price > 0
+          && product.exciseStampConfirmed === true;
+      });
+    const invalidRules = !rules || typeof rules !== 'object' || Array.isArray(rules)
+      || ![18, 21].includes(Number((rules as Record<string, unknown>).minimumAge))
+      || !Number.isInteger((rules as Record<string, unknown>).maximumBottlesPerOrder)
+      || Number((rules as Record<string, unknown>).maximumBottlesPerOrder) < 1
+      || Number((rules as Record<string, unknown>).maximumBottlesPerOrder) > 100
+      || !Number.isInteger((rules as Record<string, unknown>).schoolBufferMeters)
+      || Number((rules as Record<string, unknown>).schoolBufferMeters) < 0
+      || Number((rules as Record<string, unknown>).schoolBufferMeters) > 5000;
+    const rulesAreAccepted = Array.isArray(acceptedRules)
+      && acceptedRules.length === 6
+      && acceptedRules.every(item => item && typeof item === 'object'
+        && !Array.isArray(item)
+        && (item as Record<string, unknown>).accepted === true
+        && typeof (item as Record<string, unknown>).rule === 'string')
+      && acceptedRules.every((item, index) =>
+        (item as Record<string, unknown>).rule === alcoholRetailerRules[index]);
+    const distinctProducts = Array.isArray(products)
+      && products.every(item => Boolean(item) && typeof item === 'object'
+        && !Array.isArray(item)
+        && typeof (item as Record<string, unknown>).productId === 'number')
+      && new Set(products.map(item => Number((item as Record<string, unknown>).productId))).size === offeredGoodsIds.length
+      && offeredGoodsIds.every(id => products.some(item =>
+        Number((item as Record<string, unknown>).productId) === id));
+    if (!/^\d{4}$/.test(String(alcoholOnboarding.nationalIdLast4 || ''))
+      || !/^NCC\/OFF\/\d{4}\/\d{5}$/.test(String(alcoholOnboarding.countyLicenceNumber || ''))
+      || String(alcoholOnboarding.onlineLicenceNumber || '').trim().length < 4
+      || !/^\d{5,20}$/.test(String(alcoholOnboarding.mpesaTill || ''))
+      || String(alcoholOnboarding.mpesaRegisteredName || '').trim().length < 2
+      || typeof distance !== 'number'
+      || !Number.isFinite(distance)
+      || distance < 0
+      || distance > 100_000
+      || invalidProducts
+      || !distinctProducts
+      || invalidRules
+      || !rulesAreAccepted
+      || String(alcoholOnboarding.typedSignature || '').trim().length < 3) {
+      return NextResponse.json({ error: 'Complete all required alcohol retailer details, at least three stamped products, and the six signed operating rules.' }, { status: 400 });
+    }
+    alcoholOnboarding = {
+      ...alcoholOnboarding,
+      distanceCheck: 'merchant_reported_pending_admin_measurement',
+      schoolReviewRequired: distance < 300,
+      identityCheck: 'pending_manual_review',
+      licenceCheck: 'format_checked_pending_manual_review',
+      tillNameCheck: 'pending_manual_review',
+      productStampCheck: 'merchant_attestation_pending_manual_review',
+      submittedAt: new Date().toISOString()
+    };
   }
   const email = value(form, 'email', 254).toLowerCase();
   const phone = value(form, 'phone', 40);
@@ -312,7 +415,7 @@ export async function POST(request: Request) {
   if (offeredGoodsIds.length) {
     const { data: selectedProducts, error: selectedProductsError } = await database
       .from('products')
-      .select('id, name, status, hide_product, is_available_now')
+      .select('id, name, status, hide_product, is_available_now, category, sub_category, is_bite, is_snack, is_souvenir')
       .in('id', offeredGoodsIds);
     if (selectedProductsError) {
       console.error('[MerchantApplications] Could not verify offered goods:', selectedProductsError);
@@ -321,6 +424,14 @@ export async function POST(request: Request) {
     const visibleProducts = (selectedProducts || []).filter(isStorefrontProductVisible);
     if (visibleProducts.length !== offeredGoodsIds.length) {
       return NextResponse.json({ error: 'One or more selected goods are no longer available. Refresh the list and submit again.' }, { status: 400 });
+    }
+    if (businessTypeValue === 'kitchen' || businessTypeValue === 'restaurant' || businessTypeValue === 'food_vendor') {
+      if (visibleProducts.some(product => !isKitchenFoodProduct(product))) {
+        return NextResponse.json({ error: 'Food businesses can only add food or snack items from the catalogue.' }, { status: 400 });
+      }
+    } else if ((businessTypeValue === 'bar' || businessTypeValue === 'supplier')
+      && visibleProducts.some(product => !isBeverageInventoryProduct(product))) {
+      return NextResponse.json({ error: 'Retailers and suppliers can only add beverage items from the catalogue.' }, { status: 400 });
     }
     offeredGoods = visibleProducts
       .map(product => String(product.name || '').trim())
@@ -431,6 +542,20 @@ export async function POST(request: Request) {
   if (categoryDocumentType && !requiredTypes.includes(categoryDocumentType)) {
     requiredTypes.push(categoryDocumentType);
   }
+  if (alcoholOnboarding) {
+    for (const type of [
+      'government_id',
+      'selfie_photo',
+      'shopfront_photo',
+      'online_alcohol_licence',
+      'business_permit',
+      'kra_pin',
+      'premises_document',
+      'supplier_invoice'
+    ]) {
+      if (!requiredTypes.includes(type)) requiredTypes.push(type);
+    }
+  }
 
   const fileEntries: { type: string; file: File; expiresAt: string | null }[] = [];
   const seenDocumentTypes = new Set<string>();
@@ -440,6 +565,9 @@ export async function POST(request: Request) {
     const type = key.slice('document:'.length);
     if (!allowedDocuments.has(type)) {
       return NextResponse.json({ error: 'One or more document categories are not supported.' }, { status: 400 });
+    }
+    if ((type === 'selfie_photo' || type === 'shopfront_photo') && !['image/jpeg', 'image/png'].includes(entry.type)) {
+      return NextResponse.json({ error: 'The selfie and shopfront uploads must be JPEG or PNG images.' }, { status: 400 });
     }
     if (seenDocumentTypes.has(type)) {
       return NextResponse.json({ error: 'Upload only one file for each document category.' }, { status: 400 });
@@ -462,7 +590,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Application files exceed the 15 MB total upload limit.' }, { status: 413 });
     }
     const expiryValue = value(form, `expiry:${type}`, 10);
-    if ((type === 'liquor_licence' || type === 'wholesale_licence') && !expiryValue) {
+    if ((type === 'liquor_licence' || type === 'wholesale_licence' || type === 'online_alcohol_licence') && !expiryValue) {
       return NextResponse.json({ error: 'Alcohol licence documents must include their expiry date.' }, { status: 400 });
     }
     if (expiryValue) {
@@ -547,6 +675,8 @@ export async function POST(request: Request) {
       collection_available: collectionAvailable,
       offered_goods: offeredGoods,
       offered_goods_pricing: verifiedOffers,
+      ...(alcoholOnboarding ? { accepting_orders: false } : {}),
+      ...(alcoholOnboarding ? { alcohol_onboarding: alcoholOnboarding } : {}),
       documents,
       documents_deferred: missingRequiredTypes.length > 0,
       privacy_notice_version: 'merchant-application-v1',
@@ -597,6 +727,11 @@ export async function POST(request: Request) {
     if (error instanceof Error && /account_user_id/i.test(error.message)) {
       return NextResponse.json({
         error: 'Merchant account linking is not installed yet. Run supabase/MERCHANT_APPLICATION_ACCOUNT_LINK_MIGRATION.sql, then retry your application.'
+      }, { status: 503 });
+    }
+    if (error instanceof Error && /alcohol_onboarding|online_alcohol_licence|government_id|selfie_photo|shopfront_photo|business_permit|supplier_invoice/i.test(error.message)) {
+      return NextResponse.json({
+        error: 'Liquor retailer onboarding is not installed yet. Run supabase/MERCHANT_LIQUOR_ONBOARDING_MIGRATION.sql after supabase/MERCHANT_OPERATIONS_MIGRATION.sql, then retry.'
       }, { status: 503 });
     }
     if (error instanceof Error && /onboarding_lead_id|complete_vendor_onboarding_invite|vendor_onboarding_leads|complete_merchant_business_branch_invite|merchant_business_branch_invites/i.test(error.message)) {

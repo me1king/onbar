@@ -75,6 +75,58 @@ async function getActiveInvite(token: string) {
   return { database, lead, editorRole: adminSession ? 'admin' as const : 'merchant' as const };
 }
 
+async function saveDraftWithoutRpc(
+  database: NonNullable<ReturnType<typeof getDatabase>>,
+  leadId: string,
+  formData: Record<string, unknown>,
+  currentStep: number,
+  expectedUpdatedAt: string | null,
+  actor: 'admin' | 'merchant'
+) {
+  const { data: current, error: readError } = await database
+    .from('vendor_onboarding_drafts')
+    .select('form_data,updated_at')
+    .eq('lead_id', leadId)
+    .maybeSingle();
+  if (readError) return { error: readError, conflict: false, savedAt: null };
+
+  if (current) {
+    if (!expectedUpdatedAt || Date.parse(current.updated_at) !== Date.parse(expectedUpdatedAt)) {
+      return { error: null, conflict: true, savedAt: null };
+    }
+    const savedAt = new Date(Math.max(Date.now(), Date.parse(current.updated_at) + 1)).toISOString();
+    const mergedFormData = { ...(current.form_data as Record<string, unknown>), ...formData };
+    const { data, error } = await database.from('vendor_onboarding_drafts')
+      .update({
+        form_data: mergedFormData,
+        current_step: currentStep,
+        updated_by: actor,
+        updated_at: savedAt
+      })
+      .eq('lead_id', leadId)
+      .eq('updated_at', current.updated_at)
+      .select('updated_at')
+      .maybeSingle();
+    if (error) return { error, conflict: false, savedAt: null };
+    if (!data) return { error: null, conflict: true, savedAt: null };
+    return { error: null, conflict: false, savedAt: data.updated_at as string };
+  }
+
+  if (expectedUpdatedAt) return { error: null, conflict: true, savedAt: null };
+  const { data, error } = await database.from('vendor_onboarding_drafts')
+    .insert({
+      lead_id: leadId,
+      form_data: formData,
+      current_step: currentStep,
+      updated_by: actor
+    })
+    .select('updated_at')
+    .maybeSingle();
+  if (error?.code === '23505') return { error: null, conflict: true, savedAt: null };
+  if (error) return { error, conflict: false, savedAt: null };
+  return { error: null, conflict: false, savedAt: data?.updated_at as string | undefined || null };
+}
+
 export async function POST(request: Request) {
   let body: Record<string, unknown>;
   try {
@@ -125,6 +177,48 @@ export async function POST(request: Request) {
   if (error) {
     if (error.code === '40001') {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error.code === 'PGRST202' || error.code === '42883'
+      || /save_vendor_onboarding_draft.*(not found|schema cache|function)/i.test(error.message)) {
+      const fallback = await saveDraftWithoutRpc(
+        access.database,
+        access.lead.id,
+        formData,
+        Number(body.currentStep),
+        typeof expectedUpdatedAt === 'string' ? expectedUpdatedAt : null,
+        access.editorRole
+      );
+      if (fallback.conflict) {
+        return NextResponse.json({
+          error: 'This draft changed in another session. Reload the link to avoid overwriting newer work.'
+        }, { status: 409 });
+      }
+      if (!fallback.savedAt) {
+        console.error('[MerchantOnboardingDraft] RPC and optimistic draft save failed:', error, fallback.error);
+        const schemaMissing = fallback.error?.code === '42P01'
+          || fallback.error?.code === 'PGRST205'
+          || /vendor_onboarding_drafts|vendor_onboarding_events|schema cache/i.test(fallback.error?.message || '');
+        return NextResponse.json({
+          error: schemaMissing
+            ? 'Shared onboarding progress is not set up on this server yet. Ask OnBar to apply supabase/MERCHANT_ONBOARDING_SHARED_DRAFTS_MIGRATION.sql, then reload this link.'
+            : 'Your progress could not be saved. Please try again or contact OnBar support.'
+        }, { status: 503 });
+      }
+      const { error: auditError } = await access.database.from('vendor_onboarding_events').insert({
+        lead_id: access.lead.id,
+        event_type: 'onboarding_draft_saved',
+        actor: access.editorRole,
+        details: { step: body.currentStep }
+      });
+      if (auditError) {
+        console.error('[MerchantOnboardingDraft] Draft saved without audit event:', auditError);
+        return NextResponse.json({
+          error: 'Your progress was saved, but its audit record could not be saved. Refresh the link before continuing.'
+        }, { status: 503 });
+      }
+      return NextResponse.json({ saved: true, savedAt: fallback.savedAt }, {
+        headers: { 'Cache-Control': 'private, no-store, max-age=0', 'Referrer-Policy': 'no-referrer' }
+      });
     }
     console.error('[MerchantOnboardingDraft] Could not save shared draft:', error);
     return NextResponse.json({ error: 'Your progress could not be saved. Please try again.' }, { status: 503 });

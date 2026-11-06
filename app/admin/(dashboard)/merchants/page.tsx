@@ -42,6 +42,35 @@ interface ExpiringDocument {
   expired: boolean;
 }
 
+interface AlcoholOnboardingProfile {
+  nationalIdLast4?: string;
+  countyLicenceNumber?: string;
+  onlineLicenceNumber?: string;
+  mpesaTill?: string;
+  mpesaRegisteredName?: string;
+  distanceToSchoolMeters?: number;
+  schoolReviewRequired?: boolean;
+  distanceCheck?: string;
+  identityCheck?: string;
+  licenceCheck?: string;
+  tillNameCheck?: string;
+  productStampCheck?: string;
+  products?: Array<{
+    productId: number;
+    size: string;
+    abv: number;
+    exciseStampConfirmed: boolean;
+  }>;
+  rules?: {
+    minimumAge?: number;
+    maximumBottlesPerOrder?: number;
+    schoolBufferMeters?: number;
+  };
+  acceptedRules?: Array<{ rule: string; accepted: boolean }>;
+  typedSignature?: string;
+  manualReview?: Record<string, unknown> | null;
+}
+
 interface Application {
   id: string;
   onboarding_lead_id?: string | null;
@@ -49,6 +78,7 @@ interface Application {
   business_name: string;
   trading_name: string | null;
   business_type: MerchantBusinessType;
+  vendor_type?: 'retailer' | 'wholesaler' | 'street_food' | null;
   email: string;
   phone: string;
   owner_name: string;
@@ -66,6 +96,7 @@ interface Application {
   offered_goods?: string[];
   offered_goods_pricing?: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
   documents?: MerchantApplicationDocument[];
+  alcohol_onboarding?: AlcoholOnboardingProfile | null;
   documents_deferred?: boolean;
   requiredDocuments?: string[];
   status: MerchantApplicationStatus;
@@ -93,7 +124,14 @@ const labels: Record<string, string> = {
   business_registration: 'Business registration',
   county_license: 'County licence',
   liquor_licence: 'Alcohol retail licence',
+  online_alcohol_licence: 'Nairobi online alcohol licence',
   wholesale_licence: 'Alcohol wholesale licence',
+  government_id: 'National ID document',
+  selfie_photo: 'Owner selfie for manual review',
+  shopfront_photo: 'Shopfront photo',
+  business_permit: 'Business permit',
+  supplier_invoice: 'Supplier invoice',
+  kra_pin: 'KRA PIN certificate',
   food_hygiene: 'Food hygiene',
   tax_document: 'Tax / business info',
   premises_document: 'Premises documentation',
@@ -106,6 +144,10 @@ const labels: Record<string, string> = {
   suspended: 'Suspended',
   expired: 'Expired',
   availability_updated: 'Availability updated',
+  food_campaign_requested: 'Food promotion requested',
+  alcohol_campaign_requested: 'Alcohol promotion requested',
+  alcohol_rules_updated: 'Alcohol compliance rules updated',
+  alcohol_manual_checks_completed: 'Alcohol manual verification completed',
   onboarding_link_opened: 'Opened onboarding link',
   onboarding_step_started: 'Started onboarding step',
   onboarding_step_completed: 'Completed onboarding step',
@@ -142,6 +184,14 @@ export default function MerchantApplicationsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const [note, setNote] = useState('');
+  const [alcoholChecks, setAlcoholChecks] = useState({
+    identity_verified: false,
+    county_licence_verified: false,
+    online_licence_verified: false,
+    till_name_verified: false,
+    premises_distance_verified: false,
+    excise_and_supplier_documents_verified: false
+  });
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [working, setWorking] = useState(false);
@@ -189,6 +239,15 @@ export default function MerchantApplicationsPage() {
       const result = await response.json() as { application?: Application; events?: ApplicationEvent[]; error?: string };
       if (!response.ok || !result.application) throw new Error(result.error || 'Application detail could not be loaded.');
       setSelected(result.application);
+      const savedChecks = result.application.alcohol_onboarding?.manualReview;
+      setAlcoholChecks({
+        identity_verified: savedChecks?.identity_verified === true,
+        county_licence_verified: savedChecks?.county_licence_verified === true,
+        online_licence_verified: savedChecks?.online_licence_verified === true,
+        till_name_verified: savedChecks?.till_name_verified === true,
+        premises_distance_verified: savedChecks?.premises_distance_verified === true,
+        excise_and_supplier_documents_verified: savedChecks?.excise_and_supplier_documents_verified === true
+      });
       setEvents(result.events || []);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Application detail could not be loaded.');
@@ -308,6 +367,10 @@ export default function MerchantApplicationsPage() {
   const changeStatus = async (status: MerchantApplicationStatus) => {
     if (!selected) return;
     if (status === 'approved') {
+      if (selected.alcohol_onboarding && !Object.values(alcoholChecks).every(Boolean)) {
+        setError('Complete all six manual alcohol retailer verification checks before approval.');
+        return;
+      }
       const documents = selected.documents || [];
       const missing = requiredDocs(selected).filter(type => {
         const document = documents.find(candidate => candidate.type === type);
@@ -329,7 +392,12 @@ export default function MerchantApplicationsPage() {
       const response = await fetch('/api/admin/merchant-applications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: selected.id, status, note })
+        body: JSON.stringify({
+          id: selected.id,
+          status,
+          note,
+          ...(selected.alcohol_onboarding && status === 'approved' ? { alcoholChecks } : {})
+        })
       });
       const result = await response.json() as { application?: Application; error?: string };
       if (!response.ok || !result.application) throw new Error(result.error || 'Review decision could not be saved.');
@@ -600,6 +668,69 @@ export default function MerchantApplicationsPage() {
                 <p className="mt-3 text-xs text-slate-500">Proposed prices are not customer-facing until the application and offer setup are approved.</p>
               </section>
 
+              {selected.alcohol_onboarding && (
+                <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Alcohol retailer review</h3>
+                      <p className="mt-1 text-xs leading-5 text-slate-600">These are applicant declarations. External licence, identity, till and location checks are not integrated and must be completed manually.</p>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-[10px] font-black uppercase text-amber-900">Manual checks required</span>
+                  </div>
+                  <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+                    <p><strong>ID reference:</strong> ending {selected.alcohol_onboarding.nationalIdLast4 || '—'}</p>
+                    <p><strong>County licence:</strong> {selected.alcohol_onboarding.countyLicenceNumber || '—'}</p>
+                    <p><strong>Online licence reference:</strong> {selected.alcohol_onboarding.onlineLicenceNumber || '—'}</p>
+                    <p><strong>M-Pesa till:</strong> {selected.alcohol_onboarding.mpesaTill || '—'} · {selected.alcohol_onboarding.mpesaRegisteredName || 'name not provided'}</p>
+                    <p><strong>Nearest sensitive site distance:</strong> {Number.isFinite(selected.alcohol_onboarding.distanceToSchoolMeters) ? `${selected.alcohol_onboarding.distanceToSchoolMeters} m, applicant reported` : 'Not provided'}</p>
+                    <p><strong>Under 300 m:</strong> {selected.alcohol_onboarding.schoolReviewRequired ? 'Flagged for manual review' : 'Not flagged by applicant report'}</p>
+                    <p><strong>Configured age minimum:</strong> {selected.alcohol_onboarding.rules?.minimumAge ?? 'Not set'}</p>
+                    <p><strong>Maximum bottles per order:</strong> {selected.alcohol_onboarding.rules?.maximumBottlesPerOrder ?? 'Not set'}</p>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {(selected.alcohol_onboarding.products || []).map(product => {
+                      const catalogueItem = selected.offered_goods_pricing?.find(item => item.product_id === product.productId);
+                      return <div key={product.productId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white p-3 text-xs">
+                        <span className="font-bold">{catalogueItem?.product_name || `Product ${product.productId}`} · {product.size} · {product.abv}% ABV</span>
+                        <span className={product.exciseStampConfirmed ? 'font-bold text-amber-800' : 'font-bold text-rose-700'}>{product.exciseStampConfirmed ? 'Applicant attested stamp' : 'Stamp not confirmed'}</span>
+                      </div>;
+                    })}
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {[
+                      ['Identity / selfie', selected.alcohol_onboarding.identityCheck],
+                      ['Licence record', selected.alcohol_onboarding.licenceCheck],
+                      ['Till-name match', selected.alcohol_onboarding.tillNameCheck],
+                      ['Excise stamp review', selected.alcohol_onboarding.productStampCheck]
+                    ].map(([label, status]) => <p key={label} className="rounded-lg bg-white px-3 py-2 text-xs"><strong>{label}:</strong> {status?.replaceAll('_', ' ') || 'Manual review required'}</p>)}
+                  </div>
+                  {selected.status !== 'approved' && selected.status !== 'suspended' && (
+                    <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4">
+                      <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">Required manual checks before approval</h4>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">Open the submitted documents and independently verify each item. Approval remains blocked until all six are checked.</p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {[
+                          ['identity_verified', 'National ID and selfie match confirmed'],
+                          ['county_licence_verified', 'County off-licence confirmed with the county / LiquorPay'],
+                          ['online_licence_verified', 'Nairobi online alcohol licence verified'],
+                          ['till_name_verified', 'M-Pesa till registered name matched'],
+                          ['premises_distance_verified', 'Shop location and restricted-site distance measured'],
+                          ['excise_and_supplier_documents_verified', 'Excise stamps and supplier invoice reviewed']
+                        ].map(([key, label]) => {
+                          const checkKey = key as keyof typeof alcoholChecks;
+                          return <label key={checkKey} className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-slate-700">
+                            <input type="checkbox" checked={alcoholChecks[checkKey]} onChange={event => setAlcoholChecks(current => ({ ...current, [checkKey]: event.target.checked }))} className="mt-1 h-4 w-4 shrink-0 accent-amber-600" />
+                            {label}
+                          </label>;
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {selected.alcohol_onboarding.manualReview && <p className="mt-3 text-xs text-emerald-800">Manual checks recorded by {String(selected.alcohol_onboarding.manualReview.reviewedBy || 'admin')} on {String(selected.alcohol_onboarding.manualReview.reviewedAt || 'date unavailable')}.</p>}
+                  <p className="mt-3 text-xs text-slate-600">Typed signature recorded: {selected.alcohol_onboarding.typedSignature || 'Not provided'} · Accepted rules: {selected.alcohol_onboarding.acceptedRules?.filter(item => item.accepted).length || 0}/6</p>
+                </section>
+              )}
+
               <section>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Compliance checklist</h3>
@@ -662,13 +793,13 @@ export default function MerchantApplicationsPage() {
                     <>
                       <Button disabled={working} onClick={() => void changeStatus('information_requested')} variant="outline" className="rounded-xl">Request information</Button>
                       <Button disabled={working} onClick={() => void changeStatus('rejected')} variant="outline" className="rounded-xl text-rose-700"><XCircle size={15} className="mr-1" /> Reject</Button>
-                      <Button disabled={working} onClick={() => void changeStatus('approved')} className="rounded-xl"><ShieldCheck size={15} className="mr-1" /> Approve</Button>
+                      <Button disabled={working || Boolean(selected.alcohol_onboarding && !Object.values(alcoholChecks).every(Boolean))} onClick={() => void changeStatus('approved')} className="rounded-xl"><ShieldCheck size={15} className="mr-1" /> Approve</Button>
                     </>
                   )}
                   {selected.status === 'information_requested' && (
                     <>
                       <Button disabled={working} onClick={() => void changeStatus('under_review')} variant="outline" className="rounded-xl">Resume review</Button>
-                      <Button disabled={working} onClick={() => void changeStatus('approved')} className="rounded-xl"><ShieldCheck size={15} className="mr-1" /> Approve</Button>
+                      <Button disabled={working || Boolean(selected.alcohol_onboarding && !Object.values(alcoholChecks).every(Boolean))} onClick={() => void changeStatus('approved')} className="rounded-xl"><ShieldCheck size={15} className="mr-1" /> Approve</Button>
                     </>
                   )}
                   {selected.status === 'approved' && <Button disabled={working} onClick={() => void changeStatus('suspended')} variant="outline" className="rounded-xl text-rose-700">Suspend merchant</Button>}

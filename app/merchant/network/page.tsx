@@ -52,6 +52,7 @@ type PartnerBatch = {
   quantity_received: number;
   available_quantity: number;
   on_hold: boolean;
+  excise_stamp_confirmed: boolean;
   product: { id: number; name: string; sku: string | null; category: string | null } | null;
   movements: Array<{ movement_type: string; quantity_delta: number; note: string | null; created_at: string }>;
 };
@@ -65,6 +66,24 @@ type PartnerOrder = {
   created_at: string;
   items: Array<{ product_name: string; quantity: number; merchant_quantity: number; unit_price: number; listed_price: number; selling_price: number; spread: number; size: string | null }>;
   fulfillment: FulfillmentEvent[];
+};
+type FoodOrderItem = {
+  id: number;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  size: string | null;
+  addons: unknown;
+};
+type FoodOrder = {
+  id: number;
+  status: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string | null;
+  created_at: string;
+  fulfillment: FulfillmentEvent[];
+  items: FoodOrderItem[];
 };
 type PartnerIncident = {
   id: string;
@@ -108,6 +127,20 @@ type PartnerApplication = {
     offered_goods: string[];
     offered_goods_pricing: Array<{ product_id: number; product_name: string; price: number; currency: string; listed_price: number; selling_price: number; spread: number; margin_percent: number | null }>;
     documents: PartnerDocument[];
+    alcohol_onboarding: {
+      nationalIdLast4?: string;
+      countyLicenceNumber?: string;
+      onlineLicenceNumber?: string;
+      mpesaTill?: string;
+      mpesaRegisteredName?: string;
+      distanceToSchoolMeters?: number;
+      schoolReviewRequired?: boolean;
+      identityCheck?: string;
+      licenceCheck?: string;
+      tillNameCheck?: string;
+      products?: Array<{ productId: number; size: string; abv: number; exciseStampConfirmed: boolean }>;
+      rules?: { minimumAge?: number; maximumBottlesPerOrder?: number; schoolBufferMeters?: number };
+    } | null;
     status: string;
     review_note: string | null;
     submitted_at: string;
@@ -170,7 +203,8 @@ type MerchantPerformance = {
 };
 
 type Section = 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders'
-  | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff';
+  | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff'
+  | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours';
 type RiderConnection = {
   id: string;
   phone: string;
@@ -242,6 +276,8 @@ const fulfillmentLabels: Record<string, string> = {
 const incidentLabels: Record<string, string> = {
   product_quality: 'Product quality',
   food_safety: 'Food safety',
+  age_check_failed: 'Failed age / ID check',
+  suspected_counterfeit: 'Suspected counterfeit',
   delivery: 'Delivery',
   conduct: 'Conduct',
   other: 'Other'
@@ -275,6 +311,19 @@ const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = 
   { id: 'food-reviews', label: 'Reviews', icon: Star },
   { id: 'food-business', label: 'Business profile', icon: Building2 },
   { id: 'food-staff', label: 'Staff & riders', icon: Users }
+];
+const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
+  { id: 'liquor-live', label: 'Live orders', icon: Store },
+  { id: 'liquor-catalog', label: 'Catalog & stock', icon: Box },
+  { id: 'liquor-promotions', label: 'Promotions', icon: Megaphone },
+  { id: 'liquor-payments', label: 'Payments', icon: CreditCard },
+  { id: 'liquor-history', label: 'History', icon: History },
+  { id: 'liquor-reviews', label: 'Reviews', icon: Star },
+  { id: 'liquor-compliance', label: 'Compliance', icon: ShieldCheck },
+  { id: 'incidents', label: 'Incidents', icon: AlertTriangle },
+  { id: 'liquor-hours', label: 'Hours', icon: Clock3 },
+  { id: 'riders', label: 'Staff & riders', icon: Users },
+  { id: 'business', label: 'Business profile', icon: Building2 }
 ];
 const weekdayLabels: Record<MerchantWeekday, string> = {
   monday: 'Monday',
@@ -339,7 +388,12 @@ function FoodMerchantTerminal({
   performance,
   performanceLoading,
   performanceError,
+  foodOrders,
+  foodOrdersLoading,
+  foodOrdersError,
+  deepLinkOrderId,
   onAction,
+  onFoodFulfillment,
   onSectionChange
 }: {
   section: Section;
@@ -350,7 +404,12 @@ function FoodMerchantTerminal({
   performance: MerchantPerformance | null;
   performanceLoading: boolean;
   performanceError: string;
+  foodOrders: FoodOrder[];
+  foodOrdersLoading: boolean;
+  foodOrdersError: string;
+  deepLinkOrderId: string;
   onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
+  onFoodFulfillment: (orderId: number, eventType: string) => Promise<void>;
   onSectionChange: (section: Section) => void;
 }) {
   const [campaignName, setCampaignName] = useState('');
@@ -359,9 +418,11 @@ function FoodMerchantTerminal({
   const [campaignEnd, setCampaignEnd] = useState('');
   const [campaignDiscount, setCampaignDiscount] = useState('');
   const currency = (amount: number) => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
-  const currentFulfillment = (order: PartnerOrder) => latestFulfillment(order.fulfillment);
-  const isClosed = (order: PartnerOrder) => ['delivered', 'cancelled', 'rejected'].includes(currentFulfillment(order));
-  const openOrders = overview.orders.filter(order => !isClosed(order));
+  const currentFoodFulfillment = (order: FoodOrder) => latestFulfillment(order.fulfillment);
+  const isClosedFoodOrder = (order: FoodOrder) =>
+    ['delivered', 'complete', 'completed', 'cancelled', 'canceled', 'refunded'].includes(order.status.toLowerCase())
+    || ['delivered', 'rejected', 'cancelled'].includes(currentFoodFulfillment(order));
+  const openOrders = foodOrders.filter(order => !isClosedFoodOrder(order));
   const products = application.offered_goods_pricing;
   const foodReviewSection = section === 'food-reviews';
 
@@ -385,39 +446,45 @@ function FoodMerchantTerminal({
     }
   };
 
-  const orderCard = (order: PartnerOrder, allowActions: boolean) => {
-    const latest = currentFulfillment(order);
+  const foodOrderCard = (order: FoodOrder, allowActions: boolean) => {
+    const latest = currentFoodFulfillment(order);
     const nextEvents = fulfillmentNext[latest] || [];
-    return <article id={`merchant-order-${order.id}`} key={order.id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    return <article id={`merchant-order-${order.id}`} key={order.id} className={`rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 ${deepLinkOrderId === String(order.id) ? 'ring-2 ring-amber-400' : ''}`}>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p className="text-xs font-black uppercase tracking-widest text-amber-400">Order #{order.id}</p>
+        <h3 className="mt-1 font-bold text-white">{order.customer_name || 'Customer'}</h3>
+        <p className="mt-1 text-xs text-zinc-400">{dateTime(order.created_at)} · {order.status}</p>
+      </div>
+      <span className="rounded-full bg-amber-400/10 px-3 py-1.5 text-[10px] font-black uppercase text-amber-300">
+        {fulfillmentLabels[latest] || (order.status === 'Confirmed' ? 'Awaiting response' : order.status)}
+      </span>
+    </div>
+    <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+      {order.items.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-black uppercase tracking-widest text-amber-400">Order #{order.id}</p>
-          <h3 className="mt-1 font-bold text-white">{order.customer_name || 'Customer'}</h3>
-          <p className="mt-1 text-xs text-zinc-400">{dateTime(order.created_at)} · {order.status}</p>
+          <p className="text-sm text-zinc-200"><strong>{item.quantity} × {item.product_name}</strong>{item.size ? ` · ${item.size}` : ''}</p>
+          <p className="mt-1 text-xs text-zinc-400">{currency(item.unit_price)} each</p>
         </div>
-        <span className="rounded-full bg-amber-400/10 px-3 py-1.5 text-[10px] font-black uppercase text-amber-300">
-          {fulfillmentLabels[latest] || 'Awaiting response'}
+      </div>)}
+      <p className="text-xs text-zinc-400">Customer {order.customer_phone
+        ? <a className="text-amber-300 underline" href={`tel:${order.customer_phone}`}>{order.customer_phone}</a>
+        : 'phone number unavailable'}</p>
+    </div>
+    {allowActions && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
+      {nextEvents.map(eventType => <button key={eventType} disabled={working} onClick={() => void onFoodFulfillment(order.id, eventType)}
+        className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase disabled:opacity-50 ${['rejected', 'cancelled'].includes(eventType) ? 'border border-rose-400/40 text-rose-300' : 'bg-amber-400 text-zinc-950'}`}>
+        {fulfillmentLabels[eventType] || eventType.replaceAll('_', ' ')}
+      </button>)}
+    </div>}
+    {order.fulfillment.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">
+      {[...order.fulfillment].sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime()).map(event =>
+        <span key={event.id} title={dateTime(event.occurred_at)} className="rounded-lg bg-white/5 px-2.5 py-1.5 text-[10px] font-bold text-zinc-300">
+          {fulfillmentLabels[event.event_type] || event.event_type.replaceAll('_', ' ')}
         </span>
-      </div>
-      <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
-        {order.items.map((item, index) => <p key={`${item.product_name}-${index}`} className="text-sm text-zinc-200">
-          <strong>{item.merchant_quantity} × {item.product_name}</strong>{item.size ? ` · ${item.size}` : ''}
-          <span className="ml-2 text-xs text-zinc-400">{currency(item.selling_price)} each</span>
-        </p>)}
-        <p className="text-xs text-zinc-400">Customer <a className="text-amber-300 underline" href={`tel:${order.customer_phone}`}>{order.customer_phone}</a></p>
-      </div>
-      {allowActions && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2">
-        {nextEvents.map(eventType => <button key={eventType} disabled={working} onClick={() => void onAction({
-          operation: 'fulfillment',
-          applicationId: application.id,
-          orderId: order.id,
-          eventType
-        }, `Order ${order.id}: ${fulfillmentLabels[eventType].toLowerCase()} recorded.`)}
-          className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase disabled:opacity-50 ${eventType === 'rejected' || eventType === 'cancelled' ? 'border border-rose-400/40 text-rose-300' : 'bg-amber-400 text-zinc-950'}`}>
-          {fulfillmentLabels[eventType]}
-        </button>)}
-      </div>}
-    </article>;
+      )}
+    </div>}
+  </article>;
   };
 
   const shell = (title: string, intro: string, children: React.ReactNode) => <section className="space-y-5 text-zinc-100">
@@ -430,8 +497,8 @@ function FoodMerchantTerminal({
   </section>;
 
   if (section === 'food-live') {
-    const awaiting = overview.orders.filter(order => !currentFulfillment(order)).length;
-    const preparing = overview.orders.filter(order => ['accepted', 'preparing', 'ready', 'handed_to_rider', 'collected'].includes(currentFulfillment(order))).length;
+    const awaiting = openOrders.filter(order => !currentFoodFulfillment(order)).length;
+    const preparing = foodOrders.filter(order => ['accepted', 'preparing', 'ready'].includes(currentFoodFulfillment(order))).length;
     return shell('Live orders', 'A live view of orders assigned to your approved business. Update each order as your kitchen prepares and hands it off.', <>
       <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> Refreshes every 20 seconds</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -453,10 +520,12 @@ function FoodMerchantTerminal({
         <h3 className="text-lg font-black text-white">Current queue</h3>
         <button onClick={() => onSectionChange('food-history')} className="text-xs font-bold text-amber-300 hover:text-amber-200">Order history →</button>
       </div>
-      {openOrders.length ? <div className="grid gap-3 lg:grid-cols-2">{openOrders.map(order => orderCard(order, true))}</div>
-        : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-center text-sm text-zinc-400">No open traced orders are assigned to this business right now.</div>}
+      {foodOrdersError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">{foodOrdersError}</p>}
+      {foodOrdersLoading && <p role="status" className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-400">Loading assigned food orders…</p>}
+      {!foodOrdersLoading && openOrders.length ? <div className="grid gap-3 lg:grid-cols-2">{openOrders.map(order => foodOrderCard(order, true))}</div>
+        : !foodOrdersLoading && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-center text-sm text-zinc-400">No open food orders assigned to this business right now.</div>}
       <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-4 text-xs leading-5 text-zinc-400">
-        Orders shown here are sourced from OnBar’s merchant allocation and inventory trace records. No sample orders or simulated timers are used.
+        Orders shown here are real customer orders containing food products approved for this business. Kitchen status updates are recorded on the order items.
       </div>
     </>);
   }
@@ -544,11 +613,12 @@ function FoodMerchantTerminal({
   }
 
   if (section === 'food-history') {
-    const historyOrders = [...overview.orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    return shell('Order history', 'Previously assigned and current orders recorded against your traced menu stock.', <>
-      <p className="text-xs text-zinc-500">Showing {historyOrders.length} orders currently available in the linked trace records.</p>
-      {historyOrders.length ? <div className="grid gap-3 lg:grid-cols-2">{historyOrders.map(order => orderCard(order, false))}</div>
-        : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-center text-sm text-zinc-400">No traced order history is available yet.</div>}
+    return shell('Order history', 'Confirmed customer orders containing the food products approved for your business.', <>
+      <p className="text-xs text-zinc-500">Showing {foodOrders.length} confirmed customer orders containing an approved food product for this business.</p>
+      {foodOrdersError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">{foodOrdersError}</p>}
+      {foodOrdersLoading && <p role="status" className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-400">Loading food order history…</p>}
+      {!foodOrdersLoading && foodOrders.length ? <div className="grid gap-3 lg:grid-cols-2">{foodOrders.map(order => foodOrderCard(order, false))}</div>
+        : !foodOrdersLoading && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-center text-sm text-zinc-400">No food order history is available for this business yet.</div>}
     </>);
   }
 
@@ -573,11 +643,196 @@ function FoodMerchantTerminal({
   return null;
 }
 
+function AlcoholMerchantTerminal({
+  section,
+  application,
+  overview,
+  canOperate,
+  working,
+  performance,
+  performanceLoading,
+  performanceError,
+  onAction
+}: {
+  section: Section;
+  application: PartnerApplication['application'];
+  overview: PartnerApplication;
+  canOperate: boolean;
+  working: boolean;
+  performance: MerchantPerformance | null;
+  performanceLoading: boolean;
+  performanceError: string;
+  onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
+}) {
+  const [campaignName, setCampaignName] = useState('');
+  const [campaignOffer, setCampaignOffer] = useState('');
+  const [campaignStart, setCampaignStart] = useState('');
+  const [campaignEnd, setCampaignEnd] = useState('');
+  const [campaignDiscount, setCampaignDiscount] = useState('');
+  const [minimumAge, setMinimumAge] = useState(String(application.alcohol_onboarding?.rules?.minimumAge ?? 18));
+  const [maximumBottles, setMaximumBottles] = useState(String(application.alcohol_onboarding?.rules?.maximumBottlesPerOrder ?? 12));
+  const [schoolBuffer, setSchoolBuffer] = useState(String(application.alcohol_onboarding?.rules?.schoolBufferMeters ?? 300));
+  const hours = normalizeMerchantOperatingHours(application.operating_hours);
+  const alcoholProfile = application.alcohol_onboarding;
+  const isLive = application.status === 'approved' && application.accepting_orders;
+  useEffect(() => {
+    setMinimumAge(String(application.alcohol_onboarding?.rules?.minimumAge ?? 18));
+    setMaximumBottles(String(application.alcohol_onboarding?.rules?.maximumBottlesPerOrder ?? 12));
+    setSchoolBuffer(String(application.alcohol_onboarding?.rules?.schoolBufferMeters ?? 300));
+  }, [application.id, application.alcohol_onboarding?.rules?.minimumAge, application.alcohol_onboarding?.rules?.maximumBottlesPerOrder, application.alcohol_onboarding?.rules?.schoolBufferMeters]);
+  const panel = (title: string, intro: string, children: React.ReactNode) => <section className="space-y-5 text-zinc-100">
+    <header>
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-400">{application.trading_name || application.business_name}</p>
+      <h2 className="mt-2 text-2xl font-black text-white">{title}</h2>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">{intro}</p>
+    </header>
+    {children}
+  </section>;
+
+  if (section === 'liquor-live' || section === 'liquor-history') {
+    const orders = section === 'liquor-live'
+      ? overview.orders.filter(order => !['delivered', 'cancelled', 'rejected'].includes(latestFulfillment(order.fulfillment)))
+      : overview.orders;
+    return panel(section === 'liquor-live' ? 'Live orders' : 'Order history',
+      'Orders linked to inventory batches assigned to this business. Age and ID must be checked at handoff; the terminal does not have a verified customer-age provider.',
+      <>
+        <div className="flex flex-wrap gap-3">
+          <div className="rounded-xl border border-white/10 bg-[#1a1b1e] px-4 py-3"><p className="text-2xl font-black text-white">{orders.length}</p><p className="text-[10px] font-bold uppercase text-zinc-400">{section === 'liquor-live' ? 'Open traced orders' : 'Recorded traced orders'}</p></div>
+          <div className={`rounded-xl px-4 py-3 ${isLive ? 'bg-emerald-400/10 text-emerald-200' : 'bg-amber-400/10 text-amber-200'}`}><p className="font-black">{isLive ? 'Accepting orders' : 'Not accepting orders'}</p><p className="text-xs">{application.status === 'approved' ? 'Availability is linked to your saved hours.' : 'Admin approval is required.'}</p></div>
+        </div>
+        {orders.length ? <div className="grid gap-3 lg:grid-cols-2">{orders.map(order => {
+          const latest = latestFulfillment(order.fulfillment);
+          const nextEvents = fulfillmentNext[latest] || [];
+          return <article key={order.id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase text-amber-400">Order #{order.id}</p><h3 className="mt-1 font-bold text-white">{order.customer_name || 'Customer'}</h3><p className="mt-1 text-xs text-zinc-400">{dateTime(order.created_at)} · {order.status}</p></div><span className="rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase text-amber-200">{fulfillmentLabels[latest] || 'Awaiting response'}</span></div>
+            <p className="mt-3 rounded-lg bg-amber-400/5 p-3 text-xs leading-5 text-amber-100">18+ ID check required at delivery. Confirm the recipient meets the configured minimum age and do not hand over if they appear intoxicated.</p>
+            <div className="mt-3 space-y-2">{order.items.map((item, index) => <p key={`${item.product_name}-${index}`} className="text-sm text-zinc-200">{item.merchant_quantity} × {item.product_name}{item.size ? ` · ${item.size}` : ''}</p>)}</div>
+            {section === 'liquor-live' && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">{nextEvents.map(eventType => <button key={eventType} disabled={working} onClick={() => void onAction({ operation: 'fulfillment', applicationId: application.id, orderId: order.id, eventType }, `Order #${order.id}: ${fulfillmentLabels[eventType]}.`)} className={`rounded-lg px-3 py-2 text-[10px] font-black uppercase disabled:opacity-50 ${['rejected', 'cancelled'].includes(eventType) ? 'border border-rose-400/40 text-rose-200' : 'bg-amber-400 text-zinc-950'}`}>{fulfillmentLabels[eventType]}</button>)}</div>}
+          </article>;
+        })}</div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No {section === 'liquor-live' ? 'open' : 'recorded'} traced orders for this shop.</div>}
+      </>);
+  }
+
+  if (section === 'liquor-catalog') {
+    return panel('Catalog and stock', 'Approved catalogue items and actual received batch records. Excise-stamp status is an applicant attestation, not an authenticity scan.',
+      application.offered_goods_pricing.length ? <div className="grid gap-3 md:grid-cols-2">{application.offered_goods_pricing.map(product => {
+        const details = alcoholProfile?.products?.find(item => item.productId === product.product_id);
+        const batches = overview.batches.filter(batch => batch.product_id === product.product_id);
+        const available = batches.reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0);
+        return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+          <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-white">{product.product_name}</h3><p className="mt-1 text-xs text-zinc-400">{details?.size || 'Size not recorded'} · {details?.abv === undefined ? 'ABV not recorded' : `${details.abv}% ABV`}</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${details?.exciseStampConfirmed ? 'bg-amber-400/10 text-amber-200' : 'bg-rose-400/10 text-rose-200'}`}>{details?.exciseStampConfirmed ? 'Stamp attested' : 'Stamp not confirmed'}</span></div>
+          <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.selling_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Proposed selling price</p></div></div>
+          {batches.length > 0 && <div className="mt-3 space-y-2">{batches.map(batch => <p key={batch.id} className="rounded-lg bg-white/5 p-2 text-xs text-zinc-300">Lot {batch.lot_code} · {batch.available_quantity} units · {batch.on_hold ? 'ON HOLD' : batch.expiry_at ? `Expires ${batch.expiry_at}` : 'No expiry recorded'}</p>)}</div>}
+        </article>;
+      })}</div> : <p className="rounded-2xl bg-[#1a1b1e] p-6 text-sm text-zinc-400">No products were approved for this retailer.</p>);
+  }
+
+  if (section === 'liquor-promotions') {
+    const submitCampaign = async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const saved = await onAction({
+        operation: 'request_alcohol_campaign',
+        applicationId: application.id,
+        campaignName,
+        offerDescription: campaignOffer,
+        startDate: campaignStart,
+        endDate: campaignEnd,
+        discountPercent: campaignDiscount ? Number(campaignDiscount) : null
+      }, 'Alcohol promotion sent for admin review; it is not live yet.');
+      if (saved) {
+        setCampaignName('');
+        setCampaignOffer('');
+        setCampaignStart('');
+        setCampaignEnd('');
+        setCampaignDiscount('');
+      }
+    };
+    const requests = overview.events.filter(event => event.event_type === 'alcohol_campaign_requested');
+    return panel('Promotions', 'Submit an offer for review. Requests are recorded in your application timeline and do not change customer-facing prices or activate automatically.',
+      <>
+        <form onSubmit={submitCampaign} className="grid gap-3 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 md:grid-cols-2">
+          <Input required minLength={3} maxLength={100} value={campaignName} onChange={event => setCampaignName(event.target.value)} placeholder="Promotion name" className="border-white/10 bg-[#111214] text-white" />
+          <Input type="number" min="1" max="90" value={campaignDiscount} onChange={event => setCampaignDiscount(event.target.value)} placeholder="Optional discount percent" className="border-white/10 bg-[#111214] text-white" />
+          <textarea required minLength={10} maxLength={1000} value={campaignOffer} onChange={event => setCampaignOffer(event.target.value)} placeholder="Products, terms and limits" className="min-h-24 rounded-xl border border-white/10 bg-[#111214] p-3 text-sm text-white md:col-span-2" />
+          <Input required type="date" value={campaignStart} onChange={event => setCampaignStart(event.target.value)} className="border-white/10 bg-[#111214] text-white" />
+          <Input required type="date" min={campaignStart || undefined} value={campaignEnd} onChange={event => setCampaignEnd(event.target.value)} className="border-white/10 bg-[#111214] text-white" />
+          <button type="submit" disabled={!canOperate || working} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 disabled:opacity-50 md:col-span-2">Send promotion for review</button>
+        </form>
+        <div className="space-y-3">{requests.map((event, index) => <article key={`${event.created_at}-${index}`} className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4"><p className="font-bold text-white">{String(event.details?.campaign_name || 'Promotion request')}</p><p className="mt-1 text-xs text-zinc-400">{String(event.details?.requested_start_date || '—')} to {String(event.details?.requested_end_date || '—')} · pending admin review · {dateTime(event.created_at)}</p></article>)}
+          {!requests.length && <p className="text-sm text-zinc-400">No promotion requests recorded.</p>}</div>
+      </>);
+  }
+
+  if (section === 'liquor-payments') {
+    return panel('Payments and settlement', 'This terminal has no verified merchant payout ledger or M-Pesa withdrawal integration. Orders and sales totals are not treated as withdrawable balance.',
+      <article className="flex items-start gap-3 rounded-2xl border border-white/10 bg-[#1a1b1e] p-6"><CreditCard className="mt-1 text-amber-400" /><div><h3 className="font-black text-white">Settlement history is not connected</h3><p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">Contact OnBar finance for statements. No sample balance, payout status, cash-held amount or withdrawal button is shown.</p></div></article>);
+  }
+
+  if (section === 'liquor-reviews') {
+    const window = performance?.windows[7];
+    return panel('Reviews and customer feedback', 'Only recorded OnBar scorecard metrics are shown. Individual review text is not currently connected.',
+      <>
+        {performanceLoading && <p className="rounded-xl bg-[#1a1b1e] p-5 text-sm text-zinc-400">Loading recorded scorecard…</p>}
+        {performanceError && <p role="alert" className="rounded-xl bg-rose-400/10 p-4 text-sm text-rose-200">{performanceError}</p>}
+        {window && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
+          ['Average rating', window.averageRating === null ? 'Not recorded' : `${window.averageRating.toFixed(1)} / 5`],
+          ['Completed orders', String(window.delivered)],
+          ['Recorded complaints', String(window.vendorComplaints)],
+          ['On time', window.onTimePercent === null ? 'Not recorded' : `${window.onTimePercent}%`]
+        ].map(([label, value]) => <article key={label} className="rounded-xl border border-white/10 bg-[#1a1b1e] p-5"><p className="text-2xl font-black text-white">{value}</p><p className="mt-2 text-xs font-bold uppercase text-zinc-400">{label}</p></article>)}</div>}
+        {!performanceLoading && !performanceError && !window && <p className="rounded-xl bg-[#1a1b1e] p-5 text-sm text-zinc-400">No recorded customer scorecard data is available yet.</p>}
+      </>);
+  }
+
+  if (section === 'liquor-compliance') {
+    const saveRules = async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      await onAction({
+        operation: 'update_alcohol_rules',
+        applicationId: application.id,
+        minimumAge: Number(minimumAge),
+        maximumBottlesPerOrder: Number(maximumBottles),
+        schoolBufferMeters: Number(schoolBuffer)
+      }, 'Alcohol rules saved and added to the audit timeline.');
+    };
+    const documentStatus = (document: PartnerDocument) => document.expiresAt && document.expiresAt < new Date().toISOString().slice(0, 10)
+      ? `Expired ${document.expiresAt}`
+      : document.expiresAt ? `Expires ${document.expiresAt}` : 'No expiry date recorded';
+    const flaggedDocs = application.documents.filter(document => document.expiresAt && document.expiresAt <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+    return panel('Compliance', 'Review the submitted documents and configure the merchant-side selling rules. These settings do not replace applicable law or legal advice.',
+      <>
+        {flaggedDocs.length > 0 && <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100"><strong>Document expiry alert:</strong> {flaggedDocs.map(document => `${documentLabels[document.type] || document.type} (${documentStatus(document)})`).join('; ')}</div>}
+        <div className="grid gap-3 md:grid-cols-2">{application.documents.map(document => <article key={document.id} className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4"><p className="font-bold text-white">{documentLabels[document.type] || document.type}</p><p className="mt-1 text-xs text-zinc-400">{document.name} · {documentStatus(document)}</p></article>)}</div>
+        <form onSubmit={saveRules} className="grid gap-3 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 sm:grid-cols-3">
+          <label className="text-xs font-bold text-zinc-300">Minimum age<select value={minimumAge} onChange={event => setMinimumAge(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-[#111214] px-3 text-sm"><option value="18">18</option><option value="21">21</option></select></label>
+          <label className="text-xs font-bold text-zinc-300">Maximum bottles<Input type="number" min="1" max="100" required value={maximumBottles} onChange={event => setMaximumBottles(event.target.value)} className="mt-2 border-white/10 bg-[#111214] text-white" /></label>
+          <label className="text-xs font-bold text-zinc-300">School buffer (m)<Input type="number" min="0" max="5000" required value={schoolBuffer} onChange={event => setSchoolBuffer(event.target.value)} className="mt-2 border-white/10 bg-[#111214] text-white" /></label>
+          <button type="submit" disabled={!canOperate || working} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 disabled:opacity-50 sm:col-span-3">Save compliance rules</button>
+        </form>
+        <p className="rounded-xl bg-amber-400/5 p-4 text-xs leading-5 text-amber-100">Applicant identity, face match, licence status, till-name match, school distance and excise stamps remain pending manual verification. Expired licences already prevent accepting new orders through the merchant availability checks.</p>
+      </>);
+  }
+
+  if (section === 'liquor-hours') {
+    const operating = Object.entries(hours).map(([day, value]) => ({ day, value })).filter(({ value }) => value.enabled);
+    return panel('Trading hours', 'The saved business schedule controls routing and availability. Use the existing business controls to edit exact hours.',
+      <>
+        <div className="grid gap-2 sm:grid-cols-2">{operating.map(({ day, value }) => <p key={day} className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-200"><strong className="capitalize">{day}:</strong> {value.open}–{value.close}</p>)}</div>
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5"><div><p className="font-black text-white">{application.accepting_orders ? 'Accepting new orders' : 'Paused for new orders'}</p><p className="mt-1 text-xs text-zinc-400">Current application state: {application.status}</p></div><button type="button" disabled={!canOperate || working} onClick={() => void onAction({ operation: 'update_availability', applicationId: application.id, operatingHours: application.operating_hours, acceptingOrders: !application.accepting_orders }, application.accepting_orders ? 'New order routing paused.' : 'Shop is live and accepting orders during saved hours.')} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 disabled:opacity-50">{application.accepting_orders ? 'Pause orders' : application.status === 'approved' ? 'Go live' : 'Awaiting approval'}</button></div>
+      </>);
+  }
+
+  return null;
+}
+
 export default function OnBarPartnerNetworkPage() {
   const [accessToken, setAccessToken] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [workspace, setWorkspace] = useState<PartnerApplication[]>([]);
+  const [foodOrders, setFoodOrders] = useState<FoodOrder[]>([]);
+  const [foodOrdersLoading, setFoodOrdersLoading] = useState(false);
+  const [foodOrdersError, setFoodOrdersError] = useState('');
   const [performance, setPerformance] = useState<MerchantPerformance | null>(null);
   const [performanceLoading, setPerformanceLoading] = useState(false);
   const [performanceError, setPerformanceError] = useState('');
@@ -598,7 +853,7 @@ export default function OnBarPartnerNetworkPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [batchForm, setBatchForm] = useState({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '' });
+  const [batchForm, setBatchForm] = useState({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '', exciseStampConfirmed: false });
   const [incidentForm, setIncidentForm] = useState({ link: '', category: 'other', description: '' });
   const [scheduleDraft, setScheduleDraft] = useState<MerchantOperatingHours>(() => normalizeMerchantOperatingHours(null));
   const [acceptingOrdersDraft, setAcceptingOrdersDraft] = useState(false);
@@ -613,11 +868,16 @@ export default function OnBarPartnerNetworkPage() {
     ['kitchen', 'restaurant', 'food_vendor'].includes(selected.application.business_type)
     || selected.application.vendor_type === 'street_food'
   ));
+  const isLiquorMerchant = Boolean(selected
+    && selected.application.business_type === 'bar'
+    && selected.application.vendor_type === 'retailer');
 
   useEffect(() => {
     if (isFoodMerchant && !foodSections.some(item => item.id === section)) setSection('food-live');
     if (!isFoodMerchant && foodSections.some(item => item.id === section)) setSection('overview');
-  }, [isFoodMerchant, section]);
+    if (isLiquorMerchant && !liquorSections.some(item => item.id === section)) setSection('liquor-live');
+    if (!isLiquorMerchant && liquorSections.some(item => item.id === section)) setSection('overview');
+  }, [isFoodMerchant, isLiquorMerchant, section]);
 
   useEffect(() => {
     if (!accessToken || !canOperate || !selected?.application.id) return;
@@ -684,12 +944,15 @@ export default function OnBarPartnerNetworkPage() {
   }, [deepLinkApplicationId, workspace]);
 
   useEffect(() => {
-    if (!deepLinkOrderId || !['orders', 'food-history'].includes(section) || !selected?.orders.some(order => String(order.id) === deepLinkOrderId)) return;
+    const linkedOrderExists = section === 'food-history'
+      ? foodOrders.some(order => String(order.id) === deepLinkOrderId)
+      : selected?.orders.some(order => String(order.id) === deepLinkOrderId);
+    if (!deepLinkOrderId || !['orders', 'food-history'].includes(section) || !linkedOrderExists) return;
     const frame = window.requestAnimationFrame(() => {
       document.getElementById(`merchant-order-${deepLinkOrderId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [deepLinkOrderId, section, selected?.orders]);
+  }, [deepLinkOrderId, foodOrders, section, selected?.orders]);
 
   useEffect(() => {
     if (!selected) return;
@@ -718,6 +981,39 @@ export default function OnBarPartnerNetworkPage() {
       if (!silent) setLoading(false);
     }
   }, []);
+
+  const loadFoodOrders = useCallback(async (silent = false) => {
+    if (!accessToken || !selected?.application.id || selected.application.status !== 'approved') return;
+    if (!silent) setFoodOrdersLoading(true);
+    setFoodOrdersError('');
+    try {
+      const query = new URLSearchParams({ applicationId: selected.application.id });
+      const response = await fetch(`/api/merchant/food-orders?${query}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: 'no-store'
+      });
+      const payload = await response.json() as { orders?: FoodOrder[]; error?: string };
+      if (!response.ok || !payload.orders) throw new Error(payload.error || 'Food orders could not be loaded.');
+      setFoodOrders(payload.orders);
+    } catch (loadError) {
+      setFoodOrdersError(loadError instanceof Error ? loadError.message : 'Food orders could not be loaded.');
+    } finally {
+      if (!silent) setFoodOrdersLoading(false);
+    }
+  }, [accessToken, selected?.application.id, selected?.application.status]);
+
+  useEffect(() => {
+    if (!isFoodMerchant || !canOperate || !['food-live', 'food-history'].includes(section) || !accessToken) {
+      setFoodOrders([]);
+      setFoodOrdersError('');
+      setFoodOrdersLoading(false);
+      return;
+    }
+    void loadFoodOrders();
+    if (section !== 'food-live') return;
+    const interval = window.setInterval(() => void loadFoodOrders(true), 20_000);
+    return () => window.clearInterval(interval);
+  }, [accessToken, canOperate, isFoodMerchant, loadFoodOrders, section]);
 
   useEffect(() => {
     if (!accessToken || section !== 'food-live') return;
@@ -775,7 +1071,7 @@ export default function OnBarPartnerNetworkPage() {
 
   useEffect(() => {
     const applicationId = selected?.application.id;
-    if (!['performance', 'food-reviews'].includes(section) || !accessToken || !applicationId || selected?.application.status !== 'approved') {
+    if (!['performance', 'food-reviews', 'liquor-reviews'].includes(section) || !accessToken || !applicationId || selected?.application.status !== 'approved') {
       setPerformance(null);
       setPerformanceError('');
       setPerformanceLoading(false);
@@ -920,9 +1216,28 @@ export default function OnBarPartnerNetworkPage() {
     }
   };
 
+  const updateFoodOrderFulfillment = async (orderId: number, eventType: string) => {
+    if (!selected?.application.id) return;
+    const saved = await apiAction({
+      operation: 'fulfillment',
+      applicationId: selected.application.id,
+      orderId,
+      eventType
+    }, `Order #${orderId}: ${fulfillmentLabels[eventType] || eventType.replaceAll('_', ' ')}.`);
+    if (saved) await loadFoodOrders(true);
+  };
+
   const productOptions = useMemo(() => {
     if (!selected) return [];
     const products = new Map<number, NonNullable<PartnerBatch['product']>>();
+    for (const offer of selected.application.offered_goods_pricing) {
+      products.set(offer.product_id, {
+        id: offer.product_id,
+        name: offer.product_name,
+        sku: null,
+        category: selected.application.cuisine_or_category
+      });
+    }
     for (const batch of selected.batches) {
       if (batch.product) products.set(batch.product.id, batch.product);
     }
@@ -1041,9 +1356,10 @@ export default function OnBarPartnerNetworkPage() {
       supplierName: batchForm.supplierName,
       quantity: batchForm.quantity,
       expiryAt: batchForm.expiryAt || null,
-      notes: batchForm.notes
+      notes: batchForm.notes,
+      exciseStampConfirmed: batchForm.exciseStampConfirmed
     }, 'Inventory receipt recorded.');
-    if (saved) setBatchForm({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '' });
+    if (saved) setBatchForm({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '', exciseStampConfirmed: false });
   };
 
   const submitIncident = async (event: FormEvent<HTMLFormElement>) => {
@@ -1207,17 +1523,17 @@ export default function OnBarPartnerNetworkPage() {
 
   return (
     <main
-      className={isFoodMerchant ? 'min-h-screen bg-[#111214] text-zinc-100' : 'min-h-screen bg-slate-50'}
+      className={isFoodMerchant || isLiquorMerchant ? 'min-h-screen bg-[#111214] text-zinc-100' : 'min-h-screen bg-slate-50'}
       style={{
         '--primary': merchantAccentColor,
         '--primary-foreground': getContrastForeground(merchantAccentColor)
       } as CSSProperties}
     >
-      <header className={isFoodMerchant ? 'border-b border-white/10 bg-[#18191c]' : 'border-b border-slate-200 bg-white'}>
+      <header className={isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10 bg-[#18191c]' : 'border-b border-slate-200 bg-white'}>
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
           <div>
-            <p className={`text-xs font-black uppercase tracking-[0.25em] ${isFoodMerchant ? 'text-amber-400' : 'text-primary'}`}>{isFoodMerchant ? 'OnBar Food Partner' : 'OnBar Merchant Network'}</p>
-            <h1 className={`mt-1 text-2xl font-black sm:text-3xl ${isFoodMerchant ? 'text-white' : 'text-slate-900'}`}>{isFoodMerchant ? 'Merchant Terminal' : 'Partner Workspace'}</h1>
+            <p className={`text-xs font-black uppercase tracking-[0.25em] ${isFoodMerchant || isLiquorMerchant ? 'text-amber-400' : 'text-primary'}`}>{isFoodMerchant ? 'OnBar Food Partner' : isLiquorMerchant ? 'OnBar Liquor Retailer' : 'OnBar Merchant Network'}</p>
+            <h1 className={`mt-1 text-2xl font-black sm:text-3xl ${isFoodMerchant || isLiquorMerchant ? 'text-white' : 'text-slate-900'}`}>{isFoodMerchant || isLiquorMerchant ? 'Merchant Terminal' : 'Partner Workspace'}</h1>
           </div>
           <div className="flex items-center gap-3">
             <span className={`hidden text-sm sm:inline ${isFoodMerchant ? 'text-zinc-400' : 'text-slate-500'}`}>{email}</span>
@@ -1228,9 +1544,9 @@ export default function OnBarPartnerNetworkPage() {
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
         {workspace.length > 1 && (
-          <label className={`mb-5 block max-w-lg text-xs font-black uppercase tracking-wide ${isFoodMerchant ? 'text-zinc-400' : 'text-slate-500'}`}>
+          <label className={`mb-5 block max-w-lg text-xs font-black uppercase tracking-wide ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400' : 'text-slate-500'}`}>
             Business
-            <select value={selectedId} onChange={event => setSelectedId(event.target.value)} className={`mt-2 h-12 w-full rounded-xl border px-3 text-sm font-bold normal-case ${isFoodMerchant ? 'border-white/10 bg-[#1a1b1e] text-white' : 'border-slate-200 bg-white text-slate-800'}`}>
+            <select value={selectedId} onChange={event => setSelectedId(event.target.value)} className={`mt-2 h-12 w-full rounded-xl border px-3 text-sm font-bold normal-case ${isFoodMerchant || isLiquorMerchant ? 'border-white/10 bg-[#1a1b1e] text-white' : 'border-slate-200 bg-white text-slate-800'}`}>
               {workspace.map(item => <option key={item.application.id} value={item.application.id}>{item.application.business_name} · {statusLabels[item.application.status] || item.application.status}</option>)}
             </select>
           </label>
@@ -1265,17 +1581,17 @@ export default function OnBarPartnerNetworkPage() {
           </section>
         )}
 
-        {(error || message) && <div role={error ? 'alert' : 'status'} className={`mb-5 flex items-start justify-between gap-3 rounded-xl p-4 text-sm ${error ? (isFoodMerchant ? 'border border-rose-400/30 bg-rose-400/10 text-rose-200' : 'bg-rose-50 text-rose-800') : (isFoodMerchant ? 'border border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'bg-emerald-50 text-emerald-800')}`}>
+        {(error || message) && <div role={error ? 'alert' : 'status'} className={`mb-5 flex items-start justify-between gap-3 rounded-xl p-4 text-sm ${error ? (isFoodMerchant || isLiquorMerchant ? 'border border-rose-400/30 bg-rose-400/10 text-rose-200' : 'bg-rose-50 text-rose-800') : (isFoodMerchant || isLiquorMerchant ? 'border border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'bg-emerald-50 text-emerald-800')}`}>
           <span>{error || message}</span>
           <button onClick={() => { setError(''); setMessage(''); }} aria-label="Dismiss message">×</button>
         </div>}
 
-        <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
-          {(isFoodMerchant ? foodSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
+        <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
+          {(isFoodMerchant ? foodSections : isLiquorMerchant ? liquorSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
             const Icon = item.icon;
-            return <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}</button>;
+            return <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}</button>;
           })}
-          <button onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isFoodMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
+          <button onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
         </nav>
 
         {loading && <div className="rounded-2xl bg-white p-12 text-center text-slate-500"><Loader2 className="mx-auto mb-3 animate-spin text-primary" /><p className="text-sm font-semibold">Loading your business workspace...</p></div>}
@@ -1299,8 +1615,36 @@ export default function OnBarPartnerNetworkPage() {
             performance={performance}
             performanceLoading={performanceLoading}
             performanceError={performanceError}
+            foodOrders={foodOrders}
+            foodOrdersLoading={foodOrdersLoading}
+            foodOrdersError={foodOrdersError}
+            deepLinkOrderId={deepLinkOrderId}
             onAction={apiAction}
+            onFoodFulfillment={updateFoodOrderFulfillment}
             onSectionChange={setSection}
+          />
+        )}
+
+        {!loading && overview && application && isLiquorMerchant && [
+          'liquor-live',
+          'liquor-catalog',
+          'liquor-promotions',
+          'liquor-payments',
+          'liquor-history',
+          'liquor-reviews',
+          'liquor-compliance',
+          'liquor-hours'
+        ].includes(section) && (
+          <AlcoholMerchantTerminal
+            section={section}
+            application={application}
+            overview={overview}
+            canOperate={canOperate}
+            working={working}
+            performance={performance}
+            performanceLoading={performanceLoading}
+            performanceError={performanceError}
+            onAction={apiAction}
           />
         )}
 
@@ -1598,12 +1942,14 @@ export default function OnBarPartnerNetworkPage() {
               <Input value={batchForm.supplierName} maxLength={160} onChange={event => setBatchForm(current => ({ ...current, supplierName: event.target.value }))} placeholder="Supplier (optional)" aria-label="Supplier name" />
               <Input type="date" value={batchForm.expiryAt} onChange={event => setBatchForm(current => ({ ...current, expiryAt: event.target.value }))} aria-label="Expiry date (optional)" />
               <Input value={batchForm.notes} maxLength={1000} onChange={event => setBatchForm(current => ({ ...current, notes: event.target.value }))} placeholder="Storage notes (optional)" aria-label="Storage notes" />
+              {isLiquorMerchant && <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950 sm:col-span-2"><input type="checkbox" checked={batchForm.exciseStampConfirmed} onChange={event => setBatchForm(current => ({ ...current, exciseStampConfirmed: event.target.checked }))} className="mt-1 h-4 w-4 shrink-0 accent-amber-500" />I confirm this received batch carries KRA excise stamps. This is a merchant declaration, not an authenticity scan.</label>}
               <Button disabled={working || !canOperate} type="submit" className="h-11 rounded-xl font-black uppercase"><PackageCheck size={16} className="mr-2" /> Record received stock</Button>
             </form>}
             {!productOptions.length && <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">No catalog products have been linked to this business yet. Contact OnBar to have an approved product linked before recording a batch.</p>}
             <div className="grid gap-4 lg:grid-cols-2">
               {overview.batches.map(batch => <article key={batch.id} className="rounded-2xl bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-black text-slate-900">{batch.product?.name || `Product #${batch.product_id}`}</p><p className="text-xs text-slate-500">Lot {batch.lot_code}{batch.product?.sku ? ` · SKU ${batch.product.sku}` : ''}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-black ${batch.on_hold ? 'bg-amber-100 text-amber-900' : batch.available_quantity > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{batch.on_hold ? 'On hold' : `${batch.available_quantity} available`}</span></div>
+                {isLiquorMerchant && <p className={`mt-2 text-xs font-bold ${batch.excise_stamp_confirmed ? 'text-emerald-700' : 'text-rose-700'}`}>{batch.excise_stamp_confirmed ? 'Excise stamp attested for this batch' : 'Excise stamp has not been recorded for this batch'}</p>}
                 <p className="mt-3 text-xs text-slate-500">Received {dateTime(batch.received_at)} · Initial quantity {batch.quantity_received}{batch.expiry_at ? ` · Expires ${batch.expiry_at}` : ''}</p>
                 <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">{batch.movements.slice(0, 5).map((movement, index) => <div key={`${movement.created_at}-${index}`} className="flex justify-between gap-3 text-xs text-slate-600"><span>{movement.movement_type.replaceAll('_', ' ')}{movement.note ? ` · ${movement.note}` : ''}</span><span className="shrink-0 font-bold">{movement.quantity_delta > 0 ? '+' : ''}{movement.quantity_delta}</span></div>)}</div>
               </article>)}
@@ -1613,15 +1959,15 @@ export default function OnBarPartnerNetworkPage() {
 
         {!loading && overview && section === 'incidents' && (
           <section className="space-y-5">
-            <div><h2 className="text-xl font-black text-slate-900">Operational reports</h2><p className="mt-1 text-sm text-slate-500">Report a linked product, food safety, delivery, or conduct issue for OnBar review.</p></div>
+            <div><h2 className="text-xl font-black text-slate-900">{isLiquorMerchant ? 'Incidents and compliance reports' : 'Operational reports'}</h2><p className="mt-1 text-sm text-slate-500">{isLiquorMerchant ? 'Age-check incidents link to an order. Suspected counterfeit reports must name the affected batch and will place it on hold.' : 'Report a linked product, food safety, delivery, or conduct issue for OnBar review.'}</p></div>
             {canOperate && <form onSubmit={submitIncident} className="grid gap-3 rounded-2xl bg-white p-5 shadow-sm sm:grid-cols-2">
               <select required value={incidentForm.link} onChange={event => setIncidentForm(current => ({ ...current, link: event.target.value }))} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm sm:col-span-2">
-                <option value="">Link to an order or inventory batch</option>
-                {overview.orders.map(order => <option key={`order-${order.id}`} value={`order:${order.id}`}>Order #{order.id}</option>)}
+                <option value="">{incidentForm.category === 'suspected_counterfeit' ? 'Choose affected batch' : 'Link to an order or inventory batch'}</option>
+                {incidentForm.category !== 'suspected_counterfeit' && overview.orders.map(order => <option key={`order-${order.id}`} value={`order:${order.id}`}>Order #{order.id}</option>)}
                 {overview.batches.map(batch => <option key={`batch-${batch.id}`} value={`batch:${batch.id}`}>Batch {batch.lot_code} · {batch.product?.name || 'Product'}</option>)}
               </select>
-              <select value={incidentForm.category} onChange={event => setIncidentForm(current => ({ ...current, category: event.target.value }))} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
-                {Object.entries(incidentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <select value={incidentForm.category} onChange={event => setIncidentForm(current => ({ ...current, category: event.target.value, link: '' }))} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+                {Object.entries(incidentLabels).filter(([value]) => isLiquorMerchant || !['age_check_failed', 'suspected_counterfeit'].includes(value)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
               <Button disabled={working} type="submit" className="h-11 rounded-xl font-black uppercase"><AlertTriangle size={16} className="mr-2" /> Submit report</Button>
               <textarea required minLength={10} maxLength={5000} rows={4} value={incidentForm.description} onChange={event => setIncidentForm(current => ({ ...current, description: event.target.value }))} placeholder="Describe what happened (at least 10 characters)" className="rounded-xl border border-slate-200 p-3 text-sm sm:col-span-2" />
