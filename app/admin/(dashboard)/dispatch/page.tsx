@@ -203,6 +203,7 @@ export default function AdminDispatchPage() {
     const [retryingAllocation, setRetryingAllocation] = useState<number | null>(null);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [retiringRiderPhone, setRetiringRiderPhone] = useState<string | null>(null);
+    const [resettingRiderPhone, setResettingRiderPhone] = useState<string | null>(null);
     const [overrideRiders, setOverrideRiders] = useState<Record<number, string>>({});
     const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
     const [assignmentModes, setAssignmentModes] = useState<Record<number, 'automatic' | 'manual'>>({});
@@ -409,6 +410,30 @@ export default function AdminDispatchPage() {
             setMessage({ type: 'success', text: 'Rider sign-in link copied. The rider will still need their approval PIN.' });
         } catch (error) {
             setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Rider sign-in link could not be copied.' });
+        }
+    };
+
+    const handleResetRiderPin = async (phone: string) => {
+        if (!window.confirm('Reset this approved rider’s sign-in PIN to the temporary PIN 0000? The rider will need to sign in and contact Online Bar to change it.')) return;
+        setResettingRiderPhone(phone);
+        try {
+            const response = await fetch('/api/admin/dispatch/riders', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone })
+            });
+            const result = await response.json() as { success?: boolean; emailSent?: boolean; emailWarning?: string; error?: string };
+            if (!response.ok || !result.success) throw new Error(result.error || 'Rider PIN could not be reset.');
+            setMessage({
+                type: 'success',
+                text: result.emailSent
+                    ? 'Rider PIN reset to 0000. Reset instructions were emailed to the rider.'
+                    : result.emailWarning || 'Rider PIN reset to 0000. Share it directly with the rider.'
+            });
+        } catch (error) {
+            setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Rider PIN could not be reset.' });
+        } finally {
+            setResettingRiderPhone(null);
         }
     };
 
@@ -1067,6 +1092,15 @@ export default function AdminDispatchPage() {
                             </div>
 
                             <div className="pt-8 border-t border-border flex flex-col gap-4">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => void handleResetRiderPin(selectedRider.rider_phone)}
+                                    disabled={resettingRiderPhone === selectedRider.rider_phone || selectedRider.verification_status !== 'Verified'}
+                                    className="w-full h-14 rounded-2xl border-amber-200 text-amber-800 font-black uppercase text-[10px] tracking-widest hover:bg-amber-50 transition-all disabled:opacity-50"
+                                >
+                                    {resettingRiderPhone === selectedRider.rider_phone ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    Reset Rider PIN to 0000
+                                </Button>
                                 <Button
                                     onClick={() => void handleCopyRiderLink(selectedRider.rider_phone)}
                                     variant="outline"

@@ -15,7 +15,7 @@ interface Rider {
     lng?: number | null;
     status: string;
     rider_name: string;
-    battery_level: number;
+    battery_level?: number | null;
     current_speed?: number;
     active_batch_id?: string | null;
     location_updated_at?: string | null;
@@ -205,12 +205,12 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
                     <div>
                         <p className="text-[8px] font-black text-slate-400 uppercase">Battery</p>
                         <p className="text-xs font-black text-foreground flex items-center gap-1">
-                            <BatteryMedium className="h-3 w-3 text-emerald-500" /> {rider.battery_level}%
+                            <BatteryMedium className="h-3 w-3 text-emerald-500" /> {rider.battery_level === null || rider.battery_level === undefined ? 'Not recorded' : `${rider.battery_level}%`}
                         </p>
                     </div>
                     <div>
                         <p className="text-[8px] font-black text-slate-400 uppercase">Speed</p>
-                        <p className="text-xs font-black text-foreground">{rider.current_speed || 0} km/h</p>
+                        <p className="text-xs font-black text-foreground">{rider.current_speed === null || rider.current_speed === undefined ? 'Not recorded' : `${rider.current_speed} km/h`}</p>
                     </div>
                 </div>
               </div>

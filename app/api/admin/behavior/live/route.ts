@@ -58,59 +58,103 @@ export async function GET() {
   const activeSince = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
   const dayStart = getNairobiDayStart();
 
-  const { data: sessionRows, error: sessionError } = await database
+  const sessionResult = await database
     .from('customer_sessions')
     .select('id,entry_page,current_page,last_seen_at,total_active_time_sec,cart_value,session_status,device_info,analytics_consent_updated_at')
     .eq('analytics_consent', true)
     .gte('last_seen_at', since)
     .order('last_seen_at', { ascending: false })
     .limit(100);
-  if (sessionError) {
-    console.error('[LiveBehavior] Could not load consented sessions:', sessionError);
-    const migrationMissing = sessionError.code === '42703' || /analytics_consent/i.test(sessionError.message);
-    return NextResponse.json({
-      error: migrationMissing
-        ? 'Live journey consent fields are not installed. Apply supabase/LIVE_CUSTOMER_JOURNEY_MIGRATION.sql.'
-        : 'Live customer sessions could not be loaded.'
-    }, { status: 503 });
+  let sessionRows: typeof sessionResult.data = [];
+  let eventRows: Array<{ id: number; event_name: string; session_id: string | null; page_url: string | null; created_at: string }> = [];
+  let activeSessions: number | null = null;
+  let productViews: number | null = null;
+  let checkoutsStarted: number | null = null;
+  let cartsWithItems: number | null = null;
+  let analyticsWarning: string | null = null;
+
+  if (sessionResult.error) {
+    console.error('[LiveBehavior] Could not load consented sessions:', sessionResult.error);
+    const migrationMissing = sessionResult.error.code === '42703' || /analytics_consent/i.test(sessionResult.error.message);
+    analyticsWarning = migrationMissing
+      ? 'Visitor journeys are unavailable. Apply supabase/LIVE_CUSTOMER_JOURNEY_MIGRATION.sql.'
+      : 'Visitor journeys are unavailable; order activity is still shown.';
+  } else {
+    sessionRows = sessionResult.data || [];
+    const sessionIds = sessionRows.map(row => row.id);
+    const [eventResult, activeResult, productResult, checkoutResult, cartResult] = await Promise.all([
+      sessionIds.length
+        ? database.from('analytics_events')
+          .select('id,event_name,session_id,page_url,created_at')
+          .in('session_id', sessionIds)
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(500)
+        : Promise.resolve({ data: [], error: null }),
+      database.from('customer_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('analytics_consent', true)
+        .gte('last_seen_at', activeSince),
+      sessionIds.length
+        ? database.from('analytics_events').select('id', { count: 'exact', head: true })
+          .eq('event_name', 'PRODUCT_VIEW').in('session_id', sessionIds).gte('created_at', dayStart)
+        : Promise.resolve({ count: 0, error: null }),
+      sessionIds.length
+        ? database.from('analytics_events').select('id', { count: 'exact', head: true })
+          .eq('event_name', 'CHECKOUT_START').in('session_id', sessionIds).gte('created_at', dayStart)
+        : Promise.resolve({ count: 0, error: null }),
+      database.from('customer_sessions').select('id', { count: 'exact', head: true })
+        .eq('analytics_consent', true).gte('last_seen_at', since).gt('cart_value', 0)
+    ]);
+    const analyticsFailures: string[] = [];
+    if (eventResult.error) {
+      analyticsFailures.push('session events');
+      console.error('[LiveBehavior] Could not load session events:', eventResult.error);
+    }
+    if (activeResult.error) {
+      analyticsFailures.push('active sessions');
+      console.error('[LiveBehavior] Could not load active sessions:', activeResult.error);
+    }
+    if (productResult.error) {
+      analyticsFailures.push('product views');
+      console.error('[LiveBehavior] Could not load product views:', productResult.error);
+    }
+    if (checkoutResult.error) {
+      analyticsFailures.push('checkouts');
+      console.error('[LiveBehavior] Could not load checkouts:', checkoutResult.error);
+    }
+    if (cartResult.error) {
+      analyticsFailures.push('carts');
+      console.error('[LiveBehavior] Could not load carts:', cartResult.error);
+    }
+    if (analyticsFailures.length) {
+      analyticsWarning = `Visitor analytics are partially unavailable (${analyticsFailures.join(', ')}). Order activity is still shown.`;
+    } else {
+      eventRows = eventResult.data || [];
+      activeSessions = activeResult.count || 0;
+      productViews = productResult.count || 0;
+      checkoutsStarted = checkoutResult.count || 0;
+      cartsWithItems = cartResult.count || 0;
+    }
   }
 
-  const sessionIds = (sessionRows || []).map(row => row.id);
-  const [eventResult, activeResult, productResult, checkoutResult, cartResult, orderResult, deliveryResult] = await Promise.all([
-    sessionIds.length
-      ? database.from('analytics_events')
-        .select('id,event_name,session_id,page_url,created_at')
-        .in('session_id', sessionIds)
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(500)
-      : Promise.resolve({ data: [], error: null }),
-    database.from('customer_sessions')
-      .select('id', { count: 'exact', head: true })
-      .eq('analytics_consent', true)
-      .gte('last_seen_at', activeSince),
-    sessionIds.length
-      ? database.from('analytics_events').select('id', { count: 'exact', head: true })
-        .eq('event_name', 'PRODUCT_VIEW').in('session_id', sessionIds).gte('created_at', dayStart)
-      : Promise.resolve({ count: 0, error: null }),
-    sessionIds.length
-      ? database.from('analytics_events').select('id', { count: 'exact', head: true })
-        .eq('event_name', 'CHECKOUT_START').in('session_id', sessionIds).gte('created_at', dayStart)
-      : Promise.resolve({ count: 0, error: null }),
-    database.from('customer_sessions').select('id', { count: 'exact', head: true })
-      .eq('analytics_consent', true).gte('last_seen_at', since).gt('cart_value', 0),
+  const [orderResult, deliveryResult, recentOrdersResult] = await Promise.all([
     database.from('orders').select('id', { count: 'exact', head: true }).gte('created_at', dayStart),
-    database.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'Dispatched')
+    database.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'Dispatched'),
+    database.from('orders')
+      .select('id,status,customer_name,total_price,created_at,rider_name,rider_phone')
+      .gte('created_at', dayStart)
+      .order('created_at', { ascending: false })
+      .limit(100)
   ]);
-  const queryError = eventResult.error || activeResult.error || productResult.error
-    || checkoutResult.error || cartResult.error || orderResult.error || deliveryResult.error;
-  if (queryError) {
-    console.error('[LiveBehavior] Could not load live analytics:', queryError);
-    return NextResponse.json({ error: 'Live customer activity could not be loaded.' }, { status: 503 });
+  const orderError = orderResult.error || deliveryResult.error || recentOrdersResult.error;
+  if (orderError) {
+    console.error('[LiveBehavior] Could not load live order activity:', orderError);
+    return NextResponse.json({ error: 'Live order activity could not be loaded. Check the orders schema and database connection.' }, { status: 503 });
   }
 
   const sessions = (sessionRows || []).map(row => {
-    const journey = (eventResult.data || [])
+    const journey = eventRows
       .filter(event => event.session_id === row.id)
       .map(event => ({
         event: event.event_name,
@@ -137,7 +181,7 @@ export async function GET() {
     };
   });
 
-  const events = (eventResult.data || []).slice(0, 50).map(event => ({
+  const events = eventRows.slice(0, 50).map(event => ({
     id: event.id,
     timestamp: event.created_at,
     customer_code: event.session_id ? `Visitor ${event.session_id.slice(-6).toUpperCase()}` : 'Visitor',
@@ -147,17 +191,8 @@ export async function GET() {
     page_url: safePath(event.page_url)
   }));
 
-  const { data: recentOrders, error: recentOrdersError } = await database
-    .from('orders')
-    .select('id,status,customer_name,total_price,created_at,rider_name,rider_phone')
-    .gte('created_at', dayStart)
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (recentOrdersError) {
-    console.error('[LiveBehavior] Could not load live order flow:', recentOrdersError);
-    return NextResponse.json({ error: 'Live order flow could not be loaded.' }, { status: 503 });
-  }
-  const orderFlowEvents = (recentOrders || []).map(order => ({
+  const recentOrders = recentOrdersResult.data || [];
+  const orderFlowEvents = recentOrders.map(order => ({
     id: -Number(order.id),
     timestamp: order.created_at,
     customer_code: `Order #${order.id}`,
@@ -173,12 +208,13 @@ export async function GET() {
   return NextResponse.json({
     sessions,
     events: liveEvents,
-    orders: recentOrders || [],
+    orders: recentOrders,
+    analyticsWarning,
     metrics: {
-      activeSessions: activeResult.count || 0,
-      productViews: productResult.count || 0,
-      cartsWithItems: cartResult.count || 0,
-      checkoutsStarted: checkoutResult.count || 0,
+      activeSessions,
+      productViews,
+      cartsWithItems,
+      checkoutsStarted,
       ordersToday: orderResult.count || 0,
       activeDeliveries: deliveryResult.count || 0
     },

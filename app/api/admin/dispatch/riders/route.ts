@@ -72,14 +72,20 @@ export async function POST(request: Request) {
 
   const pin = String(randomInt(1000, 10000));
   const { data, error } = await database
-    .from('rider_status')
-    .update({ verification_status: 'Verified', pin })
-    .eq('rider_phone', phone)
-    .select('rider_phone,rider_name,rider_email')
-    .maybeSingle();
+    .rpc('admin_set_rider_pin', {
+      phone_input: phone,
+      pin_input: pin,
+      action_input: 'approved',
+      actor_input: session.email || session.role
+    });
 
   if (error) {
     console.error('[AdminDispatch] Could not verify rider:', error);
+    if (/admin_set_rider_pin/i.test(error.message)) {
+      return NextResponse.json({
+        error: 'Rider PIN security setup is missing. Apply supabase/RIDER_ACCOUNT_PIN_RESET_MIGRATION.sql, then retry.'
+      }, { status: 503 });
+    }
     const migrationMissing = ['42703', 'PGRST204', 'PGRST205'].includes(error.code || '');
     return NextResponse.json({
       error: migrationMissing
@@ -87,9 +93,18 @@ export async function POST(request: Request) {
         : 'Could not authorize rider. Please retry or check the server logs.'
     }, { status: 500 });
   }
-  if (!data) return NextResponse.json({ error: 'Rider was not found.' }, { status: 404 });
+  const updatedRider = Array.isArray(data) ? data[0] : data;
+  if (!updatedRider) return NextResponse.json({ error: 'Rider was not found or is no longer eligible for approval.' }, { status: 404 });
+  const { data: riderContact, error: contactError } = await database
+    .from('rider_status')
+    .select('rider_email')
+    .eq('rider_phone', updatedRider.rider_phone)
+    .maybeSingle();
+  if (contactError) {
+    console.error('[AdminDispatch] Rider approved, but rider email could not be loaded:', contactError);
+  }
 
-  const riderEmail = typeof data.rider_email === 'string' ? data.rider_email.trim() : '';
+  const riderEmail = typeof riderContact?.rider_email === 'string' ? riderContact.rider_email.trim() : '';
   if (!riderEmail) {
     return NextResponse.json({
       success: true,
@@ -108,7 +123,7 @@ export async function POST(request: Request) {
       subject: 'Your Online Bar rider account is approved',
       text: `Hi ${riderName}, your Online Bar rider account has been approved. Open your rider terminal at ${terminalUrl}. Continue with your verified OnlineBar account using the same email or phone from your rider application, or sign in with your rider phone number and this four-digit PIN: ${pin}. Keep the PIN private.`,
       html: `<p>Hi ${safeName},</p><p>Your Online Bar rider account has been approved.</p><p><a href="${terminalUrl}">Open your rider terminal</a> and continue with your verified OnlineBar account using the same email or phone from your rider application. You can also sign in with your rider phone number and this four-digit PIN:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${pin}</p><p>Keep this PIN private. You can reopen the terminal from your approved OnlineBar profile.</p>`,
-      idempotencyKey: `rider-approval:${data.rider_phone}:${pin}`
+      idempotencyKey: `rider-approval:${updatedRider.rider_phone}:${pin}`
     });
     return NextResponse.json({ success: true, emailSent: true });
   } catch (emailError) {
@@ -118,6 +133,86 @@ export async function POST(request: Request) {
       pin,
       emailSent: false,
       emailWarning: 'Approval was saved, but the onboarding email could not be sent. Share the PIN manually and check Email Command Center.'
+    });
+  }
+}
+
+export async function PATCH(request: Request) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+  }
+  const session = await getAdminSession();
+  if (!session || !hasAdminPermission(session, 'can_manage_orders')) {
+    return NextResponse.json({ error: 'Rider management permission is required.' }, { status: 403 });
+  }
+
+  let body: { phone?: unknown };
+  try {
+    body = await request.json() as { phone?: unknown };
+  } catch {
+    return NextResponse.json({ error: 'A valid rider phone number is required.' }, { status: 400 });
+  }
+  const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
+  if (!phone || phone.length > 50) {
+    return NextResponse.json({ error: 'A valid rider phone number is required.' }, { status: 400 });
+  }
+
+  const database = createServerSupabaseClient();
+  if (!database) {
+    return NextResponse.json({ error: 'Server-side rider database access is not configured.' }, { status: 503 });
+  }
+  const { data, error } = await database.rpc('admin_set_rider_pin', {
+    phone_input: phone,
+    pin_input: '0000',
+    action_input: 'pin_reset',
+    actor_input: session.email || session.role
+  });
+  if (error) {
+    console.error('[AdminDispatch] Could not reset rider PIN:', error);
+    return NextResponse.json({
+      error: /admin_set_rider_pin/i.test(error.message)
+        ? 'Rider PIN security setup is missing. Apply supabase/RIDER_ACCOUNT_PIN_RESET_MIGRATION.sql first.'
+        : 'Rider PIN could not be reset. Please retry or check the server logs.'
+    }, { status: 503 });
+  }
+  const rider = Array.isArray(data) ? data[0] : data;
+  if (!rider) {
+    return NextResponse.json({ error: 'No approved rider was found for that phone number.' }, { status: 404 });
+  }
+
+  const { data: contact, error: contactError } = await database.from('rider_status')
+    .select('rider_email')
+    .eq('rider_phone', rider.rider_phone)
+    .maybeSingle();
+  if (contactError) {
+    console.error('[AdminDispatch] PIN reset succeeded, but rider email could not be loaded:', contactError);
+  }
+
+  const riderEmail = typeof contact?.rider_email === 'string' ? contact.rider_email.trim() : '';
+  if (!riderEmail) {
+    return NextResponse.json({
+      success: true,
+      emailSent: false,
+      emailWarning: 'PIN reset. Share the temporary PIN 0000 directly with the rider.'
+    });
+  }
+
+  try {
+    const terminalUrl = `${getPublicBaseUrl()}/rider/dashboard?phone=${encodeURIComponent(rider.rider_phone)}`;
+    await sendTransactionalEmail({
+      to: riderEmail,
+      subject: 'Your Online Bar rider PIN was reset',
+      text: `Hi ${rider.rider_name}, an Online Bar administrator reset your rider sign-in PIN. Your temporary PIN is 0000. Sign in at ${terminalUrl} and change it with the Online Bar team after you regain access. If you did not request this, contact Online Bar support immediately.`,
+      html: `<p>Hi ${escapeHtml(rider.rider_name || 'Rider')},</p><p>An Online Bar administrator reset your rider sign-in PIN.</p><p>Your temporary PIN is <strong>0000</strong>.</p><p><a href="${escapeHtml(terminalUrl)}">Open your rider terminal</a> and change it with the Online Bar team after you regain access. If you did not request this, contact Online Bar support immediately.</p>`,
+      idempotencyKey: `rider-pin-reset:${rider.rider_phone}:${Date.now()}`
+    });
+    return NextResponse.json({ success: true, emailSent: true });
+  } catch (emailError) {
+    console.error('[AdminDispatch] Rider PIN was reset, but the notification email failed:', emailError);
+    return NextResponse.json({
+      success: true,
+      emailSent: false,
+      emailWarning: 'PIN reset, but the rider email could not be sent. Share the temporary PIN 0000 directly.'
     });
   }
 }

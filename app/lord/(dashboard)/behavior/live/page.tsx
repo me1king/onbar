@@ -47,6 +47,15 @@ interface StreamEventItem {
     page_url: string;
 }
 
+interface LiveMetrics {
+    activeSessions: number | null;
+    productViews: number | null;
+    cartsWithItems: number | null;
+    checkoutsStarted: number | null;
+    ordersToday: number;
+    activeDeliveries: number;
+}
+
 function categorizeEvent(eventName: string) {
     const name = eventName.toUpperCase();
     if (name.includes('PRODUCT')) return 'PRODUCTS';
@@ -63,10 +72,11 @@ export default function LiveBehaviorCommandCenter() {
     const [loading, setLoading] = React.useState(true);
     const [lastUpdated, setLastUpdated] = React.useState<string | null>(null);
     const [error, setError] = React.useState<string | null>(null);
+    const [analyticsWarning, setAnalyticsWarning] = React.useState<string | null>(null);
     const [terminals, setTerminals] = React.useState<LiveTerminalSession[]>([]);
     const [streamEvents, setStreamEvents] = React.useState<StreamEventItem[]>([]);
     const [activeEventFilter, setActiveEventFilter] = React.useState<string>('ALL');
-    const [metrics, setMetrics] = React.useState({
+    const [metrics, setMetrics] = React.useState<LiveMetrics>({
         activeSessions: 0,
         productViews: 0,
         cartsWithItems: 0,
@@ -86,10 +96,12 @@ export default function LiveBehaviorCommandCenter() {
                 events?: Array<Omit<StreamEventItem, 'timestamp' | 'action_type'> & { timestamp: string; action_type: string }>;
                 metrics?: typeof metrics;
                 error?: string;
+                analyticsWarning?: string | null;
                 refreshedAt?: string;
             };
             if (!response.ok || !result.metrics) throw new Error(result.error || 'Live customer activity could not be loaded.');
             setError(null);
+            setAnalyticsWarning(result.analyticsWarning || null);
             setMetrics(result.metrics);
             setTerminals(result.sessions || []);
             setSelectedTerminal(current => current
@@ -103,6 +115,7 @@ export default function LiveBehaviorCommandCenter() {
             setLastUpdated(result.refreshedAt || new Date().toISOString());
         } catch (err) {
             console.error('Live behavior fetch error:', err);
+            setAnalyticsWarning(null);
             setTerminals([]);
             setSelectedTerminal(null);
             setStreamEvents([]);
@@ -173,12 +186,17 @@ export default function LiveBehaviorCommandCenter() {
                     {error}
                 </div>
             )}
+            {analyticsWarning && (
+                <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                    {analyticsWarning}
+                </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {metricCards.map(metric => (
                     <Card key={metric.label} className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
                         <p className="text-[8px] font-black uppercase text-slate-400">{metric.label}</p>
-                        <p className="mt-1 text-2xl font-black text-foreground tabular-nums">{metric.value.toLocaleString()}</p>
+                        <p className="mt-1 text-2xl font-black text-foreground tabular-nums">{metric.value === null ? '—' : metric.value.toLocaleString()}</p>
                     </Card>
                 ))}
             </div>
