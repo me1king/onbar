@@ -47,7 +47,8 @@ export default function ProductList({
       }))
   ], [categoryFilters, settings.catalog.categories]);
   const [products, setProducts] = useState<Product[]>(initialProducts || []);
-  const [loading, setLoading] = useState(!initialProducts);
+  const [loading, setLoading] = useState(!initialProducts?.length);
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
@@ -63,6 +64,7 @@ export default function ProductList({
   const [visibleCount, setVisibleCount] = useState(24);
   const lastTrackedSearchRef = useRef<string | null>(null);
   const categoryTabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const hasInitialProducts = Boolean(initialProducts?.length);
 
   const categoryCounts = useMemo(() => {
     const visibleProducts = products.filter(isStorefrontProductVisible);
@@ -75,34 +77,42 @@ export default function ProductList({
   }, [categories, products]);
 
   useEffect(() => {
+    if (hasInitialProducts) return;
+
+    let active = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+
     async function fetchInitialData() {
+      setLoading(true);
+      setError(null);
       try {
         if (!supabase) {
-          setError('The product catalog is unavailable because Supabase is not configured.');
-          setProducts([]);
-          setLoading(false);
+          if (active) setError('The product catalog is unavailable because Supabase is not configured.');
           return;
         }
 
         const response = await fetch('/api/catalog/products?limit=100', {
-          cache: 'force-cache',
-          signal: AbortSignal.timeout(8_000)
+          cache: 'no-store',
+          signal: controller.signal
         });
         const result = await response.json() as { products?: Product[]; error?: string };
         if (!response.ok) {
           console.error('Catalog API error:', result.error);
-          setError(result.error || 'The product catalog could not be loaded.');
-          setProducts([]);
-        } else {
-          setError(null);
+          if (active) {
+            setError(result.error || 'The product catalog could not be loaded.');
+            setProducts([]);
+          }
+        } else if (active) {
           setProducts((result.products || []).filter(isStorefrontProductVisible));
         }
 
         // Loyalty tier is supplementary and must never delay the catalog first paint.
         const client = supabase;
         void client.auth.getSession().then(async ({ data: { session } }) => {
-          if (!session) return;
+          if (!session || !active) return;
           const { data } = await client.from('profiles').select('loyalty_points').eq('id', session.user.id).maybeSingle();
+          if (!active) return;
           const pts = Number((data as { loyalty_points?: number } | null)?.loyalty_points || 0);
           if (pts >= 5000) setUserTier('Legend');
           else if (pts >= 2000) setUserTier('Diamond');
@@ -111,20 +121,28 @@ export default function ProductList({
         }).catch(() => undefined);
       } catch (err) {
         console.error('Error fetching products:', err);
-        setError('Failed to load products');
-        setProducts([]);
+        if (active) {
+          setError(controller.signal.aborted
+            ? 'The catalog is taking longer than expected. Please try again.'
+            : 'The product catalog could not be loaded. Please try again.');
+          setProducts([]);
+        }
       } finally {
-        setLoading(false);
+        clearTimeout(timeout);
+        if (active) setLoading(false);
       }
     }
 
-    if (!initialProducts || initialProducts.length === 0) {
-        fetchInitialData();
-    }
+    void fetchInitialData();
 
     // The catalog API is cached and bounded. Avoid opening a realtime socket on
     // the home page and refetching the entire catalog after every inventory edit.
-  }, [initialProducts]);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [catalogRetry, hasInitialProducts]);
 
   // Listen for Global Search Event & URL Params
   useEffect(() => {
@@ -273,9 +291,27 @@ export default function ProductList({
 
   if (loading) {
     return (
-      <div className="mx-auto flex max-w-screen-2xl flex-col items-center gap-4 px-4 py-24">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px]">Syncing Catalog...</p>
+      <div className="mx-auto max-w-screen-2xl space-y-8 px-4 py-10 sm:px-6" aria-busy="true">
+        <div role="status" className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-amber-500" />
+          Loading the drinks menu
+        </div>
+        <div className="flex items-center gap-3 overflow-hidden border-y border-slate-100 py-5">
+          <div className="h-3 w-16 shrink-0 animate-pulse rounded bg-slate-100" />
+          {[72, 112, 90, 124, 76, 108, 88].map((width, index) => (
+            <div key={index} style={{ width }} className="h-11 shrink-0 animate-pulse rounded-full bg-slate-50" />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-5">
+          {Array.from({ length: 10 }, (_, index) => (
+            <div key={index} className="overflow-hidden rounded-2xl border border-slate-100 bg-white p-3">
+              <div className="aspect-square animate-pulse rounded-xl bg-slate-50" />
+              <div className="mt-4 h-3 w-4/5 animate-pulse rounded bg-slate-100" />
+              <div className="mt-2 h-3 w-2/5 animate-pulse rounded bg-slate-50" />
+              <div className="mt-4 h-9 animate-pulse rounded-lg bg-slate-50" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -480,8 +516,15 @@ export default function ProductList({
       )}
 
       {error && (
-        <div className="mt-12 bg-rose-50 border border-rose-100 p-4 rounded-2xl text-rose-700 font-bold text-xs text-center">
-          ⚠️ {error}
+        <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-rose-100 bg-rose-50 p-5 text-center text-sm font-semibold text-rose-800">
+          <p role="alert">{error}</p>
+          <button
+            type="button"
+            onClick={() => setCatalogRetry(value => value + 1)}
+            className="min-h-11 rounded-xl bg-primary px-6 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-primary/90"
+          >
+            Try loading again
+          </button>
         </div>
       )}
     </div>

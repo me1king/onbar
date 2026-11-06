@@ -21,6 +21,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 type AuthMethod = 'email' | 'phone';
+const AUTH_REQUEST_TIMEOUT_MS = 15_000;
+
+function withRequestTimeout<T>(request: PromiseLike<T>, action: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutRequest = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`${action} is taking too long. Check your connection and try again, or use Mobile OTP.`));
+    }, AUTH_REQUEST_TIMEOUT_MS);
+  });
+
+  return Promise.race([Promise.resolve(request), timeoutRequest]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
 
 interface AuthFormProps {
     initialMode?: 'signin' | 'signup';
@@ -61,7 +75,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
         if (!url) throw new Error("Supabase URL undefined.");
         const start = Date.now();
-        await fetch(url, { mode: 'no-cors' }); // Simple ping
+        await fetch(url, { mode: 'no-cors', signal: AbortSignal.timeout(AUTH_REQUEST_TIMEOUT_MS) });
         const latency = Date.now() - start;
         alert(`Network Uplink: Healthy (${latency}ms)`);
     } catch {
@@ -171,7 +185,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
         const emailRedirectTo = typeof window !== 'undefined'
           ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
           : undefined;
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error } = await withRequestTimeout(supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
           options: {
@@ -183,7 +197,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
                   ...(referralCode ? { referred_by_code: referralCode } : {})
               }
           }
-        });
+        }), 'Account creation');
 
         if (error) {
             let errorText = error.message || "Uplink Failure";
@@ -196,22 +210,23 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
         }
 
         if (data.user) {
-            await handleIdentityStitching(data.user.id);
-            await OB_OS.track('USER_REGISTERED', { userId: data.user.id, anonymousId: localStorage.getItem('ob_anonymous_id') || undefined });
+            void handleIdentityStitching(data.user.id);
+            void OB_OS.track('USER_REGISTERED', { userId: data.user.id, anonymousId: localStorage.getItem('ob_anonymous_id') || undefined })
+              .catch(trackError => console.warn('[AuthForm] Registration analytics could not be recorded:', trackError));
 
             if (data.session) {
                 setMessage({ type: 'success', text: 'Registration Successful! Establishing profile...' });
-                await registerReferral(data.session.access_token, data.user.user_metadata?.referred_by_code);
-                if (onSuccess) setTimeout(() => onSuccess(data.user!.id), 2000);
+                void registerReferral(data.session.access_token, data.user.user_metadata?.referred_by_code);
+                if (onSuccess) setTimeout(() => onSuccess(data.user!.id), 500);
             } else {
                 setMessage({ type: 'success', text: 'Identity Reserved! Please check your email inbox to confirm your account.' });
             }
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await withRequestTimeout(supabase.auth.signInWithPassword({
             email: email.trim().toLowerCase(),
             password
-        });
+        }), 'Sign-in');
 
         if (error) {
             let errorText = error.message || "Uplink Failure";
@@ -223,12 +238,13 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
         }
 
         if (data.user) {
-            await handleIdentityStitching(data.user.id);
-            await OB_OS.track('USER_LOGIN', { userId: data.user.id });
-            const referralSynced = await registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
-            if (referralSynced) setMessage({ type: 'success', text: 'Access Granted. Entering Vault...' });
+            void handleIdentityStitching(data.user.id);
+            void OB_OS.track('USER_LOGIN', { userId: data.user.id })
+              .catch(trackError => console.warn('[AuthForm] Sign-in analytics could not be recorded:', trackError));
+            void registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
+            setMessage({ type: 'success', text: 'Signed in. Opening your account...' });
             if (onSuccess) {
-                setTimeout(() => onSuccess(data.user!.id), 1500);
+                setTimeout(() => onSuccess(data.user!.id), 500);
             }
         }
       }
@@ -241,6 +257,9 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
 
       if (isFetchError) {
           errorText = "Network error: Could not reach Supabase. Check your connection and Supabase project URL/key configuration, then try again.";
+      }
+      if (errorText.toLowerCase().includes('taking too long')) {
+          errorText = err.message || 'Sign-in timed out. Check your connection and try again, or use Mobile OTP.';
       }
 
       if (err.code === 'over_email_send_rate_limit' || err.code === 'over_sms_send_rate_limit') {
@@ -282,7 +301,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
 
         if (!showOtpField) {
             const referralCode = isSignUp ? sessionStorage.getItem('ob_referral_code') : null;
-            const { error } = await supabase.auth.signInWithOtp({
+            const { error } = await withRequestTimeout(supabase.auth.signInWithOtp({
                 phone: cleanPhone,
                 options: {
                     data: {
@@ -294,17 +313,17 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
                         ...(referralCode ? { referred_by_code: referralCode } : {})
                     }
                 }
-            });
+            }), 'Verification code request');
             if (error) throw error;
 
             setShowOtpField(true);
             setMessage({ type: 'success', text: 'Verification code sent via SMS.' });
         } else {
-            const { data, error } = await supabase.auth.verifyOtp({
+            const { data, error } = await withRequestTimeout(supabase.auth.verifyOtp({
                 phone: cleanPhone,
                 token: otp.trim(),
                 type: 'sms'
-            });
+            }), 'Phone verification');
             if (error) throw error;
 
             if (data.user) {
@@ -314,38 +333,39 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
                     ...(isSignUp && address.trim() ? { address: address.trim() } : {})
                 };
                 let profileSaved = true;
-                const { data: existingProfile, error: profileError } = await supabase.from('profiles')
+                const { data: existingProfile, error: profileError } = await withRequestTimeout(supabase.from('profiles')
                     .update(profileUpdates)
                     .eq('id', data.user.id)
                     .select('id')
-                    .maybeSingle();
+                    .maybeSingle(), 'Profile update');
                 if (profileError) {
                     console.error('[AuthForm] Could not save verified phone account details:', profileError);
                     profileSaved = false;
                 } else if (!existingProfile) {
-                    const { error: insertError } = await supabase.from('profiles').insert({
+                    const { error: insertError } = await withRequestTimeout(supabase.from('profiles').insert({
                         id: data.user.id,
                         email: data.user.email || null,
                         ...profileUpdates
-                    });
+                    }), 'Profile creation');
                     if (insertError) {
                         console.error('[AuthForm] Could not create profile for verified phone account:', insertError);
                         profileSaved = false;
                     }
                 }
-                await handleIdentityStitching(data.user.id);
-                await OB_OS.track('USER_LOGIN', { userId: data.user.id });
-                const referralSynced = await registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
+                void handleIdentityStitching(data.user.id);
+                void OB_OS.track('USER_LOGIN', { userId: data.user.id })
+                  .catch(trackError => console.warn('[AuthForm] Sign-in analytics could not be recorded:', trackError));
+                void registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
                 if (!profileSaved) {
                     setMessage({
                         type: 'error',
                         text: 'Your account is ready, but your contact details could not be saved to the profile. You can continue and update them in Profile.'
                     });
-                } else if (referralSynced) {
+                } else {
                     setMessage({ type: 'success', text: isSignUp ? 'Identity Established! Synchronizing...' : 'Access Granted. Entering Vault...' });
                 }
                 if (onSuccess) {
-                    setTimeout(() => onSuccess(data.user!.id), 1500);
+                    setTimeout(() => onSuccess(data.user!.id), 500);
                 }
             }
         }
@@ -355,6 +375,9 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
 
         if (errorText.toLowerCase().includes('failed to fetch')) {
             errorText = "Network Error: Cannot reach Supabase. Check your connection.";
+        }
+        if (errorText.toLowerCase().includes('taking too long')) {
+            errorText = err.message || 'This request timed out. Check your connection and try again.';
         }
 
         if (err.code === 'over_sms_send_rate_limit') {
@@ -380,9 +403,9 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
     setMessage({ type: 'idle', text: '' });
     try {
         if (!supabase) throw new Error('Supabase not configured.');
-        const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        const { error } = await withRequestTimeout(supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
             redirectTo: `${window.location.origin}/auth/callback?type=recovery`
-        });
+        }), 'Recovery email request');
         if (error) throw error;
         setMessage({ type: 'success', text: 'Account Recovery Key transmitted! Check your email inbox.' });
     } catch (err: unknown) {
@@ -529,7 +552,9 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
                     disabled={loading || cooldown > 0}
                     className="w-full h-20 rounded-[1.8rem] bg-slate-900 text-white font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:bg-primary transition-all active:scale-95 flex items-center justify-center gap-3 mt-6 border-none"
                 >
-                    {loading ? <Loader2 className="animate-spin h-5 w-5" /> : cooldown > 0 ? `LOCKED (${cooldown}s)` : (isSignUp ? 'Initialize Profile' : 'Authorize Entrance')}
+                    {loading
+                      ? <><Loader2 className="h-5 w-5 animate-spin" /> <span>{isSignUp ? 'Creating account…' : 'Signing in…'}</span></>
+                      : cooldown > 0 ? `LOCKED (${cooldown}s)` : (isSignUp ? 'Initialize Profile' : 'Authorize Entrance')}
                 </Button>
               </form>
           ) : (
@@ -631,18 +656,19 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
 
           <button
             type="button"
-            onClick={async () => {
-                if (!supabase) return;
-                setLoading(true);
-                try {
+          disabled={loading}
+          onClick={async () => {
+              if (!supabase) return;
+              setLoading(true);
+              try {
                     const redirectUrl = new URL('/auth/callback', window.location.origin);
                     redirectUrl.searchParams.set('next', returnTo || '/profile');
                     const referralCode = sessionStorage.getItem('ob_referral_code');
                     if (isSignUp && referralCode) redirectUrl.searchParams.set('ref', referralCode);
-                    const { error } = await supabase.auth.signInWithOAuth({
+                    const { error } = await withRequestTimeout(supabase.auth.signInWithOAuth({
                       provider: 'google',
                       options: { redirectTo: redirectUrl.toString() }
-                    });
+                    }), 'Google sign-in');
                     if (error) throw error;
                 } catch (err: unknown) {
                     setMessage({ type: 'error', text: (err as Error).message });
@@ -650,15 +676,15 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
                     setLoading(false);
                 }
             }}
-            className="w-full h-18 bg-white border-2 border-slate-100 rounded-2xl flex items-center justify-center gap-4 hover:bg-slate-50 hover:border-slate-200 transition-all group active:scale-[0.98] shadow-sm"
+            className="w-full h-18 bg-white border-2 border-slate-100 rounded-2xl flex items-center justify-center gap-4 hover:bg-slate-50 hover:border-slate-200 transition-all group active:scale-[0.98] shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <svg className="h-5 w-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <svg className="h-5 w-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-            </svg>
-            <span className="text-[11px] font-black uppercase tracking-widest text-[#1A202C]">Authenticate with Google</span>
+            </svg>}
+            <span className="text-[11px] font-black uppercase tracking-widest text-[#1A202C]">{loading ? 'Connecting…' : 'Authenticate with Google'}</span>
           </button>
 
           <button

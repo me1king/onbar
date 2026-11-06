@@ -26,6 +26,22 @@ function getJwtRole(key: string): string | null {
 const isAnonJwtKey = supabaseKey.startsWith('eyJ') && getJwtRole(supabaseKey) === 'anon';
 const isPublishableKey = /^sb_publishable_.+/.test(supabaseKey);
 const hasSupportedKeyFormat = isAnonJwtKey || isPublishableKey;
+const AUTH_FETCH_TIMEOUT_MS = 12_000;
+
+const boundedSupabaseFetch: typeof fetch = (input, init) => {
+  const requestUrl = typeof input === 'string'
+    ? input
+    : 'url' in input
+      ? input.url
+      : input.toString();
+  if (!requestUrl.includes('/auth/v1/')) return fetch(input, init);
+
+  const timeoutSignal = AbortSignal.timeout(AUTH_FETCH_TIMEOUT_MS);
+  const signal = init?.signal
+    ? AbortSignal.any([init.signal, timeoutSignal])
+    : timeoutSignal;
+  return fetch(input, { ...init, signal });
+};
 
 const isConfigured =
   supabaseUrl.length > 0 &&
@@ -39,7 +55,7 @@ if (typeof window !== 'undefined' && supabaseKey && !hasSupportedKeyFormat) {
 }
 
 export const supabase: SupabaseClient | null = isConfigured
-  ? createClient(supabaseUrl, supabaseKey)
+  ? createClient(supabaseUrl, supabaseKey, { global: { fetch: boundedSupabaseFetch } })
   : null;
 
 export default supabase;

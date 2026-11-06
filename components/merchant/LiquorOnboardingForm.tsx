@@ -204,10 +204,12 @@ export default function LiquorOnboardingForm({
   };
 
   const getLicenceDetailsValidationError = () => {
-    if (!/^NCC\/OFF\/\d{4}\/\d{5}$/.test(form.countyLicenceNumber.trim())) {
+    const countyLicenceNumber = form.countyLicenceNumber.trim();
+    const onlineLicenceNumber = form.onlineLicenceNumber.trim();
+    if (countyLicenceNumber && !/^NCC\/OFF\/\d{4}\/\d{5}$/.test(countyLicenceNumber)) {
       return 'Enter the county off-licence in the format NCC/OFF/YYYY/12345.';
     }
-    if (form.onlineLicenceNumber.trim().length < 4) return 'Enter the Nairobi online alcohol licence reference.';
+    if (onlineLicenceNumber && onlineLicenceNumber.length < 4) return 'Enter at least four characters for the Nairobi online alcohol licence reference.';
     return null;
   };
 
@@ -268,12 +270,6 @@ export default function LiquorOnboardingForm({
   };
 
   const submitApplication = async () => {
-    const licenceError = getLicenceDetailsValidationError();
-    if (licenceError) {
-      setError(`${licenceError} You can defer the document uploads, but both licence references are required before submission.`);
-      setStep(3);
-      return;
-    }
     if (!session?.verified) {
       setError('Sign in with a verified OnlineBar account before submitting.');
       return;
@@ -442,10 +438,10 @@ export default function LiquorOnboardingForm({
 
         {step === 3 && <div className="space-y-4">
           <h2 className="text-xl font-black">Licences and documents</h2>
-          <p className="text-sm text-slate-500">You can skip all file uploads and provide them within seven days after submitting. The county and Nairobi licence reference numbers are still required before submission; their format is checked locally only.</p>
-          <Input required placeholder="County off-licence, e.g. NCC/OFF/2026/01482" value={form.countyLicenceNumber} onChange={event => updateForm('countyLicenceNumber', event.target.value.toUpperCase())} />
-          <p className="text-xs text-slate-500">Format: NCC/OFF/YYYY/12345</p>
-          <Input required placeholder="Nairobi online alcohol licence reference" value={form.onlineLicenceNumber} onChange={event => updateForm('onlineLicenceNumber', event.target.value)} />
+          <p className="text-sm text-slate-500">You can continue without licence references or file uploads. Add the references if you have them; otherwise, OnBar will review the application and required licence documents before approval.</p>
+          <Input placeholder="County off-licence, e.g. NCC/OFF/2026/01482 (optional for now)" value={form.countyLicenceNumber} onChange={event => updateForm('countyLicenceNumber', event.target.value.toUpperCase())} />
+          <p className="text-xs text-slate-500">If entered, format must be NCC/OFF/YYYY/12345. You can leave this blank and continue.</p>
+          <Input placeholder="Nairobi online alcohol licence reference (optional for now)" value={form.onlineLicenceNumber} onChange={event => updateForm('onlineLicenceNumber', event.target.value)} />
           <div className="grid gap-3 sm:grid-cols-2">
             {uploadTypes.slice(3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input key={`${type}-${fileInputResetKey}`} type="file" accept="image/jpeg,image/png,application/pdf" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
           </div>
@@ -502,7 +498,7 @@ export default function LiquorOnboardingForm({
             ['Business', form.businessName],
             ['Owner', form.ownerName],
             ['Location', `${form.town}, ${form.county}`],
-            ['County licence', form.countyLicenceNumber],
+            ['County licence', form.countyLicenceNumber || 'To be provided for review'],
             ['Till', `ending ${form.mpesaTill.slice(-4)}`],
             ['Products', `${selectedProducts.length} selected`],
             ['School distance', `${form.distanceToSchoolMeters} m (self-reported)`],

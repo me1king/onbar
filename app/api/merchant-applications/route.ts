@@ -308,9 +308,11 @@ export async function POST(request: Request) {
       && new Set(products.map(item => Number((item as Record<string, unknown>).productId))).size === offeredGoodsIds.length
       && offeredGoodsIds.every(id => products.some(item =>
         Number((item as Record<string, unknown>).productId) === id));
+    const countyLicenceNumber = String(alcoholOnboarding.countyLicenceNumber || '').trim();
+    const onlineLicenceNumber = String(alcoholOnboarding.onlineLicenceNumber || '').trim();
     if (!/^\d{4}$/.test(String(alcoholOnboarding.nationalIdLast4 || ''))
-      || !/^NCC\/OFF\/\d{4}\/\d{5}$/.test(String(alcoholOnboarding.countyLicenceNumber || ''))
-      || String(alcoholOnboarding.onlineLicenceNumber || '').trim().length < 4
+      || (countyLicenceNumber && !/^NCC\/OFF\/\d{4}\/\d{5}$/.test(countyLicenceNumber))
+      || (onlineLicenceNumber && onlineLicenceNumber.length < 4)
       || !/^\d{5,20}$/.test(String(alcoholOnboarding.mpesaTill || ''))
       || String(alcoholOnboarding.mpesaRegisteredName || '').trim().length < 2
       || typeof distance !== 'number'
@@ -329,7 +331,9 @@ export async function POST(request: Request) {
       distanceCheck: 'merchant_reported_pending_admin_measurement',
       schoolReviewRequired: distance < 300,
       identityCheck: 'pending_manual_review',
-      licenceCheck: 'format_checked_pending_manual_review',
+      licenceCheck: countyLicenceNumber && onlineLicenceNumber
+        ? 'format_checked_pending_manual_review'
+        : 'pending_reference_and_document_review',
       tillNameCheck: 'pending_manual_review',
       productStampCheck: 'merchant_attestation_pending_manual_review',
       submittedAt: new Date().toISOString()
