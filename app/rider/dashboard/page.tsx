@@ -1089,7 +1089,7 @@ function RiderDashboardContent() {
                 {gpsMessage && <p role="status" className="mx-auto mt-2 max-w-7xl text-[11px] text-white/50">{gpsMessage}</p>}
             </header>
 
-            <RiderTerminalProfile token={sessionToken} riderName={riderName} phone={phone} isOnline={isOnline} accentColor={accentColor}>
+            <RiderTerminalProfile token={sessionToken} riderName={riderName} phone={phone} isOnline={isOnline}>
             <div className="mx-auto grid max-w-7xl gap-5 p-4 sm:p-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.85fr)]">
                 <section className="space-y-5">
                     <div className="relative h-[288px] overflow-hidden rounded-2xl border border-white/10 bg-[#101614] sm:h-[340px]">

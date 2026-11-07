@@ -85,6 +85,16 @@ type FoodOrder = {
   fulfillment: FulfillmentEvent[];
   items: FoodOrderItem[];
 };
+type SellerSalesOrder = {
+  id: number;
+  customerName: string;
+  createdAt: string;
+  status: string;
+  amount: number;
+  cancelled: boolean;
+  active: boolean;
+  itemCount: number;
+};
 type PartnerIncident = {
   id: string;
   incident_code: string;
@@ -202,7 +212,7 @@ type MerchantPerformance = {
   limitations: { responseTime: string; timeouts: string; ratingsAndComplaints: string };
 };
 
-type Section = 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders'
+type Section = 'sales' | 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders'
   | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff'
   | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours';
 type RiderConnection = {
@@ -292,6 +302,7 @@ const fulfillmentNext: Record<string, string[]> = {
   exception: ['preparing', 'ready', 'cancelled']
 };
 const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
+  { id: 'sales', label: 'Sales overview', icon: TrendingUp },
   { id: 'overview', label: 'Overview', icon: Store },
   { id: 'orders', label: 'Orders', icon: Truck },
   { id: 'inventory', label: 'Inventory', icon: Box },
@@ -302,6 +313,7 @@ const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'business', label: 'Business profile', icon: Building2 }
 ];
 const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
+  { id: 'sales', label: 'Sales overview', icon: TrendingUp },
   { id: 'food-live', label: 'Live', icon: Store },
   { id: 'food-menu', label: 'Menu', icon: UtensilsCrossed },
   { id: 'inventory', label: 'Inventory', icon: Box },
@@ -313,6 +325,7 @@ const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = 
   { id: 'food-staff', label: 'Staff & riders', icon: Users }
 ];
 const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
+  { id: 'sales', label: 'Sales overview', icon: TrendingUp },
   { id: 'liquor-live', label: 'Live orders', icon: Store },
   { id: 'liquor-catalog', label: 'Catalog & stock', icon: Box },
   { id: 'liquor-promotions', label: 'Promotions', icon: Megaphone },
@@ -379,6 +392,211 @@ function PerformanceMetricCard({
   );
 }
 
+function MerchantSalesOverview({
+  application,
+  isFoodMerchant,
+  foodOrders,
+  partnerOrders,
+  loading,
+  error,
+  performance,
+  performanceLoading,
+  performanceError
+}: {
+  application: PartnerApplication['application'];
+  isFoodMerchant: boolean;
+  foodOrders: FoodOrder[];
+  partnerOrders: PartnerOrder[];
+  loading: boolean;
+  error: string;
+  performance: MerchantPerformance | null;
+  performanceLoading: boolean;
+  performanceError: string;
+}) {
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
+  const currency = (amount: number) => `KSh ${Math.round(amount).toLocaleString('en-KE')}`;
+  const records: SellerSalesOrder[] = isFoodMerchant
+    ? foodOrders.map(order => {
+      const fulfillment = latestFulfillment(order.fulfillment);
+      const cancelled = ['cancelled', 'canceled', 'refunded', 'rejected'].includes(order.status.toLowerCase())
+        || ['cancelled', 'rejected'].includes(fulfillment);
+      return {
+        id: order.id,
+        customerName: order.customer_name || 'Customer',
+        createdAt: order.created_at,
+        status: fulfillment || order.status,
+        amount: cancelled ? 0 : order.items.reduce((total, item) =>
+          total + Math.max(0, Number(item.unit_price) || 0) * Math.max(0, Number(item.quantity) || 0), 0),
+        cancelled,
+        active: !cancelled && !['delivered', 'complete', 'completed'].includes(fulfillment || order.status.toLowerCase()),
+        itemCount: order.items.reduce((total, item) => total + Math.max(0, Number(item.quantity) || 0), 0)
+      };
+    })
+    : partnerOrders.map(order => {
+      const fulfillment = latestFulfillment(order.fulfillment);
+      const cancelled = ['cancelled', 'canceled', 'refunded', 'rejected'].includes(order.status.toLowerCase())
+        || ['cancelled', 'rejected'].includes(fulfillment);
+      return {
+        id: order.id,
+        customerName: order.customer_name || 'Customer',
+        createdAt: order.created_at,
+        status: fulfillment || order.status,
+        amount: cancelled ? 0 : order.items.reduce((total, item) =>
+          total + Math.max(0, Number(item.selling_price) || Number(item.unit_price) || 0)
+            * Math.max(0, Number(item.merchant_quantity) || 0), 0),
+        cancelled,
+        active: !cancelled && !['delivered', 'complete', 'completed'].includes(fulfillment || order.status.toLowerCase()),
+        itemCount: order.items.reduce((total, item) => total + Math.max(0, Number(item.merchant_quantity) || 0), 0)
+      };
+    });
+  const dateKey = (value: string) => {
+    const parsedDate = new Date(value);
+    if (!Number.isFinite(parsedDate.getTime())) return '';
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Nairobi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(parsedDate);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(item => item.type === type)?.value || '';
+    return `${part('year')}-${part('month')}-${part('day')}`;
+  };
+  const today = dateKey(new Date().toISOString());
+  const trendDays = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(`${today}T00:00:00.000Z`);
+    day.setUTCDate(day.getUTCDate() - (6 - index));
+    const key = day.toISOString().slice(0, 10);
+    return {
+      key,
+      label: day.toLocaleDateString('en-KE', { weekday: 'short', timeZone: 'Africa/Nairobi' }),
+      amount: records.reduce((total, order) =>
+        !order.cancelled && dateKey(order.createdAt) === key ? total + order.amount : total, 0)
+    };
+  });
+  const todaySales = records.reduce((total, order) =>
+    !order.cancelled && dateKey(order.createdAt) === today ? total + order.amount : total, 0);
+  const visibleOrders = [...records]
+    .filter(order => historyFilter === 'all'
+      || (historyFilter === 'active' && order.active)
+      || (historyFilter === 'completed' && !order.active && !order.cancelled)
+      || (historyFilter === 'cancelled' && order.cancelled))
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    .slice(0, 20);
+  const maxTrend = Math.max(1, ...trendDays.map(day => day.amount));
+  const rating = performance?.windows[7]?.averageRating ?? null;
+
+  return <section className="space-y-6 text-zinc-100">
+    <header>
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-400">{application.trading_name || application.business_name}</p>
+      <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-black text-white">Sales overview</h2>
+          <p className="mt-1 text-sm text-zinc-400">Your recorded order activity and item sales.</p>
+        </div>
+        <span className="rounded-full bg-emerald-400/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">Merchant terminal</span>
+      </div>
+    </header>
+
+    {error && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">{error}</p>}
+
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+        <TrendingUp size={18} className="text-amber-400" />
+        <p className="mt-4 text-xl font-black text-white">{loading ? '…' : error ? 'Unavailable' : currency(todaySales)}</p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Order sales today</p>
+      </article>
+      <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+        <Truck size={18} className="text-sky-300" />
+        <p className="mt-4 text-xl font-black text-white">{loading ? '…' : error ? 'Unavailable' : records.filter(order => order.active).length}</p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Live orders</p>
+      </article>
+      <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+        <Star size={18} className="text-amber-300" />
+        <p className="mt-4 text-xl font-black text-white">{performanceLoading ? '…' : performanceError ? 'Unavailable' : rating === null ? 'Not recorded' : `${rating.toFixed(1)} / 5`}</p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Average rating</p>
+      </article>
+      <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+        <CreditCard size={18} className="text-violet-300" />
+        <p className="mt-4 text-xl font-black text-white">Not tracked</p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Seller share</p>
+      </article>
+      <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+        <Building2 size={18} className="text-emerald-300" />
+        <p className="mt-4 text-xl font-black text-white">Not tracked</p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Payout balance</p>
+      </article>
+    </div>
+
+    <div className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
+      <section className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black text-white">Sales activity</h3>
+            <p className="mt-1 text-xs text-zinc-400">Recorded item values over the last seven days</p>
+          </div>
+          <span className="text-xs font-bold text-amber-300">{error ? 'Unavailable' : currency(trendDays.reduce((total, day) => total + day.amount, 0))}</span>
+        </div>
+        <div className="mt-6 grid h-44 grid-cols-7 items-end gap-2 sm:gap-4" role="img" aria-label="Recorded order item sales for the last seven days">
+          {trendDays.map(day => <div key={day.key} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
+            <span className="max-w-full truncate text-[9px] text-zinc-400">{day.amount > 0 ? currency(day.amount) : '—'}</span>
+            <div className="flex h-28 w-full items-end rounded-t-lg bg-white/[0.03]">
+              <div className="w-full rounded-t-lg bg-amber-400" style={{ height: `${day.amount ? Math.max(8, day.amount / maxTrend * 100) : 3}%` }} />
+            </div>
+            <span className="text-[10px] font-bold text-zinc-400">{day.label}</span>
+          </div>)}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 sm:p-6">
+        <h3 className="font-black text-white">Sales & payouts</h3>
+        <p className="mt-3 text-sm leading-6 text-zinc-400">Sales are calculated from the item quantities and prices recorded against this business&apos;s orders. They are order values, not verified earnings.</p>
+        <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-4">
+          <p className="text-sm font-bold text-amber-200">Settlement history is not connected</p>
+          <p className="mt-1 text-xs leading-5 text-zinc-400">Seller share and withdrawable balance are not available until a verified payout ledger is connected.</p>
+        </div>
+      </section>
+    </div>
+
+    <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#1a1b1e]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-5 sm:px-6">
+        <div>
+          <h3 className="font-black text-white">Order history</h3>
+          <p className="mt-1 text-xs text-zinc-400">{records.length} recorded orders</p>
+        </div>
+        <label className="text-xs font-bold text-zinc-400">
+          Filter
+          <select value={historyFilter} onChange={event => setHistoryFilter(event.target.value as typeof historyFilter)} className="ml-2 rounded-lg border border-white/10 bg-[#111214] px-3 py-2 text-xs text-white">
+            <option value="all">All orders</option>
+            <option value="active">Live</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </label>
+      </div>
+      {loading && <p role="status" className="p-6 text-sm text-zinc-400">Loading recorded orders…</p>}
+      {!loading && !error && visibleOrders.length === 0 && <p className="p-8 text-center text-sm text-zinc-400">No recorded orders match this filter.</p>}
+      {!loading && !error && visibleOrders.length > 0 && <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] text-left text-sm">
+          <thead className="bg-white/[0.03] text-[10px] uppercase tracking-wide text-zinc-400">
+            <tr><th className="px-5 py-3 font-bold">Order</th><th className="px-5 py-3 font-bold">Customer</th><th className="px-5 py-3 font-bold">Date</th><th className="px-5 py-3 font-bold">Items</th><th className="px-5 py-3 font-bold">Order value</th><th className="px-5 py-3 font-bold">Status</th></tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {visibleOrders.map(order => <tr key={order.id} className="text-zinc-200">
+              <td className="px-5 py-4 font-bold text-amber-300">#{order.id}</td>
+              <td className="px-5 py-4">{order.customerName}</td>
+              <td className="px-5 py-4 text-xs text-zinc-400">{dateTime(order.createdAt)}</td>
+              <td className="px-5 py-4">{order.itemCount}</td>
+              <td className="px-5 py-4 font-bold">{order.cancelled ? '—' : currency(order.amount)}</td>
+              <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${order.cancelled ? 'bg-rose-400/10 text-rose-300' : order.active ? 'bg-sky-400/10 text-sky-300' : 'bg-emerald-400/10 text-emerald-300'}`}>{order.status.replaceAll('_', ' ')}</span></td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>}
+      <p className="border-t border-white/10 px-5 py-3 text-[10px] leading-5 text-zinc-500">Order values are based on recorded items. They do not confirm payment, seller fees, or payout amounts. The table shows the latest 20 matching orders.</p>
+    </section>
+  </section>;
+}
+
 function FoodMerchantTerminal({
   section,
   application,
@@ -425,6 +643,20 @@ function FoodMerchantTerminal({
   const openOrders = foodOrders.filter(order => !isClosedFoodOrder(order));
   const products = application.offered_goods_pricing;
   const foodReviewSection = section === 'food-reviews';
+
+  if (section === 'sales') {
+    return <MerchantSalesOverview
+      application={application}
+      isFoodMerchant
+      foodOrders={foodOrders}
+      partnerOrders={[]}
+      loading={foodOrdersLoading}
+      error={foodOrdersError}
+      performance={performance}
+      performanceLoading={performanceLoading}
+      performanceError={performanceError}
+    />;
+  }
 
   const submitCampaign = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -689,6 +921,20 @@ function AlcoholMerchantTerminal({
     {children}
   </section>;
 
+  if (section === 'sales') {
+    return <MerchantSalesOverview
+      application={application}
+      isFoodMerchant={false}
+      foodOrders={[]}
+      partnerOrders={overview.orders}
+      loading={false}
+      error=""
+      performance={performance}
+      performanceLoading={performanceLoading}
+      performanceError={performanceError}
+    />;
+  }
+
   if (section === 'liquor-live' || section === 'liquor-history') {
     const orders = section === 'liquor-live'
       ? overview.orders.filter(order => !['delivered', 'cancelled', 'rejected'].includes(latestFulfillment(order.fulfillment)))
@@ -838,7 +1084,7 @@ export default function OnBarPartnerNetworkPage() {
   const [performanceError, setPerformanceError] = useState('');
   const [performanceDays, setPerformanceDays] = useState<7 | 30>(7);
   const [selectedId, setSelectedId] = useState('');
-  const [section, setSection] = useState<Section>('overview');
+  const [section, setSection] = useState<Section>('sales');
   const [merchantAccentColor, setMerchantAccentColor] = useState(MERCHANT_ACCENT_PRESETS[0]);
   const [appearanceMessage, setAppearanceMessage] = useState('');
   const [appearanceBusy, setAppearanceBusy] = useState(false);
@@ -873,10 +1119,10 @@ export default function OnBarPartnerNetworkPage() {
     && selected.application.vendor_type === 'retailer');
 
   useEffect(() => {
-    if (isFoodMerchant && !foodSections.some(item => item.id === section)) setSection('food-live');
-    if (!isFoodMerchant && foodSections.some(item => item.id === section)) setSection('overview');
-    if (isLiquorMerchant && !liquorSections.some(item => item.id === section)) setSection('liquor-live');
-    if (!isLiquorMerchant && liquorSections.some(item => item.id === section)) setSection('overview');
+    if (isFoodMerchant && !foodSections.some(item => item.id === section)) setSection('sales');
+    if (!isFoodMerchant && foodSections.some(item => item.id !== 'sales' && item.id === section)) setSection('overview');
+    if (isLiquorMerchant && !liquorSections.some(item => item.id === section)) setSection('sales');
+    if (!isLiquorMerchant && liquorSections.some(item => item.id !== 'sales' && item.id === section)) setSection('overview');
   }, [isFoodMerchant, isLiquorMerchant, section]);
 
   useEffect(() => {
@@ -925,7 +1171,7 @@ export default function OnBarPartnerNetworkPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedSection = params.get('section');
-    const validSections: Section[] = ['overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts', 'riders',
+    const validSections: Section[] = ['sales', 'overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts', 'riders',
       'food-live', 'food-menu', 'food-promotions', 'food-payments', 'food-history', 'food-reviews', 'food-business', 'food-staff'];
     if (requestedSection && validSections.includes(requestedSection as Section)) setSection(requestedSection as Section);
     setDeepLinkApplicationId(params.get('applicationId') || '');
@@ -1009,20 +1255,20 @@ export default function OnBarPartnerNetworkPage() {
   }, [accessToken, selected?.application.id, selected?.application.status]);
 
   useEffect(() => {
-    if (!isFoodMerchant || !canOperate || !['food-live', 'food-history'].includes(section) || !accessToken) {
+    if (!isFoodMerchant || !canOperate || !['sales', 'food-live', 'food-history'].includes(section) || !accessToken) {
       setFoodOrders([]);
       setFoodOrdersError('');
       setFoodOrdersLoading(false);
       return;
     }
     void loadFoodOrders();
-    if (section !== 'food-live') return;
+    if (!['food-live', 'sales'].includes(section)) return;
     const interval = window.setInterval(() => void loadFoodOrders(true), 20_000);
     return () => window.clearInterval(interval);
   }, [accessToken, canOperate, isFoodMerchant, loadFoodOrders, section]);
 
   useEffect(() => {
-    if (!accessToken || section !== 'food-live') return;
+    if (!accessToken || !['food-live', 'sales'].includes(section)) return;
     const interval = window.setInterval(() => void loadWorkspace(accessToken, true), 20_000);
     return () => window.clearInterval(interval);
   }, [accessToken, loadWorkspace, section]);
@@ -1077,7 +1323,9 @@ export default function OnBarPartnerNetworkPage() {
 
   useEffect(() => {
     const applicationId = selected?.application.id;
-    if (!['performance', 'food-reviews', 'liquor-reviews'].includes(section) || !accessToken || !applicationId || selected?.application.status !== 'approved') {
+    const shouldLoadPerformance = ['performance', 'food-reviews', 'liquor-reviews'].includes(section)
+      || (section === 'sales' && selected?.application.vendor_type !== null);
+    if (!shouldLoadPerformance || !accessToken || !applicationId || selected?.application.status !== 'approved') {
       setPerformance(null);
       setPerformanceError('');
       setPerformanceLoading(false);
@@ -1113,7 +1361,7 @@ export default function OnBarPartnerNetworkPage() {
       active = false;
       window.clearInterval(interval);
     };
-  }, [accessToken, section, selected?.application.id, selected?.application.status]);
+  }, [accessToken, section, selected?.application.id, selected?.application.status, selected?.application.vendor_type]);
 
   const loadRiderConnections = useCallback(async () => {
     const applicationId = selected?.application.id;
@@ -1650,6 +1898,20 @@ export default function OnBarPartnerNetworkPage() {
             performanceLoading={performanceLoading}
             performanceError={performanceError}
             onAction={apiAction}
+          />
+        )}
+
+        {!loading && overview && application && !isFoodMerchant && !isLiquorMerchant && section === 'sales' && (
+          <MerchantSalesOverview
+            application={application}
+            isFoodMerchant={false}
+            foodOrders={[]}
+            partnerOrders={overview.orders}
+            loading={false}
+            error=""
+            performance={performance}
+            performanceLoading={performanceLoading}
+            performanceError={performanceError}
           />
         )}
 

@@ -28,6 +28,17 @@ function getNairobiWeekStart(date: Date) {
   return new Date(Date.UTC(year, month, day - ((weekday + 6) % 7), 3)).toISOString();
 }
 
+function getNairobiDateKey(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Nairobi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function isProfileMigrationMissing(error: { code?: string; message?: string }) {
   return error.code === '42P01' || error.code === 'PGRST205'
     || /rider_profile_details|rider_profile_audit_events|schema cache/i.test(error.message || '');
@@ -103,6 +114,7 @@ export async function GET(request: Request) {
 
   const now = new Date();
   const weekStart = getNairobiWeekStart(now);
+  const nextWeekStart = new Date(new Date(weekStart).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString();
   const [
@@ -111,6 +123,7 @@ export async function GET(request: Request) {
     deliveredCountResult,
     weeklyCountResult,
     recentOrdersResult,
+    commissionsResult,
     offersResult,
     incidentsResult,
     documentsResult,
@@ -120,7 +133,8 @@ export async function GET(request: Request) {
     database.from('rider_wallets').select('balance,total_earned,updated_at').eq('rider_phone', session.phone).maybeSingle(),
     database.from('orders').select('id', { count: 'exact', head: true }).eq('rider_phone', session.phone).eq('status', 'Delivered'),
     database.from('orders').select('id', { count: 'exact', head: true }).eq('rider_phone', session.phone).eq('status', 'Delivered').gte('delivered_at', weekStart),
-    database.from('orders').select('id,status,total_price,payment_method,created_at,picked_up_at,delivered_at,delivery_eta_minutes').eq('rider_phone', session.phone).order('created_at', { ascending: false }).limit(500),
+    database.from('orders').select('id,status,total_price,payment_method,created_at,picked_up_at,delivered_at,delivery_eta_minutes,delivery_area').eq('rider_phone', session.phone).order('created_at', { ascending: false }).limit(500),
+    database.from('rider_delivery_commissions').select('order_id,amount_ksh,credited_at').eq('rider_phone', session.phone).gte('credited_at', oneYearAgo).order('credited_at', { ascending: true }).limit(2000),
     database.from('rider_offer_events').select('response,created_at').eq('rider_phone', session.phone).gte('created_at', oneYearAgo).in('response', ['accepted', 'declined', 'expired']).limit(2000),
     database.from('delivery_events').select('id,order_id,to_status,metadata,created_at').eq('actor_id', session.phone).like('to_status', 'Issue reported:%').gte('created_at', oneYearAgo).order('created_at', { ascending: false }).limit(100),
     database.from('rider_status').select('id_number,license_number,rider_photo_url,vehicle_photo_url,plate_number').eq('rider_phone', session.phone).maybeSingle(),
@@ -144,6 +158,13 @@ export async function GET(request: Request) {
     else {
       console.error('[RiderProfile] Could not load offer history:', offersResult.error);
       profileWarnings.push('Offer acceptance history could not be loaded.');
+    }
+    if (commissionsResult.error) {
+      if (isProfileMigrationMissing(commissionsResult.error)) profileWarnings.push('Weekly earnings are unavailable until DELIVERY_ENGINE_AND_BUZZ_MIGRATION.sql is applied.');
+      else {
+        console.error('[RiderProfile] Could not load weekly rider commissions:', commissionsResult.error);
+        profileWarnings.push('Weekly earnings could not be loaded.');
+      }
     }
   }
   if (incidentsResult.error) {
@@ -214,6 +235,20 @@ export async function GET(request: Request) {
   const decidedOffers = offerRows.filter(offer => ['accepted', 'declined', 'expired'].includes(offer.response));
   const acceptedOffers = decidedOffers.filter(offer => offer.response === 'accepted').length;
   const onTimeDeliveries = recentDurations.filter(delivery => delivery.minutes <= 30).length;
+  const commissions = commissionsResult.error ? [] : commissionsResult.data || [];
+  const weeklyCommissions = commissions.filter(commission =>
+    commission.credited_at >= weekStart && commission.credited_at < nextWeekStart
+  );
+  const dailyEarnings = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(new Date(weekStart).getTime() + index * 24 * 60 * 60 * 1000);
+    const day = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Nairobi', weekday: 'short' }).format(date);
+    const dateKey = getNairobiDateKey(date);
+    const amount = weeklyCommissions.reduce((total, commission) =>
+      getNairobiDateKey(new Date(commission.credited_at)) === dateKey
+        ? total + Number(commission.amount_ksh || 0)
+        : total, 0);
+    return { day, date: dateKey, amount };
+  });
   const details = detailsResult.data || (profileSetupRequired ? null : {
     whatsapp_number: null,
     emergency_contact_name: null,
@@ -274,6 +309,15 @@ export async function GET(request: Request) {
     } : null,
     documents,
     wallet: walletResult.data || null,
+    earnings: {
+      thisWeek: weeklyCommissions.reduce((total, commission) => total + Number(commission.amount_ksh || 0), 0),
+      daily: dailyEarnings,
+      byOrder: commissions.map(commission => ({
+        orderId: commission.order_id,
+        amount: Number(commission.amount_ksh || 0),
+        creditedAt: commission.credited_at
+      }))
+    },
     performance: {
       completedDeliveries: deliveredCountResult.count || 0,
       deliveriesThisWeek: weeklyCountResult.count || 0,
