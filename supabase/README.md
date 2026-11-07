@@ -42,8 +42,9 @@ SQL Editor:
 1. `FINAL_ESTABLISHMENT_SQL.sql`
 2. `MERCHANT_OPERATIONS_MIGRATION.sql`
 3. `DISPATCH_MIGRATION.sql`
-4. `AUTH_SECURITY_MIGRATION.sql`
-5. `ADMIN_DASHBOARD_RECOVERY_MIGRATION.sql`
+4. `COD_RIDER_DISPATCH_MIGRATION.sql`
+5. `AUTH_SECURITY_MIGRATION.sql`
+6. `ADMIN_DASHBOARD_RECOVERY_MIGRATION.sql`
 
 The recovery migration adds the missing rider and staff fields, restores the
 analytics RPC functions, and creates the legacy tax-ledger and reconciliation
@@ -218,9 +219,11 @@ for `/api/paystack/webhook`. The checkout requires a customer email and offers
 the payment channels enabled for the Paystack account. Cash is recorded as a
 rider-confirmed physical collection; it is not provider-verified.
 
-The customer checkout offers online payment or Cash on Delivery. The latter is
-deliberately a single checkout choice: the verified rider presents the
-available doorstep options after ID and one-time handover-code checks
+The customer checkout offers online payment or Cash on Delivery. Apply
+`COD_RIDER_DISPATCH_MIGRATION.sql` after `DISPATCH_MIGRATION.sql` to make
+confirmed COD orders available for assignment once merchant fulfillment is
+verified. The order remains unpaid until its assigned verified rider presents
+the available doorstep options after ID and one-time handover-code checks
 (cash, M-Pesa prompt, or scan-to-pay). This keeps the customer order record
 consistent while preserving an auditable payment method at the door.
 

@@ -481,10 +481,10 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
   const [ordersResult, ridersResult, loadResult, decisionResult, directoryRidersResult, zonesResult] = await Promise.all([
     database.from('orders')
       .select('id, status, payment_method, payment_verified_at, checkout_request_id, customer_name, customer_email, total_price, latitude, longitude, note, created_at, rider_name, rider_phone')
-      .eq('status', 'Paid')
-      .not('payment_verified_at', 'is', null)
-      .in('payment_method', ['Paystack', 'PayHero'])
-      .order('payment_verified_at', { ascending: true })
+      .in('status', ['Paid', 'Confirmed'])
+      .in('payment_method', ['Paystack', 'PayHero', 'COD'])
+      .is('rider_phone', null)
+      .order('created_at', { ascending: true })
       .limit(100),
     database.from('rider_status')
       .select('id, rider_name, rider_phone, status, verification_status, area_zone, current_location, last_known_lat, last_known_lng, max_deliveries, health_score, location_updated_at, updated_at'),
@@ -511,30 +511,48 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
     if (result.error) throw result.error;
   }
 
-  const paidOrders = ((ordersResult.data || []) as Order[])
+  const unassignedOrders = (ordersResult.data || []) as Order[];
+  const onlinePaymentOrders = unassignedOrders.filter(order =>
+    !order.rider_phone
+    && order.status?.toLowerCase() === 'paid'
+    && ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase())
+  );
+  const dispatchOrders = unassignedOrders
     .filter(order =>
-      order.status?.toLowerCase() === 'paid'
-      && Boolean(order.payment_verified_at)
-      && ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase())
-      && !order.rider_phone
+      !order.rider_phone
+      && (
+        (order.status?.toLowerCase() === 'paid'
+          && Boolean(order.payment_verified_at)
+          && ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase()))
+        || (order.status?.toLowerCase() === 'confirmed'
+          && !order.payment_verified_at
+          && ['cod', 'cash on delivery'].includes((order.payment_method || '').toLowerCase()))
+      )
     );
-  const { data: confirmations, error: confirmationError } = paidOrders.length
+  const verifiedOnlineOrders = dispatchOrders.filter(order =>
+    ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase())
+  );
+  const { data: confirmations, error: confirmationError } = verifiedOnlineOrders.length
     ? await database.from('payment_confirmations')
       .select('order_id, provider, reference, amount_kobo, currency')
-      .in('order_id', paidOrders.map(order => order.id))
+      .in('order_id', verifiedOnlineOrders.map(order => order.id))
     : { data: [], error: null };
   if (confirmationError) throw confirmationError;
   const confirmedOrderIds = new Set((confirmations || [])
     .filter(confirmation => {
-      const order = paidOrders.find(candidate => candidate.id === Number(confirmation.order_id));
+      const order = verifiedOnlineOrders.find(candidate => candidate.id === Number(confirmation.order_id));
       return Boolean(order)
-        && confirmation.provider === (order?.payment_method === 'PayHero' ? 'PayHero' : 'Paystack')
+        && confirmation.provider === (order?.payment_method?.toLowerCase() === 'payhero' ? 'PayHero' : 'Paystack')
         && confirmation.reference === order?.checkout_request_id
         && Number(confirmation.amount_kobo) === Math.round(Number(order?.total_price) * 100)
         && confirmation.currency === 'KES';
     })
     .map(confirmation => Number(confirmation.order_id)));
-  const orders = paidOrders.filter(order => confirmedOrderIds.has(order.id));
+  const orders = dispatchOrders.filter(order =>
+    ['cod', 'cash on delivery'].includes((order.payment_method || '').toLowerCase())
+      ? order.status?.toLowerCase() === 'confirmed' && !order.payment_verified_at
+      : confirmedOrderIds.has(order.id)
+  );
   const riders = (ridersResult.data || []) as Rider[];
   const loads = new Map<string, number>();
   const activeOrdersByRider = new Map<string, Array<{
@@ -668,7 +686,7 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
   return {
     jobs,
     decisions: decisionResult.data || [],
-    unverifiedPaymentCount: paidOrders.length - confirmedOrderIds.size,
+    unverifiedPaymentCount: onlinePaymentOrders.length - confirmedOrderIds.size,
     riders: directoryRiders.map(rider => ({
       ...rider,
       wallet: Array.isArray(rider.wallet) ? rider.wallet[0] || null : rider.wallet || null,
@@ -842,14 +860,17 @@ export async function POST(request: Request) {
       console.error('[AdminDispatch] Atomic assignment failed:', error);
       return NextResponse.json({
         error: /assign_paid_order_rider|schema cache/i.test(error.message)
-          ? 'Dispatch database migration is missing. Run supabase/DISPATCH_MIGRATION.sql.'
+          ? 'Dispatch database migration is missing. Run supabase/DISPATCH_MIGRATION.sql and supabase/COD_RIDER_DISPATCH_MIGRATION.sql.'
           : 'Assignment could not be saved. Refresh and review rider availability.'
       }, { status: 503 });
     }
     const result = data as { success?: boolean; error?: string; code?: string; [key: string]: unknown } | null;
     if (!result?.success) {
+      const isCodOrder = ['cod', 'cash on delivery'].includes((job.payment_method || '').toLowerCase());
       return NextResponse.json({
-        error: result?.error || 'Assignment was not completed.',
+        error: isCodOrder && result?.code === 'PAYMENT_NOT_CONFIRMED'
+          ? 'Cash-on-delivery rider dispatch is not installed. Apply supabase/COD_RIDER_DISPATCH_MIGRATION.sql.'
+          : result?.error || 'Assignment was not completed.',
         code: result?.code || 'ASSIGNMENT_FAILED'
       }, { status: result?.code === 'PAYMENT_NOT_CONFIRMED' ? 409 : 409 });
     }

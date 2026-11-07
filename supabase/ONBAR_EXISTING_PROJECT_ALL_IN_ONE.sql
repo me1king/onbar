@@ -3481,29 +3481,42 @@ BEGIN
     WHERE orders.id = NEW.order_id;
 
     IF NOT FOUND
-       OR lower(coalesce(parent_order.status, '')) <> 'paid'
-       OR parent_order.payment_verified_at IS NULL
-       OR lower(coalesce(parent_order.payment_method, '')) NOT IN ('paystack', 'payhero')
+       OR NOT (
+           (
+               lower(coalesce(parent_order.payment_method, '')) = 'cod'
+               AND lower(coalesce(parent_order.status, '')) IN ('pending', 'placed', 'confirmed')
+               AND parent_order.payment_verified_at IS NULL
+           )
+           OR (
+               lower(coalesce(parent_order.status, '')) = 'paid'
+               AND parent_order.payment_verified_at IS NOT NULL
+               AND lower(coalesce(parent_order.payment_method, '')) IN ('paystack', 'payhero')
+           )
+       )
        OR parent_order.latitude IS NULL
        OR parent_order.longitude IS NULL THEN
         RETURN NEW;
     END IF;
 
-    EXECUTE
-        'SELECT EXISTS (
-            SELECT 1
-            FROM public.payment_confirmations confirmation
-            WHERE confirmation.order_id = $1
-              AND confirmation.provider = CASE
-                  WHEN lower($4) = ''payhero'' THEN ''PayHero''
-                  ELSE ''Paystack''
-              END
-              AND confirmation.reference = $2
-              AND confirmation.amount_kobo = round($3 * 100)::BIGINT
-              AND confirmation.currency = ''KES''
-        )'
-    INTO has_payment_proof
-    USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price, parent_order.payment_method;
+    IF lower(coalesce(parent_order.payment_method, '')) = 'cod' THEN
+        has_payment_proof := true;
+    ELSE
+        EXECUTE
+            'SELECT EXISTS (
+                SELECT 1
+                FROM public.payment_confirmations confirmation
+                WHERE confirmation.order_id = $1
+                  AND confirmation.provider = CASE
+                      WHEN lower($4) = ''payhero'' THEN ''PayHero''
+                      ELSE ''Paystack''
+                  END
+                  AND confirmation.reference = $2
+                  AND confirmation.amount_kobo = round($3 * 100)::BIGINT
+                  AND confirmation.currency = ''KES''
+            )'
+        INTO has_payment_proof
+        USING parent_order.id, parent_order.checkout_request_id, parent_order.total_price, parent_order.payment_method;
+    END IF;
 
     IF NOT has_payment_proof THEN
         RETURN NEW;
@@ -3636,13 +3649,14 @@ BEGIN
         INSERT INTO public.merchant_order_item_trace (
             order_item_id, batch_id, quantity, created_by
         ) VALUES (
-            NEW.id, batch_record.id, allocation_quantity, 'payment-confirmed dispatch'
+            NEW.id, batch_record.id, allocation_quantity, 'dispatch allocation'
         );
         remaining_quantity := remaining_quantity - allocation_quantity;
         EXIT WHEN remaining_quantity = 0;
     END LOOP;
 
-    IF remaining_quantity > 0 THEN
+    IF remaining_quantity > 0
+       AND lower(coalesce(parent_order.payment_method, '')) <> 'cod' THEN
         RAISE EXCEPTION 'Insufficient in-range merchant stock for paid order item %.', NEW.id;
     END IF;
     RETURN NEW;
@@ -3984,33 +3998,44 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'code', 'ORDER_NOT_FOUND', 'error', 'Order not found.');
     END IF;
 
-    IF lower(coalesce(target_order.status, '')) <> 'paid'
-       OR target_order.payment_verified_at IS NULL
-       OR lower(coalesce(target_order.payment_method, '')) NOT IN ('paystack', 'payhero') THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'code', 'PAYMENT_NOT_CONFIRMED',
-            'error', 'Dispatch is limited to verified online orders. COD and manual orders remain unassigned.'
-        );
-    END IF;
-    IF target_order.checkout_request_id IS NULL
-       OR NOT EXISTS (
-           SELECT 1
-           FROM public.payment_confirmations confirmation
-           WHERE confirmation.order_id = target_order.id
-             AND confirmation.provider = CASE
-                 WHEN lower(target_order.payment_method) = 'payhero' THEN 'PayHero'
-                 ELSE 'Paystack'
-             END
-             AND confirmation.reference = target_order.checkout_request_id
-             AND confirmation.amount_kobo = round(target_order.total_price * 100)::BIGINT
-             AND confirmation.currency = 'KES'
-       ) THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'code', 'PAYMENT_PROOF_MISSING',
-            'error', 'A server-verified online payment record is required before dispatch.'
-        );
+    IF lower(coalesce(target_order.payment_method, '')) IN ('cod', 'cash on delivery') THEN
+        IF lower(coalesce(target_order.status, '')) <> 'confirmed'
+           OR target_order.payment_verified_at IS NOT NULL THEN
+            RETURN jsonb_build_object(
+                'success', false,
+                'code', 'COD_ORDER_NOT_DISPATCHABLE',
+                'error', 'Cash-on-delivery dispatch requires a confirmed order that has not already been marked paid.'
+            );
+        END IF;
+    ELSE
+        IF lower(coalesce(target_order.status, '')) <> 'paid'
+           OR target_order.payment_verified_at IS NULL
+           OR lower(coalesce(target_order.payment_method, '')) NOT IN ('paystack', 'payhero') THEN
+            RETURN jsonb_build_object(
+                'success', false,
+                'code', 'PAYMENT_NOT_CONFIRMED',
+                'error', 'Online dispatch is limited to server-verified Paystack or PayHero orders.'
+            );
+        END IF;
+        IF target_order.checkout_request_id IS NULL
+           OR NOT EXISTS (
+               SELECT 1
+               FROM public.payment_confirmations confirmation
+               WHERE confirmation.order_id = target_order.id
+                 AND confirmation.provider = CASE
+                     WHEN lower(target_order.payment_method) = 'payhero' THEN 'PayHero'
+                     ELSE 'Paystack'
+                 END
+                 AND confirmation.reference = target_order.checkout_request_id
+                 AND confirmation.amount_kobo = round(target_order.total_price * 100)::BIGINT
+                 AND confirmation.currency = 'KES'
+           ) THEN
+            RETURN jsonb_build_object(
+                'success', false,
+                'code', 'PAYMENT_PROOF_MISSING',
+                'error', 'A server-verified online payment record is required before dispatch.'
+            );
+        END IF;
     END IF;
 
     IF target_order.rider_phone IS NOT NULL

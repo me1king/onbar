@@ -864,10 +864,10 @@ export default function AdminOrdersPage() {
 
                                     {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
                                         <Link
-                                            href="/lord/dispatch"
+                                            href={`/lord/dispatch?orderId=${order.id}#assignment-queue`}
                                             className="text-[8px] font-black uppercase text-primary hover:underline text-left pl-1 whitespace-nowrap"
                                         >
-                                            {order.rider_name ? `Runner: ${order.rider_name}` : 'Assign Runner'}
+                                            {order.rider_name ? `Rider: ${order.rider_name}` : 'Assign Rider'}
                                         </Link>
                                     )}
                                 </div>

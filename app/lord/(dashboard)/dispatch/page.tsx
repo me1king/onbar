@@ -104,7 +104,7 @@ interface DispatchJob {
     customer_name: string;
     customer_email?: string | null;
     payment_method: string;
-    payment_verified_at: string;
+    payment_verified_at: string | null;
     total_price: number | string;
     fulfillment: {
         ready: boolean;
@@ -169,6 +169,8 @@ export default function AdminDispatchPage() {
         created_at: string;
     }>>([]);
     const [unverifiedPaymentCount, setUnverifiedPaymentCount] = useState(0);
+    const [requestedOrderId, setRequestedOrderId] = useState<number | null>(null);
+    const requestedOrderScrollHandled = React.useRef(false);
 
     const [showHeatmap, setShowHeatmap] = useState(false);
     const [selectedWarehouse, setSelectedWarehouse] = useState('all');
@@ -210,6 +212,25 @@ export default function AdminDispatchPage() {
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
     }, [fetchData]);
+
+    useEffect(() => {
+        const orderId = Number(new URLSearchParams(window.location.search).get('orderId'));
+        if (Number.isSafeInteger(orderId) && orderId > 0) {
+            setRequestedOrderId(orderId);
+            requestedOrderScrollHandled.current = false;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (requestedOrderId === null
+            || requestedOrderScrollHandled.current
+            || !orders.some(order => order.id === requestedOrderId)) return;
+        document.getElementById(`dispatch-order-${requestedOrderId}`)?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
+        requestedOrderScrollHandled.current = true;
+    }, [orders, requestedOrderId]);
 
     const stats = React.useMemo(() => {
         const total = riders.length;
@@ -522,11 +543,11 @@ export default function AdminDispatchPage() {
                         />
                     </div>
 
-                    <section className="space-y-6">
+                    <section id="assignment-queue" className="scroll-mt-8 space-y-6">
                         <div className="flex items-center justify-between px-2 text-left">
                             <div className="flex items-center gap-3">
                                 <Zap className="h-6 w-6 text-primary animate-pulse" />
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Assign paid orders to riders</h2>
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Assign orders to riders</h2>
                             </div>
                         </div>
                         <p className="px-2 text-xs text-muted-foreground">
@@ -535,7 +556,7 @@ export default function AdminDispatchPage() {
 
                         {unverifiedPaymentCount > 0 && (
                             <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                                {unverifiedPaymentCount} paid order(s) do not have a matching server-verified Paystack record and remain unassigned.
+                                {unverifiedPaymentCount} online-paid order(s) do not have a matching server-verified payment record and remain unassigned.
                             </p>
                         )}
                         {orders.some(order => order.merchantRiderPriorityReady === false) && (
@@ -548,17 +569,31 @@ export default function AdminDispatchPage() {
                             {orders.length === 0 ? (
                                 <div className="p-16 text-center bg-card rounded-[3rem] border-2 border-dashed border-border flex flex-col items-center gap-4">
                                     <PackageCheck className="h-12 w-12 text-muted" />
-                                    <p className="text-sm font-black text-muted-foreground uppercase italic">No eligible confirmed-payment orders.</p>
+                                    <p className="text-sm font-black text-muted-foreground uppercase italic">No orders are ready for rider assignment.</p>
+                                    <p className="max-w-2xl text-sm text-muted-foreground">
+                                        Online orders need verified payment. Cash-on-delivery orders need confirmed merchant fulfillment; the rider collects payment at handover.
+                                    </p>
                                 </div>
                             ) : orders.map(order => {
                                 const recommendation = order.recommendedRider;
                                 return (
-                                    <Card key={order.id} className="p-7 rounded-[2rem] border border-border bg-card shadow-sm space-y-6">
+                                    <Card
+                                        key={order.id}
+                                        id={`dispatch-order-${order.id}`}
+                                        className={cn(
+                                            'p-7 rounded-[2rem] border bg-card shadow-sm space-y-6',
+                                            requestedOrderId === order.id ? 'border-primary ring-2 ring-primary/20' : 'border-border'
+                                        )}
+                                    >
                                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 text-left">
                                             <div>
                                                 <h3 className="font-black text-foreground uppercase text-lg tracking-tighter">Order #{order.id}</h3>
                                                 <p className="text-xs text-muted-foreground mt-1">{order.customer_name} · {formatPrice(Number(order.total_price))}</p>
-                                                <p className="text-[10px] text-emerald-700 font-bold uppercase mt-2">Payment confirmed · {order.payment_method}</p>
+                                                <p className={`mt-2 text-[10px] font-bold uppercase ${['cod', 'cash on delivery'].includes(order.payment_method.trim().toLowerCase()) ? 'text-amber-800' : 'text-emerald-700'}`}>
+                                                    {['cod', 'cash on delivery'].includes(order.payment_method.trim().toLowerCase())
+                                                        ? 'Cash on delivery · rider collects at handover'
+                                                        : `Payment confirmed · ${order.payment_method}`}
+                                                </p>
                                             </div>
                                             {recommendation ? (
                                                 <div className="rounded-xl bg-primary/5 border border-primary/10 p-3 text-sm">
@@ -619,7 +654,7 @@ export default function AdminDispatchPage() {
                                             </Button>
                                             <div className="flex-1 grid sm:grid-cols-2 gap-2">
                                                 <p className="text-xs text-muted-foreground sm:col-span-2">
-                                                    Rider override changes only the rider. It cannot bypass confirmed payment or unverified merchant fulfillment.
+                                                    Rider override changes only the rider. It cannot bypass online payment verification or unverified merchant fulfillment. COD is collected by the rider at delivery.
                                                 </p>
                                                 <select
                                                     value={overrideRiders[order.id] || ''}

@@ -108,7 +108,7 @@ interface DispatchJob {
     latitude?: number | string | null;
     longitude?: number | string | null;
     payment_method: string;
-    payment_verified_at: string;
+    payment_verified_at: string | null;
     total_price: number | string;
     fulfillment: {
         ready: boolean;
@@ -231,6 +231,8 @@ export default function AdminDispatchPage() {
         criteria?: { selected_vendor_names?: string[] } | null;
     }>>([]);
     const [unverifiedPaymentCount, setUnverifiedPaymentCount] = useState(0);
+    const [requestedOrderId, setRequestedOrderId] = useState<number | null>(null);
+    const requestedOrderScrollHandled = React.useRef(false);
 
     const [showHeatmap, setShowHeatmap] = useState(false);
     const [selectedWarehouse, setSelectedWarehouse] = useState('all');
@@ -272,6 +274,25 @@ export default function AdminDispatchPage() {
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
     }, [fetchData]);
+
+    useEffect(() => {
+        const orderId = Number(new URLSearchParams(window.location.search).get('orderId'));
+        if (Number.isSafeInteger(orderId) && orderId > 0) {
+            setRequestedOrderId(orderId);
+            requestedOrderScrollHandled.current = false;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (requestedOrderId === null
+            || requestedOrderScrollHandled.current
+            || !orders.some(order => order.id === requestedOrderId)) return;
+        document.getElementById(`dispatch-order-${requestedOrderId}`)?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
+        requestedOrderScrollHandled.current = true;
+    }, [orders, requestedOrderId]);
 
     const stats = React.useMemo(() => {
         const total = riders.length;
@@ -578,7 +599,7 @@ export default function AdminDispatchPage() {
                         <div className="flex items-center justify-between px-2 text-left">
                             <div className="flex items-center gap-3">
                                 <Zap className="h-6 w-6 text-primary animate-pulse" />
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Assign paid orders to riders</h2>
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Assign orders to riders</h2>
                             </div>
                         </div>
                         <p className="px-2 text-xs text-muted-foreground">
@@ -587,7 +608,7 @@ export default function AdminDispatchPage() {
 
                         {unverifiedPaymentCount > 0 && (
                             <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                                {unverifiedPaymentCount} paid order(s) do not have a matching server-verified Paystack record and remain unassigned.
+                                {unverifiedPaymentCount} online-paid order(s) do not have a matching server-verified payment record and remain unassigned.
                             </p>
                         )}
                         {orders.some(order => order.merchantRiderPriorityReady === false) && (
@@ -602,34 +623,44 @@ export default function AdminDispatchPage() {
                                     <PackageCheck className="h-12 w-12 text-muted" />
                                     <p className="text-sm font-black text-muted-foreground uppercase">No orders are ready for rider assignment.</p>
                                     <p className="max-w-2xl text-sm text-muted-foreground">
-                                        Orders appear here after payment is verified by the server and merchant fulfillment is confirmed. Unverified paid orders remain unassigned; refresh after resolving the order or payment status.
+                                        Online orders appear after server-verified payment. Cash-on-delivery orders appear after merchant fulfillment is confirmed; the rider collects payment at delivery.
                                     </p>
                                     {unverifiedPaymentCount > 0 && (
                                         <p className="rounded-lg bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900">
-                                            {unverifiedPaymentCount} paid order(s) still need matching payment verification.
+                                            {unverifiedPaymentCount} online-paid order(s) still need matching payment verification.
                                         </p>
                                     )}
                                 </div>
                             ) : orders.map((order, orderIndex) => {
                                 const recommendation = order.recommendedRider;
                                 const assignmentMode = assignmentModes[order.id] || 'automatic';
+                                const isCashOnDelivery = ['cod', 'cash on delivery'].includes(order.payment_method.trim().toLowerCase());
                                 const progressSteps = [
-                                    { label: 'Payment confirmed', complete: true },
+                                    { label: isCashOnDelivery ? 'Cash due at delivery' : 'Payment confirmed', complete: !isCashOnDelivery },
                                     { label: 'Merchant ready', complete: order.fulfillment.ready },
                                     { label: 'Rider available', complete: Boolean(recommendation) }
                                 ];
                                 return (
                                     <Card
                                         key={order.id}
+                                        id={`dispatch-order-${order.id}`}
                                         aria-busy={assigning === order.id}
                                         style={{ animationDelay: `${Math.min(orderIndex, 8) * 60}ms` }}
-                                        className="animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none p-7 rounded-[2rem] border border-border bg-card shadow-sm transition-shadow hover:shadow-lg space-y-6"
+                                        className={cn(
+                                            'animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none p-7 rounded-[2rem] border bg-card shadow-sm transition-shadow hover:shadow-lg space-y-6',
+                                            requestedOrderId === order.id ? 'border-primary ring-2 ring-primary/20' : 'border-border'
+                                        )}
                                     >
                                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 text-left">
                                             <div>
                                                 <h3 className="font-black text-foreground uppercase text-lg tracking-tighter">Order #{order.id}</h3>
                                                 <p className="text-xs text-muted-foreground mt-1">{order.customer_name} · {formatPrice(Number(order.total_price))}</p>
-                                                <p className="text-[10px] text-emerald-700 font-bold uppercase mt-2">Payment confirmed · {order.payment_method}</p>
+                                                <p className={cn(
+                                                    'mt-2 text-[10px] font-bold uppercase',
+                                                    isCashOnDelivery ? 'text-amber-800' : 'text-emerald-700'
+                                                )}>
+                                                    {isCashOnDelivery ? 'Cash on delivery · rider collects at handover' : `Payment confirmed · ${order.payment_method}`}
+                                                </p>
                                                 <OrderAgeTimer createdAt={order.created_at} />
                                             </div>
                                             {recommendation ? (
