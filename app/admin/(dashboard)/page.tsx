@@ -332,8 +332,10 @@ export default function AdminDashboard() {
                   <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
                   <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Live Dispatch Map</h2>
               </div>
-              <Link href="/lord/dispatch">
-                  <Button variant="outline" className="h-10 rounded-xl text-[8px] font-black uppercase tracking-widest border-slate-200">Full Console &rarr;</Button>
+              <Link href="/admin/dispatch#assignment-queue">
+                  <Button className="h-10 rounded-xl border border-amber-300 bg-amber-500 text-[8px] font-black uppercase tracking-widest text-white hover:bg-amber-600">
+                      <Truck className="mr-2 h-4 w-4" /> Assign Rider
+                  </Button>
               </Link>
           </div>
           <div className="h-[600px] w-full rounded-[3.5rem] border border-slate-100 overflow-hidden shadow-2xl">

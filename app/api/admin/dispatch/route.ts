@@ -708,13 +708,16 @@ export async function GET() {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown database error';
     const batteryTelemetryMissing = /battery_updated_at/i.test(message);
-    const migrationMissing = /dispatch_decisions|payment_confirmations|rider_status|last_known_lat|merchant_order_item_trace|merchant_applications|merchant_product_batches|merchant_fulfillment_events|schema cache|does not exist/i.test(message);
+    const migrationMissing = /dispatch_decisions|payment_confirmations|rider_status|rider_wallets|last_known_lat|merchant_order_item_trace|merchant_inventory_movements|merchant_applications|merchant_product_batches|merchant_fulfillment_events|get_order_delivery_demand_zones|schema cache|does not exist|could not find the/i.test(message);
+    const connectionFailure = /fetch failed|timeout|timed out|ECONN|ENOTFOUND|connection refused|network/i.test(message);
     console.error('[AdminDispatch] Could not load dispatch data:', message);
     return NextResponse.json({
       error: batteryTelemetryMissing
         ? 'Battery telemetry fields are not installed. Apply supabase/RIDER_BATTERY_TELEMETRY_MIGRATION.sql.'
         : migrationMissing
         ? 'Dispatch prerequisites are missing. Run supabase/DISPATCH_MIGRATION.sql and, for vendor checks, supabase/MERCHANT_OPERATIONS_MIGRATION.sql.'
+        : connectionFailure
+        ? 'Dispatch could not connect to Supabase. Check the Supabase project status and server credentials.'
         : 'Dispatch data could not be loaded. Check the Supabase connection and migration status.'
     }, { status: 503 });
   }

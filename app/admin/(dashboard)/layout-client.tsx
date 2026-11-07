@@ -168,7 +168,7 @@ export default function AdminLayoutClient({
       { name: 'Kitchen Control', href: '/lord/kitchen', icon: Flame, permission: 'can_manage_kitchen' },
       { name: 'Munchie Hub', href: '/lord/munchies', icon: Cookie, permission: 'can_manage_inventory' },
       { name: 'Souvenir Forge', href: '/lord/souvenirs', icon: Gift, permission: 'can_manage_inventory' },
-      { name: 'Dispatch Queue', href: '/lord/orders', icon: ShoppingCart, permission: 'can_manage_orders' },
+      { name: 'Dispatch Queue', href: '/admin/orders', icon: ShoppingCart, permission: 'can_manage_orders' },
     ]},
     { group: 'EXPERIENCE', items: [
       { name: 'Web Widgets', href: '/lord/experience/widgets', icon: LayoutIcon, permission: 'can_manage_settings' },
@@ -177,8 +177,8 @@ export default function AdminLayoutClient({
     { group: 'OPERATIONS', items: [
       { name: 'Operations Control Room', href: '/lord/operations', icon: Activity, minRole: 'viewer' },
       { name: 'Ticketing', href: '/lord/ticketing', icon: Ticket, minRole: 'admin' },
-      { name: 'Live Runners', href: '/lord/dispatch', icon: Truck, permission: 'can_manage_orders' },
-      { name: 'Delivery Flow', href: '/lord/delivery', icon: Truck, permission: 'can_manage_orders' },
+      { name: 'Assign Riders', href: '/admin/dispatch', icon: Truck, permission: 'can_manage_orders' },
+      { name: 'Delivery Flow', href: '/admin/delivery', icon: Truck, permission: 'can_manage_orders' },
       { name: 'Delivery Zone Map', href: '/lord/delivery-zones', icon: MapPin, permission: 'can_manage_settings' },
       { name: 'The Buzz Hub', href: '/lord/buzz', icon: Flame, permission: 'can_manage_marketing' },
       { name: 'Tasks Board', href: '/lord/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },

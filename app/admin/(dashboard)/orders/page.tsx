@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
 import {
   Plus,
@@ -119,8 +120,6 @@ export default function AdminOrdersPage() {
   const [selectedOrders, setSelectedOrders] = React.useState<number[]>([]);
   const [selectedBulkStatus, setSelectedBulkStatus] = React.useState<MachineStatus | ''>('');
   const [isBulkUpdating, setIsBulkUpdating] = React.useState(false);
-  const [assigningRiderId, setAssigningRiderId] = React.useState<number | null>(null);
-  const [riderForm, setRiderForm] = React.useState({ name: '', phone: '' });
   const [editingGiftOrderId, setEditingGiftOrderId] = React.useState<number | null>(null);
   const [giftMessageDraft, setGiftMessageDraft] = React.useState('');
   const [isSavingGiftMessage, setIsSavingGiftMessage] = React.useState(false);
@@ -485,29 +484,6 @@ export default function AdminOrdersPage() {
           setStatusMessage({ type: 'error', text: error.message });
       } finally {
           setIsBulkUpdating(false);
-      }
-  };
-
-  const handleAssignRider = async (orderId: number) => {
-      if (!riderForm.name || !riderForm.phone) return;
-      try {
-          const response = await fetch('/api/admin/orders', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'rider', id: orderId, name: riderForm.name, phone: riderForm.phone })
-          });
-          const result = await response.json() as { error?: string };
-          if (!response.ok) throw new Error(result.error || 'Rider could not be assigned.');
-
-          await logAuditAction(email, 'ASSIGN_RIDER', { id: orderId, rider: riderForm.name });
-
-          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, rider_name: riderForm.name, rider_phone: riderForm.phone, status: 'Dispatched' } : o));
-          setAssigningRiderId(null);
-          setRiderForm({ name: '', phone: '' });
-          setStatusMessage({ type: 'success', text: 'Rider assigned and order dispatched!' });
-      } catch (err: unknown) {
-          const error = err as Error;
-          setStatusMessage({ type: 'error', text: error.message });
       }
   };
 
@@ -881,16 +857,17 @@ export default function AdminOrdersPage() {
                                         ))}
                                     </select>
 
-                                    {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
-                                        <button
-                                            onClick={() => {
-                                                setAssigningRiderId(order.id);
-                                                setRiderForm({ name: order.rider_name || '', phone: order.rider_phone || '' });
-                                            }}
-                                            className="text-[8px] font-black uppercase text-primary hover:underline text-left pl-1 whitespace-nowrap"
+                                    {order.rider_name || order.rider_phone ? (
+                                        <span className="inline-flex min-h-9 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[9px] font-black uppercase text-emerald-800">
+                                            Rider: {order.rider_name || 'Assigned'}
+                                        </span>
+                                    ) : !['Delivered', 'Completed', 'Cancelled', 'Refunded', 'Payment Failed'].includes(order.status) && (
+                                        <Link
+                                            href={`/admin/dispatch?orderId=${order.id}#assignment-queue`}
+                                            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-4 text-[9px] font-black uppercase tracking-wide text-amber-900 shadow-sm transition hover:bg-amber-100"
                                         >
-                                            {order.rider_name ? `Runner: ${order.rider_name}` : 'Assign Runner'}
-                                        </button>
+                                            Assign Rider
+                                        </Link>
                                     )}
                                 </div>
                                 </td>
@@ -1009,28 +986,6 @@ export default function AdminOrdersPage() {
         <div className="fixed bottom-8 right-8 p-6 rounded-[2rem] shadow-2xl animate-in slide-in-from-bottom-8 fade-in duration-500 font-black uppercase text-[10px] tracking-widest z-[100] bg-primary text-white shadow-primary/20">
           {statusMessage.text}
         </div>
-      )}
-
-      {assigningRiderId && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-500/10 backdrop-blur-md p-4">
-              <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95">
-                  <h3 className="text-xl font-black uppercase tracking-tighter text-foreground mb-6">Assign Bar Runner</h3>
-                  <div className="space-y-4">
-                      <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Runner Name</label>
-                          <Input value={riderForm.name} onChange={e => setRiderForm({...riderForm, name: e.target.value})} placeholder="e.g. Kelvin" className="rounded-xl h-12 bg-slate-50 border-slate-100" />
-                      </div>
-                      <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Phone (254...)</label>
-                          <Input value={riderForm.phone} onChange={e => setRiderForm({...riderForm, phone: e.target.value})} placeholder="07XXXXXXXX" className="rounded-xl h-12 bg-slate-50 border-slate-100" />
-                      </div>
-                      <div className="flex gap-2 pt-4">
-                          <Button onClick={() => handleAssignRider(assigningRiderId!)} className="flex-1 rounded-xl h-12 bg-primary text-white font-black uppercase text-[10px] shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95">Dispatch Runner</Button>
-                          <Button variant="outline" onClick={() => setAssigningRiderId(null)} className="flex-1 rounded-xl h-12 font-black uppercase text-[10px] border-slate-100">Cancel</Button>
-                      </div>
-                  </div>
-              </div>
-          </div>
       )}
 
       <div className="pt-8">

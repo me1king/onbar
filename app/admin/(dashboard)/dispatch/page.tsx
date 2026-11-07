@@ -489,6 +489,11 @@ export default function AdminDispatchPage() {
                     <p className="text-muted-foreground text-sm font-medium mt-1">Real-time runner deployment and delivery coordination hub.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <Link href="#assignment-queue">
+                        <Button className="h-12 rounded-xl bg-amber-500 px-6 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-amber-500/20 hover:bg-amber-600">
+                            <Truck className="mr-2 h-4 w-4" /> Assign Rider
+                        </Button>
+                    </Link>
                     <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex overflow-x-auto no-scrollbar max-w-sm sm:max-w-none mr-2">
                         {WAREHOUSES.map(w => (
                             <button
@@ -569,7 +574,7 @@ export default function AdminDispatchPage() {
                         />
                     </div>
 
-                    <section className="space-y-6">
+                    <section id="assignment-queue" className="scroll-mt-8 space-y-6">
                         <div className="flex items-center justify-between px-2 text-left">
                             <div className="flex items-center gap-3">
                                 <Zap className="h-6 w-6 text-primary animate-pulse" />
@@ -593,9 +598,17 @@ export default function AdminDispatchPage() {
 
                         <div className="grid grid-cols-1 gap-4">
                             {orders.length === 0 ? (
-                                <div className="p-16 text-center bg-card rounded-[3rem] border-2 border-dashed border-border flex flex-col items-center gap-4">
+                                <div className="p-10 text-center bg-card rounded-[2rem] border-2 border-dashed border-border flex flex-col items-center gap-4">
                                     <PackageCheck className="h-12 w-12 text-muted" />
-                                    <p className="text-sm font-black text-muted-foreground uppercase italic">No eligible confirmed-payment orders.</p>
+                                    <p className="text-sm font-black text-muted-foreground uppercase">No orders are ready for rider assignment.</p>
+                                    <p className="max-w-2xl text-sm text-muted-foreground">
+                                        Orders appear here after payment is verified by the server and merchant fulfillment is confirmed. Unverified paid orders remain unassigned; refresh after resolving the order or payment status.
+                                    </p>
+                                    {unverifiedPaymentCount > 0 && (
+                                        <p className="rounded-lg bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900">
+                                            {unverifiedPaymentCount} paid order(s) still need matching payment verification.
+                                        </p>
+                                    )}
                                 </div>
                             ) : orders.map((order, orderIndex) => {
                                 const recommendation = order.recommendedRider;
