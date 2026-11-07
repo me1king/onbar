@@ -25,7 +25,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(150),
     database.from('rider_status')
-      .select('id,rider_name,rider_phone,vehicle_type,vehicle_reg,status,verification_status,battery_level,last_known_lat,last_known_lng,location_updated_at,updated_at,max_deliveries')
+      .select('id,rider_name,rider_phone,vehicle_type,vehicle_reg,status,verification_status,battery_level,battery_updated_at,last_known_lat,last_known_lng,location_updated_at,updated_at,max_deliveries')
       .order('rider_name', { ascending: true })
       .limit(250),
     database.from('orders')
@@ -44,6 +44,9 @@ export async function GET() {
     || waitingCount.error || transitCount.error || deliveredCount.error;
   if (requiredError) {
     console.error('[AdminDelivery] Could not load delivery operations:', requiredError);
+    if (/battery_updated_at/i.test(requiredError.message)) {
+      return NextResponse.json({ error: 'Battery telemetry fields are not installed. Apply supabase/RIDER_BATTERY_TELEMETRY_MIGRATION.sql.' }, { status: 503 });
+    }
     const missingDeliveryFields = /delivery_address|delivery_area|delivery_building|delivery_landmark|delivery_instructions|delivery_eta_minutes|last_known_lat|location_updated_at|rider_status/i.test(requiredError.message);
     return NextResponse.json({
       error: missingDeliveryFields

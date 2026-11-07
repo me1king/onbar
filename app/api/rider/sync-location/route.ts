@@ -61,7 +61,10 @@ export async function POST(request: Request) {
     location_updated_at: timestamp,
     updated_at: timestamp
   };
-  if (batteryLevel !== null) update.battery_level = batteryLevel;
+  if (batteryLevel !== null) {
+    update.battery_level = batteryLevel;
+    update.battery_updated_at = timestamp;
+  }
 
   const { error: updateError } = await database
     .from('rider_status')
@@ -70,7 +73,9 @@ export async function POST(request: Request) {
   if (updateError) {
     console.error('[RiderLocation] Could not save rider GPS:', updateError);
     return NextResponse.json({
-      error: /location_updated_at|last_known_lat|last_known_lng/i.test(updateError.message)
+      error: /battery_updated_at/i.test(updateError.message)
+        ? 'Battery telemetry is not installed. Apply supabase/RIDER_BATTERY_TELEMETRY_MIGRATION.sql.'
+        : /location_updated_at|last_known_lat|last_known_lng/i.test(updateError.message)
         ? 'Rider GPS fields are missing. Run supabase/DISPATCH_MIGRATION.sql.'
         : 'Rider GPS could not be saved.'
     }, { status: 503 });

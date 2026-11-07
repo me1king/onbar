@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { formatBatteryTelemetry } from '@/lib/riderTelemetry';
 
 interface Rider {
   id: number;
@@ -29,6 +30,7 @@ interface Rider {
   status: string | null;
   verification_status: string;
   battery_level: number | null;
+  battery_updated_at: string | null;
   location_updated_at: string | null;
   updated_at: string | null;
   online: boolean;
@@ -232,9 +234,7 @@ export default function RidersPage() {
                           {rider.locationFresh ? <LocateFixed size={13} className="text-emerald-600" /> : <MapPin size={13} />}
                           {rider.locationFresh ? 'GPS updated ' : ''}{relativeTime(rider.location_updated_at)}
                         </span>
-                        {rider.battery_level != null && (
-                          <span className="inline-flex items-center gap-1.5"><BatteryMedium size={13} />{rider.battery_level}% battery</span>
-                        )}
+                        <span className="inline-flex items-center gap-1.5"><BatteryMedium size={13} />Battery {formatBatteryTelemetry(rider.battery_level, rider.battery_updated_at)}</span>
                       </div>
                     </div>
                   </div>

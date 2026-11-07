@@ -153,6 +153,31 @@ uploads verification photos and submits rider details through
 `rider_status` directly from the browser. The migration keeps that table and
 the `rider-verifications` bucket private to the server service role.
 
+## Rider battery telemetry and screen preview
+
+Apply `RIDER_BATTERY_TELEMETRY_MIGRATION.sql` after `DISPATCH_MIGRATION.sql`.
+It removes the misleading default battery reading and adds a timestamp for
+device-reported battery samples. The rider web app reports battery only where
+the browser exposes the Battery Status API; unsupported devices remain
+“Not recorded.” Admin and Owner views show the reading age and only treat
+samples up to five minutes old as current.
+
+The rider device preview on an authorized rider profile renders the
+read-only rider dashboard using the latest rider and active-order data. It is
+available when the rider has no active order as well. This is not a remote
+screen capture and cannot expose device-only state such as notifications,
+browser permissions, or the physical phone display.
+
+## Rider self-service sign-in PIN
+
+After applying `SECURITY_HARDENING_MIGRATION.sql` and
+`RIDER_ACCOUNT_PIN_RESET_MIGRATION.sql`, apply
+`RIDER_SELF_SERVICE_PIN_MIGRATION.sql`. Riders can then change their four-digit
+sign-in PIN from the Security section of the rider terminal. The API requires
+the current rider session and current PIN, rate-limits attempts, and records
+successful changes in `rider_account_security_events`. Temporary PINs set by
+administrators cannot be used as a new PIN.
+
 ## Rider delivery PIN and ID check
 
 After applying `DISPATCH_MIGRATION.sql` and

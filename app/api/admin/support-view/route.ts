@@ -36,9 +36,50 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Order support-view access is required.' }, { status: 403 });
   }
 
-  const orderId = Number(new URL(request.url).searchParams.get('orderId'));
+  const searchParams = new URL(request.url).searchParams;
+  const riderIdValue = searchParams.get('riderId');
+  let orderId = Number(searchParams.get('orderId'));
+  if (riderIdValue) {
+    const riderId = Number(riderIdValue);
+    if (!Number.isSafeInteger(riderId) || riderId < 1) {
+      return NextResponse.json({ error: 'Enter a valid rider.' }, { status: 400 });
+    }
+
+    const database = createServerSupabaseClient();
+    if (!database) {
+      return NextResponse.json({ error: 'Support view is not connected to the rider database.' }, { status: 503 });
+    }
+    const { data: rider, error: riderError } = await database
+      .from('rider_status')
+      .select('rider_name,rider_phone,status,verification_status,last_known_lat,last_known_lng,location_updated_at')
+      .eq('id', riderId)
+      .maybeSingle();
+    if (riderError) {
+      console.error('[AdminSupportView] Could not load rider:', riderError);
+      return NextResponse.json({ error: 'Rider support view could not be loaded.' }, { status: 503 });
+    }
+    if (!rider) return NextResponse.json({ error: 'Rider was not found.' }, { status: 404 });
+
+    const { data: activeOrder, error: activeOrderError } = await database
+      .from('orders')
+      .select('id')
+      .eq('rider_phone', rider.rider_phone)
+      .in('status', ['Dispatched', 'Picked Up', 'Out for Delivery'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (activeOrderError) {
+      console.error('[AdminSupportView] Could not load rider active delivery:', activeOrderError);
+      return NextResponse.json({ error: 'Rider delivery status could not be loaded.' }, { status: 503 });
+    }
+    if (!activeOrder) {
+      return NextResponse.json({ order: null, rider }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+    }
+    orderId = Number(activeOrder.id);
+  }
+
   if (!Number.isSafeInteger(orderId) || orderId < 1) {
-    return NextResponse.json({ error: 'Enter a valid order number.' }, { status: 400 });
+    return NextResponse.json({ error: 'Enter a valid rider or order number.' }, { status: 400 });
   }
 
   const database = createServerSupabaseClient();
@@ -181,6 +222,7 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
+    rider,
     order: {
       ...order,
       ...(detailError ? {} : detail),

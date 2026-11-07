@@ -22,7 +22,7 @@ export async function GET() {
       .order('created_at', { ascending: false }),
     database.from('products').select('id, stock, name, price, image_url, cost_price, category, warehouse_location'),
     database.from('financial_ledger').select('id, amount, entry_type, created_at').gte('created_at', since),
-    database.from('rider_status').select('id, rider_name, status, battery_level').neq('status', 'Offline')
+    database.from('rider_status').select('id, rider_name, status, battery_level, battery_updated_at').neq('status', 'Offline')
   ]);
   let products = initialProducts;
   if (products.error?.code === '42703' && /warehouse_location/i.test(products.error.message)) {
@@ -32,7 +32,11 @@ export async function GET() {
   const queryError = orders.error || products.error || ledger.error || riders.error;
   if (queryError) {
     console.error('[AdminDashboard] Could not load dashboard data:', queryError);
-    return NextResponse.json({ error: 'Could not load dashboard data.' }, { status: 500 });
+    return NextResponse.json({
+      error: /battery_updated_at/i.test(queryError.message)
+        ? 'Battery telemetry fields are not installed. Apply supabase/RIDER_BATTERY_TELEMETRY_MIGRATION.sql.'
+        : 'Could not load dashboard data.'
+    }, { status: 500 });
   }
 
   return NextResponse.json({

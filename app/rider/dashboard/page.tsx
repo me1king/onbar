@@ -65,6 +65,12 @@ interface Mission {
     }>;
 }
 
+interface BatteryManagerLike {
+    level: number;
+    addEventListener(type: 'levelchange', listener: EventListener): void;
+    removeEventListener(type: 'levelchange', listener: EventListener): void;
+}
+
 const RIDER_ACCENT_DEFAULT = '#39D98A';
 const RIDER_ACCENT_PRESETS = ['#39D98A', '#21C8A8', '#4E9BFF', '#A78BFA', '#FF8A4C', '#F05D6C'];
 
@@ -97,6 +103,7 @@ function RiderDashboardContent() {
     const phoneParam = searchParams?.get('phone');
     const accountAccess = searchParams?.get('account') === '1';
     const supportOrderId = searchParams?.get('supportOrderId');
+    const supportRiderId = searchParams?.get('supportRiderId');
 
     const [phone, setPhone] = useState('');
     const [pin, setPin] = useState('');
@@ -104,7 +111,7 @@ function RiderDashboardContent() {
     const [gpsMessage, setGpsMessage] = useState<string | null>(null);
     const [riderPosition, setRiderPosition] = useState<{ latitude: number; longitude: number } | null>(null);
     const [isIdentified, setIsIdentified] = useState(false);
-    const [supportPreview, setSupportPreview] = useState(Boolean(supportOrderId));
+    const [supportPreview, setSupportPreview] = useState(Boolean(supportOrderId || supportRiderId));
     const [supportPreviewError, setSupportPreviewError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [missions, setMissions] = useState<Mission[]>([]);
@@ -757,7 +764,7 @@ function RiderDashboardContent() {
     }, [activeMission, checkedItemIds, customerIdVerified, paymentStatus, sessionToken]);
 
     useEffect(() => {
-        if (!supportOrderId) {
+        if (!supportOrderId && !supportRiderId) {
             setSupportPreview(false);
             if (accountAccess) {
                 void continueWithOnlineBarAccount();
@@ -786,7 +793,10 @@ function RiderDashboardContent() {
         setSupportPreviewError(null);
         let active = true;
         const loadPreview = async () => {
-            const response = await fetch(`/api/admin/support-view?orderId=${encodeURIComponent(supportOrderId)}`, {
+            const supportQuery = supportOrderId
+                ? `orderId=${encodeURIComponent(supportOrderId)}`
+                : `riderId=${encodeURIComponent(supportRiderId || '')}`;
+            const response = await fetch(`/api/admin/support-view?${supportQuery}`, {
                 cache: 'no-store'
             });
             const result = await response.json() as {
@@ -819,12 +829,52 @@ function RiderDashboardContent() {
                         last_known_lng: number | null;
                         location_updated_at: string | null;
                     } | null;
-                };
+                } | null;
+                rider?: {
+                    rider_name: string;
+                    rider_phone: string;
+                    status: string;
+                    verification_status: string;
+                    last_known_lat: number | null;
+                    last_known_lng: number | null;
+                    location_updated_at: string | null;
+                } | null;
                 error?: string;
             };
-            if (!response.ok || !result.order) throw new Error(result.error || 'The rider order view could not be loaded.');
+            if (!response.ok || (!result.order && !result.rider)) throw new Error(result.error || 'The rider view could not be loaded.');
             if (!active) return;
+            if (!result.order) {
+                const supportRider = result.rider;
+                if (!supportRider) throw new Error('The rider view could not be loaded.');
+                setPhone(supportRider.rider_phone);
+                setRider({
+                    name: supportRider.rider_name,
+                    phone: supportRider.rider_phone,
+                    status: supportRider.status,
+                    verificationStatus: supportRider.verification_status
+                });
+                const locationUpdatedAt = supportRider.location_updated_at
+                    ? new Date(supportRider.location_updated_at).getTime()
+                    : 0;
+                const locationIsFresh = locationUpdatedAt > 0
+                    && Date.now() >= locationUpdatedAt
+                    && Date.now() - locationUpdatedAt <= 2 * 60 * 1000;
+                setRiderPosition(
+                    locationIsFresh
+                    && supportRider.last_known_lat !== null && supportRider.last_known_lng !== null
+                        ? { latitude: supportRider.last_known_lat, longitude: supportRider.last_known_lng }
+                        : null
+                );
+                setMissions([]);
+                setActiveMission(null);
+                setIsOnline(supportRider.status !== 'Offline');
+                setSessionToken('');
+                setAuthError(null);
+                setIsIdentified(true);
+                return;
+            }
             const order = result.order;
+            const previewRider = order.rider || result.rider || null;
             const mission: Mission = {
                 id: order.id,
                 status: order.status,
@@ -846,30 +896,31 @@ function RiderDashboardContent() {
                 items: order.items,
                 merchants: order.merchants
             };
-            setPhone(order.rider?.rider_phone || '');
-            setRider(order.rider ? {
-                name: order.rider.rider_name,
-                phone: order.rider.rider_phone,
-                status: order.rider.status,
-                verificationStatus: order.rider.verification_status
+            setPhone(previewRider?.rider_phone || '');
+            setRider(previewRider ? {
+                name: previewRider.rider_name,
+                phone: previewRider.rider_phone,
+                status: previewRider.status,
+                verificationStatus: previewRider.verification_status
             } : null);
-            const locationUpdatedAt = order.rider?.location_updated_at
-                ? new Date(order.rider.location_updated_at).getTime()
+            const locationUpdatedAt = previewRider?.location_updated_at
+                ? new Date(previewRider.location_updated_at).getTime()
                 : 0;
             const locationIsFresh = locationUpdatedAt > 0
                 && Date.now() >= locationUpdatedAt
                 && Date.now() - locationUpdatedAt <= 2 * 60 * 1000;
             setRiderPosition(
                 locationIsFresh
-                && order.rider?.last_known_lat !== null && order.rider?.last_known_lat !== undefined
-                && order.rider?.last_known_lng !== null && order.rider?.last_known_lng !== undefined
-                    ? { latitude: order.rider.last_known_lat, longitude: order.rider.last_known_lng }
+                && previewRider?.last_known_lat !== null && previewRider?.last_known_lat !== undefined
+                && previewRider?.last_known_lng !== null && previewRider?.last_known_lng !== undefined
+                    ? { latitude: previewRider.last_known_lat, longitude: previewRider.last_known_lng }
                     : null
             );
-            setMissions(order.rider ? [mission] : []);
-            setActiveMission(order.rider ? mission : null);
-            setIsOnline(false);
+            setMissions(previewRider ? [mission] : []);
+            setActiveMission(previewRider ? mission : null);
+            setIsOnline(Boolean(previewRider && previewRider.status !== 'Offline'));
             setSessionToken('');
+            setAuthError(null);
             setIsIdentified(true);
         };
         void loadPreview().catch(error => {
@@ -887,7 +938,7 @@ function RiderDashboardContent() {
             active = false;
             window.clearInterval(timer);
         };
-    }, [accountAccess, continueWithOnlineBarAccount, phoneParam, supportOrderId, verifyAndFetch]);
+    }, [accountAccess, continueWithOnlineBarAccount, phoneParam, supportOrderId, supportRiderId, verifyAndFetch]);
 
     useEffect(() => {
         if (!isOnline || !sessionToken) {
@@ -901,6 +952,26 @@ function RiderDashboardContent() {
 
         let lastSentAt = 0;
         let active = true;
+        let batteryManager: BatteryManagerLike | null = null;
+        let batteryLevel: number | undefined;
+        const updateBatteryLevel: EventListener = () => {
+            if (batteryManager && Number.isFinite(batteryManager.level)) {
+                batteryLevel = Math.round(Math.min(1, Math.max(0, batteryManager.level)) * 100);
+            }
+        };
+        const batteryNavigator = navigator as Navigator & {
+            getBattery?: () => Promise<BatteryManagerLike>;
+        };
+        if (typeof batteryNavigator.getBattery === 'function') {
+            void batteryNavigator.getBattery().then(manager => {
+                if (!active) return;
+                batteryManager = manager;
+                updateBatteryLevel(new Event('levelchange'));
+                manager.addEventListener('levelchange', updateBatteryLevel);
+            }).catch(error => {
+                if (active) console.info('[RiderDashboard] Device battery telemetry is unavailable:', error);
+            });
+        }
         const watchId = navigator.geolocation.watchPosition(async position => {
             if (!active || Date.now() - lastSentAt < (hasActiveMission ? 10_000 : 30_000)) return;
             lastSentAt = Date.now();
@@ -917,7 +988,8 @@ function RiderDashboardContent() {
                     },
                     body: JSON.stringify({
                         lat: position.coords.latitude,
-                        lng: position.coords.longitude
+                        lng: position.coords.longitude,
+                        battery: batteryLevel
                     })
                 });
                 const result = await response.json() as { error?: string };
@@ -940,6 +1012,7 @@ function RiderDashboardContent() {
 
         return () => {
             active = false;
+            batteryManager?.removeEventListener('levelchange', updateBatteryLevel);
             navigator.geolocation.clearWatch(watchId);
         };
     }, [hasActiveMission, isOnline, sessionToken, supportPreview]);
@@ -984,11 +1057,11 @@ function RiderDashboardContent() {
 
     if (!isIdentified && supportPreview) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-[#080c0b] p-6 text-white">
-                <Card className="max-w-lg space-y-3 rounded-2xl border-white/10 bg-[#101614] p-8 text-center text-white">
-                    <Truck className="mx-auto h-8 w-8 text-emerald-400" />
+        <div className="flex min-h-screen items-center justify-center bg-[#f5f3ee] p-6 text-slate-900">
+            <Card className="max-w-lg space-y-3 rounded-2xl border-slate-200 bg-white p-8 text-center text-slate-900">
+                <Truck className="mx-auto h-8 w-8 text-emerald-600" />
                     <h1 className="text-xl font-black">Rider screen support preview</h1>
-                    <p className="text-sm text-white/60">{supportPreviewError || 'Loading the rider view for this order…'}</p>
+                <p className="text-sm text-slate-600">{supportPreviewError || 'Loading the read-only rider view…'}</p>
                 </Card>
             </div>
         );
@@ -1055,41 +1128,41 @@ function RiderDashboardContent() {
     const riderName = typeof rider?.name === 'string' ? rider.name : 'Rider';
 
     return (
-        <main className="min-h-screen bg-[#080c0b] text-white selection:bg-emerald-400/30">
+        <main className="min-h-screen bg-[#f5f3ee] text-slate-900 selection:bg-emerald-400/30">
             {supportPreview && (
-                <div className="border-b border-amber-300/30 bg-amber-300/10 px-4 py-3 text-center text-xs font-bold text-amber-100">
-                    Admin support preview · read-only · order #{activeMission?.id ?? supportOrderId}
+                <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-center text-xs font-bold text-amber-900">
+                    Admin support preview · read-only{activeMission ? ` · order #${activeMission.id}` : ''}
                 </div>
             )}
             <div inert={supportPreview}>
-            <header className="sticky top-0 z-30 border-b border-white/10 bg-[#080c0b]/95 px-4 py-3 backdrop-blur sm:px-7">
+            <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 text-slate-900 shadow-sm backdrop-blur sm:px-7">
                 <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/5 font-black" style={{ color: accentColor }}>
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 font-black" style={{ color: accentColor }}>
                             <Truck className="h-5 w-5" />
                         </div>
                         <div className="min-w-0">
                             <p className="truncate text-xs font-black uppercase tracking-[0.2em]">Rider terminal</p>
-                            <p className="truncate text-xs text-white/50">{riderName} · {phone}</p>
+                            <p className="truncate text-xs text-slate-500">{riderName} · {phone}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span className="hidden items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-wider sm:flex">
-                            <span className={`h-2 w-2 rounded-full ${isOnline ? 'animate-pulse bg-emerald-400' : 'bg-white/30'}`} />
+                        <span className="hidden items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700 sm:flex">
+                            <span className={`h-2 w-2 rounded-full ${isOnline ? 'animate-pulse bg-emerald-500' : 'bg-slate-300'}`} />
                             {isOnline ? 'Online' : 'Offline'}
                         </span>
                         {!supportPreview && <Button onClick={handleToggleOnline} disabled={loading} className="h-10 rounded-lg px-4 text-xs font-black uppercase" style={{ backgroundColor: isOnline ? '#202725' : accentColor, color: isOnline ? 'white' : '#08100c' }}>
                             {isOnline ? 'Go offline' : 'Go online'}
                         </Button>}
-                        {!supportPreview && <button aria-label="Log out" onClick={handleLogout} className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-white/60 hover:text-rose-300">
+                        {!supportPreview && <button aria-label="Log out" onClick={handleLogout} className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:text-rose-600">
                             <LogOut className="h-4 w-4" />
                         </button>}
                     </div>
                 </div>
-                {gpsMessage && <p role="status" className="mx-auto mt-2 max-w-7xl text-[11px] text-white/50">{gpsMessage}</p>}
+                {gpsMessage && <p role="status" className="mx-auto mt-2 max-w-7xl text-[11px] text-slate-500">{gpsMessage}</p>}
             </header>
 
-            <RiderTerminalProfile token={sessionToken} riderName={riderName} phone={phone} isOnline={isOnline}>
+            <RiderTerminalProfile token={sessionToken} riderName={riderName} phone={phone} isOnline={isOnline} supportPreview={supportPreview}>
             <div className="mx-auto grid max-w-7xl gap-5 p-4 sm:p-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.85fr)]">
                 <section className="space-y-5">
                     <div className="relative h-[288px] overflow-hidden rounded-2xl border border-white/10 bg-[#101614] sm:h-[340px]">
@@ -1103,7 +1176,7 @@ function RiderDashboardContent() {
                             </div>
                         )}
                         <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-white/10 bg-[#080c0b]/90 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white/70">
-                            <MapPin className="mr-1 inline h-3 w-3" /> Live mission map
+                            <MapPin className="mr-1 inline h-3 w-3" /> {activeMission ? 'Live mission map' : 'Rider location map'}
                         </div>
                     </div>
 

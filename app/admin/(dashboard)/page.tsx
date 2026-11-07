@@ -108,7 +108,7 @@ export default function AdminDashboard() {
   const [orders, setOrders] = React.useState<OrderRecord[]>([]);
   const [products, setProducts] = React.useState<ProductRecord[]>([]);
   const [ledger, setLedger] = React.useState<LedgerRecord[]>([]);
-  const [riders, setRiders] = React.useState<{ id: string; rider_name: string; status: string; battery_level: number }[]>([]);
+  const [riders, setRiders] = React.useState<{ id: string; rider_name: string; status: string; battery_level: number | null; battery_updated_at: string | null }[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [mounted, setMounted] = React.useState(false);
@@ -135,7 +135,7 @@ export default function AdminDashboard() {
           orders: OrderRecord[];
           products: ProductRecord[];
           ledger: LedgerRecord[];
-          riders: { id: string; rider_name: string; status: string; battery_level: number }[];
+          riders: { id: string; rider_name: string; status: string; battery_level: number | null; battery_updated_at: string | null }[];
         };
         if (!active) return;
         setOrders(dashboardData.orders);

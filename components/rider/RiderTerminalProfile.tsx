@@ -5,6 +5,8 @@ import Image from 'next/image';
 import {
   AlertTriangle,
   BadgeCheck,
+  KeyRound,
+  LoaderCircle,
   Phone,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -12,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { formatPrice } from '@/lib/utils';
 
-type TerminalTab = 'overview' | 'documents' | 'zones' | 'payments' | 'performance' | 'incidents';
+type TerminalTab = 'overview' | 'documents' | 'zones' | 'payments' | 'performance' | 'incidents' | 'security';
 type TerminalOrder = {
   id: number;
   status: string;
@@ -101,7 +103,8 @@ const tabItems: Array<{ id: TerminalTab; label: string }> = [
   { id: 'zones', label: 'Zones & shifts' },
   { id: 'payments', label: 'Payments' },
   { id: 'performance', label: 'Performance' },
-  { id: 'incidents', label: 'Incidents' }
+  { id: 'incidents', label: 'Incidents' },
+  { id: 'security', label: 'Security' }
 ];
 const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -128,12 +131,14 @@ export default function RiderTerminalProfile({
   riderName,
   phone,
   isOnline,
+  supportPreview = false,
   children
 }: {
   token: string;
   riderName: string;
   phone: string;
   isOnline: boolean;
+  supportPreview?: boolean;
   children: React.ReactNode;
 }) {
   const [tab, setTab] = React.useState<TerminalTab>('overview');
@@ -143,6 +148,12 @@ export default function RiderTerminalProfile({
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [zoneInput, setZoneInput] = React.useState('');
+  const [currentPin, setCurrentPin] = React.useState('');
+  const [newPin, setNewPin] = React.useState('');
+  const [confirmPin, setConfirmPin] = React.useState('');
+  const [changingPin, setChangingPin] = React.useState(false);
+  const [pinError, setPinError] = React.useState<string | null>(null);
+  const [pinMessage, setPinMessage] = React.useState<string | null>(null);
 
   const loadProfile = React.useCallback(async () => {
     setLoadError(null);
@@ -162,8 +173,9 @@ export default function RiderTerminalProfile({
   }, [token]);
 
   React.useEffect(() => {
+    if (supportPreview) return;
     void loadProfile();
-  }, [loadProfile]);
+  }, [loadProfile, supportPreview]);
 
   const saveProfile = async (updates: Record<string, unknown>) => {
     setSaving(true);
@@ -187,6 +199,31 @@ export default function RiderTerminalProfile({
     }
   };
 
+  const changePin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setChangingPin(true);
+    setPinError(null);
+    setPinMessage(null);
+    try {
+      const response = await fetch('/api/rider/pin', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPin, newPin, confirmPin }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Your PIN could not be changed.');
+      setCurrentPin('');
+      setNewPin('');
+      setConfirmPin('');
+      setPinMessage('Your rider sign-in PIN has been changed.');
+    } catch (error) {
+      setPinError(error instanceof Error ? error.message : 'Your PIN could not be changed.');
+    } finally {
+      setChangingPin(false);
+    }
+  };
+
   const details = data?.details;
   const performance = data?.performance;
   const errors = [loadError, saveError].filter(Boolean);
@@ -194,6 +231,17 @@ export default function RiderTerminalProfile({
     expiryLabel(details?.insuranceExpiryDate || null, 'Insurance'),
     expiryLabel(details?.licenseExpiryDate || null, 'Driving licence')
   ].filter((alert): alert is NonNullable<typeof alert> => Boolean(alert));
+
+  if (supportPreview) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-4 bg-[#f5f3ee] px-4 py-5 text-slate-900 sm:px-7">
+        <Card role="status" className="rounded-xl border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Account details and profile controls are hidden here. The delivery screen below is read-only.
+        </Card>
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 bg-[#f5f3ee] px-4 py-5 text-slate-900 sm:px-7">
@@ -483,6 +531,45 @@ export default function RiderTerminalProfile({
                 </div>
               </Card>
             </div>
+          )}
+
+          {tab === 'security' && (
+            <Card className="rounded-xl border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start gap-3">
+                <span className="rounded-lg bg-amber-100 p-2 text-amber-800"><KeyRound className="h-5 w-5" /></span>
+                <div>
+                  <h2 className="font-bold">Change sign-in PIN</h2>
+                  <p className="mt-1 text-sm text-slate-600">Use your current four-digit PIN to set a new one. Avoid sharing it with anyone.</p>
+                </div>
+              </div>
+              <form className="mt-5 max-w-lg space-y-4" onSubmit={changePin}>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Current PIN
+                  <Input required type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{4}" maxLength={4}
+                    value={currentPin} onChange={event => setCurrentPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                    className="mt-1 h-11 rounded-lg tracking-[0.35em]" aria-describedby="pin-format-help" />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  New PIN
+                  <Input required type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{4}" maxLength={4}
+                    value={newPin} onChange={event => setNewPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                    className="mt-1 h-11 rounded-lg tracking-[0.35em]" />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Confirm new PIN
+                  <Input required type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{4}" maxLength={4}
+                    value={confirmPin} onChange={event => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                    className="mt-1 h-11 rounded-lg tracking-[0.35em]" />
+                </label>
+                <p id="pin-format-help" className="text-xs text-slate-500">Choose four digits other than 0000. Your new PIN must differ from your current PIN.</p>
+                {pinError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{pinError}</p>}
+                {pinMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{pinMessage}</p>}
+                <Button type="submit" disabled={!token || changingPin || currentPin.length !== 4 || newPin.length !== 4 || confirmPin.length !== 4 || newPin !== confirmPin}>
+                  {changingPin ? <><LoaderCircle className="animate-spin" />Updating PIN…</> : 'Update PIN'}
+                </Button>
+                {!token && <p className="text-xs text-slate-500">PIN changes are unavailable in the read-only support preview.</p>}
+              </form>
+            </Card>
           )}
 
           {saveMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{saveMessage}</p>}

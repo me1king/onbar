@@ -29,6 +29,7 @@ import { Card } from '@/components/ui/card';
 import { formatPrice, cn, getPublicBaseUrl } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { copyTextToClipboard, getKenyanWhatsAppNumber } from '@/lib/riderContact';
+import { formatBatteryTelemetry } from '@/lib/riderTelemetry';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 
@@ -60,7 +61,8 @@ interface Rider {
     verification_status?: 'Pending' | 'Verified' | 'Rejected';
     current_location: string;
     status: 'Idle' | 'Delivering' | 'Offline' | 'Delayed' | 'Break';
-    battery_level: number;
+    battery_level: number | null;
+    battery_updated_at?: string | null;
     total_deliveries: number;
     rating: number;
     area_zone: string;
@@ -212,6 +214,7 @@ export default function AdminDispatchPage() {
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [retiringRiderPhone, setRetiringRiderPhone] = useState<string | null>(null);
     const [resettingRiderPhone, setResettingRiderPhone] = useState<string | null>(null);
+    const [copyingRiderPhone, setCopyingRiderPhone] = useState<string | null>(null);
     const [overrideRiders, setOverrideRiders] = useState<Record<number, string>>({});
     const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
     const [assignmentModes, setAssignmentModes] = useState<Record<number, 'automatic' | 'manual'>>({});
@@ -416,16 +419,19 @@ export default function AdminDispatchPage() {
 
     const handleCopyRiderLink = async (phone: string) => {
         const link = `${getPublicBaseUrl()}/rider/dashboard?phone=${encodeURIComponent(phone)}`;
+        setCopyingRiderPhone(phone);
         try {
             await copyTextToClipboard(link);
             setMessage({ type: 'success', text: 'Rider sign-in link copied. The rider will still need their approval PIN.' });
         } catch (error) {
             setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Rider sign-in link could not be copied.' });
+        } finally {
+            setCopyingRiderPhone(null);
         }
     };
 
     const handleResetRiderPin = async (phone: string) => {
-        if (!window.confirm('Reset this approved rider’s sign-in PIN to the temporary PIN 0000? The rider will need to sign in and contact Online Bar to change it.')) return;
+        if (!window.confirm('Reset this approved rider’s sign-in PIN to the temporary PIN 0000? The rider can sign in and change it from the Security section of the rider terminal.')) return;
         setResettingRiderPhone(phone);
         try {
             const response = await fetch('/api/admin/dispatch/riders', {
@@ -567,7 +573,7 @@ export default function AdminDispatchPage() {
                         <div className="flex items-center justify-between px-2 text-left">
                             <div className="flex items-center gap-3">
                                 <Zap className="h-6 w-6 text-primary animate-pulse" />
-                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Payment-confirmed Dispatch Queue</h2>
+                                <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground">Assign paid orders to riders</h2>
                             </div>
                         </div>
                         <p className="px-2 text-xs text-muted-foreground">
@@ -776,7 +782,7 @@ export default function AdminDispatchPage() {
                                                             Pickup: {order.fulfillment.selectedVendorNames.length
                                                                 ? order.fulfillment.selectedVendorNames.join(', ')
                                                                 : 'merchant not confirmed'}
-                                                            {' · '}Assignment is sent only after you confirm below.
+                                                            {' · '}Choose the recommended rider or switch to manual override, then assign below.
                                                         </p>
                                                     </div>
                                                     <Button
@@ -784,7 +790,7 @@ export default function AdminDispatchPage() {
                                                         disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
                                                         className="h-12 shrink-0 rounded-xl bg-primary px-6 text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-50"
                                                     >
-                                                        {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm automatic assignment'}
+                                                        {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign recommended rider'}
                                                     </Button>
                                                 </div>
                                             ) : (
@@ -818,7 +824,7 @@ export default function AdminDispatchPage() {
                                                             variant="outline"
                                                             className="h-12 rounded-xl border-amber-400 px-5 text-[10px] font-black uppercase tracking-widest text-amber-900 disabled:opacity-50"
                                                         >
-                                                            {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send to chosen rider'}
+                                                            {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign selected rider'}
                                                         </Button>
                                                     </div>
                                                 </div>
@@ -907,7 +913,7 @@ export default function AdminDispatchPage() {
                                         <div className="grid grid-cols-2 gap-4 py-6 border-y border-border">
                                             <div className="space-y-1">
                                                 <p className="text-[8px] font-black uppercase text-muted-foreground flex items-center gap-1.5"><BatteryMedium className="h-2.5 w-2.5 text-primary" /> Battery</p>
-                                                <p className="text-xl font-black text-foreground">{rider.battery_level}%</p>
+                                                <p className="text-sm font-black text-foreground">{formatBatteryTelemetry(rider.battery_level, rider.battery_updated_at)}</p>
                                             </div>
                                             <div className="space-y-1 text-right">
                                                 <p className="text-[8px] font-black uppercase text-muted-foreground flex items-center justify-end gap-1.5"><Star className="h-2.5 w-2.5 text-primary fill-current" /> Rating</p>
@@ -1113,6 +1119,19 @@ export default function AdminDispatchPage() {
                                 </div>
                             </div>
 
+                            {selectedRider.activeOrders.length > 0 ? (
+                                <Link
+                                    href={`/admin/riders/${selectedRider.id}`}
+                                    className="inline-flex h-14 w-full items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-center text-[10px] font-black uppercase tracking-widest text-emerald-800 hover:bg-emerald-100"
+                                >
+                                    View rider device screen
+                                </Link>
+                            ) : (
+                                <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+                                    No active delivery is assigned, so there is no current mission screen to preview.
+                                </p>
+                            )}
+
                             <div className="pt-8 border-t border-border flex flex-col gap-4">
                                 <Button
                                     variant="outline"
@@ -1126,9 +1145,11 @@ export default function AdminDispatchPage() {
                                 <Button
                                     onClick={() => void handleCopyRiderLink(selectedRider.rider_phone)}
                                     variant="outline"
+                                    disabled={copyingRiderPhone === selectedRider.rider_phone}
                                     className="w-full h-14 rounded-2xl border-indigo-200 text-indigo-600 font-black uppercase text-[10px] tracking-widest hover:bg-indigo-50 transition-all"
                                 >
-                                    Copy Rider Sign-in Link
+                                    {copyingRiderPhone === selectedRider.rider_phone ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    {copyingRiderPhone === selectedRider.rider_phone ? 'Copying Rider Sign-in Link…' : 'Copy Rider Sign-in Link'}
                                 </Button>
                                 <Button
                                     variant="outline"

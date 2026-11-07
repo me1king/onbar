@@ -32,6 +32,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn, formatPrice } from '@/lib/utils';
+import { formatBatteryTelemetry, isBatteryTelemetryFresh } from '@/lib/riderTelemetry';
 
 const LiveDispatchMap = dynamic(() => import('@/components/admin/dispatch/LiveDispatchMap'), {
   ssr: false,
@@ -72,6 +73,7 @@ interface DeliveryRider {
   status: string | null;
   verification_status: string;
   battery_level: number | null;
+  battery_updated_at: string | null;
   last_known_lat: number | string | null;
   last_known_lng: number | string | null;
   location_updated_at: string | null;
@@ -376,7 +378,8 @@ export default function DeliveryOpsPage() {
       id: rider.id,
       rider_name: rider.rider_name,
       status: rider.status || 'Idle',
-      battery_level: Number(rider.battery_level || 0),
+      battery_level: rider.battery_level,
+      battery_updated_at: rider.battery_updated_at,
       lat: rider.lat,
       lng: rider.lng
     })), [data]);
@@ -583,7 +586,7 @@ export default function DeliveryOpsPage() {
                     </div>
                     <button type="button" onClick={() => setSelectedRider(null)} className="text-xs text-slate-400 hover:text-white" aria-label="Close rider details">×</button>
                   </div>
-                  <p className="mt-2 text-[9px] text-slate-400">GPS {shortAge(selectedRider.location_updated_at)} · {selectedRider.battery_level ?? '—'}% battery</p>
+                  <p className="mt-2 text-[9px] text-slate-400">GPS {shortAge(selectedRider.location_updated_at)} · Battery {formatBatteryTelemetry(selectedRider.battery_level, selectedRider.battery_updated_at)}</p>
                 </div>
               )}
               <div className="mt-4 space-y-2">
@@ -609,8 +612,8 @@ export default function DeliveryOpsPage() {
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5 text-[9px] font-bold text-slate-400">
-                      <BatteryMedium size={12} className={Number(rider.battery_level || 0) < 20 ? 'text-rose-300' : 'text-emerald-300'} />
-                      {rider.battery_level ?? '—'}%
+                      <BatteryMedium size={12} className={!isBatteryTelemetryFresh(rider.battery_level, rider.battery_updated_at) ? 'text-slate-500' : Number(rider.battery_level) < 20 ? 'text-rose-300' : 'text-emerald-300'} />
+                      {formatBatteryTelemetry(rider.battery_level, rider.battery_updated_at)}
                     </span>
                   </button>
                 ))}

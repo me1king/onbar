@@ -13,6 +13,7 @@ import {
   Loader2,
   MapPin,
   Phone,
+  RefreshCcw,
   ShieldCheck,
   Truck,
   UserRound,
@@ -21,6 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { formatPrice } from '@/lib/utils';
+import { formatBatteryTelemetry } from '@/lib/riderTelemetry';
 
 const LiveMap = dynamic(() => import('@/components/admin/dispatch/LiveDispatchMap'), {
   ssr: false,
@@ -47,6 +49,7 @@ interface RiderProfileData {
     status: string | null;
     verification_status: string;
     battery_level: number | null;
+    battery_updated_at: string | null;
     area_zone: string | null;
     created_at: string | null;
     updated_at: string | null;
@@ -62,6 +65,7 @@ interface RiderProfileData {
     on_time_rate: number | null;
   };
   orders: RiderOrder[];
+  activeOrders: RiderOrder[];
   documents: {
     id_number_last4: string | null;
     license_number: string | null;
@@ -124,6 +128,7 @@ export default function RiderProfilePage() {
   const [data, setData] = React.useState<RiderProfileData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [screenRefresh, setScreenRefresh] = React.useState(0);
 
   const loadProfile = React.useCallback(async () => {
     if (!id) return;
@@ -168,6 +173,7 @@ export default function RiderProfilePage() {
   const phoneDigits = displayPhone.replace(/[^\d]/g, '');
   const phoneLink = `tel:${displayPhone}`;
   const whatsappLink = `https://wa.me/${phoneDigits}`;
+  const activeMission = data.activeOrders[0] || null;
 
   return (
     <main className="min-h-full space-y-6 bg-slate-50 p-4 text-slate-900 sm:p-6 lg:p-8">
@@ -239,7 +245,7 @@ export default function RiderProfilePage() {
               <div className="flex justify-between gap-4"><dt className="text-slate-500">Registration</dt><dd className="text-right font-semibold">{display(rider.plate_number || rider.vehicle_reg)}</dd></div>
               <div className="flex justify-between gap-4"><dt className="text-slate-500">Work area</dt><dd className="text-right font-semibold">{display(rider.area_zone)}</dd></div>
               <div className="flex justify-between gap-4"><dt className="text-slate-500">Joined</dt><dd className="text-right font-semibold">{rider.created_at ? new Date(rider.created_at).toLocaleDateString() : 'Not recorded'}</dd></div>
-              {rider.battery_level !== null && <div className="flex justify-between gap-4"><dt className="flex items-center gap-1 text-slate-500"><BatteryMedium size={15} />Battery</dt><dd className="font-semibold">{rider.battery_level}%</dd></div>}
+              <div className="flex justify-between gap-4"><dt className="flex items-center gap-1 text-slate-500"><BatteryMedium size={15} />Battery report</dt><dd className="text-right font-semibold">{formatBatteryTelemetry(rider.battery_level, rider.battery_updated_at)}</dd></div>
             </dl>
           </Card>
 
@@ -257,6 +263,34 @@ export default function RiderProfilePage() {
         </div>
 
         <div className="space-y-5 xl:col-span-2">
+          <Card className="space-y-4 rounded-2xl p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="font-bold">Rider device view · read only</h2>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                  View the rider app using the latest server-side rider and delivery data. Controls are disabled; this is not a physical phone screen mirror and cannot show device-only state.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setScreenRefresh(value => value + 1)}>
+                  <RefreshCcw className="mr-2 h-4 w-4" />Refresh view
+                </Button>
+                <Button asChild size="sm">
+                  <a href={`/rider/dashboard?supportRiderId=${encodeURIComponent(String(rider.id))}`} target="_blank" rel="noreferrer">Open full screen</a>
+                </Button>
+              </div>
+            </div>
+            <div className="mx-auto w-full max-w-[390px] overflow-hidden rounded-[2rem] border-[8px] border-slate-900 bg-white shadow-xl">
+              <iframe
+                key={`${rider.id}-${activeMission?.id ?? 'idle'}-${screenRefresh}`}
+                title={`Read-only rider dashboard for ${rider.rider_name}${activeMission ? `, order ${activeMission.id}` : ''}`}
+                src={`/rider/dashboard?supportRiderId=${encodeURIComponent(String(rider.id))}`}
+                className="h-[780px] w-full bg-[#f5f3ee]"
+                referrerPolicy="same-origin"
+              />
+            </div>
+          </Card>
+
           <Card className="overflow-hidden rounded-2xl p-1 shadow-sm">
             <div className="flex items-center justify-between p-4">
               <h2 className="flex items-center gap-2 font-bold"><MapPin size={18} />Rider location</h2>
@@ -269,6 +303,7 @@ export default function RiderProfilePage() {
                     rider_name: rider.rider_name,
                     status: rider.status || 'Offline',
                     battery_level: rider.battery_level,
+                    battery_updated_at: rider.battery_updated_at,
                     lat: Number(rider.last_known_lat),
                     lng: Number(rider.last_known_lng),
                     location_updated_at: rider.location_updated_at

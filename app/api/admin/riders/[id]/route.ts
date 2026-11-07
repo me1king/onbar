@@ -58,15 +58,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const { data: rider, error: riderError } = await database
     .from('rider_status')
-    .select('id,rider_name,rider_phone,vehicle_type,vehicle_reg,plate_number,status,verification_status,battery_level,area_zone,updated_at,last_known_lat,last_known_lng,location_updated_at')
+    .select('id,rider_name,rider_phone,vehicle_type,vehicle_reg,plate_number,status,verification_status,battery_level,battery_updated_at,area_zone,created_at,updated_at,last_known_lat,last_known_lng,location_updated_at')
     .eq('id', riderId)
     .maybeSingle();
 
   if (riderError) {
     console.error('[AdminRiderProfile] Could not load rider:', riderError);
+    const telemetrySchemaMissing = /battery_updated_at/i.test(riderError.message);
     const onboardingSchemaMissing = /plate_number|rider_status|schema cache/i.test(riderError.message);
     return NextResponse.json({
-      error: onboardingSchemaMissing
+      error: telemetrySchemaMissing
+        ? 'Battery telemetry fields are not installed. Apply supabase/RIDER_BATTERY_TELEMETRY_MIGRATION.sql.'
+        : onboardingSchemaMissing
         ? 'Rider profile fields are not installed. Apply RIDER_ONBOARDING_SECURITY_MIGRATION.sql and DISPATCH_MIGRATION.sql.'
         : 'Rider profile could not be loaded. Check the database connection.'
     }, { status: 503 });
@@ -75,7 +78,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const now = new Date();
   const weekStart = getNairobiWeekStart(now);
-  const [walletResult, deliveredResult, weeklyResult, recentOrdersResult] = await Promise.all([
+  const [walletResult, deliveredResult, weeklyResult, recentOrdersResult, activeOrdersResult] = await Promise.all([
     database.from('rider_wallets')
       .select('balance,total_earned')
       .eq('rider_phone', rider.rider_phone)
@@ -93,9 +96,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .select('id,status,total_price,created_at,picked_up_at,delivered_at,delivery_eta_minutes')
       .eq('rider_phone', rider.rider_phone)
       .order('created_at', { ascending: false })
+      .limit(10),
+    database.from('orders')
+      .select('id,status,total_price,created_at,picked_up_at,delivered_at,delivery_eta_minutes')
+      .eq('rider_phone', rider.rider_phone)
+      .in('status', ['Dispatched', 'Picked Up', 'Out for Delivery'])
+      .order('created_at', { ascending: false })
       .limit(10)
   ]);
-  const dataError = walletResult.error || deliveredResult.error || weeklyResult.error || recentOrdersResult.error;
+  const dataError = walletResult.error || deliveredResult.error || weeklyResult.error || recentOrdersResult.error || activeOrdersResult.error;
   if (dataError) {
     console.error('[AdminRiderProfile] Could not load rider activity:', dataError);
     return NextResponse.json({
@@ -170,7 +179,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }).filter(order => new Date(order.deliveredAt).getTime() >= now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
   return NextResponse.json({
-    rider: { ...rider, created_at: null },
+    rider,
     wallet: walletResult.data || null,
     profileDetails,
     profileDetailsRestricted: !sensitiveAllowed,
@@ -186,6 +195,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         : null
     },
     orders: recentOrdersResult.data || [],
+    activeOrders: activeOrdersResult.data || [],
     documents,
     refreshedAt: now.toISOString()
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });

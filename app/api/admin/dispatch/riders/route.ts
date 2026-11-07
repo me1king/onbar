@@ -202,8 +202,8 @@ export async function PATCH(request: Request) {
     await sendTransactionalEmail({
       to: riderEmail,
       subject: 'Your Online Bar rider PIN was reset',
-      text: `Hi ${rider.rider_name}, an Online Bar administrator reset your rider sign-in PIN. Your temporary PIN is 0000. Sign in at ${terminalUrl} and change it with the Online Bar team after you regain access. If you did not request this, contact Online Bar support immediately.`,
-      html: `<p>Hi ${escapeHtml(rider.rider_name || 'Rider')},</p><p>An Online Bar administrator reset your rider sign-in PIN.</p><p>Your temporary PIN is <strong>0000</strong>.</p><p><a href="${escapeHtml(terminalUrl)}">Open your rider terminal</a> and change it with the Online Bar team after you regain access. If you did not request this, contact Online Bar support immediately.</p>`,
+      text: `Hi ${rider.rider_name}, an Online Bar administrator reset your rider sign-in PIN. Your temporary PIN is 0000. Sign in at ${terminalUrl} and change it in the Security section of your rider terminal. If you did not request this, contact Online Bar support immediately.`,
+      html: `<p>Hi ${escapeHtml(rider.rider_name || 'Rider')},</p><p>An Online Bar administrator reset your rider sign-in PIN.</p><p>Your temporary PIN is <strong>0000</strong>.</p><p><a href="${escapeHtml(terminalUrl)}">Open your rider terminal</a> and change it in the Security section. If you did not request this, contact Online Bar support immediately.</p>`,
       idempotencyKey: `rider-pin-reset:${rider.rider_phone}:${Date.now()}`
     });
     return NextResponse.json({ success: true, emailSent: true });
@@ -266,7 +266,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'This rider has an active delivery. Reassign or complete it before deactivation.' }, { status: 409 });
   }
 
-  const { error: updateError } = await database.from('rider_status')
+  const { data: deactivatedRider, error: updateError } = await database.from('rider_status')
     .update({
       verification_status: 'Rejected',
       status: 'Offline',
@@ -274,10 +274,15 @@ export async function DELETE(request: Request) {
       updated_at: new Date().toISOString()
     })
     .eq('rider_phone', rider.rider_phone)
-    .eq('verification_status', 'Verified');
+    .eq('verification_status', 'Verified')
+    .select('rider_phone')
+    .maybeSingle();
   if (updateError) {
     console.error('[AdminDispatch] Could not deactivate rider:', updateError);
     return NextResponse.json({ error: 'Rider access could not be deactivated.' }, { status: 503 });
+  }
+  if (!deactivatedRider) {
+    return NextResponse.json({ error: 'Rider status changed before deactivation completed. Refresh and try again.' }, { status: 409 });
   }
 
   return NextResponse.json({ success: true, phone: rider.rider_phone });

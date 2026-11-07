@@ -31,7 +31,8 @@ type DispatchMapRider = {
   lng?: number | null;
   status: string;
   rider_name: string;
-  battery_level: number;
+  battery_level: number | null;
+  battery_updated_at?: string | null;
   current_speed?: number;
 };
 

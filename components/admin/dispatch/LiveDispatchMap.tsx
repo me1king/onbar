@@ -8,6 +8,7 @@ import { BatteryMedium, ChevronRight, Crosshair } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { decodePolyline } from '@/lib/utils/polyline';
 import { getCartoVoyagerTileUrl } from '@/lib/cartoMaps';
+import { formatBatteryTelemetry, isBatteryTelemetryFresh } from '@/lib/riderTelemetry';
 
 interface Rider {
     id: number | string;
@@ -16,6 +17,7 @@ interface Rider {
     status: string;
     rider_name: string;
     battery_level?: number | null;
+    battery_updated_at?: string | null;
     current_speed?: number;
     active_batch_id?: string | null;
     location_updated_at?: string | null;
@@ -205,7 +207,7 @@ export default function LiveDispatchMap({ riders, demandZones = [], showDemand =
                     <div>
                         <p className="text-[8px] font-black text-slate-400 uppercase">Battery</p>
                         <p className="text-xs font-black text-foreground flex items-center gap-1">
-                            <BatteryMedium className="h-3 w-3 text-emerald-500" /> {rider.battery_level === null || rider.battery_level === undefined ? 'Not recorded' : `${rider.battery_level}%`}
+                            <BatteryMedium className={`h-3 w-3 ${isBatteryTelemetryFresh(rider.battery_level, rider.battery_updated_at) ? 'text-emerald-500' : 'text-slate-400'}`} /> {formatBatteryTelemetry(rider.battery_level, rider.battery_updated_at)}
                         </p>
                     </div>
                     <div>
