@@ -200,9 +200,11 @@ export default function AdminDispatchPage() {
             if (dispatchData.demandZonesError) {
                 setMessage({ type: 'error', text: dispatchData.demandZonesError });
             }
+            return true;
         } catch (err) {
             console.error("Pipeline link unstable.", err);
             setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Dispatch data could not be refreshed.' });
+            return false;
         } finally {
             setLoading(false);
         }
@@ -338,11 +340,13 @@ export default function AdminDispatchPage() {
             const remainingText = remaining.length
                 ? ` Still needed: ${remaining.map(item => `${item.product_name} ${item.allocated_quantity}/${item.requested_quantity}`).join(', ')}.`
                 : '';
-            setMessage({
-                type: result.allocation?.fully_allocated ? 'success' : 'error',
-                text: `${result.message || 'Merchant availability rechecked.'}${remainingText}`
-            });
-            await fetchData();
+            const refreshed = await fetchData();
+            if (refreshed) {
+                setMessage({
+                    type: result.allocation?.fully_allocated ? 'success' : 'error',
+                    text: `${result.message || 'Merchant availability rechecked.'}${remainingText}`
+                });
+            }
         } catch (error) {
             setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Merchant stock could not be redistributed.' });
         } finally {
@@ -693,49 +697,68 @@ export default function AdminDispatchPage() {
                                                 </Button>
                                             </div>
                                             {!order.fulfillment.ready && order.fulfillment.productChecks.some(check => check.reservedQuantity < check.quantity) && (
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={() => void retryMerchantAllocation(order.id)}
-                                                    disabled={retryingAllocation === order.id || assigning === order.id}
-                                                    className="h-11 max-w-full rounded-xl border-amber-300 px-4 text-xs font-bold text-amber-900"
-                                                >
-                                                    {retryingAllocation === order.id
-                                                        ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking shops</>
-                                                        : 'Retry available shops'}
-                                                </Button>
+                                                <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+                                                    <p className="text-xs leading-relaxed text-amber-950">
+                                                        Stock is not reserved yet. Retry checks approved shops with available stock.
+                                                    </p>
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={() => void retryMerchantAllocation(order.id)}
+                                                        disabled={retryingAllocation === order.id || assigning === order.id}
+                                                        className="h-11 max-w-full shrink-0 rounded-xl border-amber-300 px-4 text-xs font-bold text-amber-900"
+                                                    >
+                                                        {retryingAllocation === order.id
+                                                            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking shops</>
+                                                            : 'Retry available shops'}
+                                                    </Button>
+                                                </div>
                                             )}
                                             {assignmentMode === 'automatic' ? (
                                                 <div className="grid min-w-0 gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                                                     <div className="min-w-0">
                                                         <p className="font-bold text-foreground">
-                                                            {recommendation ? `Recommended: ${recommendation.riderName}` : 'No rider recommendation available'}
+                                                            {!order.fulfillment.ready
+                                                                ? 'Complete merchant fulfillment before assigning'
+                                                                : recommendation
+                                                                    ? `Recommended: ${recommendation.riderName}`
+                                                                    : 'No rider recommendation available'}
                                                         </p>
                                                         <p className="mt-1 break-words text-xs text-muted-foreground">
-                                                            Pickup: {order.fulfillment.selectedVendorNames.length
-                                                                ? order.fulfillment.selectedVendorNames.join(', ')
-                                                                : 'merchant pickup not confirmed'}
+                                                            {!order.fulfillment.ready
+                                                                ? 'All products need a valid item and approved merchant stock reserved.'
+                                                                : `Pickup: ${order.fulfillment.selectedVendorNames.length
+                                                                    ? order.fulfillment.selectedVendorNames.join(', ')
+                                                                    : 'merchant pickup not confirmed'}`}
                                                         </p>
                                                     </div>
                                                     <Button
                                                         onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
                                                         disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
                                                         className="h-12 w-full rounded-xl px-5 text-xs font-bold sm:w-auto"
+                                                        title={!order.fulfillment.ready
+                                                            ? 'Resolve the merchant fulfillment issues shown above before assigning a rider.'
+                                                            : !recommendation
+                                                                ? order.riderAvailabilityReason || 'No rider is currently eligible for automatic assignment.'
+                                                                : undefined}
                                                     >
                                                         {assigning === order.id
                                                             ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Assigning</>
-                                                            : 'Assign recommended rider'}
+                                                            : !order.fulfillment.ready
+                                                                ? 'Merchant fulfillment required'
+                                                                : 'Assign recommended rider'}
                                                     </Button>
                                                 </div>
                                             ) : (
                                                 <div className="grid min-w-0 gap-3 rounded-2xl border border-border bg-muted/30 p-4">
                                                     <p className="text-xs leading-relaxed text-muted-foreground">
-                                                        Choose an eligible, verified rider. This does not bypass payment, merchant fulfillment or rider availability checks.
+                                                        Choose an eligible, verified rider. Manual selection cannot bypass missing product details, merchant stock, or payment checks.
                                                     </p>
                                                     <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                                                         <select
                                                             value={overrideRiders[order.id] || ''}
                                                             onChange={event => setOverrideRiders(prev => ({ ...prev, [order.id]: event.target.value }))}
                                                             className="h-12 min-w-0 rounded-xl border border-border bg-background px-3 text-sm"
+                                                            disabled={order.riderCandidates.length === 0 || assigning === order.id}
                                                         >
                                                             <option value="">Select an available rider</option>
                                                             {order.riderCandidates.map(candidate => (
@@ -757,11 +780,28 @@ export default function AdminDispatchPage() {
                                                         disabled={!order.fulfillment.ready || !overrideRiders[order.id] || (overrideReasons[order.id] || '').trim().length < 8 || assigning === order.id}
                                                         variant="outline"
                                                         className="h-12 w-full rounded-xl border-amber-300 font-bold text-amber-900 sm:w-auto"
+                                                        title={!order.fulfillment.ready
+                                                            ? 'Resolve the merchant fulfillment issues shown above before assigning a rider.'
+                                                            : !overrideRiders[order.id]
+                                                                ? 'Select an available rider.'
+                                                                : (overrideReasons[order.id] || '').trim().length < 8
+                                                                    ? 'Enter a reason with at least 8 characters.'
+                                                                    : undefined}
                                                     >
                                                         {assigning === order.id
                                                             ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Assigning</>
                                                             : 'Assign selected rider'}
                                                     </Button>
+                                                    {!order.fulfillment.ready && (
+                                                        <p className="text-xs font-medium text-amber-900" role="status">
+                                                            Assignment is paused. Fix the product/stock issues listed above; then this order will unlock for rider assignment.
+                                                        </p>
+                                                    )}
+                                                    {order.fulfillment.ready && order.riderCandidates.length === 0 && (
+                                                        <p className="text-xs text-amber-900" role="status">
+                                                            No verified rider is online with delivery capacity. Ask a rider to sign in and go online, then refresh dispatch.
+                                                        </p>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

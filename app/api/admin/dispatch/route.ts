@@ -800,7 +800,7 @@ export async function POST(request: Request) {
       allocation: result,
       message: result.fully_allocated
         ? 'Merchant stock was redistributed to currently available approved businesses.'
-        : 'Available businesses were checked, but some stock is still unavailable. The paid order remains in the dispatch review queue.'
+        : 'Available businesses were checked, but some stock is still unavailable. The order remains in the dispatch review queue.'
     });
   }
 

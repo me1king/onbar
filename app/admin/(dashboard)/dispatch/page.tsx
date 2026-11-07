@@ -261,9 +261,11 @@ export default function AdminDispatchPage() {
             if (dispatchData.demandZonesError) {
                 setMessage({ type: 'error', text: dispatchData.demandZonesError });
             }
+            return true;
         } catch (err) {
             console.error("Pipeline link unstable.", err);
             setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Dispatch data could not be refreshed.' });
+            return false;
         } finally {
             setLoading(false);
         }
@@ -402,11 +404,13 @@ export default function AdminDispatchPage() {
             const remainingText = remaining.length
                 ? ` Still needed: ${remaining.map(item => `${item.product_name} ${item.allocated_quantity}/${item.requested_quantity}`).join(', ')}.`
                 : '';
-            setMessage({
-                type: result.allocation?.fully_allocated ? 'success' : 'error',
-                text: `${result.message || 'Merchant availability rechecked.'}${remainingText}`
-            });
-            await fetchData();
+            const refreshed = await fetchData();
+            if (refreshed) {
+                setMessage({
+                    type: result.allocation?.fully_allocated ? 'success' : 'error',
+                    text: `${result.message || 'Merchant availability rechecked.'}${remainingText}`
+                });
+            }
         } catch (error) {
             setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Merchant stock could not be redistributed.' });
         } finally {
