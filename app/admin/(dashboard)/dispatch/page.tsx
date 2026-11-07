@@ -846,35 +846,49 @@ export default function AdminDispatchPage() {
                                                     <p className="text-xs text-amber-900">
                                                         Choose a specific eligible rider. Manual override changes only the rider; it cannot bypass verified payment, rider eligibility, or merchant fulfillment.
                                                     </p>
-                                                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                                                        <select
-                                                            value={overrideRiders[order.id] || ''}
-                                                            onChange={event => setOverrideRiders(prev => ({ ...prev, [order.id]: event.target.value }))}
-                                                            className="h-12 rounded-xl border border-border bg-background px-3 text-sm"
-                                                        >
-                                                            <option value="">Choose a rider</option>
-                                                            {order.riderCandidates.map(candidate => (
-                                                                <option key={candidate.riderPhone} value={candidate.riderPhone}>
-                                                                    {candidate.priorityMerchantConnection ? 'Connected · ' : ''}{candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
-                                                                    {candidate.locationAvailable ? ` · ${candidate.distanceKm} road km${candidate.etaMinutes == null ? '' : ` · ${candidate.etaMinutes} min`}` : ' · no fresh road route'}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                        <Input
-                                                            value={overrideReasons[order.id] || ''}
-                                                            onChange={event => setOverrideReasons(prev => ({ ...prev, [order.id]: event.target.value }))}
-                                                            placeholder="Why override? (8+ characters)"
-                                                            className="h-12 rounded-xl bg-background"
-                                                        />
-                                                        <Button
-                                                            onClick={() => handleAssignRider(order.id, overrideRiders[order.id] || '', 'override')}
-                                                            disabled={!order.fulfillment.ready || !overrideRiders[order.id] || (overrideReasons[order.id] || '').trim().length < 8 || assigning === order.id}
-                                                            variant="outline"
-                                                            className="h-12 rounded-xl border-amber-400 px-5 text-[10px] font-black uppercase tracking-widest text-amber-900 disabled:opacity-50"
-                                                        >
-                                                            {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign selected rider'}
-                                                        </Button>
-                                                    </div>
+                                                    {!order.fulfillment.ready ? (
+                                                        <p className="text-xs font-semibold text-amber-950" role="status">
+                                                            Assignment is locked until the product, stock, and merchant pickup issues above are resolved.
+                                                        </p>
+                                                    ) : (
+                                                        <>
+                                                            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                                                <select
+                                                                    value={overrideRiders[order.id] || ''}
+                                                                    onChange={event => setOverrideRiders(prev => ({ ...prev, [order.id]: event.target.value }))}
+                                                                    className="h-12 min-w-0 rounded-xl border border-border bg-background px-3 text-sm"
+                                                                    disabled={order.riderCandidates.length === 0 || assigning === order.id}
+                                                                >
+                                                                    <option value="">Choose an available rider</option>
+                                                                    {order.riderCandidates.map(candidate => (
+                                                                        <option key={candidate.riderPhone} value={candidate.riderPhone}>
+                                                                            {candidate.priorityMerchantConnection ? 'Connected · ' : ''}{candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
+                                                                            {candidate.locationAvailable ? ` · ${candidate.distanceKm} road km${candidate.etaMinutes == null ? '' : ` · ${candidate.etaMinutes} min`}` : ' · no fresh road route'}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                <Input
+                                                                    value={overrideReasons[order.id] || ''}
+                                                                    onChange={event => setOverrideReasons(prev => ({ ...prev, [order.id]: event.target.value }))}
+                                                                    placeholder="Why override? (8+ characters)"
+                                                                    className="h-12 min-w-0 rounded-xl bg-background"
+                                                                />
+                                                                <Button
+                                                                    onClick={() => handleAssignRider(order.id, overrideRiders[order.id] || '', 'override')}
+                                                                    disabled={!overrideRiders[order.id] || (overrideReasons[order.id] || '').trim().length < 8 || assigning === order.id}
+                                                                    variant="outline"
+                                                                    className="h-12 rounded-xl border-amber-400 px-5 text-[10px] font-black uppercase tracking-widest text-amber-900 disabled:opacity-50"
+                                                                >
+                                                                    {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign selected rider'}
+                                                                </Button>
+                                                            </div>
+                                                            {order.riderCandidates.length === 0 && (
+                                                                <p className="text-xs text-amber-900" role="status">
+                                                                    No verified rider is online with delivery capacity. Ask a rider to sign in and go online, then refresh dispatch.
+                                                                </p>
+                                                            )}
+                                                        </>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
