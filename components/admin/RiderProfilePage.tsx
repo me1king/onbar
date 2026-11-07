@@ -129,6 +129,7 @@ export default function RiderProfilePage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [screenRefresh, setScreenRefresh] = React.useState(0);
+  const [mirrorOpen, setMirrorOpen] = React.useState(false);
 
   const loadProfile = React.useCallback(async () => {
     if (!id) return;
@@ -264,31 +265,44 @@ export default function RiderProfilePage() {
 
         <div className="space-y-5 xl:col-span-2">
           <Card className="space-y-4 rounded-2xl p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="font-bold">Rider device view · read only</h2>
-                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-                  View the rider app using the latest server-side rider and delivery data. Controls are disabled; this is not a physical phone screen mirror and cannot show device-only state.
-                </p>
+            <Button
+              type="button"
+              variant="outline"
+              aria-expanded={mirrorOpen}
+              aria-controls="rider-device-mirror"
+              onClick={() => setMirrorOpen(value => !value)}
+            >
+              {mirrorOpen ? 'Hide mirror' : 'Mirror'}
+            </Button>
+            {mirrorOpen && (
+              <div id="rider-device-mirror" className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-bold">Rider device view · read only</h2>
+                    <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                      View the rider app using the latest server-side rider and delivery data. Controls are disabled; this is not a physical phone screen mirror and cannot show device-only state.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setScreenRefresh(value => value + 1)}>
+                      <RefreshCcw className="mr-2 h-4 w-4" />Refresh view
+                    </Button>
+                    <Button asChild size="sm">
+                      <a href={`/rider/dashboard?supportRiderId=${encodeURIComponent(String(rider.id))}`} target="_blank" rel="noreferrer">Open full screen</a>
+                    </Button>
+                  </div>
+                </div>
+                <div className="mx-auto w-full max-w-[390px] overflow-hidden rounded-[2rem] border-[8px] border-slate-900 bg-white shadow-xl">
+                  <iframe
+                    key={`${rider.id}-${activeMission?.id ?? 'idle'}-${screenRefresh}`}
+                    title={`Read-only rider dashboard for ${rider.rider_name}${activeMission ? `, order ${activeMission.id}` : ''}`}
+                    src={`/rider/dashboard?supportRiderId=${encodeURIComponent(String(rider.id))}`}
+                    className="h-[780px] w-full bg-[#f5f3ee]"
+                    referrerPolicy="same-origin"
+                  />
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setScreenRefresh(value => value + 1)}>
-                  <RefreshCcw className="mr-2 h-4 w-4" />Refresh view
-                </Button>
-                <Button asChild size="sm">
-                  <a href={`/rider/dashboard?supportRiderId=${encodeURIComponent(String(rider.id))}`} target="_blank" rel="noreferrer">Open full screen</a>
-                </Button>
-              </div>
-            </div>
-            <div className="mx-auto w-full max-w-[390px] overflow-hidden rounded-[2rem] border-[8px] border-slate-900 bg-white shadow-xl">
-              <iframe
-                key={`${rider.id}-${activeMission?.id ?? 'idle'}-${screenRefresh}`}
-                title={`Read-only rider dashboard for ${rider.rider_name}${activeMission ? `, order ${activeMission.id}` : ''}`}
-                src={`/rider/dashboard?supportRiderId=${encodeURIComponent(String(rider.id))}`}
-                className="h-[780px] w-full bg-[#f5f3ee]"
-                referrerPolicy="same-origin"
-              />
-            </div>
+            )}
           </Card>
 
           <Card className="overflow-hidden rounded-2xl p-1 shadow-sm">
