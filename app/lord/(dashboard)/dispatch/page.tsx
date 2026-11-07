@@ -159,6 +159,7 @@ export default function AdminDispatchPage() {
     const [copyingRiderPhone, setCopyingRiderPhone] = useState<string | null>(null);
     const [overrideRiders, setOverrideRiders] = useState<Record<number, string>>({});
     const [overrideReasons, setOverrideReasons] = useState<Record<number, string>>({});
+    const [assignmentModes, setAssignmentModes] = useState<Record<number, 'automatic' | 'manual'>>({});
     const [recentDecisions, setRecentDecisions] = useState<Array<{
         id: number;
         order_id: number;
@@ -576,114 +577,193 @@ export default function AdminDispatchPage() {
                                 </div>
                             ) : orders.map(order => {
                                 const recommendation = order.recommendedRider;
+                                const assignmentMode = assignmentModes[order.id] || 'automatic';
+                                const isCashOnDelivery = ['cod', 'cash on delivery'].includes(order.payment_method.trim().toLowerCase());
                                 return (
                                     <Card
                                         key={order.id}
                                         id={`dispatch-order-${order.id}`}
                                         className={cn(
-                                            'p-7 rounded-[2rem] border bg-card shadow-sm space-y-6',
+                                            'min-w-0 rounded-3xl border bg-card p-5 shadow-sm transition-shadow hover:shadow-md sm:p-7 space-y-5',
                                             requestedOrderId === order.id ? 'border-primary ring-2 ring-primary/20' : 'border-border'
                                         )}
                                     >
-                                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 text-left">
-                                            <div>
-                                                <h3 className="font-black text-foreground uppercase text-lg tracking-tighter">Order #{order.id}</h3>
-                                                <p className="text-xs text-muted-foreground mt-1">{order.customer_name} · {formatPrice(Number(order.total_price))}</p>
-                                                <p className={`mt-2 text-[10px] font-bold uppercase ${['cod', 'cash on delivery'].includes(order.payment_method.trim().toLowerCase()) ? 'text-amber-800' : 'text-emerald-700'}`}>
-                                                    {['cod', 'cash on delivery'].includes(order.payment_method.trim().toLowerCase())
-                                                        ? 'Cash on delivery · rider collects at handover'
-                                                        : `Payment confirmed · ${order.payment_method}`}
+                                        <div className="grid min-w-0 gap-4 text-left sm:grid-cols-[minmax(0,1fr)_minmax(15rem,0.8fr)] sm:items-start">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <h3 className="text-lg font-black uppercase tracking-tight text-foreground">Order #{order.id}</h3>
+                                                    <span className={cn(
+                                                        'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide',
+                                                        isCashOnDelivery ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'
+                                                    )}>
+                                                        {isCashOnDelivery ? 'Cash due at delivery' : 'Paid online'}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 break-words text-sm text-muted-foreground">
+                                                    {order.customer_name} <span aria-hidden="true">·</span> {formatPrice(Number(order.total_price))}
+                                                </p>
+                                                <p className={cn(
+                                                    'mt-2 text-xs font-medium',
+                                                    isCashOnDelivery ? 'text-amber-800' : 'text-emerald-700'
+                                                )}>
+                                                    {isCashOnDelivery
+                                                        ? 'The rider collects payment from the customer at handover.'
+                                                        : `Payment confirmed with ${order.payment_method}.`}
                                                 </p>
                                             </div>
                                             {recommendation ? (
-                                                <div className="rounded-xl bg-primary/5 border border-primary/10 p-3 text-sm">
-                                                    <p className={`text-[9px] font-black uppercase ${recommendation.priorityMerchantConnection ? 'text-emerald-700' : 'text-primary'}`}>
-                                                        {recommendation.priorityMerchantConnection ? 'Connected merchant rider · priority' : 'OSRM road pickup'} · {recommendation.distanceKm} km{recommendation.etaMinutes == null ? '' : ` · ${recommendation.etaMinutes} min`}
+                                                <div className="min-w-0 rounded-2xl border border-primary/15 bg-primary/5 p-4">
+                                                    <p className={cn(
+                                                        'text-[10px] font-black uppercase tracking-wide',
+                                                        recommendation.priorityMerchantConnection ? 'text-emerald-700' : 'text-primary'
+                                                    )}>
+                                                        {recommendation.priorityMerchantConnection ? 'Priority connected rider' : 'Recommended rider'}
                                                     </p>
-                                                    <p className="font-bold text-foreground">{recommendation.riderName} · {recommendation.activeLoad}/{recommendation.maxDeliveries} active</p>
+                                                    <p className="mt-1 break-words font-bold text-foreground">{recommendation.riderName}</p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        {recommendation.distanceKm === null
+                                                            ? 'Pickup route unavailable'
+                                                            : `${recommendation.distanceKm} road km${recommendation.etaMinutes == null ? '' : ` · ${recommendation.etaMinutes} min`}`}
+                                                        {' · '}{recommendation.activeLoad}/{recommendation.maxDeliveries} active
+                                                    </p>
                                                 </div>
                                             ) : (
-                                                <p className="text-xs text-amber-700 font-semibold">{order.riderAvailabilityReason || 'No rider recommendation available.'}</p>
+                                                <div className="min-w-0 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                                    <p className="font-bold">Rider recommendation unavailable</p>
+                                                    <p className="mt-1 break-words text-xs leading-relaxed">
+                                                        {order.riderAvailabilityReason || 'No eligible rider can be recommended right now.'}
+                                                    </p>
+                                                </div>
                                             )}
                                         </div>
 
-                                        <div className={`rounded-xl border p-4 text-left ${order.fulfillment.ready ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                                            <p className="text-xs font-black uppercase">{order.fulfillment.ready ? 'Vendor fulfillment verified' : 'Vendor fulfillment has gaps'}</p>
-                                            <ul className="mt-2 space-y-1 text-xs">
+                                        <div className={cn(
+                                            'min-w-0 rounded-2xl border p-4 text-left sm:p-5',
+                                            order.fulfillment.ready ? 'border-emerald-200 bg-emerald-50/80' : 'border-amber-200 bg-amber-50/80'
+                                        )}>
+                                            <p className="text-xs font-black uppercase tracking-wide">
+                                                {order.fulfillment.ready ? 'Merchant fulfillment ready' : 'Merchant fulfillment needs attention'}
+                                            </p>
+                                            <ul className="mt-3 space-y-2 text-sm leading-relaxed">
                                                 {order.fulfillment.reasons.length > 0
-                                                    ? order.fulfillment.reasons.map((reason, index) => <li key={index}>• {reason}</li>)
-                                                    : <li>Product, reserved quantity, availability, price and delivery radius verified.</li>}
+                                                    ? order.fulfillment.reasons.map((reason, index) => <li key={index} className="break-words">{reason}</li>)
+                                                    : <li>Products, stock, price and delivery area have been checked.</li>}
                                             </ul>
                                             {order.fulfillment.selectedVendorNames.length > 0 && (
-                                                <p className="mt-2 text-xs">Existing merchant allocations: {order.fulfillment.selectedVendorNames.join(', ')}</p>
+                                                <p className="mt-3 break-words text-xs text-muted-foreground">
+                                                    Pickup from {order.fulfillment.selectedVendorNames.join(', ')}
+                                                </p>
                                             )}
                                             {order.fulfillment.selectedVendorLocations.map(vendor => (
-                                                <p key={vendor.vendorId} className="mt-1 text-xs">
-                                                    Pickup: {vendor.vendorName} · {vendor.latitude.toFixed(5)}, {vendor.longitude.toFixed(5)}
+                                                <p key={vendor.vendorId} className="mt-2 break-words text-xs text-muted-foreground">
+                                                    {vendor.vendorName} <span aria-hidden="true">·</span> pickup location verified
                                                 </p>
                                             ))}
-                                            <div className="mt-3 space-y-1 text-xs">
+                                            <div className="mt-4 grid gap-2 sm:grid-cols-2">
                                                 {order.fulfillment.productChecks.map((check, index) => (
-                                                    <p key={`${check.productId}-${index}`}>
-                                                        {check.productName}: qty {check.quantity}, reserved {check.reservedQuantity}, order/catalogue price {check.orderUnitPrice === null ? 'unavailable' : formatPrice(check.orderUnitPrice)}/{check.cataloguePrice === null ? 'unavailable' : formatPrice(check.cataloguePrice)}
+                                                    <p key={`${check.productId}-${index}`} className="min-w-0 break-words rounded-xl border border-border/70 bg-background/70 p-3 text-xs">
+                                                        <span className="font-semibold">{check.productName}</span>
+                                                        <span className="mt-1 block text-muted-foreground">
+                                                            Qty {check.quantity} <span aria-hidden="true">·</span> Reserved {check.reservedQuantity}
+                                                        </span>
                                                     </p>
                                                 ))}
                                             </div>
-                                            <p className="mt-2 text-[11px] opacity-80">{order.fulfillment.priceBasis}</p>
+                                            <p className="mt-3 break-words text-[11px] leading-relaxed text-muted-foreground">{order.fulfillment.priceBasis}</p>
                                         </div>
 
-                                        <div className="flex flex-col md:flex-row gap-3">
+                                        <div className="space-y-3">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="mr-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Assign with</span>
+                                                <Button
+                                                    type="button"
+                                                    variant={assignmentMode === 'automatic' ? 'default' : 'outline'}
+                                                    onClick={() => setAssignmentModes(prev => ({ ...prev, [order.id]: 'automatic' }))}
+                                                    className="h-10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest"
+                                                >
+                                                    Recommended rider
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant={assignmentMode === 'manual' ? 'default' : 'outline'}
+                                                    onClick={() => setAssignmentModes(prev => ({ ...prev, [order.id]: 'manual' }))}
+                                                    className="h-10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest"
+                                                >
+                                                    Choose rider
+                                                </Button>
+                                            </div>
                                             {!order.fulfillment.ready && order.fulfillment.productChecks.some(check => check.reservedQuantity < check.quantity) && (
                                                 <Button
                                                     variant="outline"
                                                     onClick={() => void retryMerchantAllocation(order.id)}
                                                     disabled={retryingAllocation === order.id || assigning === order.id}
-                                                    className="h-12 rounded-xl border-amber-300 px-5 text-[10px] font-black uppercase tracking-widest text-amber-800"
+                                                    className="h-11 max-w-full rounded-xl border-amber-300 px-4 text-xs font-bold text-amber-900"
                                                 >
                                                     {retryingAllocation === order.id
                                                         ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking shops</>
                                                         : 'Retry available shops'}
                                                 </Button>
                                             )}
-                                            <Button
-                                                onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
-                                                disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
-                                                className="h-12 px-6 rounded-xl bg-primary text-white font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
-                                            >
-                                                {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : recommendation?.priorityMerchantConnection ? 'Assign connected rider · priority' : 'Assign recommended rider'}
-                                            </Button>
-                                            <div className="flex-1 grid sm:grid-cols-2 gap-2">
-                                                <p className="text-xs text-muted-foreground sm:col-span-2">
-                                                    Rider override changes only the rider. It cannot bypass online payment verification or unverified merchant fulfillment. COD is collected by the rider at delivery.
-                                                </p>
-                                                <select
-                                                    value={overrideRiders[order.id] || ''}
-                                                    onChange={event => setOverrideRiders(prev => ({ ...prev, [order.id]: event.target.value }))}
-                                                    className="h-12 rounded-xl border border-border bg-background px-3 text-sm"
-                                                >
-                                                    <option value="">Choose rider for override</option>
-                                                    {order.riderCandidates.map(candidate => (
-                                                        <option key={candidate.riderPhone} value={candidate.riderPhone}>
-                                                            {candidate.priorityMerchantConnection ? 'Connected priority · ' : ''}{candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
-                                                            {candidate.locationAvailable ? ` · ${candidate.distanceKm} road km${candidate.etaMinutes == null ? '' : ` · ${candidate.etaMinutes} min`}` : ' · no OSRM route'}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <Input
-                                                    value={overrideReasons[order.id] || ''}
-                                                    onChange={event => setOverrideReasons(prev => ({ ...prev, [order.id]: event.target.value }))}
-                                                    placeholder="Override reason (required)"
-                                                    className="h-12 rounded-xl"
-                                                />
-                                            </div>
-                                            <Button
-                                                onClick={() => handleAssignRider(order.id, overrideRiders[order.id] || '', 'override')}
-                                                disabled={!order.fulfillment.ready || !overrideRiders[order.id] || (overrideReasons[order.id] || '').trim().length < 8 || assigning === order.id}
-                                                variant="outline"
-                                                className="h-12 px-6 rounded-xl border-amber-300 text-amber-800 font-black uppercase text-[10px] tracking-widest disabled:opacity-50"
-                                            >
-                                                Assign selected rider
-                                            </Button>
+                                            {assignmentMode === 'automatic' ? (
+                                                <div className="grid min-w-0 gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                                                    <div className="min-w-0">
+                                                        <p className="font-bold text-foreground">
+                                                            {recommendation ? `Recommended: ${recommendation.riderName}` : 'No rider recommendation available'}
+                                                        </p>
+                                                        <p className="mt-1 break-words text-xs text-muted-foreground">
+                                                            Pickup: {order.fulfillment.selectedVendorNames.length
+                                                                ? order.fulfillment.selectedVendorNames.join(', ')
+                                                                : 'merchant pickup not confirmed'}
+                                                        </p>
+                                                    </div>
+                                                    <Button
+                                                        onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
+                                                        disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
+                                                        className="h-12 w-full rounded-xl px-5 text-xs font-bold sm:w-auto"
+                                                    >
+                                                        {assigning === order.id
+                                                            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Assigning</>
+                                                            : 'Assign recommended rider'}
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <div className="grid min-w-0 gap-3 rounded-2xl border border-border bg-muted/30 p-4">
+                                                    <p className="text-xs leading-relaxed text-muted-foreground">
+                                                        Choose an eligible, verified rider. This does not bypass payment, merchant fulfillment or rider availability checks.
+                                                    </p>
+                                                    <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                                        <select
+                                                            value={overrideRiders[order.id] || ''}
+                                                            onChange={event => setOverrideRiders(prev => ({ ...prev, [order.id]: event.target.value }))}
+                                                            className="h-12 min-w-0 rounded-xl border border-border bg-background px-3 text-sm"
+                                                        >
+                                                            <option value="">Select an available rider</option>
+                                                            {order.riderCandidates.map(candidate => (
+                                                                <option key={candidate.riderPhone} value={candidate.riderPhone}>
+                                                                    {candidate.priorityMerchantConnection ? 'Connected · ' : ''}{candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} active
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <Input
+                                                            value={overrideReasons[order.id] || ''}
+                                                            onChange={event => setOverrideReasons(prev => ({ ...prev, [order.id]: event.target.value }))}
+                                                            placeholder="Why choose a different rider? (8+ characters)"
+                                                            aria-label="Reason for manual rider assignment"
+                                                            className="h-12 min-w-0 rounded-xl"
+                                                        />
+                                                    </div>
+                                                    <Button
+                                                        onClick={() => handleAssignRider(order.id, overrideRiders[order.id] || '', 'override')}
+                                                        disabled={!order.fulfillment.ready || !overrideRiders[order.id] || (overrideReasons[order.id] || '').trim().length < 8 || assigning === order.id}
+                                                        variant="outline"
+                                                        className="h-12 w-full rounded-xl border-amber-300 font-bold text-amber-900 sm:w-auto"
+                                                    >
+                                                        {assigning === order.id
+                                                            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Assigning</>
+                                                            : 'Assign selected rider'}
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
                                     </Card>
                                 );
