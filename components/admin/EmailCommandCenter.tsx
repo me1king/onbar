@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import LifecycleEmailPreview from '@/components/admin/LifecycleEmailPreview';
 
 type Contact = { email: string; name: string; sources: string[] };
 type MessageLog = {
@@ -178,6 +179,8 @@ export default function EmailCommandCenter() {
           {data.domainHealth.dkim === 'selector_required' && <p className="mt-3 text-xs text-slate-500">Set the provider’s selector as server-only <code>JMSURF_DKIM_SELECTOR</code> in Vercel to check the DKIM record.</p>}
         </Card>
       )}
+
+      <LifecycleEmailPreview />
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
         <Card className="rounded-2xl p-5 sm:p-6">

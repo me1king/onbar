@@ -6,6 +6,7 @@ import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { createMarketingUnsubscribeToken } from '@/lib/marketingUnsubscribe';
 import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 import type { CustomerNotificationChannel } from '@/lib/customerMessaging';
+import { renderWaitlistCampaignEmail } from '@/lib/lifecycleEmailPreviews';
 
 export const dynamic = 'force-dynamic';
 
@@ -322,16 +323,6 @@ function getDatabase() {
     : null;
 }
 
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, character => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[character] || character);
-}
-
 function renderHalloweenInvitation(message: string, name: string, ticketUrl: string) {
   const personalizedMessage = message
     .replaceAll('{{name}}', name || 'there')
@@ -357,18 +348,19 @@ async function sendHalloweenInvitation(input: {
 
   const ticketUrl = `${input.origin}/tickets`;
   const personalizedMessage = renderHalloweenInvitation(input.message, input.member.full_name || '', ticketUrl);
-  const channelNotice = '\n\nWe’re sending this through Gmail for now while we finish setting up SMS and WhatsApp. Thanks for your patience.';
-  const deliveredMessage = `${personalizedMessage}${channelNotice}`;
+  const deliveredMessage = personalizedMessage;
   const unsubscribeUrl = `${input.origin}/newsletter/unsubscribe?token=${encodeURIComponent(createMarketingUnsubscribeToken(input.member.email))}`;
-  const htmlMessage = escapeHtml(deliveredMessage)
-    .replace(/\r?\n/g, '<br>')
-    .replaceAll(escapeHtml(ticketUrl), `<a href="${escapeHtml(ticketUrl)}">Get your Online Bar tickets</a>`);
   const emailResult = await sendTransactionalEmail({
     from: config.from,
     to: input.member.email,
     subject: input.subject,
     text: `${deliveredMessage}\n\nYou received this because you opted in to Online Bar event email updates. Unsubscribe: ${unsubscribeUrl}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#262626"><h1 style="color:#7c2d12">🎃 Halloween Private House Party</h1><p>${htmlMessage}</p><hr style="border:0;border-top:1px solid #eee;margin:24px 0"><p style="font-size:12px;color:#777">You received this because you opted in to Online Bar event email updates.</p><p style="font-size:12px"><a href="${unsubscribeUrl}">Unsubscribe from marketing emails</a></p></div>`,
+    html: renderWaitlistCampaignEmail({
+      subject: input.subject,
+      message: deliveredMessage,
+      ticketUrl,
+      unsubscribeUrl
+    }),
     idempotencyKey: `waitlist-invite-${input.campaignId}-${input.member.id}`
   });
 

@@ -4,6 +4,7 @@ import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/
 import { sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getPublicBaseUrl } from '@/lib/utils';
+import { renderRiderApprovalEmail } from '@/lib/lifecycleEmailPreviews';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,13 +117,13 @@ export async function POST(request: Request) {
 
   const riderName = typeof data.rider_name === 'string' ? data.rider_name.trim() : 'Rider';
   const terminalUrl = `${getPublicBaseUrl()}/rider/dashboard?account=1`;
-  const safeName = escapeHtml(riderName);
+  const email = renderRiderApprovalEmail({ riderName, pin, terminalUrl });
   try {
     await sendTransactionalEmail({
       to: riderEmail,
-      subject: 'Your Online Bar rider account is approved',
-      text: `Hi ${riderName}, your Online Bar rider account has been approved. Open your rider terminal at ${terminalUrl}. Continue with your verified OnlineBar account using the same email or phone from your rider application, or sign in with your rider phone number and this four-digit PIN: ${pin}. Keep the PIN private.`,
-      html: `<p>Hi ${safeName},</p><p>Your Online Bar rider account has been approved.</p><p><a href="${terminalUrl}">Open your rider terminal</a> and continue with your verified OnlineBar account using the same email or phone from your rider application. You can also sign in with your rider phone number and this four-digit PIN:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${pin}</p><p>Keep this PIN private. You can reopen the terminal from your approved OnlineBar profile.</p>`,
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
       idempotencyKey: `rider-approval:${updatedRider.rider_phone}:${pin}`
     });
     return NextResponse.json({ success: true, emailSent: true });

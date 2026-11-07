@@ -68,7 +68,7 @@ const sampleVariables: Record<string, string> = {
   trackingUrl: 'https://onlinebar.co.ke/track?id=1042',
   customer_name: 'Amani',
   order_id: '1042',
-  total: 'KES 2,450.00',
+  total: 'KES 1,100.00',
   rider_name: 'Kiptoo',
   rider_phone: '+254712345678',
   payment_method: 'M-Pesa',
@@ -357,7 +357,7 @@ export default function CustomerMessagingAutomationPage() {
           <p className="mt-1 text-sm text-slate-500">
             Available variables: <code>{'{customer_name}'}</code>, <code>{'{order_id}'}</code>, <code>{'{total}'}</code>, <code>{'{rider_name}'}</code>, <code>{'{rider_phone}'}</code>, <code>{'{status}'}</code>, and <code>{'{tracking_link}'}</code>. Older <code>{'{name}'}</code>, <code>{'{orderId}'}</code>, and <code>{'{trackingUrl}'}</code> tokens still work.
           </p>
-          <p className="mt-1 text-xs text-slate-500">Sample preview values: Amani · #1042 · KES 2,450 · rider Kiptoo · Out for Delivery. Delivery PIN and M-Pesa receipt code are not available in this order-notification flow yet.</p>
+          <p className="mt-1 text-xs text-slate-500">Sample previews show all seven order states. Rider details appear when available; verified delivery receipts appear after handover. Delivery PINs are intentionally kept out of email.</p>
         </div>
         <div className="grid gap-4 xl:grid-cols-3">
           {CUSTOMER_NOTIFICATION_STATUSES.map(status => {
@@ -451,9 +451,21 @@ export default function CustomerMessagingAutomationPage() {
                         buttonLabel: rule.emailButtonLabel,
                         accentColor: rule.emailAccentColor,
                         orderId: '1042',
-                        total: 'KES 2,450.00',
+                        total: 'KES 1,100.00',
                         status,
-                        trackingUrl: sampleVariables.trackingUrl
+                        trackingUrl: sampleVariables.trackingUrl,
+                        customerName: 'Amani',
+                        createdAt: new Date('2026-03-08T19:15:00+03:00').toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }),
+                        paymentMethod: 'M-Pesa',
+                        paymentReference: 'QWE123456',
+                        deliveryCost: 150,
+                        riderName: ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(status) ? 'Kiptoo' : undefined,
+                        riderPhone: ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(status) ? '+254712345678' : undefined,
+                        eta: ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(status) ? '8 mins' : undefined,
+                        items: [
+                          { name: 'Sparkling water', quantity: 2, unitPrice: 250 },
+                          { name: 'Ginger beer', quantity: 1, unitPrice: 450 }
+                        ]
                       })}
                       className="mt-4 h-[520px] w-full rounded-xl border border-slate-200 bg-white"
                     />

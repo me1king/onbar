@@ -21,6 +21,7 @@ import {
 import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
 import { getPublicBaseUrl } from '@/lib/utils';
 import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
+import { renderVendorApplicationEmail } from '@/lib/lifecycleEmailPreviews';
 
 export const dynamic = 'force-dynamic';
 
@@ -763,12 +764,13 @@ export async function POST(request: Request) {
             documentsUploadWarning = 'Your application was submitted. Email delivery is not configured, so use the secure link below to upload your documents within seven days.';
           } else {
             try {
+              const emailContent = renderVendorApplicationEmail({ businessName, uploadUrl: documentsUploadUrl });
               await sendTransactionalEmail({
                 from: emailConfig.from,
                 to: email,
-                subject: `Complete ${businessName}'s OnBar merchant documents`,
-                text: `Your OnBar application was received. Upload the remaining required documents within seven days using this secure link: ${documentsUploadUrl}`,
-                html: `<p>Your OnBar application was received. Upload the remaining required documents within seven days using this secure link:</p><p><a href="${documentsUploadUrl}">Upload your documents</a></p>`,
+                subject: emailContent.subject,
+                text: emailContent.text,
+                html: emailContent.html,
                 idempotencyKey: `merchant-document-upload-${applicationId}-${uploadTokenHash.slice(0, 16)}`
               });
               documentsUploadEmailSent = true;

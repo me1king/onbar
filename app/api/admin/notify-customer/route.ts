@@ -90,7 +90,11 @@ async function sendEmail(
   order: {
     id: number;
     total_price: number | string;
+    delivery_cost?: number | string | null;
     customer_name?: string | null;
+    rider_name?: string | null;
+    rider_phone?: string | null;
+    delivery_eta_minutes?: number | null;
     payment_method?: string | null;
     created_at?: string | null;
   },
@@ -99,6 +103,7 @@ async function sendEmail(
   rule: CustomerNotificationRule
 ) {
   const design = getCustomerOrderEmailDesign(rule);
+  const deliveryCost = order.delivery_cost == null ? undefined : Number(order.delivery_cost);
   const email = {
     ...design,
     message,
@@ -107,8 +112,12 @@ async function sendEmail(
     status,
     trackingUrl,
     customerName: order.customer_name || undefined,
+    riderName: order.rider_name || undefined,
+    riderPhone: order.rider_phone ? maskPhone(order.rider_phone) : undefined,
+    eta: order.delivery_eta_minutes == null ? undefined : `${order.delivery_eta_minutes} mins`,
     paymentMethod: order.payment_method || undefined,
     paymentReference: paymentReference || undefined,
+    deliveryCost: deliveryCost !== undefined && Number.isFinite(deliveryCost) ? deliveryCost : undefined,
     createdAt: order.created_at
       ? new Date(order.created_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })
       : undefined,
@@ -255,7 +264,7 @@ export async function POST(request: Request) {
 
   const { data: order, error: orderError } = await database
     .from('orders')
-    .select('id, user_id, customer_email, customer_name, customer_phone, status, total_price, payment_method, checkout_request_id, rider_name, rider_phone, delivery_eta_minutes, notification_sms_opt_in, notification_whatsapp_opt_in, created_at')
+    .select('id, user_id, customer_email, customer_name, customer_phone, status, total_price, delivery_cost, payment_method, rider_name, rider_phone, delivery_eta_minutes, notification_sms_opt_in, notification_whatsapp_opt_in, created_at')
     .eq('id', orderId)
     .maybeSingle();
   if (orderError) {
@@ -266,7 +275,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The order does not currently have that status.' }, { status: 409 });
   }
 
-  let paymentReceipt = typeof order.checkout_request_id === 'string' ? order.checkout_request_id : '';
+  let paymentReceipt = '';
   let paymentMethod = order.payment_method || '';
   if (status === 'Delivered') {
     const { data: payment, error: paymentError } = await database.from('rider_delivery_payment_attempts')

@@ -78,9 +78,21 @@ export async function POST(request: Request) {
         accentColor: emailDesign.emailAccentColor,
         message,
         orderId: '1042',
-        total: 'KES 2,450.00',
+        total: 'KES 1,100.00',
         status,
         trackingUrl: 'https://onlinebar.co.ke/track?id=1042',
+        customerName: 'Amani',
+        createdAt: new Date().toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }),
+        paymentMethod: 'M-Pesa',
+        paymentReference: 'TEST123456',
+        deliveryCost: 150,
+        riderName: ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(status) ? 'Kiptoo' : undefined,
+        riderPhone: ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(status) ? '****5678' : undefined,
+        eta: ['Dispatched', 'Picked Up', 'Out for Delivery'].includes(status) ? 'About 8 minutes' : undefined,
+        items: [
+          { name: 'Sparkling water', quantity: 2, unitPrice: 250 },
+          { name: 'Ginger beer', quantity: 1, unitPrice: 450 }
+        ],
         testNotice: 'Messaging Center test · no customer notification was sent.'
       };
       await sendTransactionalEmail({
