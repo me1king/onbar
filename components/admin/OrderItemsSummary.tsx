@@ -1,6 +1,6 @@
 interface OrderItemSummary {
     id: number;
-    product_id: number;
+    product_id: number | null;
     quantity: number;
     size?: string;
 }
@@ -19,7 +19,9 @@ export default function OrderItemsSummary({ items, productNameMap, warehouseLoca
     return (
         <ul className="min-w-0 space-y-1">
             {items.map(item => {
-                const name = productNameMap.get(item.product_id) || `Item #${item.product_id}`;
+                const name = item.product_id === null
+                    ? `Unlinked order item #${item.id}`
+                    : productNameMap.get(item.product_id) || `Item #${item.product_id}`;
                 const normalizedName = name.toLowerCase();
                 const isChilled = ['wine', 'beer', 'juice', 'soda'].some(word => normalizedName.includes(word));
 

@@ -14,7 +14,7 @@ interface Order {
     total_price: number;
     status: string;
     order_items?: Array<{
-        product_id: number;
+        product_id: number | null;
         quantity: number;
         unit_price: number;
         size?: string;

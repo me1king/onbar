@@ -200,7 +200,7 @@ export async function PATCH(
   const { id } = await params;
   if (!isUuid(id)) return NextResponse.json({ error: 'A valid merchant ID is required.' }, { status: 400 });
 
-  let body: { latitude?: unknown; longitude?: unknown };
+  let body: { latitude?: unknown; longitude?: unknown; deliveryRadiusKm?: unknown };
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -215,14 +215,24 @@ export async function PATCH(
   };
   const latitude = parseCoordinate(body.latitude);
   const longitude = parseCoordinate(body.longitude);
+  const hasDeliveryRadius = Object.prototype.hasOwnProperty.call(body, 'deliveryRadiusKm');
+  const deliveryRadiusKm = !hasDeliveryRadius
+    ? undefined
+    : body.deliveryRadiusKm === null || body.deliveryRadiusKm === ''
+      ? null
+      : parseCoordinate(body.deliveryRadiusKm);
   if (
     latitude === undefined || longitude === undefined
     || ((latitude === null) !== (longitude === null))
     || (latitude !== null && (latitude < -90 || latitude > 90))
     || (longitude !== null && (longitude < -180 || longitude > 180))
+    || (hasDeliveryRadius && (
+      deliveryRadiusKm === undefined
+      || (deliveryRadiusKm !== null && (deliveryRadiusKm < 0 || deliveryRadiusKm > 500))
+    ))
   ) {
     return NextResponse.json({
-      error: 'Enter both valid coordinates, or clear both fields. Latitude must be -90 to 90 and longitude -180 to 180.'
+      error: 'Enter both valid coordinates or clear both fields. Latitude must be -90 to 90, longitude -180 to 180, and delivery radius 0 to 500 km.'
     }, { status: 400 });
   }
 
@@ -232,20 +242,35 @@ export async function PATCH(
     return NextResponse.json({ error: 'Merchant operations database access is not configured.' }, { status: 503 });
   }
   const database = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
-  const { error } = await database.rpc('update_merchant_dispatch_location', {
-    p_application_id: id,
-    p_latitude: latitude,
-    p_longitude: longitude,
-    p_actor: session.email || session.role
-  });
+  const { error } = hasDeliveryRadius
+    ? await database.rpc('update_merchant_dispatch_settings', {
+      p_application_id: id,
+      p_latitude: latitude,
+      p_longitude: longitude,
+      p_delivery_radius_km: deliveryRadiusKm,
+      p_actor: session.email || session.role
+    })
+    : await database.rpc('update_merchant_dispatch_location', {
+      p_application_id: id,
+      p_latitude: latitude,
+      p_longitude: longitude,
+      p_actor: session.email || session.role
+    });
   if (error) {
     console.error('[MerchantStore] Could not update dispatch coordinates:', error);
     return NextResponse.json({
-      error: /update_merchant_dispatch_location|schema cache/i.test(error.message)
-        ? 'Dispatch migration is missing. Run supabase/DISPATCH_MIGRATION.sql.'
+      error: /update_merchant_dispatch_(settings|location)|schema cache/i.test(error.message)
+        ? hasDeliveryRadius
+          ? 'Dispatch setup is not installed yet. Run supabase/DISPATCH_FULFILLMENT_RECOVERY_MIGRATION.sql.'
+          : 'Dispatch migration is missing. Run supabase/DISPATCH_MIGRATION.sql.'
         : 'Business coordinates could not be saved.'
     }, { status: 503 });
   }
 
-  return NextResponse.json({ success: true, latitude, longitude });
+  return NextResponse.json({
+    success: true,
+    latitude,
+    longitude,
+    ...(hasDeliveryRadius ? { deliveryRadiusKm } : {})
+  });
 }

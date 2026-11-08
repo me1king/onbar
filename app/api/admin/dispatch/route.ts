@@ -123,6 +123,7 @@ async function assessVendors(
     vendorId: string;
     vendorName: string;
     hasCoordinates: boolean;
+    hasDeliveryRadius: boolean;
     distanceKm: number | null;
     isOpen: boolean;
     acceptingOrders: boolean;
@@ -145,6 +146,13 @@ async function assessVendors(
     cataloguePrice: number | null;
     priceMatchesCatalogue: boolean;
     reserved: boolean;
+    merchantOptionsVerified: boolean;
+    merchantOptions: Array<{
+      vendorId: string;
+      vendorName: string;
+      hasCoordinates: boolean;
+      hasDeliveryRadius: boolean;
+    }>;
   }> = [];
   const orderLat = numberOrNull(order.latitude);
   const orderLng = numberOrNull(order.longitude);
@@ -183,8 +191,31 @@ async function assessVendors(
   if (!eventsAvailable && items.length > 0) {
     reasons.push('Merchant fulfillment acceptance records are unavailable; apply MERCHANT_OPERATIONS_MIGRATION.sql.');
   }
+  const { data: approvedMerchants, error: approvedMerchantsError } = await database
+    .from('merchant_applications')
+    .select('id, business_name, latitude, longitude, delivery_radius_km, offered_goods_pricing')
+    .eq('status', 'approved')
+    .order('business_name', { ascending: true })
+    .limit(1000);
+  if (approvedMerchantsError) {
+    reasons.push('Approved merchant catalog and dispatch setup could not be verified.');
+  }
 
   for (const item of items) {
+    const merchantOptions = (approvedMerchants || [])
+      .filter(merchant => Array.isArray(merchant.offered_goods_pricing)
+        && merchant.offered_goods_pricing.some((offer: Record<string, unknown>) =>
+          Number(offer.product_id) === Number(item.product_id)
+        ))
+      .map(merchant => ({
+        vendorId: merchant.id,
+        vendorName: merchant.business_name || 'Approved merchant',
+        hasCoordinates: validCoordinates(
+          numberOrNull(merchant.latitude),
+          numberOrNull(merchant.longitude)
+        ),
+        hasDeliveryRadius: numberOrNull(merchant.delivery_radius_km) !== null
+      }));
     const quantity = Number(item.quantity || 0);
     const unitPrice = numberOrNull(item.unit_price);
     if (!item.product_id || quantity < 1) {
@@ -198,9 +229,14 @@ async function assessVendors(
         orderUnitPrice: unitPrice,
         cataloguePrice: numberOrNull(item.product?.price),
         priceMatchesCatalogue: false,
-        reserved: false
+        reserved: false,
+        merchantOptionsVerified: false,
+        merchantOptions: []
       });
       continue;
+    }
+    if (merchantOptions.length === 0) {
+      reasons.push(`${item.product?.name || `Product ${item.product_id}`} is not offered by any approved merchant.`);
     }
     const cataloguePrice = numberOrNull(item.product?.price);
     const priceMatchesCatalogue = unitPrice !== null && unitPrice >= 0
@@ -251,6 +287,7 @@ async function assessVendors(
           vendorId: merchant.id,
           vendorName: merchant.business_name || 'Approved merchant',
           hasCoordinates: validCoordinates(numberOrNull(merchant.latitude), numberOrNull(merchant.longitude)),
+          hasDeliveryRadius: numberOrNull(merchant.delivery_radius_km) !== null,
           distanceKm: merchantDistance === null ? null : Number(merchantDistance.toFixed(2)),
           isOpen,
           acceptingOrders: merchant.accepting_orders !== false,
@@ -301,7 +338,9 @@ async function assessVendors(
       orderUnitPrice: unitPrice,
       cataloguePrice,
       priceMatchesCatalogue,
-      reserved: allocatedQuantity >= quantity
+      reserved: allocatedQuantity >= quantity,
+      merchantOptionsVerified: !approvedMerchantsError,
+      merchantOptions
     });
   }
 

@@ -89,7 +89,7 @@ export async function GET(request: Request) {
         .order('created_at', { ascending: false })
         .limit(150),
       includeProducts
-        ? access.database.from('products').select('id,name,price,cost_price,stock,variant_stock').order('name')
+        ? access.database.from('products').select('id,name,price,cost_price,stock,variant_stock,status').order('name')
         : Promise.resolve({ data: null, error: null })
     ]);
     const error = orders.error || products.error;
@@ -104,7 +104,7 @@ export async function GET(request: Request) {
   }
   const [orders, products] = await Promise.all([
     access.database.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(500),
-    access.database.from('products').select('id,name,price,cost_price,stock,variant_stock').order('name')
+    access.database.from('products').select('id,name,price,cost_price,stock,variant_stock,status').order('name')
   ]);
   if (orders.error || products.error) {
     const error = orders.error || products.error;
@@ -253,6 +253,38 @@ export async function PATCH(request: Request) {
   }
   const action = body.action;
   try {
+    if (action === 'repair_unlinked_item') {
+      const orderItemId = body.orderItemId;
+      const productId = body.productId;
+      const confirmationNote = typeof body.customerConfirmationNote === 'string'
+        ? body.customerConfirmationNote.trim()
+        : '';
+      if (!validOrderId(orderItemId)
+        || !validOrderId(productId)
+        || body.customerConfirmed !== true
+        || confirmationNote.length < 8
+        || confirmationNote.length > 500) {
+        return NextResponse.json({
+          error: 'Select a live product, confirm the customer verified the original item, and record an 8–500 character note.'
+        }, { status: 400 });
+      }
+      const { data, error } = await access.database.rpc('repair_unlinked_order_item', {
+        p_order_item_id: orderItemId,
+        p_product_id: productId,
+        p_customer_confirmation_note: confirmationNote,
+        p_actor: access.session.email || access.session.role
+      });
+      if (error) {
+        console.error('[AdminOrders] Could not repair unlinked order item:', error);
+        if (/repair_unlinked_order_item|schema cache/i.test(error.message)) {
+          return NextResponse.json({
+            error: 'Audited order-line repair is not installed. Apply supabase/DISPATCH_FULFILLMENT_RECOVERY_MIGRATION.sql.'
+          }, { status: 503 });
+        }
+        return NextResponse.json({ error: error.message }, { status: 409 });
+      }
+      return NextResponse.json({ repair: data }, { status: 200 });
+    }
     if (action === 'status' && validOrderId(body.id) && isOrderStatus(body.status)) {
       if (serverManagedStatuses.has(body.status)) {
         return NextResponse.json({

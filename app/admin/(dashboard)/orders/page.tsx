@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
+import UnlinkedOrderItemRepair from '@/components/admin/UnlinkedOrderItemRepair';
 import {
   Plus,
   RefreshCcw,
@@ -37,7 +38,7 @@ import { OrderStatus as MachineStatus, getAvailableActions, isValidTransition } 
 
 interface OrderItem {
     id: number;
-    product_id: number;
+    product_id: number | null;
     quantity: number;
     unit_price: number;
     unit_cost: number;
@@ -107,7 +108,7 @@ const initialManualOrder: ManualOrderForm = {
 export default function AdminOrdersPage() {
   const { role, email, permissions } = useAdmin();
   const [orders, setOrders] = React.useState<OrderRecord[]>([]);
-  const [products, setProducts] = React.useState<{ id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number> }[]>([]);
+  const [products, setProducts] = React.useState<{ id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number>; status: string }[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [statusMessage, setStatusMessage] = React.useState<{
     type: 'idle' | 'success' | 'error';
@@ -152,7 +153,7 @@ export default function AdminOrdersPage() {
       const response = await fetch(url, { cache: 'no-store' });
       const result = await response.json() as {
         orders?: OrderRecord[];
-        products?: { id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number> }[];
+        products?: { id: number; name: string; price: number; cost_price: number; stock: number; variant_stock: Record<string, number>; status: string }[];
         error?: string;
       };
       if (!response.ok || !result.orders || (!recent && !result.products)) throw new Error(result.error || 'Unable to load orders.');
@@ -322,7 +323,9 @@ export default function AdminOrdersPage() {
   const handleDownloadReceipt = async (order: OrderRecord) => {
       const receiptItems = order.order_items?.map(item => ({
           ...item,
-          product_name: productNameMap.get(item.product_id) || 'Beverage Purchase'
+          product_name: item.product_id === null
+            ? 'Unlinked order item'
+            : productNameMap.get(item.product_id) || 'Beverage Purchase'
       }));
       const doc = await generateReceiptPDF({
           ...order,
@@ -826,6 +829,17 @@ export default function AdminOrdersPage() {
                                 </td>
                                 <td className="px-5 py-5">
                                 <OrderItemsSummary items={order.order_items} productNameMap={productNameMap} warehouseLocation={order.warehouse_location} />
+                                {order.order_items?.filter(item => item.product_id === null).map(item => (
+                                    <UnlinkedOrderItemRepair
+                                        key={item.id}
+                                        orderItem={item}
+                                        products={products.filter(product => product.status === 'Live')}
+                                        onSaved={() => {
+                                            setStatusMessage({ type: 'success', text: `Order #${order.id} item link repaired. Retry merchant allocation on Dispatch after confirming available stock.` });
+                                            void loadOrders(true);
+                                        }}
+                                    />
+                                ))}
                                 </td>
                                 <td className="px-5 py-5">
                                     <span className={cn(
@@ -954,6 +968,17 @@ export default function AdminOrdersPage() {
                                 </div>
 
                                 <OrderItemsSummary items={order.order_items} productNameMap={productNameMap} warehouseLocation={order.warehouse_location} />
+                                {order.order_items?.filter(item => item.product_id === null).map(item => (
+                                    <UnlinkedOrderItemRepair
+                                        key={item.id}
+                                        orderItem={item}
+                                        products={products.filter(product => product.status === 'Live')}
+                                        onSaved={() => {
+                                            setStatusMessage({ type: 'success', text: `Order #${order.id} item link repaired. Retry merchant allocation on Dispatch after confirming available stock.` });
+                                            void loadOrders(true);
+                                        }}
+                                    />
+                                ))}
 
                                 <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl">
                                     <span className="text-[9px] font-black uppercase text-slate-400">Pipeline Status</span>

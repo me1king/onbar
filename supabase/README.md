@@ -122,6 +122,16 @@ reliable looping lock-screen alarm; native Android alert support remains a
 separate rollout step. Test on staging with real devices and provider accounts
 before launch.
 
+## Dispatch fulfillment recovery
+
+After `MERCHANT_OPERATIONS_MIGRATION.sql`, `DISPATCH_MIGRATION.sql`, and
+`COD_RIDER_DISPATCH_MIGRATION.sql`, apply
+`DISPATCH_FULFILLMENT_RECOVERY_MIGRATION.sql`. It adds an audited admin update
+for verified merchant pickup coordinates and delivery radius, and makes
+allocation retries report every order line—including deleted/unlinked products
+and products with no recorded sellable stock. A retry never guesses an item,
+creates stock, or bypasses payment, merchant, location, or rider checks.
+
 ## Merchant business accounts and branches
 
 After applying `MERCHANT_OPERATIONS_MIGRATION.sql`,

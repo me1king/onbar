@@ -100,6 +100,7 @@ export default function MerchantStorePage() {
   const [openingDocument, setOpeningDocument] = useState<string | null>(null);
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
+  const [deliveryRadiusKm, setDeliveryRadiusKm] = useState('');
   const [savingLocation, setSavingLocation] = useState(false);
   const [locationMessage, setLocationMessage] = useState('');
 
@@ -113,6 +114,7 @@ export default function MerchantStorePage() {
       setData(result as MerchantStoreData);
       setLatitude(result.application.latitude == null ? '' : String(result.application.latitude));
       setLongitude(result.application.longitude == null ? '' : String(result.application.longitude));
+      setDeliveryRadiusKm(result.application.delivery_radius_km == null ? '' : String(result.application.delivery_radius_km));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Merchant store could not be loaded.');
     } finally {
@@ -130,19 +132,34 @@ export default function MerchantStorePage() {
       const response = await fetch(`/api/admin/merchant-store/${encodeURIComponent(merchantId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latitude, longitude })
+        body: JSON.stringify({
+          latitude,
+          longitude,
+          deliveryRadiusKm: deliveryRadiusKm.trim() === '' ? null : Number(deliveryRadiusKm)
+        })
       });
-      const result = await response.json() as { success?: boolean; latitude?: number | null; longitude?: number | null; error?: string };
+      const result = await response.json() as {
+        success?: boolean;
+        latitude?: number | null;
+        longitude?: number | null;
+        deliveryRadiusKm?: number | null;
+        error?: string;
+      };
       if (!response.ok || !result.success) throw new Error(result.error || 'Business coordinates could not be saved.');
       setData(current => current ? {
         ...current,
         application: {
           ...current.application,
           latitude: result.latitude ?? null,
-          longitude: result.longitude ?? null
+          longitude: result.longitude ?? null,
+          delivery_radius_km: result.deliveryRadiusKm ?? null
         }
       } : current);
-      setLocationMessage(result.latitude === null ? 'Coordinates cleared.' : 'Pickup coordinates saved and audit recorded.');
+      setLocationMessage(
+        result.deliveryRadiusKm == null
+          ? 'Pickup coordinates saved. Delivery radius is not set.'
+          : `Pickup coordinates and ${result.deliveryRadiusKm} km service radius saved and audited.`
+      );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Business coordinates could not be saved.');
     } finally {
@@ -213,10 +230,24 @@ export default function MerchantStorePage() {
         <Detail label="Delivery radius" value={application.delivery_radius_km ? `${application.delivery_radius_km} km` : null} />
         <div className="rounded-xl bg-slate-50 p-3 sm:col-span-2">
           <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Dispatch pickup coordinates</p>
-          <p className="mt-1 text-xs text-slate-600">Set the verified business pin. It is used for merchant service-radius checks and rider pickup-distance estimates.</p>
+          <p className="mt-1 text-xs text-slate-600">Enter the verified pickup pin and the merchant&apos;s confirmed delivery radius. Dispatch uses both to check service coverage and estimate rider pickup distance.</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <Input type="number" min="-90" max="90" step="any" value={latitude} onChange={event => setLatitude(event.target.value)} placeholder="Latitude (-90 to 90)" aria-label="Merchant latitude" />
             <Input type="number" min="-180" max="180" step="any" value={longitude} onChange={event => setLongitude(event.target.value)} placeholder="Longitude (-180 to 180)" aria-label="Merchant longitude" />
+            <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
+              Confirmed delivery radius (km)
+              <Input
+                type="number"
+                min="0"
+                max="500"
+                step="0.5"
+                value={deliveryRadiusKm}
+                onChange={event => setDeliveryRadiusKm(event.target.value)}
+                placeholder="Set only the area the merchant confirms serving"
+                aria-label="Merchant delivery radius in kilometres"
+                className="mt-1"
+              />
+            </label>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Button type="button" onClick={() => void saveDispatchLocation()} disabled={savingLocation} className="rounded-xl">
@@ -227,6 +258,7 @@ export default function MerchantStorePage() {
             {application.latitude == null || application.longitude == null
               ? <span className="text-xs font-semibold text-amber-700">Distance-based dispatch unavailable until set.</span>
               : <span className="text-xs text-slate-500">Saved: {application.latitude}, {application.longitude}</span>}
+            {application.delivery_radius_km == null && <span className="text-xs font-semibold text-amber-700">Delivery dispatch unavailable until a confirmed radius is set.</span>}
           </div>
         </div>
         <Detail label="Collection" value={application.collection_available ? 'Available' : 'Not listed'} />

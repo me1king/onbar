@@ -115,6 +115,7 @@ interface DispatchJob {
             vendorId: string;
             vendorName: string;
             hasCoordinates: boolean;
+            hasDeliveryRadius: boolean;
         }>;
         selectedVendorLocations: Array<{
             vendorId: string;
@@ -133,6 +134,13 @@ interface DispatchJob {
             cataloguePrice: number | null;
             priceMatchesCatalogue: boolean;
             reserved: boolean;
+            merchantOptionsVerified: boolean;
+            merchantOptions: Array<{
+                vendorId: string;
+                vendorName: string;
+                hasCoordinates: boolean;
+                hasDeliveryRadius: boolean;
+            }>;
         }>;
     };
     riderCandidates: DispatchRiderCandidate[];
@@ -345,21 +353,26 @@ export default function AdminDispatchPage() {
                 message?: string;
                 allocation?: {
                     fully_allocated?: boolean;
-                    unallocated_items?: Array<{ product_name: string; requested_quantity: number; allocated_quantity: number }>;
+                    unallocated_items?: Array<{
+                        order_item_id?: number;
+                        product_id?: number | null;
+                        product_name: string;
+                        requested_quantity: number;
+                        allocated_quantity: number;
+                        reason?: string;
+                    }>;
                 };
             };
             if (!response.ok) throw new Error(result.error || 'Merchant stock could not be redistributed.');
             const remaining = result.allocation?.unallocated_items || [];
             const remainingText = remaining.length
-                ? ` Still needed: ${remaining.map(item => `${item.product_name} ${item.allocated_quantity}/${item.requested_quantity}`).join(', ')}.`
+                ? ` ${remaining.map(item => `${item.product_name} ${item.allocated_quantity}/${item.requested_quantity}: ${item.reason || 'verify merchant stock and availability'}`).join(' ')}`
                 : '';
             const refreshed = await fetchData();
-            if (refreshed) {
-                setMessage({
-                    type: result.allocation?.fully_allocated ? 'success' : 'error',
-                    text: `${result.message || 'Merchant availability rechecked.'}${remainingText}`
-                });
-            }
+            setMessage({
+                type: result.allocation?.fully_allocated && refreshed ? 'success' : 'error',
+                text: `${result.message || 'Merchant availability rechecked.'}${remainingText}${refreshed ? '' : ' The dispatch board did not refresh; use Sync System to confirm current status.'}`
+            });
         } catch (error) {
             setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Merchant stock could not be redistributed.' });
         } finally {
@@ -678,9 +691,17 @@ export default function AdminDispatchPage() {
                                             ))}
                                             {order.fulfillment.selectedVendors.filter(vendor => !vendor.hasCoordinates).map(vendor => (
                                                 <p key={vendor.vendorId} className="mt-2 text-xs leading-relaxed text-amber-900">
-                                                    {vendor.vendorName} has no pickup pin.{' '}
+                                                    {vendor.vendorName} has no verified pickup pin.{' '}
                                                     <Link href={`/lord/merchants/${encodeURIComponent(vendor.vendorId)}`} className="font-bold underline underline-offset-2">
-                                                        Add verified pickup coordinates
+                                                        Set dispatch location and service radius
+                                                    </Link>
+                                                </p>
+                                            ))}
+                                            {order.fulfillment.selectedVendors.filter(vendor => vendor.hasCoordinates && !vendor.hasDeliveryRadius).map(vendor => (
+                                                <p key={`${vendor.vendorId}-radius`} className="mt-2 text-xs leading-relaxed text-amber-900">
+                                                    {vendor.vendorName} needs a confirmed delivery radius.{' '}
+                                                    <Link href={`/lord/merchants/${encodeURIComponent(vendor.vendorId)}`} className="font-bold underline underline-offset-2">
+                                                        Set dispatch location and service radius
                                                     </Link>
                                                 </p>
                                             ))}
@@ -700,12 +721,28 @@ export default function AdminDispatchPage() {
                                             )}
                                             <div className="mt-4 grid gap-2 sm:grid-cols-2">
                                                 {order.fulfillment.productChecks.map((check, index) => (
-                                                    <p key={`${check.productId}-${index}`} className="min-w-0 break-words rounded-xl border border-border/70 bg-background/70 p-3 text-xs">
-                                                        <span className="font-semibold">{check.productName}</span>
-                                                        <span className={`mt-1 block ${order.fulfillment.ready ? 'text-emerald-800' : 'text-rose-700'}`}>
+                                                    <div key={`${check.productId}-${index}`} className="min-w-0 break-words rounded-xl border border-border/70 bg-background/70 p-3 text-xs">
+                                                        <p className="font-semibold">{check.productName}</p>
+                                                        <p className={`mt-1 ${order.fulfillment.ready ? 'text-emerald-800' : 'text-rose-700'}`}>
                                                             Qty {check.quantity} <span aria-hidden="true">·</span> Reserved {check.reservedQuantity}
-                                                        </span>
-                                                    </p>
+                                                        </p>
+                                                        {check.productId !== null && check.reservedQuantity < check.quantity && (
+                                                            <div className="mt-2 border-t border-border/70 pt-2 text-amber-900">
+                                                                {!check.merchantOptionsVerified
+                                                                    ? <p>Could not verify approved merchant offers. Refresh the assessment or inspect the merchant catalog.</p>
+                                                                    : check.merchantOptions.length === 0
+                                                                    ? <p>No approved merchant offers this catalog product yet. Review merchant offers before retrying.</p>
+                                                                    : check.merchantOptions.map(merchant => (
+                                                                        <p key={merchant.vendorId} className="mt-1">
+                                                                            {merchant.vendorName}: {merchant.hasCoordinates ? 'pickup pin set' : 'pickup pin missing'} · {merchant.hasDeliveryRadius ? 'service radius set' : 'service radius missing'}.{' '}
+                                                                            <Link href={`/lord/merchants/${encodeURIComponent(merchant.vendorId)}`} className="font-bold underline underline-offset-2">
+                                                                                Fix merchant setup
+                                                                            </Link>
+                                                                        </p>
+                                                                    ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 ))}
                                             </div>
                                             <p className="mt-3 break-words text-[11px] leading-relaxed text-muted-foreground">{order.fulfillment.priceBasis}</p>
@@ -734,7 +771,7 @@ export default function AdminDispatchPage() {
                                             {!order.fulfillment.ready && order.fulfillment.productChecks.some(check => check.productId !== null && check.quantity >= 1 && check.reservedQuantity < check.quantity) && (
                                                 <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
                                                     <p className="text-xs leading-relaxed text-amber-950">
-                                                        Stock is not reserved yet. Retry checks approved shops with available stock.
+                                                        Stock is not reserved yet. Retry can reserve only verified stock already recorded by an approved shop.
                                                     </p>
                                                     <Button
                                                         variant="outline"
@@ -746,6 +783,9 @@ export default function AdminDispatchPage() {
                                                             ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking shops</>
                                                             : 'Retry available shops'}
                                                     </Button>
+                                                    <Link href="/lord/traceability" className="text-xs font-bold text-amber-950 underline underline-offset-2">
+                                                            View stock and record a verified batch
+                                                    </Link>
                                                 </div>
                                             )}
                                             {assignmentMode === 'automatic' ? (
