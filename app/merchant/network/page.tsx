@@ -258,7 +258,7 @@ type Section = 'sales' | 'overview' | 'orders' | 'inventory' | 'performance' | '
   | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff'
   | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours';
 
-function getOutOfStockProductNames(application: PartnerApplication['application'], batches: PartnerBatch[]) {
+function getOutOfStockProducts(application: PartnerApplication['application'], batches: PartnerBatch[]) {
   const today = new Date().toISOString().slice(0, 10);
   const quantities = new Map<number, number>();
   for (const batch of batches) {
@@ -268,7 +268,7 @@ function getOutOfStockProductNames(application: PartnerApplication['application'
   }
   return application.offered_goods_pricing
     .filter(product => (quantities.get(product.product_id) || 0) === 0)
-    .map(product => product.product_name);
+    .map(product => ({ productId: product.product_id, productName: product.product_name }));
 }
 
 type RiderConnection = {
@@ -597,8 +597,8 @@ function MerchantSalesOverview({
   performance: MerchantPerformance | null;
   performanceLoading: boolean;
   performanceError: string;
-  outOfStockProducts: string[];
-  onGoToStock: () => void;
+  outOfStockProducts: Array<{ productId: number; productName: string }>;
+  onGoToStock: (productId: number) => void;
   historyOnly?: boolean;
 }) {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
@@ -774,8 +774,8 @@ function MerchantSalesOverview({
     </div>
 
     {outOfStockProducts.length > 0 && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4">
-      <p className="text-sm text-rose-100"><strong>{outOfStockProducts.length} catalog item{outOfStockProducts.length === 1 ? '' : 's'} out of stock:</strong> {outOfStockProducts.slice(0, 3).join(', ')}{outOfStockProducts.length > 3 ? ` and ${outOfStockProducts.length - 3} more` : ''}</p>
-      <button type="button" onClick={onGoToStock} className="shrink-0 rounded-lg bg-rose-200 px-3 py-2 text-xs font-black text-rose-950">Update stock</button>
+      <p className="text-sm text-rose-100"><strong>{outOfStockProducts.length} catalog item{outOfStockProducts.length === 1 ? '' : 's'} out of stock:</strong> {outOfStockProducts.slice(0, 3).map(product => product.productName).join(', ')}{outOfStockProducts.length > 3 ? ` and ${outOfStockProducts.length - 3} more` : ''}</p>
+      <button type="button" onClick={() => onGoToStock(outOfStockProducts[0].productId)} className="shrink-0 rounded-lg bg-rose-200 px-3 py-2 text-xs font-black text-rose-950">Update stock</button>
     </div>}
 
     <div className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
@@ -938,8 +938,8 @@ function FoodMerchantTerminal({
       performance={performance}
       performanceLoading={performanceLoading}
       performanceError={performanceError}
-      outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
-      onGoToStock={() => onSectionChange('inventory')}
+      outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
+      onGoToStock={onOpenStock}
     />;
   }
 
@@ -1188,8 +1188,8 @@ function FoodMerchantTerminal({
       performance={performance}
       performanceLoading={performanceLoading}
       performanceError={performanceError}
-      outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
-      onGoToStock={() => onSectionChange('inventory')}
+      outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
+      onGoToStock={onOpenStock}
       historyOnly
     />;
   }
@@ -1227,7 +1227,6 @@ function AlcoholMerchantTerminal({
   orderSoundEnabled,
   onToggleOrderSound,
   onAction,
-  onSectionChange,
   onOpenStock
 }: {
   section: Section;
@@ -1241,7 +1240,6 @@ function AlcoholMerchantTerminal({
   orderSoundEnabled: boolean;
   onToggleOrderSound: () => Promise<void>;
   onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
-  onSectionChange: (section: Section) => void;
   onOpenStock: (productId?: number) => void;
 }) {
   const [campaignName, setCampaignName] = useState('');
@@ -1280,8 +1278,8 @@ function AlcoholMerchantTerminal({
       performance={performance}
       performanceLoading={performanceLoading}
       performanceError={performanceError}
-      outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
-      onGoToStock={() => onSectionChange('inventory')}
+      outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
+      onGoToStock={onOpenStock}
     />;
   }
 
@@ -1296,8 +1294,8 @@ function AlcoholMerchantTerminal({
       performance={performance}
       performanceLoading={performanceLoading}
       performanceError={performanceError}
-      outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
-      onGoToStock={() => onSectionChange('inventory')}
+      outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
+      onGoToStock={onOpenStock}
       historyOnly
     />;
   }
@@ -2602,7 +2600,6 @@ export default function OnBarPartnerNetworkPage() {
             orderSoundEnabled={orderSoundEnabled}
             onToggleOrderSound={toggleOrderSound}
             onAction={performMerchantAction}
-            onSectionChange={setSection}
             onOpenStock={openInventoryForProduct}
           />
         )}
@@ -2618,8 +2615,8 @@ export default function OnBarPartnerNetworkPage() {
             performance={performance}
             performanceLoading={performanceLoading}
             performanceError={performanceError}
-            outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
-            onGoToStock={() => setSection('inventory')}
+            outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
+            onGoToStock={openInventoryForProduct}
           />
         )}
 
