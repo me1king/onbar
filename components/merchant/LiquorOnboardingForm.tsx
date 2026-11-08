@@ -104,6 +104,8 @@ export default function LiquorOnboardingForm({
   const [acceptedRules, setAcceptedRules] = useState<boolean[]>(requiredRules.map(() => false));
   const [documentUploadUrl, setDocumentUploadUrl] = useState('');
   const [documentUploadNotice, setDocumentUploadNotice] = useState('');
+  const [submissionNotice, setSubmissionNotice] = useState('');
+  const [submissionWarning, setSubmissionWarning] = useState('');
   const [invitationValidated, setInvitationValidated] = useState(!inviteToken);
   const onboardingReturnPath = `/merchant/onboarding?flow=liquor${inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : ''}`;
   const signInHref = `/auth?mode=signin&next=${encodeURIComponent(onboardingReturnPath)}`;
@@ -357,8 +359,12 @@ export default function LiquorOnboardingForm({
         documentsUploadUrl?: string;
         documentsUploadEmailSent?: boolean;
         documentsUploadWarning?: string;
+        adminNotificationWarning?: string;
+        submissionWarning?: string;
       };
       if (!response.ok || !payload.id) throw new Error(readError(response, payload));
+      setSubmissionNotice(payload.adminNotificationWarning || '');
+      setSubmissionWarning(payload.submissionWarning || '');
       setDocumentUploadUrl(payload.documentsUploadUrl || '');
       const missingDocuments = uploadTypes.some(([type]) => !files[type]);
       if (missingDocuments) {
@@ -382,6 +388,8 @@ export default function LiquorOnboardingForm({
         <h1 className="mt-2 text-3xl font-black">Your shop is in admin review</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">Licence, identity, till-name and premises checks are not performed by an external provider here. OnBar must review the submitted documents and confirm these details before approval. Your shop is not live yet.</p>
         {documentUploadNotice && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-950">{documentUploadNotice}</p>}
+        {submissionNotice && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-950">Your application is saved and you do not need to submit it again. The team notification could not be confirmed; contact OnBar support with your application reference if you do not receive a review update.</p>}
+        {submissionWarning && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-950">{submissionWarning}</p>}
         {documentUploadUrl && <a href={documentUploadUrl} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-400 px-5 text-sm font-bold text-amber-900 hover:bg-amber-50">Upload missing documents</a>}
         <p className="mt-4 text-xs text-slate-500">Application reference: {submitted}</p>
         <Link href="/merchant/network" className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-400 px-5 text-sm font-black text-slate-950">Track application status</Link>

@@ -25,6 +25,7 @@ export default function MerchantRegistrationPage() {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
+  const [notificationWarning, setNotificationWarning] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -102,9 +103,14 @@ export default function MerchantRegistrationPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify(submission)
       });
-      const result = await response.json() as { application?: Application; error?: string };
+      const result = await response.json() as {
+        application?: Application;
+        error?: string;
+        adminNotificationWarning?: string;
+      };
       if (!response.ok || !result.application) throw new Error(result.error || 'Could not submit your application.');
       setApplication(result.application);
+      setNotificationWarning(result.adminNotificationWarning || '');
       setForm({ ...form, businessName: result.application.business_name, slug: result.application.requested_slug });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not submit your application.');
@@ -139,6 +145,9 @@ export default function MerchantRegistrationPage() {
                   <strong>{application.business_name}</strong>
                   <span>Application status: {application.status.replace(/_/g, ' ')}</span>
                   {application.review_note && <span>{application.review_note}</span>}
+                  {notificationWarning && application.status === 'submitted' && (
+                    <span role="alert">Your application is saved; you do not need to apply again. We could not confirm the admin alert, so contact OnlineBar support with your application reference if you do not receive a review update.</span>
+                  )}
                   {application.status === 'approved' && <Link className="mm-text-link" href="/merchant/dashboard">Open Merchant Studio</Link>}
                 </div>
               )

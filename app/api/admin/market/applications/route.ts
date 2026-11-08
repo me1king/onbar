@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { emailMarketSellerApproval } from '@/lib/merchantApplicationNotifications.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export async function GET() {
     .from('mm_merchant_applications')
     .select('id, user_id, business_name, requested_slug, contact_name, contact_email, contact_phone, business_description, status, review_note, reviewed_by_email, submitted_at')
     .in('status', ['submitted', 'under_review', 'information_requested'])
-    .order('submitted_at', { ascending: true });
+    .order('submitted_at', { ascending: false });
 
   if (error) {
     console.error('[MarketAdmin] Could not load seller applications:', error);
@@ -108,10 +109,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Your admin identity is unavailable; sign in again before reviewing.' }, { status: 403 });
   }
 
+  let approvalContact: { businessName: string; email: string } | null = null;
   if (action === 'approve') {
     const { data: application, error: applicationError } = await access.database
       .from('mm_merchant_applications')
-      .select('user_id, contact_email, contact_phone')
+      .select('user_id, business_name, contact_email, contact_phone')
       .eq('id', applicationId)
       .maybeSingle();
     if (applicationError) {
@@ -135,6 +137,7 @@ export async function POST(request: Request) {
       || normalizePhone(user.phone) !== normalizePhone(application.contact_phone)) {
       return NextResponse.json({ error: 'The seller must verify the same phone number on their account before approval.' }, { status: 409 });
     }
+    approvalContact = { businessName: application.business_name, email: application.contact_email };
   }
 
   const { data, error } = await access.database.rpc('mm_review_merchant_application', {
@@ -155,6 +158,20 @@ export async function POST(request: Request) {
       : status === 404
         ? 'This seller application no longer exists.'
         : 'Could not complete the application review.' }, { status });
+  }
+
+  if (action === 'approve' && approvalContact) {
+    const approvalEmail = await emailMarketSellerApproval({
+      applicationId,
+      businessName: approvalContact.businessName,
+      recipient: approvalContact.email,
+      approvedAt: new Date().toISOString()
+    });
+    return NextResponse.json({
+      review: data,
+      emailSent: approvalEmail.sent,
+      emailWarning: approvalEmail.warning
+    }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   return NextResponse.json({ review: data }, { headers: { 'Cache-Control': 'no-store' } });

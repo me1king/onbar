@@ -79,6 +79,27 @@ export async function GET(request: Request) {
   const applicationId = query.get('id');
   const documentId = query.get('document');
 
+  if (query.get('summary') === '1') {
+    const [{ count: submittedCount, error: partnerError }, { count: marketSubmittedCount, error: marketError }] = await Promise.all([
+      access.database.from('merchant_applications')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'submitted'),
+      access.database.from('mm_merchant_applications')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'submitted')
+    ]);
+    if (partnerError || marketError) {
+      console.error('[MerchantAdmin] Could not load submission counts:', partnerError || marketError);
+      return NextResponse.json({ error: 'Merchant submission alerts could not be loaded.' }, { status: 503 });
+    }
+    return NextResponse.json({
+      submittedCount: submittedCount || 0,
+      marketSubmittedCount: marketSubmittedCount || 0
+    }, {
+      headers: { 'Cache-Control': 'private, no-store, max-age=0' }
+    });
+  }
+
   if (query.get('compliance') === '1') {
     const { data: rows, error } = await access.database.from('merchant_applications')
       .select('id, merchant_code, business_name, business_type, county, town, status, documents')
@@ -277,12 +298,17 @@ export async function GET(request: Request) {
   if (status && !isMerchantApplicationStatus(status)) {
     return NextResponse.json({ error: 'Unsupported application status filter.' }, { status: 400 });
   }
+  const offsetValue = Number(query.get('offset') || 0);
+  if (!Number.isSafeInteger(offsetValue) || offsetValue < 0 || offsetValue > 100_000) {
+    return NextResponse.json({ error: 'Application list offset is invalid.' }, { status: 400 });
+  }
+  const pageSize = 100;
   let applicationsQuery = access.database.from('merchant_applications')
-    .select(applicationListFields)
+    .select(applicationListFields, { count: 'exact' })
     .order('created_at', { ascending: false })
-    .limit(300);
+    .range(offsetValue, offsetValue + pageSize - 1);
   if (status) applicationsQuery = applicationsQuery.eq('status', status);
-  const { data, error } = await applicationsQuery;
+  const { data, count, error } = await applicationsQuery;
   if (error) {
     console.error('[MerchantAdmin] Could not load applications:', error);
     const migrationMissing = error.code === '42P01' || /merchant_applications/i.test(error.message);
@@ -292,7 +318,11 @@ export async function GET(request: Request) {
         : 'Could not load merchant applications.'
     }, { status: 503 });
   }
-  return NextResponse.json({ applications: data || [] }, {
+  return NextResponse.json({
+    applications: data || [],
+    totalCount: count || 0,
+    nextOffset: offsetValue + (data || []).length
+  }, {
     headers: { 'Cache-Control': 'private, no-store, max-age=0' }
   });
 }

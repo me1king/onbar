@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { notifyAdminOfMerchantApplication } from '@/lib/merchantApplicationNotifications.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,7 +129,21 @@ export async function POST(request: Request) {
     if (!updated) {
       return NextResponse.json({ error: 'This application is not waiting for more information.' }, { status: 409 });
     }
-    return NextResponse.json({ application: updated }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+    const adminAlert = await notifyAdminOfMerchantApplication(database, {
+      applicationId: updated.id,
+      businessName: updated.business_name,
+      businessType: 'market seller',
+      contactName,
+      contactEmail,
+      contactPhone,
+      reviewPath: '/lord/market',
+      idempotencyKey: `market-seller-application-submitted:${updated.id}:${updated.submitted_at}`
+    });
+    return NextResponse.json({
+      application: updated,
+      adminNotificationSent: adminAlert.sent,
+      adminNotificationWarning: adminAlert.warning
+    }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   }
 
   const { data: membership, error: membershipError } = await database
@@ -177,5 +192,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Could not submit your seller application.' }, { status: 503 });
   }
 
-  return NextResponse.json({ application }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
+  const adminAlert = await notifyAdminOfMerchantApplication(database, {
+    applicationId: application.id,
+    businessName: application.business_name,
+    businessType: 'market seller',
+    contactName,
+    contactEmail,
+    contactPhone,
+    reviewPath: '/lord/market',
+    idempotencyKey: `market-seller-application-submitted:${application.id}:${application.submitted_at}`
+  });
+  return NextResponse.json({
+    application,
+    adminNotificationSent: adminAlert.sent,
+    adminNotificationWarning: adminAlert.warning
+  }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
 }

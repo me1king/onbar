@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
   ArrowUpRight,
   CheckCircle2,
   Clock3,
+  CreditCard,
   FileText,
   Loader2,
   RefreshCcw,
@@ -66,6 +67,16 @@ interface Application {
   documents_deferred?: boolean;
   documents_due_at?: string | null;
   requiredDocuments?: string[];
+  offered_goods_pricing?: Array<{
+    product_id: number;
+    product_name: string;
+    price: number;
+    currency: string;
+  }>;
+  alcohol_onboarding?: {
+    mpesaTill?: string;
+    mpesaRegisteredName?: string;
+  } | null;
   status: MerchantApplicationStatus;
   review_note?: string | null;
   submitted_at: string;
@@ -126,6 +137,9 @@ function missingRequiredDocs(application: Application) {
 
 export default function MerchantApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
+  const [totalApplicationCount, setTotalApplicationCount] = useState(0);
+  const [loadingMoreApplications, setLoadingMoreApplications] = useState(false);
+  const loadedApplicationsCount = useRef(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Application | null>(null);
   const [events, setEvents] = useState<ApplicationEvent[]>([]);
@@ -155,18 +169,31 @@ export default function MerchantApplicationsPage() {
   const [documentUploadUrl, setDocumentUploadUrl] = useState('');
   const [requestingDocumentLink, setRequestingDocumentLink] = useState(false);
 
-  const fetchApplications = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchApplications = useCallback(async (append = false) => {
+    if (append) setLoadingMoreApplications(true);
+    else {
+      loadedApplicationsCount.current = 0;
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const response = await fetch('/api/admin/merchant-applications', { cache: 'no-store' });
-      const result = await response.json() as { applications?: Application[]; error?: string };
+      const offset = append ? loadedApplicationsCount.current : 0;
+      const response = await fetch(`/api/admin/merchant-applications?offset=${offset}`, { cache: 'no-store' });
+      const result = await response.json() as {
+        applications?: Application[];
+        totalCount?: number;
+        error?: string;
+      };
       if (!response.ok) throw new Error(result.error || 'Applications could not be loaded.');
-      setApplications(result.applications || []);
+      const rows = result.applications || [];
+      loadedApplicationsCount.current = offset + rows.length;
+      setApplications(current => append ? [...current, ...rows] : rows);
+      setTotalApplicationCount(result.totalCount || 0);
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Applications could not be loaded.');
     } finally {
-      setLoading(false);
+      if (append) setLoadingMoreApplications(false);
+      else setLoading(false);
     }
   }, []);
 
@@ -188,7 +215,18 @@ export default function MerchantApplicationsPage() {
     }
   }, []);
 
-  useEffect(() => { void fetchApplications(); }, [fetchApplications]);
+  useEffect(() => {
+    const refresh = () => {
+      void fetchApplications();
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [fetchApplications]);
 
   const fetchDocumentPolicy = useCallback(async () => {
     setDocumentPolicyLoading(true);
@@ -337,6 +375,7 @@ export default function MerchantApplicationsPage() {
         : `Application updated: ${labels[status]}.`);
       setNote('');
       await Promise.all([fetchApplications(), fetchDetail(selected.id)]);
+      window.dispatchEvent(new Event('merchant-submissions-updated'));
       if (status === 'approved' && result.emailWarning) setError(result.emailWarning);
       const complianceResponse = await fetch('/api/admin/merchant-applications?compliance=1', { cache: 'no-store' });
       const compliancePayload = await complianceResponse.json() as { documents?: ExpiringDocument[]; error?: string };
@@ -409,8 +448,8 @@ export default function MerchantApplicationsPage() {
           <p className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-primary">
             <Store size={15} /> Merchant network
           </p>
-          <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 sm:text-4xl">Onboarding & verification</h1>
-          <p className="mt-2 text-sm text-slate-600">Review business documents, request information, and control activation.</p>
+          <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 sm:text-4xl">Merchant submissions</h1>
+          <p className="mt-2 text-sm text-slate-600">Review new applications, business details, documents, and offered prices in one place.</p>
         </div>
 
         <div className="flex gap-2">
@@ -559,6 +598,15 @@ export default function MerchantApplicationsPage() {
               </div>
             ))}
           </div>
+          {!loading && applications.length < totalApplicationCount && (
+            <div className="border-t border-slate-100 p-4 text-center">
+              <p className="mb-3 text-xs text-slate-500">Showing {applications.length} of {totalApplicationCount} applications.</p>
+              <Button variant="outline" onClick={() => void fetchApplications(true)} disabled={loadingMoreApplications} className="rounded-xl">
+                {loadingMoreApplications && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {loadingMoreApplications ? 'Loading...' : 'Load older applications'}
+              </Button>
+            </div>
+          )}
         </Card>
 
         <Card className="min-h-[500px] rounded-2xl border-0 p-5 shadow-sm sm:p-7">
@@ -586,6 +634,58 @@ export default function MerchantApplicationsPage() {
                 {selected.preparation_capacity && <p><span className="font-bold text-slate-500">Daily capacity:</span> {selected.preparation_capacity}</p>}
                 {selected.delivery_radius_km && <p><span className="font-bold text-slate-500">Delivery radius:</span> {selected.delivery_radius_km} km</p>}
                 <p><span className="font-bold text-slate-500">Collection:</span> {selected.collection_available ? 'Available' : 'Not listed'}</p>
+              </section>
+
+              <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">Goods and prices offered</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">These are the merchant&apos;s submitted per-unit offer prices, not a confirmed or issued payout.</p>
+                  </div>
+                  <Link href="/lord/finance" className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-800 hover:bg-sky-100">
+                    <CreditCard size={14} /> Open payments ledger <ArrowUpRight size={14} />
+                  </Link>
+                </div>
+                {selected.offered_goods_pricing?.length ? (
+                  <div className="mt-4 overflow-x-auto rounded-xl border border-sky-100 bg-white">
+                    <table className="w-full min-w-[420px] text-left text-sm">
+                      <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3 font-bold">Product</th>
+                          <th className="px-4 py-3 text-right font-bold">Offered unit price</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selected.offered_goods_pricing.map((offer, index) => (
+                          <tr key={`${offer.product_id}-${index}`} className="border-t border-slate-100">
+                            <td className="px-4 py-3 font-semibold text-slate-800">{offer.product_name}</td>
+                            <td className="px-4 py-3 text-right font-black text-slate-900">
+                              {offer.currency || 'KES'} {Number(offer.price).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-xl border border-sky-100 bg-white p-3 text-sm text-slate-600">No product offer prices were included with this application.</p>
+                )}
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                  Record a settlement only after the relevant orders are fulfilled, quantities are validated, and the merchant&apos;s payout destination is verified. Approval alone does not create a payable.
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Submitted payout destination</h3>
+                {selected.alcohol_onboarding?.mpesaTill ? (
+                  <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                    <p><span className="font-bold text-slate-500">M-Pesa till:</span> {selected.alcohol_onboarding.mpesaTill}</p>
+                    <p><span className="font-bold text-slate-500">Registered name:</span> {selected.alcohol_onboarding.mpesaRegisteredName || 'Not provided'}</p>
+                    <p className="font-bold text-amber-700 sm:col-span-2">Submitted details are unverified. Confirm the destination before any payment.</p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-600">No payout destination was collected with this application. Verify payment details through the approved merchant process before settlement.</p>
+                )}
               </section>
 
               {(selected.documents_deferred || missingRequiredDocs(selected).length > 0) && ['submitted', 'under_review', 'information_requested'].includes(selected.status) && (

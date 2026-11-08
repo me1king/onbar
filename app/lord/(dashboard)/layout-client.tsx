@@ -87,6 +87,8 @@ export default function AdminLayoutClient({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [pendingSubmissions, setPendingSubmissions] = useState<number | null>(null);
+  const [pendingMarketSubmissions, setPendingMarketSubmissions] = useState<number | null>(null);
 
   useEffect(() => {
       const syncSidebarForViewport = () => {
@@ -155,6 +157,47 @@ export default function AdminLayoutClient({
   const isOwner = role === 'owner';
   const isAdmin = role === 'admin' || isOwner;
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    const loadSubmissionCount = async () => {
+      try {
+        const response = await fetch('/api/admin/merchant-applications?summary=1', { cache: 'no-store' });
+        const result = await response.json() as {
+          submittedCount?: number;
+          marketSubmittedCount?: number;
+          error?: string;
+        };
+        if (
+          !response.ok
+          || typeof result.submittedCount !== 'number'
+          || !Number.isSafeInteger(result.submittedCount)
+          || result.submittedCount < 0
+          || typeof result.marketSubmittedCount !== 'number'
+          || !Number.isSafeInteger(result.marketSubmittedCount)
+          || result.marketSubmittedCount < 0
+        ) {
+          throw new Error(result.error || 'Merchant submission alerts could not be loaded.');
+        }
+        if (active) {
+          setPendingSubmissions(result.submittedCount);
+          setPendingMarketSubmissions(result.marketSubmittedCount);
+        }
+      } catch (error) {
+        console.error('[AdminNavigation] Could not refresh merchant submission alerts:', error);
+      }
+    };
+
+    void loadSubmissionCount();
+    const interval = window.setInterval(() => void loadSubmissionCount(), 60_000);
+    window.addEventListener('merchant-submissions-updated', loadSubmissionCount);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('merchant-submissions-updated', loadSubmissionCount);
+    };
+  }, [isAdmin]);
+
   const allNavItems = [
     { group: 'SHIFT CONTROL', items: [
       { name: 'Shift Console', href: '/lord', icon: LayoutDashboard, minRole: 'viewer' },
@@ -186,8 +229,8 @@ export default function AdminLayoutClient({
       { name: 'The Buzz Hub', href: '/lord/buzz', icon: Flame, permission: 'can_manage_marketing' },
       { name: 'Tasks Board', href: '/lord/operations/tasks', icon: LayoutIcon, permission: 'can_manage_orders' },
       { name: 'Vendor Launch Pipeline', href: '/lord/vendor-onboarding', icon: ClipboardList, minRole: 'admin' },
-      { name: 'Merchant Onboarding', href: '/lord/merchants', icon: Store, minRole: 'admin' },
-      { name: 'Market Operations', href: '/lord/market', icon: Store, permission: 'can_manage_inventory' },
+      { name: 'Partner Submissions', href: '/lord/merchants', icon: ClipboardList, minRole: 'admin' },
+      { name: 'Market Seller Applications & Operations', href: '/lord/market', icon: Store, permission: 'can_manage_inventory', minRole: 'admin' },
       { name: 'Traceability & Incidents', href: '/lord/traceability', icon: PackageSearch, permission: 'can_manage_orders' },
       { name: 'Partner Bars', href: '/lord/operations/vendors', icon: Store, permission: 'can_manage_settings' },
       { name: 'Global Supply', href: '/lord/operations/sourcing', icon: Globe, permission: 'can_manage_inventory' },
@@ -280,7 +323,12 @@ export default function AdminLayoutClient({
 
           <GlobalCommandPalette isOpen={isSearchOpen} setIsOpen={setIsSearchOpen} pages={searchablePages} />
           <LiveActivitySidebar isOpen={isActivityOpen} setIsOpen={setIsActivityOpen} />
-          <NotificationCenter isOpen={isNotificationsOpen} setIsOpen={setIsNotificationsOpen} />
+          <NotificationCenter
+            isOpen={isNotificationsOpen}
+            setIsOpen={setIsNotificationsOpen}
+            pendingSubmissions={pendingSubmissions || 0}
+            pendingMarketSubmissions={pendingMarketSubmissions || 0}
+          />
 
           {/* Mobile Header */}
           <div className="lg:hidden flex items-center justify-between px-4 py-4 bg-background border-b border-border sticky top-0 z-50 shadow-sm">
@@ -338,10 +386,21 @@ export default function AdminLayoutClient({
                         <Link
                           key={item.name}
                           href={item.href}
-                          title={isSidebarCollapsed ? item.name : ""}
+                          title={isSidebarCollapsed
+                            ? item.href === '/lord/merchants' && pendingSubmissions
+                              ? `${item.name}: ${pendingSubmissions} awaiting review`
+                              : item.href === '/lord/market' && pendingMarketSubmissions
+                                ? `${item.name}: ${pendingMarketSubmissions} awaiting review`
+                                : item.name
+                            : ""}
+                          aria-label={item.href === '/lord/merchants' && pendingSubmissions
+                            ? `${item.name}, ${pendingSubmissions} awaiting review`
+                            : item.href === '/lord/market' && pendingMarketSubmissions
+                              ? `${item.name}, ${pendingMarketSubmissions} awaiting review`
+                              : item.name}
                           onClick={() => setIsSidebarOpen(false)}
                           className={cn(
-                            "flex items-center rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 group overflow-hidden",
+                            "relative flex items-center rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 group overflow-hidden",
                             isSidebarCollapsed ? "justify-center p-3.5" : "gap-4 px-5 py-3",
                             isActive(item.href)
                               ? "bg-primary text-white shadow-lg shadow-primary/20"
@@ -353,6 +412,24 @@ export default function AdminLayoutClient({
                             isActive(item.href) ? "text-white" : "text-slate-300 group-hover:text-slate-500"
                           )} />
                           {!isSidebarCollapsed && <span className="truncate flex-1">{item.name}</span>}
+                          {item.href === '/lord/merchants' && Boolean(pendingSubmissions) && (
+                            <span className={cn(
+                              "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black tabular-nums",
+                              isActive(item.href) ? "bg-white/20 text-white" : "bg-rose-100 text-rose-700",
+                              isSidebarCollapsed && "absolute right-1 top-1 px-1.5"
+                            )}>
+                              {pendingSubmissions}
+                            </span>
+                          )}
+                          {item.href === '/lord/market' && Boolean(pendingMarketSubmissions) && (
+                            <span className={cn(
+                              "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black tabular-nums",
+                              isActive(item.href) ? "bg-white/20 text-white" : "bg-rose-100 text-rose-700",
+                              isSidebarCollapsed && "absolute right-1 top-1 px-1.5"
+                            )}>
+                              {pendingMarketSubmissions}
+                            </span>
+                          )}
                         </Link>
                       ))}
                     </div>
@@ -427,7 +504,13 @@ export default function AdminLayoutClient({
 
                           <Button onClick={() => setIsNotificationsOpen(true)} variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/5 relative">
                               <Bell className="h-4 w-4" />
-                              <span className="absolute top-2.5 right-2.5 h-1.5 w-1.5 bg-primary rounded-full border-2 border-background"></span>
+                              {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) > 0 ? (
+                                <span className="absolute -right-1 -top-1 min-w-4 rounded-full border-2 border-background bg-rose-600 px-1 text-[8px] font-black leading-3 text-white">
+                                  {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0)}
+                                </span>
+                              ) : (
+                                <span className="absolute top-2.5 right-2.5 h-1.5 w-1.5 bg-primary rounded-full border-2 border-background"></span>
+                              )}
                           </Button>
                       </div>
 

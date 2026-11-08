@@ -17,7 +17,17 @@ interface Notification {
     isRead: boolean;
 }
 
-export default function NotificationCenter({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (open: boolean) => void }) {
+export default function NotificationCenter({
+    isOpen,
+    setIsOpen,
+    pendingSubmissions = 0,
+    pendingMarketSubmissions = 0
+}: {
+    isOpen: boolean;
+    setIsOpen: (open: boolean) => void;
+    pendingSubmissions?: number;
+    pendingMarketSubmissions?: number;
+}) {
     const [notifications, setNotifications] = React.useState<Notification[]>([]);
 
     const fetchNotifications = React.useCallback(async () => {
@@ -53,7 +63,28 @@ export default function NotificationCenter({ isOpen, setIsOpen }: { isOpen: bool
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     };
 
-    const unreadCount = notifications.filter(n => !n.isRead).length;
+    const liveNotifications: Notification[] = [
+        ...(pendingSubmissions > 0 ? [{
+            id: 'merchant-submissions',
+            type: 'warning' as const,
+            label: `${pendingSubmissions} OnBar partner application${pendingSubmissions === 1 ? '' : 's'} awaiting review`,
+            meta: 'Review business details, documents, and offered prices.',
+            time: 'Now',
+            url: '/lord/merchants',
+            isRead: false
+        }] : []),
+        ...(pendingMarketSubmissions > 0 ? [{
+            id: 'market-seller-submissions',
+            type: 'warning' as const,
+            label: `${pendingMarketSubmissions} Market seller application${pendingMarketSubmissions === 1 ? '' : 's'} awaiting review`,
+            meta: 'Review boutique requests, verify seller contacts, and approve or request information.',
+            time: 'Now',
+            url: '/lord/market',
+            isRead: false
+        }] : [])
+    ];
+    const visibleNotifications = [...liveNotifications, ...notifications];
+    const unreadCount = visibleNotifications.filter(n => !n.isRead).length;
 
     if (!isOpen) return null;
 
@@ -81,13 +112,13 @@ export default function NotificationCenter({ isOpen, setIsOpen }: { isOpen: bool
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-3 no-scrollbar">
-                    {notifications.length === 0 ? (
+                    {visibleNotifications.length === 0 ? (
                         <div className="py-20 text-center opacity-30">
                             <CheckCircle2 className="h-10 w-10 mx-auto mb-4" />
                             <p className="text-[10px] font-black uppercase tracking-widest">Shift clear, Master.</p>
                         </div>
                     ) : (
-                        notifications.map((n) => (
+                        visibleNotifications.map((n) => (
                             <Link key={n.id} href={n.url} onClick={() => setIsOpen(false)}>
                                 <div className={cn(
                                     "p-6 rounded-[2rem] border transition-all flex gap-4 group relative",

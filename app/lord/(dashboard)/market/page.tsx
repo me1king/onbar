@@ -224,7 +224,18 @@ export default function MarketOperationsPage() {
     }
   }, []);
 
-  useEffect(() => { void loadApplications(); }, [loadApplications]);
+  useEffect(() => {
+    const refresh = () => {
+      void loadApplications();
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [loadApplications]);
 
   async function reviewReport(report: MarketCustomerReport, status: 'investigating' | 'resolved' | 'dismissed') {
     const note = reportNotes[report.id]?.trim() || '';
@@ -268,14 +279,18 @@ export default function MarketOperationsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ applicationId: application.id, action, note })
       });
-      const result = await response.json() as { error?: string };
+      const result = await response.json() as { error?: string; emailSent?: boolean; emailWarning?: string };
       if (!response.ok) throw new Error(result.error || 'Could not review this application.');
       setMessage(action === 'approve'
-        ? `${application.business_name} was approved.`
+        ? result.emailSent
+          ? `${application.business_name} was approved and the seller dashboard link was emailed.`
+          : `${application.business_name} was approved.`
         : action === 'reject'
           ? `${application.business_name} was declined.`
           : `More information was requested from ${application.business_name}.`);
       await loadApplications();
+      window.dispatchEvent(new Event('merchant-submissions-updated'));
+      if (result.emailWarning) setError(result.emailWarning);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not review this application.');
     } finally {
@@ -423,8 +438,9 @@ export default function MarketOperationsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Midnight Market</p>
-          <h1 className="mt-2 text-3xl font-black">Halloween Market Desk</h1>
-          <p className="mt-2 text-sm text-slate-500">Review sellers and listings, then suspend or restore any boutique. Event registration stays independent.</p>
+          <h1 className="mt-2 text-3xl font-black">Market seller applications</h1>
+          <p className="mt-2 text-sm text-slate-500">New applications appear first. Verify seller contacts before approval; approved accounts receive access to their seller dashboard.</p>
+          <p className="mt-2 text-xs font-bold text-slate-600">{applications.length} application{applications.length === 1 ? '' : 's'} awaiting review</p>
         </div>
         <Button onClick={() => void loadApplications()} disabled={loading} variant="outline" className="gap-2">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh

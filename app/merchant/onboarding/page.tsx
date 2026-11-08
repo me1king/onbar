@@ -206,6 +206,8 @@ export default function MerchantOnboarding() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submittedApplicationId, setSubmittedApplicationId] = useState('');
+  const [submissionNotice, setSubmissionNotice] = useState('');
+  const [submissionWarning, setSubmissionWarning] = useState('');
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [draftPrivacyAcknowledged, setDraftPrivacyAcknowledged] = useState(false);
   const [catalogOptions, setCatalogOptions] = useState<Array<{
@@ -821,8 +823,15 @@ export default function MerchantOnboarding() {
         headers: { Authorization: `Bearer ${accountSession.accessToken}` },
         body: payload
       });
-      const result = await readJsonResponse<{ id?: string; error?: string }>(response);
+      const result = await readJsonResponse<{
+        id?: string;
+        error?: string;
+        adminNotificationWarning?: string;
+        submissionWarning?: string;
+      }>(response);
       if (!response.ok) throw new Error(result.error || 'Your application could not be submitted.');
+      setSubmissionNotice(result.adminNotificationWarning || '');
+      setSubmissionWarning(result.submissionWarning || '');
       if (journeySessionId) {
         if (journeyAnalyticsEnabled) {
           await sendJourneyEvent('onboarding_stage_exited', onboardingStages[step], {
@@ -878,6 +887,12 @@ export default function MerchantOnboarding() {
               : 'OnBar will review your business details and documents. A merchant ID is assigned after approval. Your business will not become active automatically.'}
           </p>
           {submittedApplicationId && <p className="mt-4 text-xs font-semibold text-slate-500">Application reference: {submittedApplicationId}</p>}
+          {submissionNotice && (
+            <p className="mx-auto mt-4 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-950">
+              Your application is saved and you do not need to submit it again. The team notification could not be confirmed; contact OnBar support with your application reference if you do not receive a review update.
+            </p>
+          )}
+          {submissionWarning && <p className="mx-auto mt-4 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-950">{submissionWarning}</p>}
           {invitation ? (
             <div className="mx-auto mt-4 max-w-md rounded-2xl border border-slate-200 bg-slate-50 p-5 text-left">
               <p className="text-sm font-bold text-slate-900">What happens next</p>

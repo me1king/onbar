@@ -22,6 +22,7 @@ import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productD
 import { getPublicBaseUrl } from '@/lib/utils';
 import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 import { renderVendorApplicationEmail } from '@/lib/lifecycleEmailPreviews';
+import { notifyAdminOfMerchantApplication } from '@/lib/merchantApplicationNotifications.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -636,6 +637,9 @@ export async function POST(request: Request) {
     ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     : null;
   const uploadedPaths: string[] = [];
+  let applicationSaved = false;
+  let applicationEventRecorded = false;
+  let adminAlert: { sent: boolean; warning?: string } | null = null;
   try {
     const documents: MerchantApplicationDocument[] = [];
     for (const entry of fileEntries) {
@@ -700,6 +704,7 @@ export async function POST(request: Request) {
       ...(invitationLead ? { onboarding_lead_id: invitationLead.id } : {})
     });
     if (applicationError) throw new Error(`Could not save the merchant application: ${applicationError.message}`);
+    applicationSaved = true;
 
     const { error: eventError } = await database.from('merchant_application_events').insert({
       application_id: applicationId,
@@ -713,6 +718,19 @@ export async function POST(request: Request) {
       }
     });
     if (eventError) throw new Error(`Could not record application audit history: ${eventError.message}`);
+    applicationEventRecorded = true;
+
+    adminAlert = await notifyAdminOfMerchantApplication(database, {
+      applicationId,
+      businessName,
+      businessType: businessTypeValue,
+      contactName: ownerName,
+      contactEmail: email,
+      contactPhone: phone,
+      reviewPath: '/lord/merchants',
+      idempotencyKey: `merchant-application-submitted:${applicationId}`
+    });
+
     if (invitationLead && invitationTokenHash) {
       const { error: completionError } = await database.rpc('complete_vendor_onboarding_invite', {
         p_token_hash: invitationTokenHash,
@@ -788,16 +806,63 @@ export async function POST(request: Request) {
       status: 'submitted',
       documentsUploadUrl,
       documentsUploadEmailSent,
-      documentsUploadWarning
+      documentsUploadWarning,
+      adminNotificationSent: adminAlert.sent,
+      adminNotificationWarning: adminAlert.warning
     }, { status: 201 });
   } catch (error) {
     console.error('[MerchantApplications] Submission failed:', error);
+    let applicationStateUnknown = false;
+    if (!applicationSaved) {
+      const { data: savedApplication, error: lookupError } = await database.from('merchant_applications')
+        .select('id')
+        .eq('id', applicationId)
+        .maybeSingle();
+      if (lookupError) {
+        console.error('[MerchantApplications] Could not confirm whether the application was saved:', lookupError);
+        applicationStateUnknown = lookupError.code !== '42P01' && lookupError.code !== 'PGRST205';
+      } else {
+        applicationSaved = Boolean(savedApplication);
+      }
+    }
+
+    if (applicationSaved) {
+      if (!adminAlert) {
+        adminAlert = await notifyAdminOfMerchantApplication(database, {
+          applicationId,
+          businessName,
+          businessType: businessTypeValue,
+          contactName: ownerName,
+          contactEmail: email,
+          contactPhone: phone,
+          reviewPath: '/lord/merchants',
+          idempotencyKey: `merchant-application-submitted:${applicationId}`
+        });
+      }
+      const alertStatus = adminAlert.sent
+        ? 'The review team has been alerted.'
+        : 'The admin email alert could not be confirmed.';
+      return NextResponse.json({
+        id: applicationId,
+        status: 'submitted',
+        adminNotificationSent: adminAlert.sent,
+        adminNotificationWarning: adminAlert.warning,
+        submissionWarning: applicationEventRecorded
+          ? `Your application is saved. ${alertStatus} A private onboarding link needs follow-up; do not submit again.`
+          : `Your application is saved, but its review history needs follow-up. ${alertStatus} Do not submit again.`
+      }, { status: 201 });
+    }
+
+    if (applicationStateUnknown) {
+      return NextResponse.json({
+        error: `We could not confirm whether your application was saved. Do not submit it again yet; contact OnBar support with reference ${applicationId}.`
+      }, { status: 503 });
+    }
+
     if (uploadedPaths.length) {
       const { error: cleanupError } = await database.storage.from(DOCUMENT_BUCKET).remove(uploadedPaths);
       if (cleanupError) console.error('[MerchantApplications] Could not remove unlinked application documents:', cleanupError);
     }
-    const { error: applicationCleanupError } = await database.from('merchant_applications').delete().eq('id', applicationId);
-    if (applicationCleanupError) console.error('[MerchantApplications] Could not remove incomplete application:', applicationCleanupError);
     if (error instanceof Error && /account_user_id/i.test(error.message)) {
       return NextResponse.json({
         error: 'Merchant account linking is not installed yet. Run supabase/MERCHANT_APPLICATION_ACCOUNT_LINK_MIGRATION.sql, then retry your application.'

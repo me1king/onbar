@@ -325,6 +325,26 @@ merchant-application links. Apply the migration to staging and test an
 invitation through expiry, single-use submission, and admin review before
 issuing production links.
 
+## Seller application alerts and approvals
+
+The two seller application forms use separate review queues:
+
+- OnBar partners submit at `/merchant/onboarding`, appear in
+  `merchant_applications`, and are reviewed at `/lord/merchants`. Approval
+  emails the account-protected `/vendor` entry link.
+- Market boutiques submit at `/merchant/register`, appear in
+  `mm_merchant_applications`, and are reviewed at `/lord/market`. Approval
+  creates the merchant and owner membership in the review transaction, then
+  emails the seller dashboard link at `/merchant/dashboard`.
+
+Both submissions send an admin email alert. Configure `ADMIN_EMAIL` or publish
+the admin contact email in site settings, and configure a transactional sender
+with `JMSURF_MAIL_KEY`/`JMSURF_FROM_EMAIL` or `RESEND_API_KEY`/
+`RESEND_FROM_EMAIL`. If email delivery is unavailable, the application remains
+saved, the applicant is told not to resubmit, and the admin sidebar continues
+to show pending counts; it refreshes every minute and when a review page regains
+focus. The queues order newest submissions first.
+
 If the marketing dashboard reports that `marketing_campaigns.name` is missing,
 run `ADMIN_DASHBOARD_LOG_FIX_MIGRATION.sql` in the Supabase SQL Editor. It adds
 the column and fills existing campaign names from `title` when available.
