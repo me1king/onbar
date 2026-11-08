@@ -116,7 +116,7 @@ export async function POST(request: Request) {
   }
 
   const riderName = typeof data.rider_name === 'string' ? data.rider_name.trim() : 'Rider';
-  const terminalUrl = `${getPublicBaseUrl()}/rider/dashboard?account=1`;
+  const terminalUrl = `${getPublicBaseUrl()}/rider?account=1`;
   const email = renderRiderApprovalEmail({ riderName, pin, terminalUrl });
   try {
     await sendTransactionalEmail({

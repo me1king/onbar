@@ -137,6 +137,7 @@ export default function MerchantApplicationsPage() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [vendorWorkspaceUrl, setVendorWorkspaceUrl] = useState('');
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [requirementsLoading, setRequirementsLoading] = useState(false);
   const [expiries, setExpiries] = useState<ExpiringDocument[]>([]);
@@ -313,17 +314,30 @@ export default function MerchantApplicationsPage() {
     setWorking(true);
     setError(null);
     setMessage(null);
+    setVendorWorkspaceUrl('');
     try {
       const response = await fetch('/api/admin/merchant-applications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: selected.id, status, note })
       });
-      const result = await response.json() as { application?: Application; error?: string };
+      const result = await response.json() as {
+        application?: Application;
+        vendorUrl?: string;
+        emailSent?: boolean;
+        emailWarning?: string;
+        error?: string;
+      };
       if (!response.ok || !result.application) throw new Error(result.error || 'Review decision could not be saved.');
-      setMessage(`Application updated: ${labels[status]}.`);
+      if (status === 'approved' && result.vendorUrl) setVendorWorkspaceUrl(result.vendorUrl);
+      setMessage(status === 'approved'
+        ? result.emailSent
+          ? 'Application approved. The vendor workspace link was emailed to the merchant.'
+          : 'Application approved.'
+        : `Application updated: ${labels[status]}.`);
       setNote('');
       await Promise.all([fetchApplications(), fetchDetail(selected.id)]);
+      if (status === 'approved' && result.emailWarning) setError(result.emailWarning);
       const complianceResponse = await fetch('/api/admin/merchant-applications?compliance=1', { cache: 'no-store' });
       const compliancePayload = await complianceResponse.json() as { documents?: ExpiringDocument[]; error?: string };
       if (!complianceResponse.ok) throw new Error(compliancePayload.error || 'Compliance expiry data could not be refreshed.');
@@ -467,6 +481,12 @@ export default function MerchantApplicationsPage() {
 
       {error && <div role="alert" className="mb-4 rounded-xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}
       {message && <div role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">{message}</div>}
+      {vendorWorkspaceUrl && (
+        <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-900">
+          Vendor workspace link:{' '}
+          <a href={vendorWorkspaceUrl} className="break-all underline" target="_blank" rel="noreferrer">{vendorWorkspaceUrl}</a>
+        </div>
+      )}
 
       <details className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" onToggle={event => { if (event.currentTarget.open && !requirements.length) void fetchRequirements(); }}>
         <summary className="cursor-pointer font-black uppercase text-slate-800">Configure document checklist by business type and county</summary>

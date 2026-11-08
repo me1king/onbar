@@ -176,21 +176,44 @@ export function renderVendorApplicationEmail(input: { businessName: string; uplo
   };
 }
 
+export function renderMerchantApprovalEmail(input: { businessName: string; dashboardUrl: string }) {
+  const businessName = input.businessName.trim() || 'your business';
+  return {
+    subject: `${businessName} is approved for the OnBar Vendor Workspace`,
+    text: `Good news: ${businessName} has been approved to join the OnBar merchant network. Open your vendor link: ${input.dashboardUrl}. Sign in with the verified OnBar account and email address used for your application. Your dashboard is protected and only available to the approved account.`,
+    html: renderOnboardingPreview({
+      title: `${businessName} is approved for the OnBar Vendor Workspace`,
+      preheader: 'Your OnBar merchant application is approved. Open your secure vendor workspace.',
+      eyebrow: 'MERCHANT APPLICATION APPROVED',
+      headline: 'Welcome to the OnBar network.',
+      message: `${businessName} has been approved. Open your vendor link and sign in with the verified OnBar account and email address used for your application.`,
+      steps: [
+        { title: 'Install the vendor app', detail: 'Add the small OnBar Vendor app to your home screen for quick access.' },
+        { title: 'Sign in securely', detail: 'Use the verified OnBar account linked to your merchant application.' },
+        { title: 'Open your workspace', detail: 'Manage your approved business, stock, and incoming activity.' }
+      ],
+      buttonLabel: 'Open Vendor Workspace',
+      buttonUrl: input.dashboardUrl,
+      note: 'This link does not grant account access. If you have not created an OnBar account with your application email, contact Online Bar support before continuing.'
+    })
+  };
+}
+
 export function renderRiderApprovalEmail(input: { riderName: string; pin: string; terminalUrl: string }) {
   const riderName = input.riderName.trim() || 'Rider';
   return {
     subject: 'Your Online Bar rider account is approved',
-    text: `Hi ${riderName}, your Online Bar rider account has been approved. Open your rider terminal at ${input.terminalUrl} and continue with your verified OnlineBar account using the same email or phone from your rider application. You can also sign in with your rider phone number and this four-digit PIN: ${input.pin}. Keep the PIN private.`,
+    text: `Hi ${riderName}, your Online Bar rider account has been approved. Open your rider app link at ${input.terminalUrl}. Install the app when prompted, or continue in your browser. Sign in with your verified OnlineBar account using the same email or phone from your rider application. You can also sign in with your rider phone number and this four-digit PIN: ${input.pin}. Keep the PIN private.`,
     html: renderOnboardingPreview({
       title: 'Your Online Bar rider account is approved',
       preheader: 'Your rider account is approved. Sign in securely to continue.',
       eyebrow: 'RIDER ACCOUNT APPROVED',
       headline: `You’re approved, ${riderName}.`,
-      message: 'Your Online Bar rider account is ready. Continue with the verified account from your application, or sign in with your rider phone number and the one-time PIN below.',
+      message: 'Your Online Bar rider account is ready. Open the link, install the small Rider app when prompted, or continue in your browser. Sign in with the verified account from your application, or use your rider phone number and the PIN below.',
       steps: [
-        { title: 'Open your rider terminal', detail: 'Sign in using the phone or email from your application.' },
+        { title: 'Install the Rider app', detail: 'Follow the prompt in your rider link, or continue in your browser.' },
         { title: 'Your one-time PIN', detail: `${input.pin} · Keep this code private.` },
-        { title: 'Finish your setup', detail: 'Review your profile and go online when you are ready.' }
+        { title: 'Open your dashboard', detail: 'Sign in using the verified account or phone number from your application.' }
       ],
       buttonLabel: 'Open rider terminal',
       buttonUrl: input.terminalUrl,

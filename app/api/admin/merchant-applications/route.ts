@@ -11,6 +11,7 @@ import {
   type MerchantDocumentRequirement,
   type MerchantApplicationDocument
 } from '@/lib/merchantApplications';
+import { renderMerchantApprovalEmail } from '@/lib/lifecycleEmailPreviews';
 
 export const dynamic = 'force-dynamic';
 
@@ -320,10 +321,11 @@ export async function PATCH(request: Request) {
   }
 
   let isAlcoholRetailer = false;
+  let approvalContact: { businessName: string; email: string; wasAlreadyApproved: boolean } | null = null;
   if (body.status === 'approved') {
     const { data: application, error: applicationError } = await access.database
       .from('merchant_applications')
-      .select('business_type, vendor_type, alcohol_onboarding')
+      .select('business_type, vendor_type, alcohol_onboarding, business_name, email, status')
       .eq('id', body.id)
       .maybeSingle();
     if (applicationError) {
@@ -334,6 +336,11 @@ export async function PATCH(request: Request) {
     isAlcoholRetailer = application.business_type === 'bar'
       && application.vendor_type === 'retailer'
       && application.alcohol_onboarding !== null;
+    approvalContact = {
+      businessName: application.business_name,
+      email: application.email,
+      wasAlreadyApproved: application.status === 'approved'
+    };
   }
 
   if (isAlcoholRetailer) {
@@ -385,7 +392,57 @@ export async function PATCH(request: Request) {
         : 'The review decision could not be saved. Confirm the merchant operations migration is installed.'
     }, { status: isNotFound ? 404 : invalidTransition || complianceError || alcoholCheckError ? 409 : 503 });
   }
-  return NextResponse.json({ application: data });
+  if (body.status !== 'approved' || !approvalContact || approvalContact.wasAlreadyApproved) {
+    return NextResponse.json({ application: data });
+  }
+
+  const vendorUrl = `${getPublicBaseUrl()}/vendor`;
+  const recipient = approvalContact.email.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+    return NextResponse.json({
+      application: data,
+      vendorUrl,
+      emailSent: false,
+      emailWarning: 'Approval was saved, but this application has no valid email address for the vendor link.'
+    });
+  }
+  const emailConfig = getTransactionalEmailConfig();
+  if (!emailConfig.configured || !emailConfig.from) {
+    return NextResponse.json({
+      application: data,
+      vendorUrl,
+      emailSent: false,
+      emailWarning: 'Approval was saved, but email is not configured. Configure a verified sender to deliver the vendor link.'
+    });
+  }
+
+  const approvalEmail = renderMerchantApprovalEmail({
+    businessName: approvalContact.businessName,
+    dashboardUrl: vendorUrl
+  });
+  const reviewedAt = typeof data === 'object' && data !== null && 'reviewed_at' in data
+    && typeof data.reviewed_at === 'string'
+    ? data.reviewed_at
+    : new Date().toISOString();
+  try {
+    await sendTransactionalEmail({
+      from: emailConfig.from,
+      to: recipient,
+      subject: approvalEmail.subject,
+      text: approvalEmail.text,
+      html: approvalEmail.html,
+      idempotencyKey: `merchant-approval:${body.id}:${reviewedAt}`
+    });
+    return NextResponse.json({ application: data, vendorUrl, emailSent: true });
+  } catch (emailError) {
+    console.error('[MerchantAdmin] Application approved, but vendor access email failed:', emailError);
+    return NextResponse.json({
+      application: data,
+      vendorUrl,
+      emailSent: false,
+      emailWarning: 'Approval was saved, but the vendor email could not be sent. Check Email Command Center and send the vendor link manually.'
+    });
+  }
 }
 
 export async function POST(request: Request) {
