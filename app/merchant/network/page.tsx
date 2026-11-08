@@ -52,6 +52,7 @@ type PartnerBatch = {
   quantity_received: number;
   available_quantity: number;
   on_hold: boolean;
+  expired: boolean;
   excise_stamp_confirmed: boolean;
   product: { id: number; name: string; sku: string | null; category: string | null } | null;
   movements: Array<{ movement_type: string; quantity_delta: number; note: string | null; created_at: string }>;
@@ -1100,6 +1101,13 @@ export default function OnBarPartnerNetworkPage() {
   const [message, setMessage] = useState('');
   const [loginError, setLoginError] = useState('');
   const [batchForm, setBatchForm] = useState({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '', exciseStampConfirmed: false });
+  const [stockCountDraft, setStockCountDraft] = useState<Record<number, string>>({});
+  const [stockCountDetails, setStockCountDetails] = useState<Record<number, {
+    lotCode: string;
+    supplierName: string;
+    expiryAt: string;
+    exciseStampConfirmed: boolean;
+  }>>({});
   const [incidentForm, setIncidentForm] = useState({ link: '', category: 'other', description: '' });
   const [scheduleDraft, setScheduleDraft] = useState<MerchantOperatingHours>(() => normalizeMerchantOperatingHours(null));
   const [acceptingOrdersDraft, setAcceptingOrdersDraft] = useState(false);
@@ -1614,6 +1622,47 @@ export default function OnBarPartnerNetworkPage() {
       exciseStampConfirmed: batchForm.exciseStampConfirmed
     }, 'Inventory receipt recorded.');
     if (saved) setBatchForm({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '', exciseStampConfirmed: false });
+  };
+
+  const submitStockCount = async (
+    event: FormEvent<HTMLFormElement>,
+    product: NonNullable<PartnerBatch['product']>,
+    currentAvailable: number
+  ) => {
+    event.preventDefault();
+    if (!selected) return;
+    const quantity = Number(stockCountDraft[product.id] ?? currentAvailable);
+    const details = stockCountDetails[product.id] || {
+      lotCode: '',
+      supplierName: '',
+      expiryAt: '',
+      exciseStampConfirmed: false
+    };
+    if (!Number.isSafeInteger(quantity) || quantity < 0 || quantity > 1_000_000) {
+      setError('Available stock must be a whole number between 0 and 1,000,000.');
+      return;
+    }
+    if (quantity > currentAvailable && !details.lotCode.trim()) {
+      setError('Enter the actual lot or batch code for added stock.');
+      return;
+    }
+    const saved = await apiAction({
+      operation: 'set_stock_count',
+      applicationId: selected.application.id,
+      productId: product.id,
+      quantity,
+      lotCode: details.lotCode,
+      supplierName: details.supplierName,
+      expiryAt: details.expiryAt || null,
+      exciseStampConfirmed: details.exciseStampConfirmed
+    }, `${product.name} stock count saved to the shared catalog.`);
+    if (saved) {
+      setStockCountDraft(current => ({ ...current, [product.id]: String(quantity) }));
+      setStockCountDetails(current => ({
+        ...current,
+        [product.id]: { lotCode: '', supplierName: '', expiryAt: '', exciseStampConfirmed: false }
+      }));
+    }
   };
 
   const submitIncident = async (event: FormEvent<HTMLFormElement>) => {
@@ -2197,7 +2246,130 @@ export default function OnBarPartnerNetworkPage() {
 
         {!loading && overview && section === 'inventory' && (
           <section className="space-y-5">
-            <div><h2 className="text-xl font-black text-slate-900">Inventory traceability</h2><p className="mt-1 text-sm text-slate-500">Record received lots for products already linked to your approved business. Inventory records are append-only.</p></div>
+            <div>
+              <h2 className="text-xl font-black text-slate-900">Inventory and stock counts</h2>
+              <p className="mt-1 text-sm text-slate-600">Set the units available for new orders. Updates are saved to the same audited stock ledger used by OnBar Admin and dispatch.</p>
+            </div>
+            {canOperate && productOptions.length > 0 && (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
+                Available stock excludes held or expired batches and stock already allocated to orders. Lowering a count cannot remove units reserved for a customer. Increasing stock requires the real lot code; alcohol stock also needs an excise-stamp attestation.
+              </div>
+            )}
+            {canOperate && productOptions.length > 0 && (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {productOptions.map(product => {
+                  const currentAvailable = overview.batches
+                    .filter(batch => batch.product_id === product.id)
+                    .reduce((total, batch) => total + batch.available_quantity, 0);
+                  const targetQuantity = Number(stockCountDraft[product.id] ?? currentAvailable);
+                  const isAddingStock = targetQuantity > currentAvailable;
+                  const details = stockCountDetails[product.id] || {
+                    lotCode: '',
+                    supplierName: '',
+                    expiryAt: '',
+                    exciseStampConfirmed: false
+                  };
+                  return (
+                    <form
+                      key={product.id}
+                      onSubmit={event => void submitStockCount(event, product, currentAvailable)}
+                      className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-black text-slate-900">{product.name}</h3>
+                          <p className="mt-1 text-xs text-slate-500">Current available stock: {currentAvailable}</p>
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${currentAvailable > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                          {currentAvailable > 0 ? 'Available to order' : 'Out of stock'}
+                        </span>
+                      </div>
+                      <label className="block text-xs font-bold text-slate-700">
+                        Set available units
+                        <Input
+                          required
+                          type="number"
+                          min="0"
+                          max="1000000"
+                          step="1"
+                          value={stockCountDraft[product.id] ?? String(currentAvailable)}
+                          onChange={event => setStockCountDraft(current => ({ ...current, [product.id]: event.target.value }))}
+                          className="mt-1 h-11 rounded-xl"
+                          aria-label={`Available units for ${product.name}`}
+                        />
+                      </label>
+                      {isAddingStock && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Input
+                            required
+                            maxLength={120}
+                            value={details.lotCode}
+                            onChange={event => setStockCountDetails(current => ({
+                              ...current,
+                              [product.id]: { ...details, lotCode: event.target.value }
+                            }))}
+                            placeholder="Actual lot / batch code"
+                            aria-label={`Lot code for ${product.name}`}
+                            className="rounded-xl"
+                          />
+                          <Input
+                            maxLength={160}
+                            value={details.supplierName}
+                            onChange={event => setStockCountDetails(current => ({
+                              ...current,
+                              [product.id]: { ...details, supplierName: event.target.value }
+                            }))}
+                            placeholder="Supplier (optional)"
+                            aria-label={`Supplier for ${product.name}`}
+                            className="rounded-xl"
+                          />
+                          <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
+                            Expiry date (optional)
+                            <Input
+                              type="date"
+                              min={new Date().toISOString().slice(0, 10)}
+                              value={details.expiryAt}
+                              onChange={event => setStockCountDetails(current => ({
+                                ...current,
+                                [product.id]: { ...details, expiryAt: event.target.value }
+                              }))}
+                              className="mt-1 rounded-xl"
+                              aria-label={`Expiry date for ${product.name}`}
+                            />
+                          </label>
+                          {isLiquorMerchant && (
+                            <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950 sm:col-span-2">
+                              <input
+                                type="checkbox"
+                                checked={details.exciseStampConfirmed}
+                                onChange={event => setStockCountDetails(current => ({
+                                  ...current,
+                                  [product.id]: { ...details, exciseStampConfirmed: event.target.checked }
+                                }))}
+                                className="mt-1 h-4 w-4 shrink-0 accent-amber-500"
+                              />
+                              I confirm this added alcohol stock carries KRA excise stamps. This is a merchant declaration, not an authenticity scan.
+                            </label>
+                          )}
+                        </div>
+                      )}
+                      <Button
+                        type="submit"
+                        disabled={working || !Number.isSafeInteger(targetQuantity) || targetQuantity === currentAvailable}
+                        className="h-10 rounded-xl font-bold"
+                      >
+                        {working ? <Loader2 size={15} className="mr-2 animate-spin" /> : <PackageCheck size={15} className="mr-2" />}
+                        Save stock count
+                      </Button>
+                    </form>
+                  );
+                })}
+              </div>
+            )}
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Receive a new tracked lot</h3>
+              <p className="mt-1 text-sm text-slate-500">For a new delivery, record its actual lot code and quantity. Inventory movements are append-only.</p>
+            </div>
             {canOperate && productOptions.length > 0 && <form onSubmit={submitBatch} className="grid gap-3 rounded-2xl bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
               <label className="text-xs font-bold text-slate-600 sm:col-span-2 lg:col-span-3">Linked product
                 <select required value={batchForm.productId} onChange={event => setBatchForm(current => ({ ...current, productId: event.target.value }))} className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
@@ -2215,7 +2387,7 @@ export default function OnBarPartnerNetworkPage() {
             {!productOptions.length && <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">No catalog products have been linked to this business yet. Contact OnBar to have an approved product linked before recording a batch.</p>}
             <div className="grid gap-4 lg:grid-cols-2">
               {overview.batches.map(batch => <article key={batch.id} className="rounded-2xl bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-black text-slate-900">{batch.product?.name || `Product #${batch.product_id}`}</p><p className="text-xs text-slate-500">Lot {batch.lot_code}{batch.product?.sku ? ` · SKU ${batch.product.sku}` : ''}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-black ${batch.on_hold ? 'bg-amber-100 text-amber-900' : batch.available_quantity > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{batch.on_hold ? 'On hold' : `${batch.available_quantity} available`}</span></div>
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-black text-slate-900">{batch.product?.name || `Product #${batch.product_id}`}</p><p className="text-xs text-slate-500">Lot {batch.lot_code}{batch.product?.sku ? ` · SKU ${batch.product.sku}` : ''}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-black ${batch.on_hold || batch.expired ? 'bg-amber-100 text-amber-900' : batch.available_quantity > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{batch.on_hold ? 'On hold' : batch.expired ? 'Expired' : `${batch.available_quantity} available`}</span></div>
                 {isLiquorMerchant && <p className={`mt-2 text-xs font-bold ${batch.excise_stamp_confirmed ? 'text-emerald-700' : 'text-rose-700'}`}>{batch.excise_stamp_confirmed ? 'Excise stamp attested for this batch' : 'Excise stamp has not been recorded for this batch'}</p>}
                 <p className="mt-3 text-xs text-slate-500">Received {dateTime(batch.received_at)} · Initial quantity {batch.quantity_received}{batch.expiry_at ? ` · Expires ${batch.expiry_at}` : ''}</p>
                 <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">{batch.movements.slice(0, 5).map((movement, index) => <div key={`${movement.created_at}-${index}`} className="flex justify-between gap-3 text-xs text-slate-600"><span>{movement.movement_type.replaceAll('_', ' ')}{movement.note ? ` · ${movement.note}` : ''}</span><span className="shrink-0 font-bold">{movement.quantity_delta > 0 ? '+' : ''}{movement.quantity_delta}</span></div>)}</div>

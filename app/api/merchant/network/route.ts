@@ -118,7 +118,8 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
       .select('id, product_id, lot_code, supplier_name, received_at, expiry_at, quantity_received, excise_stamp_confirmed')
       .eq('application_id', applicationId)
       .order('received_at', { ascending: false })
-      .limit(500),
+      .order('id', { ascending: true })
+      .range(0, 499),
     database.from('merchant_fulfillment_events')
       .select('id, order_id, event_type, details, occurred_at')
       .eq('application_id', applicationId)
@@ -133,7 +134,18 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   const queryError = eventsError || batchesError || fulfillmentError || incidentsError;
   if (queryError) throw queryError;
 
-  const batchRows = batches || [];
+  const batchRows = [...(batches || [])];
+  for (let offset = 500; batchRows.length === offset; offset += 500) {
+    const { data: nextBatches, error: nextBatchesError } = await database.from('merchant_product_batches')
+      .select('id, product_id, lot_code, supplier_name, received_at, expiry_at, quantity_received, excise_stamp_confirmed')
+      .eq('application_id', applicationId)
+      .order('received_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + 499);
+    if (nextBatchesError) throw nextBatchesError;
+    batchRows.push(...(nextBatches || []));
+    if ((nextBatches || []).length < 500) break;
+  }
   const batchIds = batchRows.map(batch => batch.id);
   const applicationOffers = Array.isArray(application.offered_goods_pricing)
     ? application.offered_goods_pricing as Array<Record<string, unknown>>
@@ -154,7 +166,10 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     batchIds.length
       ? database.from('merchant_inventory_movements')
         .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
-        .in('batch_id', batchIds).order('created_at', { ascending: false }).limit(2000)
+        .in('batch_id', batchIds)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(0, 999)
       : Promise.resolve({ data: [], error: null }),
     batchIds.length
       ? database.from('merchant_batch_holds')
@@ -169,6 +184,19 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   ]);
   const inventoryError = productsError || movementsError || holdsError || tracesError;
   if (inventoryError) throw inventoryError;
+
+  const movementRows = [...(movements || [])];
+  for (let offset = 1000; batchIds.length > 0 && movementRows.length === offset; offset += 1000) {
+    const { data: nextMovements, error: nextMovementsError } = await database.from('merchant_inventory_movements')
+      .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
+      .in('batch_id', batchIds)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + 999);
+    if (nextMovementsError) throw nextMovementsError;
+    movementRows.push(...(nextMovements || []));
+    if ((nextMovements || []).length < 1000) break;
+  }
 
   const traceRows = traces || [];
   const itemIds = [...new Set(traceRows.map(trace => trace.order_item_id))];
@@ -195,15 +223,19 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   if (ordersError) throw ordersError;
 
   const productRows = products || [];
+  const today = new Date().toISOString().slice(0, 10);
   const batchData = batchRows.map(batch => {
-    const batchMovements = (movements || []).filter(movement => movement.batch_id === batch.id);
+    const batchMovements = movementRows.filter(movement => movement.batch_id === batch.id);
     const batchHolds = (holds || []).filter(hold => hold.batch_id === batch.id);
     const available = batchMovements.reduce((total, movement) => total + Number(movement.quantity_delta || 0), 0);
+    const onHold = batchHolds.some(hold => hold.released_at === null);
+    const expired = Boolean(batch.expiry_at && batch.expiry_at < today);
     return {
       ...batch,
       product: productRows.find(product => product.id === batch.product_id) || null,
-      available_quantity: available,
-      on_hold: batchHolds.some(hold => hold.released_at === null),
+      available_quantity: onHold || expired ? 0 : Math.max(0, available),
+      on_hold: onHold,
+      expired,
       movements: batchMovements,
       holds: batchHolds
     };
@@ -223,7 +255,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
           traceRows
             .filter(trace => Number(trace.order_item_id) === Number(item.id))
             .reduce((total, trace) => total + Number(trace.quantity), 0)
-          - (movements || [])
+          - movementRows
             .filter(movement => Number(movement.order_item_id) === Number(item.id)
               && movement.movement_type === 'returned'
               && movement.note === 'Returned for offline merchant redistribution')
@@ -501,6 +533,51 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Alcohol compliance settings could not be saved. Confirm the liquor onboarding migration is installed.' }, { status: 503 });
     }
     return NextResponse.json({ saved: true });
+  }
+
+  if (body.operation === 'set_stock_count') {
+    const productId = Number(body.productId);
+    const quantity = Number(body.quantity);
+    const lotCode = typeof body.lotCode === 'string' ? body.lotCode.trim() : '';
+    const supplierName = typeof body.supplierName === 'string' ? body.supplierName.trim().slice(0, 160) : '';
+    const expiryAt: string | null = body.expiryAt === '' || body.expiryAt === null || body.expiryAt === undefined
+      ? null
+      : typeof body.expiryAt === 'string' ? body.expiryAt : null;
+    if (!Number.isSafeInteger(productId) || productId < 1
+      || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > 1_000_000
+      || (lotCode && lotCode.length > 120)
+      || (body.expiryAt !== undefined && body.expiryAt !== null && body.expiryAt !== '' && typeof body.expiryAt !== 'string')
+      || (expiryAt !== null && !validDate(expiryAt))
+      || (typeof expiryAt === 'string' && expiryAt < new Date().toISOString().slice(0, 10))
+      || (body.exciseStampConfirmed !== undefined && typeof body.exciseStampConfirmed !== 'boolean')) {
+      return NextResponse.json({ error: 'Enter a valid product, available stock count, lot details, and optional expiry date.' }, { status: 400 });
+    }
+
+    const { data, error } = await context.database.rpc('set_merchant_product_stock', {
+      p_application_id: application.id,
+      p_product_id: productId,
+      p_quantity: quantity,
+      p_lot_code: lotCode || null,
+      p_supplier_name: supplierName || null,
+      p_expiry_at: expiryAt,
+      p_excise_stamp_confirmed: body.exciseStampConfirmed === true,
+      p_actor: context.actor
+    });
+    if (error) {
+      console.error('[MerchantNetwork] Could not update merchant stock count:', error);
+      if (/set_merchant_product_stock|schema cache/i.test(error.message)) {
+        return NextResponse.json({
+          error: 'Live stock counts are not installed yet. Run supabase/MERCHANT_STOCK_COUNTS_MIGRATION.sql after MERCHANT_OPERATIONS_MIGRATION.sql.'
+        }, { status: 503 });
+      }
+      const validationError = /approved merchant|approved catalog|catalog product|actual lot|excise[- ]stamp|expiry date|different expiry|held, or/i.test(error.message);
+      return NextResponse.json({
+        error: validationError
+          ? error.message
+          : 'The stock count could not be saved. Refresh the catalog and try again.'
+      }, { status: validationError ? 400 : 409 });
+    }
+    return NextResponse.json({ stock: data }, { status: 200 });
   }
 
   if (body.operation === 'receive_batch') {

@@ -106,6 +106,17 @@ persistence and monitor the worker heartbeat in the merchant workspace.
 Twilio credentials, an approved sender/number, Redis, VAPID keys, the migration,
 and the continuously running worker are required for live delivery. The browser
 health check cannot verify phone volume or battery-optimization settings.
+
+## Shared merchant stock catalog
+
+After `MERCHANT_OPERATIONS_MIGRATION.sql`, apply
+`MERCHANT_STOCK_COUNTS_MIGRATION.sql`. It adds an account-scoped merchant stock
+count operation and an admin-only catalog summary over the existing batch and
+movement ledger. Vendor count increases require the actual lot code, and
+alcohol retailers must attest to excise stamps. Count decreases are recorded as
+immutable adjustments and cannot consume stock already allocated to orders.
+The merchant workspace writes to this ledger; the Admin Traceability catalog
+re-reads it every 15 seconds. No second stock table is created.
 Web push uses the phone's normal notification behavior and cannot provide a
 reliable looping lock-screen alarm; native Android alert support remains a
 separate rollout step. Test on staging with real devices and provider accounts

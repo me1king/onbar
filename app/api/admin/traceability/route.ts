@@ -63,7 +63,144 @@ export async function GET(request: Request) {
       console.error('[Traceability] Could not load inventory setup choices:', merchantsError || productsError);
       return NextResponse.json({ error: 'Merchant and product lists could not be loaded.' }, { status: 500 });
     }
-    return NextResponse.json({ merchants: merchants || [], products: products || [] }, {
+    if (params.get('includeStock') !== '1') {
+      return NextResponse.json({ merchants: merchants || [], products: products || [] }, {
+        headers: { 'Cache-Control': 'private, no-store, max-age=0' }
+      });
+    }
+
+    const stockRows: Array<{
+      application_id: string;
+      business_name: string;
+      merchant_code: string | null;
+      product_id: number;
+      available_quantity: number;
+      updated_at: string | null;
+    }> = [];
+    let stockError: { message: string; code?: string } | null = null;
+    for (let offset = 0; ; offset += 1000) {
+      const result = await access.database.from('merchant_product_stock_summary')
+        .select('application_id, business_name, merchant_code, product_id, available_quantity, updated_at')
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + 999);
+      if (result.error) {
+        stockError = result.error;
+        break;
+      }
+      stockRows.push(...(result.data || []));
+      if ((result.data || []).length < 1000) break;
+    }
+    const { data: movementRows, error: movementError } = await access.database
+      .from('merchant_inventory_movements')
+      .select('batch_id, movement_type, quantity_delta, actor, note, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (stockError || movementError) {
+      const error = stockError || movementError;
+      console.error('[Traceability] Could not load live merchant stock:', error);
+      return NextResponse.json({
+        merchants: merchants || [],
+        products: products || [],
+        stockCatalog: [],
+        stockActivity: [],
+        stockError: /merchant_product_stock_summary|schema cache|does not exist/i.test(error?.message || '')
+          ? 'Live stock catalog is not installed. Run supabase/MERCHANT_STOCK_COUNTS_MIGRATION.sql after MERCHANT_OPERATIONS_MIGRATION.sql.'
+          : 'Live merchant stock could not be loaded.'
+      }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+    }
+
+    const movementBatchIds = [...new Set((movementRows || []).map(movement => movement.batch_id))];
+    const { data: movementBatches, error: movementBatchesError } = movementBatchIds.length
+      ? await access.database.from('merchant_product_batches')
+        .select('id, application_id, product_id')
+        .in('id', movementBatchIds)
+      : { data: [], error: null };
+    if (movementBatchesError) {
+      console.error('[Traceability] Could not link live stock activity to catalog items:', movementBatchesError);
+      return NextResponse.json({ error: 'Live stock activity could not be loaded.' }, { status: 503 });
+    }
+
+    const productRows = products || [];
+    const merchantRows = merchants || [];
+    const productById = new Map(productRows.map(product => [Number(product.id), product]));
+    const merchantById = new Map(merchantRows.map(merchant => [merchant.id, merchant]));
+    const stockByProduct = new Map<number, typeof stockRows>();
+    for (const row of stockRows) {
+      const rows = stockByProduct.get(Number(row.product_id)) || [];
+      rows.push(row);
+      stockByProduct.set(Number(row.product_id), rows);
+    }
+    const stockCatalog = productRows.map(product => {
+      const vendors = (stockByProduct.get(Number(product.id)) || [])
+        .map(row => ({
+          applicationId: row.application_id,
+          name: row.business_name,
+          merchantCode: row.merchant_code,
+          available: Math.max(0, Number(row.available_quantity || 0)),
+          updatedAt: row.updated_at
+        }))
+        .sort((left, right) => right.available - left.available || left.name.localeCompare(right.name));
+      return {
+        productId: Number(product.id),
+        name: product.name,
+        sku: product.sku,
+        available: vendors.reduce((total, vendor) => total + vendor.available, 0),
+        vendorCount: vendors.filter(vendor => vendor.available > 0).length,
+        vendors,
+        updatedAt: vendors.reduce<string | null>((latest, vendor) =>
+          vendor.updatedAt && (!latest || vendor.updatedAt > latest) ? vendor.updatedAt : latest, null)
+      };
+    });
+
+    const batchById = new Map((movementBatches || []).map(batch => [batch.id, batch]));
+    const activityByKey = new Map<string, {
+      productId: number;
+      productName: string;
+      merchantName: string;
+      movementType: string;
+      quantityDelta: number;
+      actor: string;
+      note: string | null;
+      createdAt: string;
+    }>();
+    for (const movement of movementRows || []) {
+      const batch = batchById.get(movement.batch_id);
+      if (!batch) continue;
+      const product = productById.get(Number(batch.product_id));
+      const merchant = merchantById.get(batch.application_id);
+      if (!product || !merchant) continue;
+      const key = [
+        movement.created_at,
+        batch.application_id,
+        batch.product_id,
+        movement.actor,
+        movement.note || ''
+      ].join(':');
+      const previous = activityByKey.get(key);
+      if (previous) {
+        previous.quantityDelta += Number(movement.quantity_delta || 0);
+      } else {
+        activityByKey.set(key, {
+          productId: Number(batch.product_id),
+          productName: product.name,
+          merchantName: merchant.business_name,
+          movementType: movement.movement_type,
+          quantityDelta: Number(movement.quantity_delta || 0),
+          actor: movement.actor,
+          note: movement.note,
+          createdAt: movement.created_at
+        });
+      }
+    }
+
+    return NextResponse.json({
+      merchants: merchantRows,
+      products: productRows,
+      stockCatalog,
+      stockActivity: [...activityByKey.values()]
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, 20)
+    }, {
       headers: { 'Cache-Control': 'private, no-store, max-age=0' }
     });
   }

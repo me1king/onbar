@@ -113,6 +113,32 @@ interface TraceResult {
 interface Catalog {
   merchants: Merchant[];
   products: Product[];
+  stockCatalog: Array<{
+    productId: number;
+    name: string;
+    sku: string | null;
+    available: number;
+    vendorCount: number;
+    vendors: Array<{
+      applicationId: string;
+      name: string;
+      merchantCode: string | null;
+      available: number;
+      updatedAt: string | null;
+    }>;
+    updatedAt: string | null;
+  }>;
+  stockActivity: Array<{
+    productId: number;
+    productName: string;
+    merchantName: string;
+    movementType: string;
+    quantityDelta: number;
+    actor: string;
+    note: string | null;
+    createdAt: string;
+  }>;
+  stockError: string | null;
 }
 
 const incidentCategories = ['product_quality', 'food_safety', 'delivery', 'conduct', 'other'];
@@ -144,7 +170,16 @@ export default function MerchantTraceabilityPage() {
   const [orderSearch, setOrderSearch] = useState('');
   const [batchSearch, setBatchSearch] = useState('');
   const [result, setResult] = useState<TraceResult | null>(null);
-  const [catalog, setCatalog] = useState<Catalog>({ merchants: [], products: [] });
+  const [catalog, setCatalog] = useState<Catalog>({
+    merchants: [],
+    products: [],
+    stockCatalog: [],
+    stockActivity: [],
+    stockError: null
+  });
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<string | null>(null);
+  const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,17 +206,42 @@ export default function MerchantTraceabilityPage() {
   });
 
   const loadCatalog = useCallback(async () => {
+    setCatalogRefreshing(true);
     try {
-      const response = await fetch('/api/admin/traceability?catalog=1', { cache: 'no-store' });
-      const payload = await response.json() as Catalog & { error?: string };
+      const response = await fetch('/api/admin/traceability?catalog=1&includeStock=1', { cache: 'no-store' });
+      const payload = await response.json() as Partial<Catalog> & {
+        merchants?: Merchant[];
+        products?: Product[];
+        error?: string;
+      };
       if (!response.ok) throw new Error(payload.error || 'Inventory setup could not be loaded.');
-      setCatalog({ merchants: payload.merchants || [], products: payload.products || [] });
+      setCatalog({
+        merchants: payload.merchants || [],
+        products: payload.products || [],
+        stockCatalog: payload.stockCatalog || [],
+        stockActivity: payload.stockActivity || [],
+        stockError: payload.stockError || null
+      });
+      setCatalogUpdatedAt(new Date().toISOString());
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Inventory setup could not be loaded.');
+    } finally {
+      setCatalogRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { if (canManageInventory) void loadCatalog(); }, [canManageInventory, loadCatalog]);
+  useEffect(() => {
+    if (!canManageInventory) return;
+    void loadCatalog();
+    const interval = window.setInterval(() => void loadCatalog(), 15_000);
+    return () => window.clearInterval(interval);
+  }, [canManageInventory, loadCatalog]);
+
+  const visibleStockCatalog = catalog.stockCatalog.filter(item =>
+    !catalogSearch.trim()
+    || `${item.name} ${item.sku || ''} ${item.vendors.map(vendor => vendor.name).join(' ')}`
+      .toLowerCase().includes(catalogSearch.trim().toLowerCase())
+  );
 
   const lookup = async (kind: 'order' | 'batch', value: string) => {
     setLoading(true);
@@ -324,6 +384,121 @@ export default function MerchantTraceabilityPage() {
         <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 sm:text-4xl">Traceability & incidents</h1>
         <p className="mt-2 text-sm text-slate-600">Trace orders, lots, merchants, inventory movements, fulfilment, holds, and incidents.</p>
       </header>
+
+      {canManageInventory && (
+        <Card className="mb-6 space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Shared stock source</p>
+              <h2 className="mt-1 text-xl font-black text-slate-900">Live merchant catalog</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                Available stock comes from vendor batch movements—the same inventory used by order reservations and dispatch. Held, expired, and already-allocated units are excluded.
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => void loadCatalog()} disabled={catalogRefreshing} className="h-10 rounded-xl">
+              <RefreshCcw size={15} className={`mr-2 ${catalogRefreshing ? 'animate-spin' : ''}`} /> Refresh stock
+            </Button>
+          </div>
+
+          {catalog.stockError && (
+            <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-950">
+              {catalog.stockError}
+            </p>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              ['Available units', catalog.stockCatalog.reduce((total, item) => total + item.available, 0).toLocaleString('en-KE')],
+              ['Products with stock', catalog.stockCatalog.filter(item => item.available > 0).length.toLocaleString('en-KE')],
+              ['Products out of stock', catalog.stockCatalog.filter(item => item.available === 0).length.toLocaleString('en-KE')]
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-2xl font-black text-slate-900">{value}</p>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Input
+              value={catalogSearch}
+              onChange={event => setCatalogSearch(event.target.value)}
+              placeholder="Find a product or merchant"
+              aria-label="Filter live stock catalog"
+              className="h-11 max-w-md rounded-xl"
+            />
+            <p className="text-xs text-slate-500">
+              Auto-refreshes every 15 seconds{catalogUpdatedAt ? ` · Updated ${new Date(catalogUpdatedAt).toLocaleTimeString()}` : ''}
+            </p>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[700px] text-left text-sm">
+              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Product</th>
+                  <th className="px-4 py-3">Available</th>
+                  <th className="px-4 py-3">Merchants with stock</th>
+                  <th className="px-4 py-3">Last updated</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {visibleStockCatalog.map(item => (
+                  <tr key={item.productId} className="align-top">
+                    <td className="px-4 py-4">
+                      <p className="font-bold text-slate-900">{item.name}</p>
+                      {item.sku && <p className="mt-1 text-xs text-slate-500">SKU {item.sku}</p>}
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${item.available > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                        {item.available.toLocaleString('en-KE')} units
+                      </span>
+                    </td>
+                    <td className="max-w-[30rem] px-4 py-4">
+                      <p className="font-semibold text-slate-800">{item.vendorCount} merchant{item.vendorCount === 1 ? '' : 's'} with stock</p>
+                      {item.vendors.length > 0
+                        ? <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                            {item.vendors.map(vendor => (
+                              <li key={vendor.applicationId}>
+                                {vendor.name}: <strong className="text-slate-900">{vendor.available} available</strong>
+                              </li>
+                            ))}
+                          </ul>
+                        : <p className="mt-1 text-xs text-slate-500">No merchant stock batches recorded.</p>}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 text-xs text-slate-600">
+                      {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : 'No stock update'}
+                    </td>
+                  </tr>
+                ))}
+                {!visibleStockCatalog.length && (
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">No matching catalog products.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Recent stock activity</h3>
+            {catalog.stockActivity.length
+              ? <ul className="mt-3 space-y-2">
+                  {catalog.stockActivity.slice(0, 8).map((activity, index) => (
+                    <li key={`${activity.createdAt}-${activity.productId}-${activity.merchantName}-${index}`} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-slate-200 pt-2 text-xs">
+                      <span className="text-slate-700">
+                        <strong>{activity.merchantName}</strong> · {activity.productName} ·{' '}
+                        <strong className={activity.quantityDelta >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
+                          {activity.quantityDelta > 0 ? '+' : ''}{activity.quantityDelta} units
+                        </strong>
+                        {activity.note ? ` · ${activity.note}` : ''}
+                      </span>
+                      <time className="text-slate-500">{new Date(activity.createdAt).toLocaleString()}</time>
+                    </li>
+                  ))}
+                </ul>
+              : <p className="mt-2 text-xs text-slate-500">No merchant stock updates have been recorded yet.</p>}
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <form onSubmit={event => { event.preventDefault(); void lookup('order', orderSearch); }} className="flex gap-2">
