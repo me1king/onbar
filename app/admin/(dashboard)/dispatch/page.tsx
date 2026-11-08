@@ -365,14 +365,17 @@ export default function AdminDispatchPage() {
                 }
             }
 
-            await fetchData();
+            const refreshed = await fetchData();
+            const followUpWarnings = [
+                notificationFailed ? 'Customer notification failed.' : null,
+                result.warning || null,
+                !refreshed ? 'The dispatch board did not refresh; use Sync System to confirm the latest status.' : null
+            ].filter((warning): warning is string => Boolean(warning));
             setMessage({
-                type: notificationFailed ? 'error' : 'success',
-                text: notificationFailed
-                    ? `Order #${orderId} was assigned to ${result.assignment?.rider_name || 'the selected rider'}, but the customer notification failed.${result.warning ? ` ${result.warning}` : ''}`
-                    : `Order #${orderId} sent to ${result.assignment?.rider_name || 'the selected rider'}${targetOrder?.fulfillment.selectedVendorNames.length ? ` for pickup at ${targetOrder.fulfillment.selectedVendorNames.join(', ')}` : ''}${mode === 'automatic' ? ' using automatic recommendation' : ' by manual override'}.${result.warning ? ` ${result.warning}` : ''}`
+                type: followUpWarnings.length > 0 ? 'error' : 'success',
+                text: `Order #${orderId} was assigned to ${result.assignment?.rider_name || 'the selected rider'}${targetOrder?.fulfillment.selectedVendorNames.length ? ` for pickup at ${targetOrder.fulfillment.selectedVendorNames.join(', ')}` : ''}${mode === 'automatic' ? ' using automatic recommendation' : ' by manual override'}.${followUpWarnings.length ? ` ${followUpWarnings.join(' ')}` : ' Assignment and dispatch refresh completed.'}`
             });
-            setTimeout(() => setMessage(null), 3000);
+            setTimeout(() => setMessage(null), followUpWarnings.length ? 10000 : 6000);
         } catch (err) {
             console.error("Dispatch sequence failed.", err);
             setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Dispatch sequence failed.' });
@@ -503,7 +506,7 @@ export default function AdminDispatchPage() {
     };
 
     return (
-        <div className="p-8 space-y-8 bg-background min-h-screen text-left">
+        <div className="min-h-screen space-y-8 bg-[#f7f8fa] p-8 text-left text-slate-900">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-border pb-8">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
