@@ -125,7 +125,11 @@ device or an order changes availability first, the server rejects the stale
 count so the merchant can refresh and recount. The merchant workspace writes
 to this ledger; the Admin Traceability catalog re-reads it every 15 seconds.
 Regular, food, and alcohol merchant workspaces all link to the same stock
-editor. The approved catalog is filtered to the merchant's business category.
+editor. Merchants can record a daily stock confirmation; the Verified Stock
+badge is shown only while no later stock movement invalidates that check.
+Dispatch checks the same stock summary before offering a merchant for a new
+order, while preserving merchants that already hold a reservation for that
+order. The approved catalog is filtered to the merchant's business category.
 Merchants can submit updated proposed prices for products already in their
 approved catalog; these proposals are audited and remain non-customer-facing
 until OnBar reviews them. No second stock table is created.

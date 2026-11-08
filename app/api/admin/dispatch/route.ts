@@ -209,13 +209,36 @@ async function assessVendors(
   if (approvedMerchantsError) {
     reasons.push('Approved merchant catalog and dispatch setup could not be verified.');
   }
+  const dispatchProductIds = [...new Set(items
+    .map(item => Number(item.product_id))
+    .filter(Number.isSafeInteger))];
+  const { data: merchantStock, error: merchantStockError } = dispatchProductIds.length
+    ? await database
+      .from('merchant_product_stock_summary')
+      .select('application_id, product_id, available_quantity')
+      .in('product_id', dispatchProductIds)
+      .gt('available_quantity', 0)
+    : { data: [], error: null };
+  if (merchantStockError) {
+    reasons.push('Merchant stock availability could not be verified. Apply MERCHANT_STOCK_COUNTS_MIGRATION.sql.');
+  }
+  const inStockMerchantProducts = new Set((merchantStock || []).map(stock =>
+    `${stock.application_id}:${Number(stock.product_id)}`
+  ));
 
   for (const item of items) {
+    const alreadyAllocatedMerchants = new Set(traces
+      .filter(trace => trace.order_item_id === Number(item.id)
+        && Number(trace.batch?.product_id) === Number(item.product_id))
+      .map(trace => trace.batch?.application?.id)
+      .filter((id): id is string => Boolean(id)));
     const merchantOptions = (approvedMerchants || [])
       .filter(merchant => Array.isArray(merchant.offered_goods_pricing)
         && merchant.offered_goods_pricing.some((offer: Record<string, unknown>) =>
           Number(offer.product_id) === Number(item.product_id)
-        ))
+        )
+        && (inStockMerchantProducts.has(`${merchant.id}:${Number(item.product_id)}`)
+          || alreadyAllocatedMerchants.has(merchant.id)))
       .map(merchant => ({
         vendorId: merchant.id,
         vendorName: merchant.business_name || 'Approved merchant',
@@ -245,7 +268,7 @@ async function assessVendors(
       continue;
     }
     if (merchantOptions.length === 0) {
-      reasons.push(`${item.product?.name || `Product ${item.product_id}`} is not offered by any approved merchant.`);
+      reasons.push(`${item.product?.name || `Product ${item.product_id}`} has no approved merchant with available stock.`);
     }
     const cataloguePrice = numberOrNull(item.product?.price);
     const priceMatchesCatalogue = unitPrice !== null && unitPrice >= 0
@@ -349,7 +372,7 @@ async function assessVendors(
       cataloguePrice,
       priceMatchesCatalogue,
       reserved: allocatedQuantity >= quantity,
-      merchantOptionsVerified: !approvedMerchantsError,
+      merchantOptionsVerified: !approvedMerchantsError && !merchantStockError,
       merchantOptions
     });
   }

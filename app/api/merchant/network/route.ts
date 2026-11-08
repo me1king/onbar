@@ -154,7 +154,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected', 'stock_confirmed'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
@@ -712,6 +712,66 @@ export async function POST(request: Request) {
       }, { status: staleCount ? 409 : validationError ? 400 : 409 });
     }
     return NextResponse.json({ stock: data }, { status: 200 });
+  }
+
+  if (body.operation === 'confirm_stock') {
+    const offers = Array.isArray(application.offered_goods_pricing)
+      ? application.offered_goods_pricing as Array<{ product_id?: unknown }>
+      : [];
+    const offeredProductIds = [...new Set(offers.map(offer => Number(offer.product_id)).filter(Number.isSafeInteger))];
+    const { data: catalogProducts, error: catalogError } = offeredProductIds.length
+      ? await context.database
+        .from('products')
+        .select('id, category, sub_category, is_bite, is_snack, is_souvenir')
+        .in('id', offeredProductIds)
+      : { data: [], error: null };
+    if (catalogError) {
+      console.error('[merchant-network] Stock confirmation could not verify approved catalog products:', catalogError);
+      return NextResponse.json({ error: 'Your approved catalog could not be verified. Please refresh and try again.' }, { status: 503 });
+    }
+    const productIds = [...new Set((catalogProducts || [])
+      .filter(product => isAllowedMerchantProduct(application, product))
+      .map(product => Number(product.id))
+      .filter(Number.isSafeInteger))];
+    if (productIds.length === 0) {
+      return NextResponse.json({ error: 'There are no approved catalog items to confirm.' }, { status: 400 });
+    }
+
+    const { data: stockRows, error: stockError } = await context.database
+      .from('merchant_product_stock_summary')
+      .select('product_id, available_quantity')
+      .eq('application_id', application.id)
+      .in('product_id', productIds);
+    if (stockError) {
+      console.error('[merchant-network] Stock confirmation could not read the stock ledger:', stockError);
+      return NextResponse.json({ error: 'Stock confirmation is unavailable until the merchant stock ledger is installed.' }, { status: 503 });
+    }
+
+    const availableByProduct = new Map((stockRows || []).map(row => [Number(row.product_id), Math.max(0, Number(row.available_quantity) || 0)]));
+    const availableUnits = productIds.reduce((total, productId) => total + (availableByProduct.get(productId) || 0), 0);
+    const outOfStockCount = productIds.filter(productId => (availableByProduct.get(productId) || 0) === 0).length;
+    const { data, error } = await context.database.from('merchant_application_events').insert({
+      application_id: application.id,
+      event_type: 'stock_confirmed',
+      actor: context.actor,
+      details: {
+        product_count: productIds.length,
+        available_units: availableUnits,
+        out_of_stock_count: outOfStockCount
+      }
+    }).select('created_at').single();
+    if (error) {
+      console.error('[merchant-network] Stock confirmation audit event could not be saved:', error);
+      return NextResponse.json({ error: 'Stock confirmation could not be recorded. Please try again.' }, { status: 500 });
+    }
+    return NextResponse.json({
+      confirmation: {
+        confirmedAt: data.created_at,
+        productCount: productIds.length,
+        availableUnits,
+        outOfStockCount
+      }
+    }, { status: 201 });
   }
 
   if (body.operation === 'receive_batch') {

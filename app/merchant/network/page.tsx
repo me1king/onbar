@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -98,6 +98,8 @@ type SellerSalesOrder = {
   cancelled: boolean;
   active: boolean;
   itemCount: number;
+  items: Array<{ name: string; quantity: number }>;
+  events: FulfillmentEvent[];
 };
 type PartnerIncident = {
   id: string;
@@ -230,6 +232,7 @@ type MerchantPerformance = {
       vendorFaultComplaints: number;
     };
   };
+
   complianceScore: number | null;
   windows: Record<7 | 30, MerchantPerformanceWindow>;
   limitations: { responseTime: string; timeouts: string; ratingsAndComplaints: string };
@@ -238,6 +241,20 @@ type MerchantPerformance = {
 type Section = 'sales' | 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders' | 'settings'
   | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff'
   | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours';
+
+function getOutOfStockProductNames(application: PartnerApplication['application'], batches: PartnerBatch[]) {
+  const today = new Date().toISOString().slice(0, 10);
+  const quantities = new Map<number, number>();
+  for (const batch of batches) {
+    if (!batch.on_hold && !batch.expired && (!batch.expiry_at || batch.expiry_at >= today)) {
+      quantities.set(batch.product_id, (quantities.get(batch.product_id) || 0) + Math.max(0, batch.available_quantity));
+    }
+  }
+  return application.offered_goods_pricing
+    .filter(product => (quantities.get(product.product_id) || 0) === 0)
+    .map(product => product.product_name);
+}
+
 type RiderConnection = {
   id: string;
   phone: string;
@@ -431,7 +448,10 @@ function MerchantSalesOverview({
   error,
   performance,
   performanceLoading,
-  performanceError
+  performanceError,
+  outOfStockProducts,
+  onGoToStock,
+  historyOnly = false
 }: {
   application: PartnerApplication['application'];
   isFoodMerchant: boolean;
@@ -442,8 +462,15 @@ function MerchantSalesOverview({
   performance: MerchantPerformance | null;
   performanceLoading: boolean;
   performanceError: string;
+  outOfStockProducts: string[];
+  onGoToStock: () => void;
+  historyOnly?: boolean;
 }) {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyFrom, setHistoryFrom] = useState('');
+  const [historyTo, setHistoryTo] = useState('');
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
   const currency = (amount: number) => `KSh ${Math.round(amount).toLocaleString('en-KE')}`;
   const records: SellerSalesOrder[] = isFoodMerchant
     ? foodOrders.map(order => {
@@ -459,7 +486,9 @@ function MerchantSalesOverview({
           total + Math.max(0, Number(item.unit_price) || 0) * Math.max(0, Number(item.quantity) || 0), 0),
         cancelled,
         active: !cancelled && !['delivered', 'complete', 'completed'].includes(fulfillment || order.status.toLowerCase()),
-        itemCount: order.items.reduce((total, item) => total + Math.max(0, Number(item.quantity) || 0), 0)
+        itemCount: order.items.reduce((total, item) => total + Math.max(0, Number(item.quantity) || 0), 0),
+        items: order.items.map(item => ({ name: item.product_name, quantity: Math.max(0, Number(item.quantity) || 0) })),
+        events: order.fulfillment
       };
     })
     : partnerOrders.map(order => {
@@ -472,11 +501,13 @@ function MerchantSalesOverview({
         createdAt: order.created_at,
         status: fulfillment || order.status,
         amount: cancelled ? 0 : order.items.reduce((total, item) =>
-          total + Math.max(0, Number(item.selling_price) || Number(item.unit_price) || 0)
+          total + Math.max(0, Number(item.unit_price) || 0)
             * Math.max(0, Number(item.merchant_quantity) || 0), 0),
         cancelled,
         active: !cancelled && !['delivered', 'complete', 'completed'].includes(fulfillment || order.status.toLowerCase()),
-        itemCount: order.items.reduce((total, item) => total + Math.max(0, Number(item.merchant_quantity) || 0), 0)
+        itemCount: order.items.reduce((total, item) => total + Math.max(0, Number(item.merchant_quantity) || 0), 0),
+        items: order.items.map(item => ({ name: item.product_name, quantity: Math.max(0, Number(item.merchant_quantity) || 0) })),
+        events: order.fulfillment
       };
     });
   const dateKey = (value: string) => {
@@ -505,23 +536,77 @@ function MerchantSalesOverview({
   });
   const todaySales = records.reduce((total, order) =>
     !order.cancelled && dateKey(order.createdAt) === today ? total + order.amount : total, 0);
-  const visibleOrders = [...records]
+  const completedOrdersToday = records.filter(order =>
+    !order.cancelled && !order.active && dateKey(order.createdAt) === today).length;
+  const averageReplySeconds = performance?.windows[7]?.averageResponseSeconds ?? null;
+  const sellerItems = records
+    .filter(order => !order.cancelled)
+    .flatMap(order => order.items)
+    .reduce((totals, item) => {
+      totals.set(item.name, (totals.get(item.name) || 0) + item.quantity);
+      return totals;
+    }, new Map<string, number>());
+  const topSellers = [...sellerItems.entries()].sort((left, right) => right[1] - left[1]).slice(0, 5);
+  const orderHourTotals = new Map<number, number>();
+  for (const order of records) {
+    if (order.cancelled) continue;
+    const hour = Number(new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Nairobi',
+      hour: '2-digit',
+      hourCycle: 'h23'
+    }).format(new Date(order.createdAt)));
+    if (Number.isInteger(hour)) orderHourTotals.set(hour, (orderHourTotals.get(hour) || 0) + 1);
+  }
+  const busiestHours = [...orderHourTotals.entries()].sort((left, right) => right[1] - left[1]).slice(0, 3);
+  const matchingOrders = [...records]
     .filter(order => historyFilter === 'all'
       || (historyFilter === 'active' && order.active)
       || (historyFilter === 'completed' && !order.active && !order.cancelled)
       || (historyFilter === 'cancelled' && order.cancelled))
+    .filter(order => {
+      const key = dateKey(order.createdAt);
+      const term = historySearch.trim().toLowerCase();
+      return (!term || String(order.id).includes(term) || order.customerName.toLowerCase().includes(term))
+        && (!historyFrom || key >= historyFrom)
+        && (!historyTo || key <= historyTo);
+    });
+  const visibleOrders = matchingOrders
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
     .slice(0, 20);
   const maxTrend = Math.max(1, ...trendDays.map(day => day.amount));
   const rating = performance?.windows[7]?.averageRating ?? null;
+  const exportHistory = () => {
+    const escapeCsv = (value: string | number) => {
+      const safe = String(value).replace(/^[=+\-@]/, "'$&");
+      return `"${safe.replaceAll('"', '""')}"`;
+    };
+    const rows = [
+      ['Order', 'Customer', 'Date', 'Items', 'Recorded item value', 'Status'],
+      ...matchingOrders.map(order => [
+        order.id,
+        order.customerName,
+        order.createdAt,
+        order.items.map(item => `${item.quantity} x ${item.name}`).join('; '),
+        order.amount.toFixed(2),
+        order.status
+      ])
+    ];
+    const csv = rows.map(row => row.map(escapeCsv).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `merchant-orders-${dateKey(new Date().toISOString())}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   return <section className="space-y-6 text-zinc-100">
     <header>
       <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-400">{application.trading_name || application.business_name}</p>
       <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black text-white">Sales overview</h2>
-          <p className="mt-1 text-sm text-zinc-400">Your recorded order activity and item sales.</p>
+          <h2 className="text-2xl font-black text-white">{historyOnly ? 'Order history' : 'Sales overview'}</h2>
+          <p className="mt-1 text-sm text-zinc-400">{historyOnly ? 'Search, filter, and export your recorded customer orders.' : 'Your recorded order activity and item sales.'}</p>
         </div>
         <span className="rounded-full bg-emerald-400/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">Merchant terminal</span>
       </div>
@@ -529,7 +614,8 @@ function MerchantSalesOverview({
 
     {error && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">{error}</p>}
 
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    {!historyOnly && <>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
         <TrendingUp size={18} className="text-amber-400" />
         <p className="mt-4 text-xl font-black text-white">{loading ? '…' : error ? 'Unavailable' : currency(todaySales)}</p>
@@ -537,8 +623,8 @@ function MerchantSalesOverview({
       </article>
       <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
         <Truck size={18} className="text-sky-300" />
-        <p className="mt-4 text-xl font-black text-white">{loading ? '…' : error ? 'Unavailable' : records.filter(order => order.active).length}</p>
-        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Live orders</p>
+        <p className="mt-4 text-xl font-black text-white">{loading ? '…' : error ? 'Unavailable' : completedOrdersToday}</p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Orders completed today</p>
       </article>
       <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
         <Star size={18} className="text-amber-300" />
@@ -546,16 +632,16 @@ function MerchantSalesOverview({
         <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Average rating</p>
       </article>
       <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
-        <CreditCard size={18} className="text-violet-300" />
-        <p className="mt-4 text-xl font-black text-white">Not tracked</p>
-        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Seller share</p>
-      </article>
-      <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
-        <Building2 size={18} className="text-emerald-300" />
-        <p className="mt-4 text-xl font-black text-white">Not tracked</p>
-        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Payout balance</p>
+        <Clock3 size={18} className="text-violet-300" />
+        <p className="mt-4 text-xl font-black text-white">{performanceLoading ? '…' : performanceError ? 'Unavailable' : averageReplySeconds === null ? 'Not recorded' : `${Math.round(averageReplySeconds)} sec`}</p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Average reply · 7 days</p>
       </article>
     </div>
+
+    {outOfStockProducts.length > 0 && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4">
+      <p className="text-sm text-rose-100"><strong>{outOfStockProducts.length} catalog item{outOfStockProducts.length === 1 ? '' : 's'} out of stock:</strong> {outOfStockProducts.slice(0, 3).join(', ')}{outOfStockProducts.length > 3 ? ` and ${outOfStockProducts.length - 3} more` : ''}</p>
+      <button type="button" onClick={onGoToStock} className="shrink-0 rounded-lg bg-rose-200 px-3 py-2 text-xs font-black text-rose-950">Update stock</button>
+    </div>}
 
     <div className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
       <section className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 sm:p-6">
@@ -585,23 +671,36 @@ function MerchantSalesOverview({
           <p className="mt-1 text-xs leading-5 text-zinc-400">Seller share and withdrawable balance are not available until a verified payout ledger is connected.</p>
         </div>
       </section>
+      <section className="grid gap-4 sm:grid-cols-2 xl:col-span-2">
+        <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+          <h3 className="font-black text-white">Top sellers</h3>
+          {topSellers.length ? <ol className="mt-3 space-y-2">{topSellers.map(([name, quantity]) => <li key={name} className="flex justify-between gap-3 text-sm"><span className="truncate text-zinc-300">{name}</span><strong className="shrink-0 text-amber-300">{quantity} sold</strong></li>)}</ol>
+            : <p className="mt-3 text-sm text-zinc-400">No recorded item sales yet.</p>}
+        </article>
+        <article className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+          <h3 className="font-black text-white">Busiest hours</h3>
+          {busiestHours.length ? <ol className="mt-3 space-y-2">{busiestHours.map(([hour, count]) => <li key={hour} className="flex justify-between gap-3 text-sm"><span className="text-zinc-300">{String(hour).padStart(2, '0')}:00–{String((hour + 1) % 24).padStart(2, '0')}:00</span><strong className="text-amber-300">{count} order{count === 1 ? '' : 's'}</strong></li>)}</ol>
+            : <p className="mt-3 text-sm text-zinc-400">No recorded order times yet.</p>}
+        </article>
+      </section>
     </div>
+    </>}
 
     <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#1a1b1e]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-5 sm:px-6">
         <div>
-          <h3 className="font-black text-white">Order history</h3>
+          <h3 className="font-black text-white">{historyOnly ? 'Recorded orders' : 'Order history'}</h3>
           <p className="mt-1 text-xs text-zinc-400">{records.length} recorded orders</p>
         </div>
-        <label className="text-xs font-bold text-zinc-400">
-          Filter
-          <select value={historyFilter} onChange={event => setHistoryFilter(event.target.value as typeof historyFilter)} className="ml-2 rounded-lg border border-white/10 bg-[#111214] px-3 py-2 text-xs text-white">
-            <option value="all">All orders</option>
-            <option value="active">Live</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </label>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs font-bold text-zinc-400">Search<Input value={historySearch} onChange={event => setHistorySearch(event.target.value)} placeholder="Order # or customer" className="mt-1 h-9 w-40 border-white/10 bg-[#111214] text-xs text-white" /></label>
+          <label className="text-xs font-bold text-zinc-400">From<Input type="date" value={historyFrom} onChange={event => setHistoryFrom(event.target.value)} className="mt-1 h-9 w-36 border-white/10 bg-[#111214] text-xs text-white" /></label>
+          <label className="text-xs font-bold text-zinc-400">To<Input type="date" min={historyFrom || undefined} value={historyTo} onChange={event => setHistoryTo(event.target.value)} className="mt-1 h-9 w-36 border-white/10 bg-[#111214] text-xs text-white" /></label>
+          <label className="text-xs font-bold text-zinc-400">Status<select value={historyFilter} onChange={event => setHistoryFilter(event.target.value as typeof historyFilter)} className="mt-1 h-9 rounded-lg border border-white/10 bg-[#111214] px-3 text-xs text-white">
+            <option value="all">All</option><option value="active">Live</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
+          </select></label>
+          <button type="button" onClick={exportHistory} disabled={!matchingOrders.length} className="h-9 rounded-lg border border-white/15 px-3 text-xs font-bold text-zinc-200 disabled:opacity-40">Export CSV</button>
+        </div>
       </div>
       {loading && <p role="status" className="p-6 text-sm text-zinc-400">Loading recorded orders…</p>}
       {!loading && !error && visibleOrders.length === 0 && <p className="p-8 text-center text-sm text-zinc-400">No recorded orders match this filter.</p>}
@@ -611,18 +710,31 @@ function MerchantSalesOverview({
             <tr><th className="px-5 py-3 font-bold">Order</th><th className="px-5 py-3 font-bold">Customer</th><th className="px-5 py-3 font-bold">Date</th><th className="px-5 py-3 font-bold">Items</th><th className="px-5 py-3 font-bold">Order value</th><th className="px-5 py-3 font-bold">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {visibleOrders.map(order => <tr key={order.id} className="text-zinc-200">
-              <td className="px-5 py-4 font-bold text-amber-300">#{order.id}</td>
+            {visibleOrders.map(order => <Fragment key={order.id}>
+              <tr className="text-zinc-200">
+              <td className="px-5 py-4 font-bold text-amber-300"><button type="button" aria-expanded={expandedOrderId === order.id} onClick={() => setExpandedOrderId(current => current === order.id ? null : order.id)} className="underline decoration-dotted underline-offset-4">#{order.id}</button></td>
               <td className="px-5 py-4">{order.customerName}</td>
               <td className="px-5 py-4 text-xs text-zinc-400">{dateTime(order.createdAt)}</td>
               <td className="px-5 py-4">{order.itemCount}</td>
               <td className="px-5 py-4 font-bold">{order.cancelled ? '—' : currency(order.amount)}</td>
               <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${order.cancelled ? 'bg-rose-400/10 text-rose-300' : order.active ? 'bg-sky-400/10 text-sky-300' : 'bg-emerald-400/10 text-emerald-300'}`}>{order.status.replaceAll('_', ' ')}</span></td>
-            </tr>)}
+              </tr>
+              {expandedOrderId === order.id && <tr className="bg-white/[0.03]">
+              <td colSpan={6} className="px-5 py-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div><p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">Recorded items</p><ul className="mt-2 space-y-1 text-sm text-zinc-200">{order.items.map((item, index) => <li key={`${item.name}-${index}`}>{item.quantity} × {item.name}</li>)}</ul></div>
+                  <div><p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">Fulfillment timeline</p>
+                    {order.events.length ? <ol className="mt-2 space-y-1 text-sm text-zinc-200">{[...order.events].sort((left, right) => new Date(left.occurred_at).getTime() - new Date(right.occurred_at).getTime()).map(event => <li key={event.id}>{event.event_type.replaceAll('_', ' ')} · {dateTime(event.occurred_at)}{typeof event.details?.note === 'string' ? ` · ${event.details.note}` : ''}</li>)}</ol>
+                      : <p className="mt-2 text-sm text-zinc-400">No fulfillment events recorded.</p>}
+                  </div>
+                </div>
+              </td>
+              </tr>}
+            </Fragment>)}
           </tbody>
         </table>
       </div>}
-      <p className="border-t border-white/10 px-5 py-3 text-[10px] leading-5 text-zinc-500">Order values are based on recorded items. They do not confirm payment, seller fees, or payout amounts. The table shows the latest 20 matching orders.</p>
+      <p className="border-t border-white/10 px-5 py-3 text-[10px] leading-5 text-zinc-500">Order values use the unit prices and quantities recorded on the order; they do not confirm seller earnings or payouts. Showing up to 20 of {matchingOrders.length} matching orders.</p>
     </section>
   </section>;
 }
@@ -640,6 +752,8 @@ function FoodMerchantTerminal({
   foodOrdersLoading,
   foodOrdersError,
   deepLinkOrderId,
+  orderSoundEnabled,
+  onToggleOrderSound,
   onAction,
   onFoodFulfillment,
   onSectionChange
@@ -656,6 +770,8 @@ function FoodMerchantTerminal({
   foodOrdersLoading: boolean;
   foodOrdersError: string;
   deepLinkOrderId: string;
+  orderSoundEnabled: boolean;
+  onToggleOrderSound: () => Promise<void>;
   onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
   onFoodFulfillment: (orderId: number, eventType: string) => Promise<void>;
   onSectionChange: (section: Section) => void;
@@ -685,6 +801,8 @@ function FoodMerchantTerminal({
       performance={performance}
       performanceLoading={performanceLoading}
       performanceError={performanceError}
+      outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
+      onGoToStock={() => onSectionChange('inventory')}
     />;
   }
 
@@ -762,7 +880,10 @@ function FoodMerchantTerminal({
     const awaiting = openOrders.filter(order => !currentFoodFulfillment(order)).length;
     const preparing = foodOrders.filter(order => ['accepted', 'preparing', 'ready'].includes(currentFoodFulfillment(order))).length;
     return shell('Live orders', 'A live view of orders assigned to your approved business. Update each order as your kitchen prepares and hands it off.', <>
-      <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> Refreshes every 20 seconds</p>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#1a1b1e] p-3">
+        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-300"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> Refreshes every 20 seconds · device chime {orderSoundEnabled ? 'on' : 'off'}</p>
+        <button type="button" aria-pressed={orderSoundEnabled} onClick={() => void onToggleOrderSound()} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-zinc-100">{orderSoundEnabled ? <Volume2 size={14} className="mr-2 inline" /> : <VolumeX size={14} className="mr-2 inline" />}{orderSoundEnabled ? 'Turn sound off' : 'Enable and test sound'}</button>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ['Needs response', awaiting, Clock3],
@@ -807,13 +928,33 @@ function FoodMerchantTerminal({
           return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
             <div className="flex items-start justify-between gap-3">
               <div><p className="font-black text-white">{product.product_name}</p><p className="mt-1 text-xs text-zinc-500">Catalog price {currency(product.listed_price)}</p></div>
-              <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stock > 0 ? 'bg-emerald-400/10 text-emerald-300' : 'bg-rose-400/10 text-rose-300'}`}>{stock > 0 ? 'In stock' : 'No tracked stock'}</span>
+              <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stock > 0 ? 'bg-emerald-400/10 text-emerald-300' : 'bg-rose-400/10 text-rose-300'}`}>{stock > 0 ? 'In stock' : 'Out of stock'}</span>
             </div>
             <p className="mt-5 text-2xl font-black text-amber-300">{currency(product.listed_price)}</p>
             <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">Current shared catalog base price</p>
             {product.pending_price != null && <p className="mt-2 rounded-lg bg-amber-400/10 p-2 text-xs font-bold text-amber-200">Your {product.pending_variant ? `${product.pending_variant} ` : ''}price request: {currency(product.pending_price)} · waiting for OnBar review</p>}
-            <p className="mt-1 text-xs text-zinc-400">Recorded batch availability: {stock}</p>
-            <button type="button" onClick={() => onSectionChange('inventory')} className="mt-4 rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Edit price & stock</button>
+            <p className="mt-1 text-xs text-zinc-400">{stock === 0 ? 'Hidden from new merchant allocations while out of stock.' : `Recorded batch availability: ${stock}`}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!canOperate || working || stock === 0}
+                onClick={() => void onAction({
+                  operation: 'set_stock_count',
+                  applicationId: application.id,
+                  productId: product.product_id,
+                  quantity: 0,
+                  expectedQuantity: stock,
+                  lotCode: '',
+                  supplierName: '',
+                  expiryAt: null,
+                  exciseStampConfirmed: false
+                }, `${product.product_name} marked out of stock. Existing reserved orders are not changed.`)}
+                className="rounded-xl border border-rose-300 px-4 py-2.5 text-xs font-black uppercase text-rose-700 disabled:opacity-50"
+              >
+                {stock > 0 ? 'Mark out of stock' : 'Out of stock'}
+              </button>
+              <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Edit price & stock</button>
+            </div>
           </article>;
         })}
       </div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No menu products have been linked to this business yet. Contact OnBar to connect approved catalog items.</div>}
@@ -878,13 +1019,20 @@ function FoodMerchantTerminal({
   }
 
   if (section === 'food-history') {
-    return shell('Order history', 'Confirmed customer orders containing the food products approved for your business.', <>
-      <p className="text-xs text-zinc-500">Showing {foodOrders.length} confirmed customer orders containing an approved food product for this business.</p>
-      {foodOrdersError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">{foodOrdersError}</p>}
-      {foodOrdersLoading && <p role="status" className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-400">Loading food order history…</p>}
-      {!foodOrdersLoading && foodOrders.length ? <div className="grid gap-3 lg:grid-cols-2">{foodOrders.map(order => foodOrderCard(order, false))}</div>
-        : !foodOrdersLoading && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-center text-sm text-zinc-400">No food order history is available for this business yet.</div>}
-    </>);
+    return <MerchantSalesOverview
+      application={application}
+      isFoodMerchant
+      foodOrders={foodOrders}
+      partnerOrders={[]}
+      loading={foodOrdersLoading}
+      error={foodOrdersError}
+      performance={performance}
+      performanceLoading={performanceLoading}
+      performanceError={performanceError}
+      outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
+      onGoToStock={() => onSectionChange('inventory')}
+      historyOnly
+    />;
   }
 
   if (foodReviewSection) {
@@ -917,6 +1065,8 @@ function AlcoholMerchantTerminal({
   performance,
   performanceLoading,
   performanceError,
+  orderSoundEnabled,
+  onToggleOrderSound,
   onAction,
   onSectionChange
 }: {
@@ -928,6 +1078,8 @@ function AlcoholMerchantTerminal({
   performance: MerchantPerformance | null;
   performanceLoading: boolean;
   performanceError: string;
+  orderSoundEnabled: boolean;
+  onToggleOrderSound: () => Promise<void>;
   onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
   onSectionChange: (section: Section) => void;
 }) {
@@ -967,18 +1119,38 @@ function AlcoholMerchantTerminal({
       performance={performance}
       performanceLoading={performanceLoading}
       performanceError={performanceError}
+      outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
+      onGoToStock={() => onSectionChange('inventory')}
     />;
   }
 
-  if (section === 'liquor-live' || section === 'liquor-history') {
-    const orders = section === 'liquor-live'
-      ? overview.orders.filter(order => !['delivered', 'cancelled', 'rejected'].includes(latestFulfillment(order.fulfillment)))
-      : overview.orders;
-    return panel(section === 'liquor-live' ? 'Live orders' : 'Order history',
-      'Orders linked to inventory batches assigned to this business. Age and ID must be checked at handoff; the terminal does not have a verified customer-age provider.',
+  if (section === 'liquor-history') {
+    return <MerchantSalesOverview
+      application={application}
+      isFoodMerchant={false}
+      foodOrders={[]}
+      partnerOrders={overview.orders}
+      loading={false}
+      error=""
+      performance={performance}
+      performanceLoading={performanceLoading}
+      performanceError={performanceError}
+      outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
+      onGoToStock={() => onSectionChange('inventory')}
+      historyOnly
+    />;
+  }
+
+  if (section === 'liquor-live') {
+    const orders = overview.orders.filter(order => !['delivered', 'cancelled', 'rejected'].includes(latestFulfillment(order.fulfillment)));
+    return panel('Live orders', 'Orders linked to inventory batches assigned to this business. Age and ID must be checked at handoff; the terminal does not have a verified customer-age provider.',
       <>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#1a1b1e] p-3">
+          <p className="text-xs font-bold text-zinc-300">New-order sound: {orderSoundEnabled ? 'on' : 'off'}</p>
+          <button type="button" aria-pressed={orderSoundEnabled} onClick={() => void onToggleOrderSound()} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-zinc-100">{orderSoundEnabled ? <Volume2 size={14} className="mr-2 inline" /> : <VolumeX size={14} className="mr-2 inline" />}{orderSoundEnabled ? 'Turn sound off' : 'Enable and test sound'}</button>
+        </div>
         <div className="flex flex-wrap gap-3">
-          <div className="rounded-xl border border-white/10 bg-[#1a1b1e] px-4 py-3"><p className="text-2xl font-black text-white">{orders.length}</p><p className="text-[10px] font-bold uppercase text-zinc-400">{section === 'liquor-live' ? 'Open traced orders' : 'Recorded traced orders'}</p></div>
+          <div className="rounded-xl border border-white/10 bg-[#1a1b1e] px-4 py-3"><p className="text-2xl font-black text-white">{orders.length}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Open traced orders</p></div>
           <div className={`rounded-xl px-4 py-3 ${isLive ? 'bg-emerald-400/10 text-emerald-200' : 'bg-amber-400/10 text-amber-200'}`}><p className="font-black">{isLive ? 'Accepting orders' : 'Not accepting orders'}</p><p className="text-xs">{application.status === 'approved' ? 'Availability is linked to your saved hours.' : 'Admin approval is required.'}</p></div>
         </div>
         {orders.length ? <div className="grid gap-3 lg:grid-cols-2">{orders.map(order => {
@@ -990,7 +1162,7 @@ function AlcoholMerchantTerminal({
             <div className="mt-3 space-y-2">{order.items.map((item, index) => <p key={`${item.product_name}-${index}`} className="text-sm text-zinc-200">{item.merchant_quantity} × {item.product_name}{item.size ? ` · ${item.size}` : ''}</p>)}</div>
             {section === 'liquor-live' && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">{nextEvents.map(eventType => <button key={eventType} type="button" disabled={working} onClick={() => void onAction({ operation: 'fulfillment', applicationId: application.id, orderId: order.id, eventType }, `Order #${order.id}: ${fulfillmentLabels[eventType]}.`)} className={`rounded-lg px-3 py-2 text-[10px] font-black uppercase disabled:opacity-50 ${['rejected', 'cancelled'].includes(eventType) ? 'border border-rose-400/40 text-rose-200' : 'bg-amber-400 text-zinc-950'}`}>{fulfillmentLabels[eventType]}</button>)}</div>}
           </article>;
-        })}</div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No {section === 'liquor-live' ? 'open' : 'recorded'} traced orders for this shop.</div>}
+        })}</div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No open traced orders for this shop.</div>}
       </>);
   }
 
@@ -1006,7 +1178,30 @@ function AlcoholMerchantTerminal({
           const available = batches.reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0);
           return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
             <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-white">{product.product_name}</h3><p className="mt-1 text-xs text-zinc-400">{details?.size || 'Size not recorded'} · {details?.abv === undefined ? 'ABV not recorded' : `${details.abv}% ABV`}</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${details?.exciseStampConfirmed ? 'bg-amber-400/10 text-amber-200' : 'bg-rose-400/10 text-rose-200'}`}>{details?.exciseStampConfirmed ? 'Stamp attested' : 'Stamp not confirmed'}</span></div>
-            <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.listed_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Live catalog base price</p>{product.pending_price != null && <p className="mt-2 text-xs font-bold text-amber-700">Requested {product.pending_variant ? `${product.pending_variant} ` : ''}price: KSh {Number(product.pending_price).toLocaleString('en-KE')} · waiting for OnBar</p>}</div></div>
+            <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p><p className={`mt-2 text-xs font-black uppercase ${available > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{available > 0 ? 'In stock · available for new orders' : 'Out of stock · unavailable for new orders'}</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.listed_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Live catalog base price</p>{product.pending_price != null && <p className="mt-2 text-xs font-bold text-amber-700">Requested {product.pending_variant ? `${product.pending_variant} ` : ''}price: KSh {Number(product.pending_price).toLocaleString('en-KE')} · waiting for OnBar</p>}</div></div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!canOperate || working || available === 0}
+                onClick={() => void onAction({
+                  operation: 'set_stock_count',
+                  applicationId: application.id,
+                  productId: product.product_id,
+                  quantity: 0,
+                  expectedQuantity: available,
+                  lotCode: '',
+                  supplierName: '',
+                  expiryAt: null,
+                  exciseStampConfirmed: false
+                }, `${product.product_name} marked out of stock. Existing reserved orders are not changed.`)}
+                className="rounded-lg border border-rose-400/40 px-3 py-2 text-[10px] font-black uppercase text-rose-200 disabled:opacity-50"
+              >
+                Mark out of stock
+              </button>
+              <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-lg bg-amber-400 px-3 py-2 text-[10px] font-black uppercase text-zinc-950">
+                Update quantity / restock
+              </button>
+            </div>
             {batches.length > 0 && <div className="mt-3 space-y-2">{batches.map(batch => <p key={batch.id} className="rounded-lg bg-white/5 p-2 text-xs text-zinc-300">Lot {batch.lot_code} · {batch.available_quantity} units · {batch.on_hold ? 'ON HOLD' : batch.expiry_at ? `Expires ${batch.expiry_at}` : 'No expiry recorded'}</p>)}</div>}
           </article>;
         })}</div> : <p className="rounded-2xl bg-[#1a1b1e] p-6 text-sm text-zinc-400">No products were approved for this retailer.</p>}
@@ -1754,14 +1949,12 @@ export default function OnBarPartnerNetworkPage() {
     if (saved) setBatchForm({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '', exciseStampConfirmed: false });
   };
 
-  const submitStockCount = async (
-    event: FormEvent<HTMLFormElement>,
+  const setProductStockCount = async (
     product: NonNullable<PartnerBatch['product']>,
-    currentAvailable: number
+    currentAvailable: number,
+    quantity: number
   ) => {
-    event.preventDefault();
     if (!selected) return;
-    const quantity = Number(stockCountDraft[product.id] ?? currentAvailable);
     const details = stockCountDetails[product.id] || {
       lotCode: '',
       supplierName: '',
@@ -1786,7 +1979,9 @@ export default function OnBarPartnerNetworkPage() {
       supplierName: details.supplierName,
       expiryAt: details.expiryAt || null,
       exciseStampConfirmed: details.exciseStampConfirmed
-    }, `${product.name} stock count saved to the shared catalog.`);
+    }, quantity === 0
+      ? `${product.name} marked out of stock. Existing reserved orders are unchanged.`
+      : `${product.name} stock count saved to the merchant inventory ledger.`);
     if (saved) {
       setStockCountDraft(current => ({ ...current, [product.id]: String(quantity) }));
       setStockCountDetails(current => ({
@@ -1794,6 +1989,16 @@ export default function OnBarPartnerNetworkPage() {
         [product.id]: { lotCode: '', supplierName: '', expiryAt: '', exciseStampConfirmed: false }
       }));
     }
+  };
+
+  const submitStockCount = async (
+    event: FormEvent<HTMLFormElement>,
+    product: NonNullable<PartnerBatch['product']>,
+    currentAvailable: number
+  ) => {
+    event.preventDefault();
+    const quantity = Number(stockCountDraft[product.id] ?? currentAvailable);
+    await setProductStockCount(product, currentAvailable, quantity);
   };
 
   const submitOfferPrice = async (
@@ -1912,6 +2117,12 @@ export default function OnBarPartnerNetworkPage() {
   const application = selected?.application;
   const overview = selected;
   const performanceWindow = performance?.windows[performanceDays];
+  const closedOrderStatuses = ['delivered', 'complete', 'completed', 'cancelled', 'canceled', 'refunded', 'rejected'];
+  const pendingOrderCount = isFoodMerchant
+    ? foodOrders.filter(order => !latestFulfillment(order.fulfillment)
+      && !closedOrderStatuses.includes(order.status.toLowerCase())).length
+    : (selected?.orders || []).filter(order => !latestFulfillment(order.fulfillment)
+      && !closedOrderStatuses.includes(order.status.toLowerCase())).length;
   const coachingTips = performance && performanceWindow ? [
     performanceWindow.averageResponseSeconds !== null
       && performanceWindow.averageResponseSeconds > performance.targets.replySeconds
@@ -2032,7 +2243,8 @@ export default function OnBarPartnerNetworkPage() {
         {overview && <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
           {(isFoodMerchant ? foodSections : isLiquorMerchant ? liquorSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
             const Icon = item.icon;
-            return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}</button>;
+            const isOrderTab = ['food-live', 'liquor-live', 'orders'].includes(item.id);
+            return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}{isOrderTab && pendingOrderCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">{pendingOrderCount}</span>}</button>;
           })}
           <button type="button" disabled={loading} onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl disabled:opacity-50 ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
         </nav>}
@@ -2103,6 +2315,8 @@ export default function OnBarPartnerNetworkPage() {
             foodOrdersLoading={foodOrdersLoading}
             foodOrdersError={foodOrdersError}
             deepLinkOrderId={deepLinkOrderId}
+            orderSoundEnabled={orderSoundEnabled}
+            onToggleOrderSound={toggleOrderSound}
             onAction={apiAction}
             onFoodFulfillment={updateFoodOrderFulfillment}
             onSectionChange={setSection}
@@ -2119,6 +2333,8 @@ export default function OnBarPartnerNetworkPage() {
             performance={performance}
             performanceLoading={performanceLoading}
             performanceError={performanceError}
+            orderSoundEnabled={orderSoundEnabled}
+            onToggleOrderSound={toggleOrderSound}
             onAction={apiAction}
             onSectionChange={setSection}
           />
@@ -2135,6 +2351,8 @@ export default function OnBarPartnerNetworkPage() {
             performance={performance}
             performanceLoading={performanceLoading}
             performanceError={performanceError}
+            outOfStockProducts={getOutOfStockProductNames(overview.application, overview.batches)}
+            onGoToStock={() => setSection('inventory')}
           />
         )}
 
@@ -2394,6 +2612,13 @@ export default function OnBarPartnerNetworkPage() {
         {!loading && overview && section === 'orders' && (
           <section className="space-y-4">
             <div><h2 className="text-xl font-black text-slate-900">Assigned orders</h2><p className="mt-1 text-sm text-slate-500">Only orders linked to your traced products are shown.</p></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-bold text-slate-600">New-order sound: {orderSoundEnabled ? 'on' : 'off'}</p>
+              <Button type="button" variant={orderSoundEnabled ? 'outline' : 'default'} aria-pressed={orderSoundEnabled} onClick={() => void toggleOrderSound()} className="rounded-lg">
+                {orderSoundEnabled ? <Volume2 size={15} className="mr-2" /> : <VolumeX size={15} className="mr-2" />}
+                {orderSoundEnabled ? 'Turn sound off' : 'Enable and test sound'}
+              </Button>
+            </div>
             {!overview.orders.length && <div className="rounded-2xl bg-white p-10 text-center text-sm text-slate-500">No traced orders are currently assigned to this business.</div>}
             {overview.orders.map(order => {
               const latest = latestFulfillment(order.fulfillment);
@@ -2420,6 +2645,48 @@ export default function OnBarPartnerNetworkPage() {
 
         {!loading && overview && section === 'inventory' && (
           <section className="space-y-5">
+            {(() => {
+              const latestConfirmation = overview.events
+                .filter(event => event.event_type === 'stock_confirmed')
+                .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0];
+              const latestMovementAt = overview.batches
+                .flatMap(batch => batch.movements.map(movement => movement.created_at))
+                .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0];
+              const confirmationIsCurrent = Boolean(latestConfirmation)
+                && (!latestMovementAt || new Date(latestConfirmation.created_at).getTime() >= new Date(latestMovementAt).getTime());
+              const nairobiDate = (value: string) => new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Africa/Nairobi',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+              }).format(new Date(value));
+              const confirmedToday = confirmationIsCurrent
+                && nairobiDate(latestConfirmation!.created_at) === nairobiDate(new Date().toISOString());
+              return <article className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 ${confirmedToday ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                <div>
+                  <p className={`text-xs font-black uppercase tracking-wide ${confirmedToday ? 'text-emerald-800' : 'text-amber-900'}`}>
+                    {confirmedToday ? 'Verified Stock · Today' : latestConfirmation && !confirmationIsCurrent ? 'Stock changed since your last check' : 'Daily stock check'}
+                  </p>
+                  <p className={`mt-1 text-sm ${confirmedToday ? 'text-emerald-900' : 'text-amber-950'}`}>
+                    {confirmedToday
+                      ? `Your current catalog stock was confirmed at ${dateTime(latestConfirmation!.created_at)}.`
+                      : 'Review your catalog counts, then confirm that they match what is physically on hand.'}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  disabled={!canOperate || working || productOptions.length === 0}
+                  onClick={() => selected && void apiAction({
+                    operation: 'confirm_stock',
+                    applicationId: selected.application.id
+                  }, 'Stock confirmed and recorded in your merchant audit history.')}
+                  className="rounded-xl font-bold"
+                >
+                  <CheckCircle2 size={16} className="mr-2" />
+                  My stock is correct
+                </Button>
+              </article>;
+            })()}
             <div>
               <h2 className="text-xl font-black text-slate-900">Inventory and stock counts</h2>
               <p className="mt-1 text-sm text-slate-600">Set the units available for new orders. Updates are saved to the same audited stock ledger used by OnBar Admin and dispatch.</p>
@@ -2437,6 +2704,11 @@ export default function OnBarPartnerNetworkPage() {
                     .reduce((total, batch) => total + batch.available_quantity, 0);
                   const targetQuantity = Number(stockCountDraft[product.id] ?? currentAvailable);
                   const isAddingStock = targetQuantity > currentAvailable;
+                  const stockStatus = currentAvailable === 0
+                    ? { label: 'Out', className: 'bg-rose-100 text-rose-800' }
+                    : currentAvailable <= 5
+                      ? { label: 'Low', className: 'bg-amber-100 text-amber-900' }
+                      : { label: 'OK', className: 'bg-emerald-100 text-emerald-800' };
                   const details = stockCountDetails[product.id] || {
                     lotCode: '',
                     supplierName: '',
@@ -2451,26 +2723,30 @@ export default function OnBarPartnerNetworkPage() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <h3 className="font-black text-slate-900">{product.name}</h3>
-                          <p className="mt-1 text-xs text-slate-500">Current available stock: {currentAvailable}</p>
+                          <p className="mt-1 text-xs text-slate-500">Current available stock: {currentAvailable}{currentAvailable > 0 && currentAvailable <= 5 ? ' · low stock' : ''}</p>
                         </div>
-                        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${currentAvailable > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
-                          {currentAvailable > 0 ? 'Available to order' : 'Out of stock'}
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stockStatus.className}`}>
+                            {stockStatus.label}
                         </span>
                       </div>
                       <form onSubmit={event => void submitStockCount(event, product, currentAvailable)} className="space-y-3">
                       <label className="block text-xs font-bold text-slate-700">
                         Set available units
-                        <Input
-                          required
-                          type="number"
-                          min="0"
-                          max="1000000"
-                          step="1"
-                          value={stockCountDraft[product.id] ?? String(currentAvailable)}
-                          onChange={event => setStockCountDraft(current => ({ ...current, [product.id]: event.target.value }))}
-                          className="mt-1 h-11 rounded-xl"
-                          aria-label={`Available units for ${product.name}`}
-                        />
+                        <div className="mt-1 flex gap-2">
+                          <Button type="button" variant="outline" aria-label={`Decrease ${product.name} stock`} disabled={working || targetQuantity <= 0} onClick={() => setStockCountDraft(current => ({ ...current, [product.id]: String(targetQuantity - 1) }))}>−</Button>
+                          <Input
+                            required
+                            type="number"
+                            min="0"
+                            max="1000000"
+                            step="1"
+                            value={stockCountDraft[product.id] ?? String(currentAvailable)}
+                            onChange={event => setStockCountDraft(current => ({ ...current, [product.id]: event.target.value }))}
+                            className="h-11 rounded-xl"
+                            aria-label={`Available units for ${product.name}`}
+                          />
+                          <Button type="button" variant="outline" aria-label={`Increase ${product.name} stock`} disabled={working || targetQuantity >= 1000000} onClick={() => setStockCountDraft(current => ({ ...current, [product.id]: String(targetQuantity + 1) }))}>+</Button>
+                        </div>
                       </label>
                       {isAddingStock && (
                         <div className="grid gap-2 sm:grid-cols-2">
@@ -2534,6 +2810,15 @@ export default function OnBarPartnerNetworkPage() {
                       >
                         {working ? <Loader2 size={15} className="mr-2 animate-spin" /> : <PackageCheck size={15} className="mr-2" />}
                         Save stock count
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={working || currentAvailable === 0}
+                        onClick={() => void setProductStockCount(product, currentAvailable, 0)}
+                        className="h-10 rounded-xl border-rose-200 font-bold text-rose-700 hover:bg-rose-50"
+                      >
+                        Mark out of stock
                       </Button>
                       </form>
                       {(() => {
