@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, type FormEvent } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, type FormEvent } from 'react';
 import { type User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { useCart, type CartItem } from '@/context/CartContext';
@@ -134,13 +134,66 @@ interface WorkspaceAccess {
   merchantApplications: Array<{
     id: string;
     businessName: string;
+    businessType: string;
     status: string;
+    reviewNote: string | null;
+    submittedAt: string;
+    reviewedAt: string | null;
     offeredGoods: string[];
     offeredGoodsPricing: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
   }>;
+  marketApplications: Array<{
+    id: string;
+    businessName: string;
+    status: string;
+    reviewNote: string | null;
+    submittedAt: string;
+    reviewedAt: string | null;
+  }>;
+  riderApplication: {
+    name: string | null;
+    status: string;
+    submittedAt: string | null;
+    updatedAt: string | null;
+  } | null;
   riderApproved: boolean;
   riderName: string | null;
   riderAccessUnavailableReason: string | null;
+}
+
+function ReviewProgress({ status }: { status: string }) {
+  const normalized = status.toLowerCase().replace(/[\s-]+/g, '_');
+  const needsAction = normalized === 'information_requested';
+  const rejected = normalized === 'rejected';
+  const complete = normalized === 'approved' || normalized === 'verified'
+    || normalized === 'rejected' || normalized === 'suspended' || normalized === 'expired';
+  const stage = complete ? 3 : normalized === 'under_review' || normalized === 'information_requested' ? 2 : 1;
+  const stages = ['Submitted', 'Review', 'Decision'];
+
+  return (
+    <div aria-label={`Application status: ${status.replace(/_/g, ' ')}`}>
+      <div className="flex items-center gap-2">
+        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wide ${
+          needsAction ? 'bg-amber-100 text-amber-900'
+            : normalized === 'approved' || normalized === 'verified' ? 'bg-emerald-100 text-emerald-900'
+            : rejected || normalized === 'suspended' || normalized === 'expired' ? 'bg-rose-100 text-rose-900'
+            : 'bg-sky-100 text-sky-900'
+        }`}>{status.replace(/_/g, ' ')}</span>
+        {needsAction && <span className="text-xs font-bold text-amber-800">Action may be needed</span>}
+      </div>
+      <ol className="mt-3 grid grid-cols-3 gap-2">
+        {stages.map((label, index) => {
+          const reached = index < stage;
+          return (
+            <li key={label} className="min-w-0">
+              <div className={`h-1.5 rounded-full ${reached ? (needsAction ? 'bg-amber-500' : rejected ? 'bg-rose-500' : 'bg-emerald-500') : 'bg-slate-200'}`} />
+              <span className={`mt-1 block text-[10px] font-semibold ${reached ? 'text-slate-700' : 'text-slate-400'}`}>{label}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
 }
 
 interface Coupon {
@@ -229,10 +282,13 @@ export default function ProfilePage() {
     loading: true,
     error: null,
     merchantApplications: [],
+    marketApplications: [],
+    riderApplication: null,
     riderApproved: false,
     riderName: null,
     riderAccessUnavailableReason: null
   });
+  const [workspaceRefreshing, setWorkspaceRefreshing] = useState(false);
   const [abandonedBag, setAbandonedBag] = useState<AbandonedCart | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [isPickingLocation, setIsPickingLocation] = useState(false);
@@ -251,6 +307,59 @@ export default function ProfilePage() {
   const { addToCart } = useCart();
   const { wishlist } = useWishlist();
   const assistantInputRef = useRef<HTMLInputElement>(null);
+
+  const loadWorkspaceAccess = useCallback(async (accessToken: string) => {
+    setWorkspaceRefreshing(true);
+    try {
+      const response = await fetch('/api/profile/workspaces', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: 'no-store'
+      });
+      const result = await response.json() as {
+        merchantApplications?: WorkspaceAccess['merchantApplications'];
+        marketApplications?: WorkspaceAccess['marketApplications'];
+        riderApplication?: WorkspaceAccess['riderApplication'];
+        riderApproved?: boolean;
+        riderName?: string | null;
+        riderAccessUnavailableReason?: string | null;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error || 'Application progress could not be checked.');
+      setWorkspaceAccess({
+        loading: false,
+        error: null,
+        merchantApplications: result.merchantApplications || [],
+        marketApplications: result.marketApplications || [],
+        riderApplication: result.riderApplication || null,
+        riderApproved: result.riderApproved === true,
+        riderName: result.riderName || null,
+        riderAccessUnavailableReason: result.riderAccessUnavailableReason || null
+      });
+    } catch (workspaceError) {
+      console.error('[Profile] Could not load application progress:', workspaceError);
+      setWorkspaceAccess(current => ({
+        ...current,
+        loading: false,
+        error: workspaceError instanceof Error ? workspaceError.message : 'Application progress could not be checked.'
+      }));
+    } finally {
+      setWorkspaceRefreshing(false);
+    }
+  }, []);
+
+  const refreshWorkspaceAccess = useCallback(async () => {
+    if (!supabase) return;
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      setWorkspaceAccess(current => ({ ...current, loading: false, error: 'Your sign-in session could not be refreshed.' }));
+      return;
+    }
+    if (!session?.access_token) {
+      setWorkspaceAccess(current => ({ ...current, loading: false, error: 'Sign in again to check application progress.' }));
+      return;
+    }
+    await loadWorkspaceAccess(session.access_token);
+  }, [loadWorkspaceAccess]);
 
   useEffect(() => {
     // 🛡️ [FAILSAFE_TIMEOUT] Guarantees loading spinner never sticks for more than 2 seconds
@@ -275,40 +384,7 @@ export default function ProfilePage() {
         }
 
         setUser(session.user);
-        void (async () => {
-            try {
-                const response = await fetch('/api/profile/workspaces', {
-                    headers: { Authorization: `Bearer ${session.access_token}` },
-                    cache: 'no-store'
-                });
-                const result = await response.json() as {
-                    merchantApplications?: WorkspaceAccess['merchantApplications'];
-                    riderApproved?: boolean;
-                    riderName?: string | null;
-                    riderAccessUnavailableReason?: string | null;
-                    error?: string;
-                };
-                if (!response.ok) throw new Error(result.error || 'Workspace access could not be checked.');
-                setWorkspaceAccess({
-                    loading: false,
-                    error: null,
-                    merchantApplications: result.merchantApplications || [],
-                    riderApproved: result.riderApproved === true,
-                    riderName: result.riderName || null,
-                    riderAccessUnavailableReason: result.riderAccessUnavailableReason || null
-                });
-            } catch (workspaceError) {
-                console.error('[Profile] Could not load approved workspace access:', workspaceError);
-                setWorkspaceAccess({
-                    loading: false,
-                    error: workspaceError instanceof Error ? workspaceError.message : 'Workspace access could not be checked.',
-                    merchantApplications: [],
-                    riderApproved: false,
-                    riderName: null,
-                    riderAccessUnavailableReason: null
-                });
-            }
-        })();
+        void loadWorkspaceAccess(session.access_token);
         try {
             const response = await fetch('/api/affiliate', {
                 headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -438,9 +514,24 @@ export default function ProfilePage() {
 
     loadData();
     return () => clearTimeout(failsafeTimer);
-  }, [router]);
+  }, [loadWorkspaceAccess, router]);
 
   const memberId = user?.id;
+
+  useEffect(() => {
+    if (!memberId) return;
+    const interval = window.setInterval(() => { void refreshWorkspaceAccess(); }, 30_000);
+    window.addEventListener('focus', refreshWorkspaceAccess);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshWorkspaceAccess);
+    };
+  }, [memberId, refreshWorkspaceAccess]);
+
+  const hasWorkspaceProgress = workspaceAccess.merchantApplications.length > 0
+    || workspaceAccess.marketApplications.length > 0
+    || Boolean(workspaceAccess.riderApplication)
+    || workspaceAccess.riderApproved;
 
   const submitOrderComplaint = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -923,16 +1014,25 @@ export default function ProfilePage() {
         </header>
 
         {!workspaceAccess.loading
-            && !workspaceAccess.error
-            && (workspaceAccess.riderApproved || workspaceAccess.merchantApplications.some(application => application.status === 'approved'))
+            && (hasWorkspaceProgress || Boolean(workspaceAccess.error))
             && <section id="workspaces" aria-labelledby="workspaces-title" className="scroll-mt-24 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
                 <div className="flex items-start gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                         <Store size={22} />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <h2 id="workspaces-title" className="text-lg font-black uppercase tracking-tight text-foreground">Your rider & merchant terminals</h2>
-                        <p className="mt-1 text-sm text-slate-500">Approved workspaces appear here automatically when your verified account matches the phone or email on your application.</p>
+                        <h2 id="workspaces-title" className="text-lg font-black uppercase tracking-tight text-foreground">Your application progress & workspaces</h2>
+                        <p className="mt-1 text-sm text-slate-500">Check your application status here. Updates are refreshed automatically and when you return to this page.</p>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={workspaceRefreshing}
+                            onClick={() => void refreshWorkspaceAccess()}
+                            className="mt-3 h-9 rounded-lg text-xs"
+                        >
+                            <RefreshCcw size={14} className={`mr-2 ${workspaceRefreshing ? 'animate-spin' : ''}`} />
+                            {workspaceRefreshing ? 'Refreshing status…' : 'Refresh review progress'}
+                        </Button>
                         {workspaceAccess.loading ? (
                             <p role="status" className="mt-4 text-sm text-slate-500">Checking approved workspace access…</p>
                         ) : workspaceAccess.error ? (
@@ -940,7 +1040,80 @@ export default function ProfilePage() {
                                 {workspaceAccess.error}
                             </p>
                         ) : (
-                            <div className="mt-4 flex flex-wrap gap-3">
+                            <div className="mt-4 grid w-full gap-4">
+                                {workspaceAccess.error && (
+                                    <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{workspaceAccess.error}</p>
+                                )}
+                                {workspaceAccess.merchantApplications.filter(application => application.status !== 'approved').map(application => (
+                                    <article key={application.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Merchant application · {application.businessType.replace(/_/g, ' ')}</p>
+                                                <h3 className="mt-1 font-black text-slate-900">{application.businessName}</h3>
+                                            </div>
+                                            <ReviewProgress status={application.status} />
+                                        </div>
+                                        <p className="mt-3 text-xs text-slate-500">Submitted {new Date(application.submittedAt).toLocaleString()}{application.reviewedAt ? ` · Last reviewed ${new Date(application.reviewedAt).toLocaleString()}` : ''}</p>
+                                        {application.reviewNote && (
+                                            <p className={`mt-3 rounded-xl p-3 text-sm leading-5 ${application.status === 'information_requested' ? 'bg-amber-50 text-amber-950' : 'bg-slate-50 text-slate-700'}`}>
+                                                <strong>{application.status === 'information_requested' ? 'Information requested: ' : 'Review update: '}</strong>{application.reviewNote}
+                                            </p>
+                                        )}
+                                        {application.status === 'information_requested' && (
+                                            <p className="mt-3 text-xs leading-5 text-amber-900">Use the review note above to prepare the requested information. If a secure document upload link was issued, it will be delivered to your application email.</p>
+                                        )}
+                                    </article>
+                                ))}
+                                {workspaceAccess.marketApplications.map(application => (
+                                    <article key={application.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Market seller application</p>
+                                                <h3 className="mt-1 font-black text-slate-900">{application.businessName}</h3>
+                                            </div>
+                                            <ReviewProgress status={application.status} />
+                                        </div>
+                                        <p className="mt-3 text-xs text-slate-500">Submitted {new Date(application.submittedAt).toLocaleString()}{application.reviewedAt ? ` · Last reviewed ${new Date(application.reviewedAt).toLocaleString()}` : ''}</p>
+                                        {application.reviewNote && (
+                                            <p className={`mt-3 rounded-xl p-3 text-sm leading-5 ${application.status === 'information_requested' ? 'bg-amber-50 text-amber-950' : 'bg-slate-50 text-slate-700'}`}>
+                                                <strong>{application.status === 'information_requested' ? 'Information requested: ' : 'Review update: '}</strong>{application.reviewNote}
+                                            </p>
+                                        )}
+                                        {application.status === 'information_requested' && (
+                                            <Link href="/merchant/register" className="mt-3 inline-flex text-xs font-bold text-primary underline">Update your seller application</Link>
+                                        )}
+                                        {application.status === 'approved' && (
+                                            <Link href="/merchant/dashboard" className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-primary px-4 text-xs font-black uppercase tracking-wide text-white">
+                                                Open Merchant Studio
+                                            </Link>
+                                        )}
+                                    </article>
+                                ))}
+                                {workspaceAccess.riderApplication && (
+                                    <article className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Rider application</p>
+                                                <h3 className="mt-1 font-black text-slate-900">{workspaceAccess.riderApplication.name || 'Rider account'}</h3>
+                                            </div>
+                                            <ReviewProgress status={workspaceAccess.riderApplication.status} />
+                                        </div>
+                                        {workspaceAccess.riderApplication.submittedAt && <p className="mt-3 text-xs text-slate-500">Application started {new Date(workspaceAccess.riderApplication.submittedAt).toLocaleString()}{workspaceAccess.riderApplication.updatedAt ? ` · Updated ${new Date(workspaceAccess.riderApplication.updatedAt).toLocaleString()}` : ''}</p>}
+                                        <p className="mt-3 text-sm leading-5 text-slate-600">
+                                            {workspaceAccess.riderApplication.status === 'Pending'
+                                                ? 'Your rider application is waiting for the operations team to review it. You can check back here for the latest status.'
+                                                : workspaceAccess.riderApplication.status === 'Verified'
+                                                    ? 'Your rider account is approved. Open your rider terminal below.'
+                                                    : workspaceAccess.riderApplication.status === 'Rejected'
+                                                        ? 'This application was not approved. Contact Rider Operations for guidance before submitting again.'
+                                                        : 'Your rider application status is shown here. Contact Rider Operations if you need help.'}
+                                        </p>
+                                        {workspaceAccess.riderApplication.status !== 'Verified' && (
+                                            <Link href="/rider/onboarding" className="mt-3 inline-flex text-xs font-bold text-primary underline">Open rider application</Link>
+                                        )}
+                                    </article>
+                                )}
+                                <div className="flex flex-wrap gap-3">
                                 {workspaceAccess.merchantApplications.filter(application => application.status === 'approved').map(application => (
                                     <div key={application.id} className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
                                         <Link
@@ -973,6 +1146,7 @@ export default function ProfilePage() {
                                         <p className="mt-2 text-xs text-slate-500">You can return here anytime. The terminal opens with this verified account; your approval PIN remains available as a backup sign-in.</p>
                                     </div>
                                 )}
+                                </div>
                                 {workspaceAccess.riderAccessUnavailableReason && (
                                     <p role="alert" className="w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                                         {workspaceAccess.riderAccessUnavailableReason}

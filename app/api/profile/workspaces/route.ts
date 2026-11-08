@@ -55,9 +55,8 @@ export async function GET(request: Request) {
   });
   const { data: linkedApplications, error: linkedApplicationsError } = await database
     .from('merchant_applications')
-    .select('id, business_name, status, offered_goods, offered_goods_pricing')
+    .select('id, business_name, business_type, status, review_note, submitted_at, reviewed_at, offered_goods, offered_goods_pricing')
     .eq('account_user_id', user.id)
-    .eq('status', 'approved')
     .order('submitted_at', { ascending: false })
     .limit(25);
 
@@ -72,10 +71,9 @@ export async function GET(request: Request) {
   let applications = linkedApplications || [];
   if (!applications.length && emailVerified && user.email) {
     const { data: legacyApplications, error: legacyApplicationsError } = await database.from('merchant_applications')
-      .select('id, business_name, status, offered_goods, offered_goods_pricing')
+      .select('id, business_name, business_type, status, review_note, submitted_at, reviewed_at, offered_goods, offered_goods_pricing')
       .eq('email', user.email.toLowerCase())
-    .eq('status', 'approved')
-    .order('submitted_at', { ascending: false })
+      .order('submitted_at', { ascending: false })
       .limit(25);
     if (legacyApplicationsError) {
       console.error('[ProfileWorkspaces] Could not load legacy merchant workspace access:', legacyApplicationsError);
@@ -84,16 +82,33 @@ export async function GET(request: Request) {
     applications = legacyApplications || [];
   }
 
+  const { data: marketApplications, error: marketApplicationsError } = await database
+    .from('mm_merchant_applications')
+    .select('id, business_name, status, review_note, submitted_at, reviewed_at')
+    .eq('user_id', user.id)
+    .order('submitted_at', { ascending: false })
+    .limit(25);
+  if (marketApplicationsError) {
+    console.error('[ProfileWorkspaces] Could not load marketplace application progress:', marketApplicationsError);
+    return NextResponse.json({ error: 'Your seller application progress could not be checked.' }, { status: 503 });
+  }
+
   const verifiedEmail = emailVerified && user.email ? user.email.trim().toLowerCase() : null;
   const verifiedPhone = user.phone_confirmed_at && user.phone
     ? normalizeTicketPhoneNumber(user.phone)
     : null;
-  const riderCandidates: Array<{ rider_phone: string; rider_name: string; rider_email?: string | null }> = [];
+  const riderCandidates: Array<{
+    rider_phone: string;
+    rider_name: string;
+    rider_email?: string | null;
+    verification_status: string;
+    created_at: string | null;
+    updated_at: string | null;
+  }> = [];
   if (verifiedEmail) {
     const { data: riders, error: ridersError } = await database
       .from('rider_status')
-      .select('rider_phone, rider_name, rider_email, verification_status')
-      .eq('verification_status', 'Verified')
+      .select('rider_phone, rider_name, rider_email, verification_status, created_at, updated_at')
       .eq('rider_email', verifiedEmail)
       .limit(3);
     if (ridersError) {
@@ -115,7 +130,7 @@ export async function GET(request: Request) {
     const variants = phoneVariants(verifiedPhone);
     const { data: riders, error: ridersError } = await database
       .from('rider_status')
-      .select('rider_phone, rider_name, verification_status')
+      .select('rider_phone, rider_name, verification_status, created_at, updated_at')
       .in('rider_phone', variants)
       .limit(10);
     if (ridersError) {
@@ -123,11 +138,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Your approved workspace access could not be checked.' }, { status: 503 });
     }
     riderCandidates.push(...(riders || []).filter(rider =>
-      rider.verification_status === 'Verified'
-      && normalizeTicketPhoneNumber(rider.rider_phone) === verifiedPhone
+      normalizeTicketPhoneNumber(rider.rider_phone) === verifiedPhone
     ));
   }
+  const matchedRiders = [...new Map(riderCandidates
+    .filter(rider => rider.rider_phone)
+    .map(rider => [normalizeTicketPhoneNumber(rider.rider_phone) || rider.rider_phone, rider])
+  ).values()];
   const approvedRiders = [...new Map(riderCandidates
+    .filter(rider => rider.verification_status === 'Verified')
     .filter(rider => rider.rider_phone)
     .map(rider => [normalizeTicketPhoneNumber(rider.rider_phone) || rider.rider_phone, rider])
   ).values()];
@@ -137,7 +156,11 @@ export async function GET(request: Request) {
     merchantApplications: (applications || []).map(application => ({
       id: application.id,
       businessName: application.business_name,
+      businessType: application.business_type,
       status: application.status,
+      reviewNote: application.review_note,
+      submittedAt: application.submitted_at,
+      reviewedAt: application.reviewed_at,
       offeredGoods: Array.isArray(application.offered_goods)
         ? application.offered_goods.filter((good): good is string => typeof good === 'string')
         : [],
@@ -152,10 +175,26 @@ export async function GET(request: Request) {
         )
         : []
     })),
+    marketApplications: (marketApplications || []).map(application => ({
+      id: application.id,
+      businessName: application.business_name,
+      status: application.status,
+      reviewNote: application.review_note,
+      submittedAt: application.submitted_at,
+      reviewedAt: application.reviewed_at
+    })),
     riderApproved,
     riderName: riderApproved ? approvedRiders[0].rider_name : null,
+    riderApplication: matchedRiders.length === 1 ? {
+      name: matchedRiders[0].rider_name,
+      status: matchedRiders[0].verification_status,
+      submittedAt: matchedRiders[0].created_at,
+      updatedAt: matchedRiders[0].updated_at
+    } : null,
     riderAccessUnavailableReason: approvedRiders.length > 1
       ? 'More than one approved rider account matches this profile. Contact dispatch to correct the account link.'
+      : matchedRiders.length > 1
+        ? 'More than one rider application matches this profile. Contact dispatch to confirm which application is yours.'
       : null
   }, {
     headers: { 'Cache-Control': 'private, no-store, max-age=0' }
