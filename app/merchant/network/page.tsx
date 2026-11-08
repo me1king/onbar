@@ -2109,17 +2109,7 @@ export default function OnBarPartnerNetworkPage() {
           />
         )}
 
-        {!loading && overview && application && isLiquorMerchant && [
-          'liquor-live',
-          'liquor-catalog',
-          'liquor-promotions',
-          'liquor-payments',
-          'liquor-history',
-          'liquor-reviews',
-          'liquor-compliance',
-          'liquor-hours',
-          'settings'
-        ].includes(section) && (
+        {!loading && overview && application && isLiquorMerchant && liquorSections.some(item => item.id === section) && (
           <AlcoholMerchantTerminal
             section={section}
             application={application}
