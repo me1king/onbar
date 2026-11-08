@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { formatPrice } from '@/lib/utils';
 import { formatBatteryTelemetry } from '@/lib/riderTelemetry';
+import PrivateDocumentPreview from '@/components/admin/PrivateDocumentPreview';
 
 const LiveMap = dynamic(() => import('@/components/admin/dispatch/LiveDispatchMap'), {
   ssr: false,
@@ -70,6 +71,7 @@ interface RiderProfileData {
     id_number_last4: string | null;
     license_number: string | null;
     rider_photo_url: string | null;
+    vehicle_photo_url: string | null;
   } | null;
   profileDetails: {
     whatsapp_number: string | null;
@@ -130,6 +132,7 @@ export default function RiderProfilePage() {
   const [error, setError] = React.useState<string | null>(null);
   const [screenRefresh, setScreenRefresh] = React.useState(0);
   const [mirrorOpen, setMirrorOpen] = React.useState(false);
+  const [photoPreview, setPhotoPreview] = React.useState<{ name: string; url: string } | null>(null);
 
   const loadProfile = React.useCallback(async () => {
     if (!id) return;
@@ -228,7 +231,6 @@ export default function RiderProfilePage() {
                       <div><dt className="text-xs text-slate-500">WhatsApp</dt><dd className="font-semibold">{display(data.profileDetails.whatsapp_number)}</dd></div>
                       <div><dt className="text-xs text-slate-500">Emergency contact</dt><dd className="font-semibold">{display(data.profileDetails.emergency_contact_name)} · {display(data.profileDetails.emergency_contact_phone)}</dd></div>
                       <div><dt className="text-xs text-slate-500">Guarantor</dt><dd className="font-semibold">{display(data.profileDetails.guarantor_name)} · {display(data.profileDetails.guarantor_phone)}</dd></div>
-                      <div><dt className="text-xs text-slate-500">M-Pesa payout</dt><dd className="font-semibold">{display(data.profileDetails.mpesa_number)} · {display(data.profileDetails.mpesa_registered_name)}{data.profileDetails.mpesa_name_verified_at ? ' · verified' : ' · not verified'}</dd></div>
                       <div><dt className="text-xs text-slate-500">Delivery zones</dt><dd className="font-semibold">{data.profileDetails.delivery_zones?.join(', ') || 'Not recorded'}</dd></div>
                       <div><dt className="text-xs text-slate-500">Max distance</dt><dd className="font-semibold">{data.profileDetails.max_distance_km === null ? 'Not recorded' : `${data.profileDetails.max_distance_km} km`}</dd></div>
                       <div><dt className="text-xs text-slate-500">Availability</dt><dd className="font-semibold">{data.profileDetails.shift_days?.join(', ') || 'Not recorded'}{data.profileDetails.shift_start_time && data.profileDetails.shift_end_time ? ` · ${data.profileDetails.shift_start_time.slice(0, 5)}–${data.profileDetails.shift_end_time.slice(0, 5)}` : ''}</dd></div>
@@ -237,6 +239,23 @@ export default function RiderProfilePage() {
                       <div><dt className="text-xs text-slate-500">Rider agreement</dt><dd className="font-semibold">{data.profileDetails.rider_agreement_accepted_at ? `${data.profileDetails.rider_agreement_version || 'Accepted'} · ${new Date(data.profileDetails.rider_agreement_accepted_at).toLocaleDateString()}` : 'Not accepted'}</dd></div>
                     </dl>
                   : <p className="text-sm leading-6 text-slate-600">No additional rider account details have been saved.</p>}
+          </Card>
+          <Card className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
+            <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-slate-900"><Wallet size={18} />Rider payout destination</h2>
+            {data.profileDetailsRestricted
+              ? <p className="text-sm leading-6 text-slate-700">Payout details are restricted. An owner or staff member with sensitive-data permission can view them.</p>
+              : data.profileDetailsUnavailable
+                ? <p className="text-sm leading-6 text-amber-900">Rider payout profile is unavailable. Apply supabase/RIDER_PROFILE_DETAILS_MIGRATION.sql.</p>
+                : <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div className="rounded-xl bg-white p-3"><p className="text-xs font-semibold text-slate-500">M-Pesa phone</p><p className="mt-1 font-bold text-slate-900">{display(data.profileDetails?.mpesa_number)}</p></div>
+                    <div className="rounded-xl bg-white p-3"><p className="text-xs font-semibold text-slate-500">Registered account name</p><p className="mt-1 font-bold text-slate-900">{display(data.profileDetails?.mpesa_registered_name)}</p></div>
+                    <p className={`sm:col-span-2 font-bold ${data.profileDetails?.mpesa_name_verified_at ? 'text-emerald-800' : 'text-amber-800'}`}>
+                      {data.profileDetails?.mpesa_name_verified_at
+                        ? `Name verification recorded ${new Date(data.profileDetails.mpesa_name_verified_at).toLocaleString()}.`
+                        : 'Not verified. Confirm the recipient name and number before paying; submitted details alone are not verification.'}
+                    </p>
+                    <p className="sm:col-span-2 text-xs leading-5 text-slate-600">Current rider wallet balance: {wallet ? formatPrice(wallet.balance) : 'not available'} · Total earned: {wallet ? formatPrice(wallet.total_earned) : 'not available'}. These figures are not a payout instruction.</p>
+                  </div>}
           </Card>
           <Card className="rounded-2xl p-5 shadow-sm">
             <h2 className="mb-4 flex items-center gap-2 text-base font-bold"><Truck size={18} />Identity & vehicle</h2>
@@ -251,15 +270,31 @@ export default function RiderProfilePage() {
           </Card>
 
           <Card className="rounded-2xl p-5 shadow-sm">
-            <h2 className="mb-4 flex items-center gap-2 text-base font-bold"><ShieldCheck size={18} />Verification documents</h2>
+            <h2 className="mb-4 flex items-center gap-2 text-base font-bold"><ShieldCheck size={18} />Rider application documents</h2>
             {documents
-              ? <dl className="space-y-3 text-sm">
-                  <div className="flex justify-between gap-4"><dt className="text-slate-500">National ID</dt><dd className="font-semibold">{documents.id_number_last4 ? `•••• ${documents.id_number_last4}` : 'Not recorded'}</dd></div>
-                  <div className="flex justify-between gap-4"><dt className="text-slate-500">Licence number</dt><dd className="text-right font-semibold">{display(documents.license_number)}</dd></div>
-                  <div className="flex justify-between gap-4"><dt className="text-slate-500">ID / rider photo</dt><dd className="font-semibold">{documents.rider_photo_url ? 'Available to authorized staff' : 'Not uploaded'}</dd></div>
-                </dl>
+              ? <>
+                  <dl className="space-y-3 text-sm">
+                    <div className="flex justify-between gap-4"><dt className="text-slate-500">National ID number</dt><dd className="font-semibold">{documents.id_number_last4 ? `•••• ${documents.id_number_last4}` : 'Not recorded'}</dd></div>
+                    <div className="flex justify-between gap-4"><dt className="text-slate-500">Licence number</dt><dd className="text-right font-semibold">{display(documents.license_number)}</dd></div>
+                  </dl>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {[
+                      { name: 'Rider selfie', url: documents.rider_photo_url },
+                      { name: 'Vehicle photo', url: documents.vehicle_photo_url }
+                    ].map(photo => (
+                      <div key={photo.name} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                        {photo.url
+                          ? <button type="button" onClick={() => setPhotoPreview({ name: photo.name, url: photo.url! })} className="block w-full text-left">
+                              <Image src={photo.url} alt={photo.name} width={640} height={420} unoptimized className="h-44 w-full object-cover" />
+                              <span className="block p-3 text-xs font-bold text-primary">View {photo.name.toLowerCase()}</span>
+                            </button>
+                          : <p className="p-5 text-sm text-slate-500">{photo.name} not uploaded</p>}
+                      </div>
+                    ))}
+                  </div>
+                </>
               : <p className="text-sm text-slate-500">Restricted: your account is not permitted to view private rider verification details.</p>}
-            <p className="mt-4 flex gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500"><FileText size={15} className="shrink-0" />Document expiry dates and training records have not been collected in the current system.</p>
+            <p className="mt-4 flex gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500"><FileText size={15} className="shrink-0" />The application stores a rider selfie and vehicle photo, not an uploaded ID-card image. Document expiry dates and training records are not collected here.</p>
           </Card>
         </div>
 
@@ -351,6 +386,7 @@ export default function RiderProfilePage() {
           </Card>
         </div>
       </div>
+      {photoPreview && <PrivateDocumentPreview name={photoPreview.name} url={photoPreview.url} contentType="image/jpeg" onClose={() => setPhotoPreview(null)} />}
     </main>
   );
 }

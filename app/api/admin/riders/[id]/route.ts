@@ -116,7 +116,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const sensitiveAllowed = session.role.toLowerCase() === 'owner'
     || hasAdminPermission(session, 'can_view_sensitive_data');
-  let documents: { id_number_last4: string | null; license_number: string | null; rider_photo_url: string | null } | null = null;
+  let documents: {
+    id_number_last4: string | null;
+    license_number: string | null;
+    rider_photo_url: string | null;
+    vehicle_photo_url: string | null;
+  } | null = null;
   let profileDetails: Record<string, unknown> | null = null;
   let profileDetailsUnavailable = false;
   if (sensitiveAllowed) {
@@ -125,7 +130,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       { data: details, error: detailsError }
     ] = await Promise.all([
       database.from('rider_status')
-        .select('id_number,license_number,rider_photo_url')
+        .select('id_number,license_number,rider_photo_url,vehicle_photo_url')
         .eq('id', riderId)
         .maybeSingle(),
       database.from('rider_profile_details')
@@ -150,23 +155,33 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
 
     const photoPath = getVerificationStoragePath(sensitive?.rider_photo_url);
-    let riderPhotoUrl: string | null = null;
-    if (photoPath) {
+    const vehiclePhotoPath = getVerificationStoragePath(sensitive?.vehicle_photo_url);
+    const photoPaths = [
+      { key: 'rider', path: photoPath },
+      { key: 'vehicle', path: vehiclePhotoPath }
+    ] as const;
+    const signedPhotos = await Promise.all(photoPaths.map(async ({ key, path }) => {
+      if (!path) return [key, null] as const;
       const { data: signedPhoto, error: photoError } = await database.storage
         .from('rider-verifications')
-        .createSignedUrl(photoPath, 60 * 15);
+        .createSignedUrl(path, 60 * 15);
       if (photoError) {
-        console.error('[AdminRiderProfile] Could not sign rider photo:', photoError);
-        return NextResponse.json({ error: 'Rider photo is temporarily unavailable.' }, { status: 503 });
+        console.error(`[AdminRiderProfile] Could not sign ${key} photo:`, photoError);
+        return [key, null] as const;
       }
-      riderPhotoUrl = signedPhoto.signedUrl;
+      return [key, signedPhoto.signedUrl] as const;
+    }));
+    const photoUrls = Object.fromEntries(signedPhotos);
+    if ((photoPath && !photoUrls.rider) || (vehiclePhotoPath && !photoUrls.vehicle)) {
+      return NextResponse.json({ error: 'A rider verification photo is temporarily unavailable.' }, { status: 503 });
     }
 
     const idNumber = typeof sensitive?.id_number === 'string' ? sensitive.id_number : '';
     documents = {
       id_number_last4: idNumber ? idNumber.slice(-4) : null,
       license_number: sensitive?.license_number || null,
-      rider_photo_url: riderPhotoUrl
+      rider_photo_url: photoUrls.rider || null,
+      vehicle_photo_url: photoUrls.vehicle || null
     };
   }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   ArrowUpRight,
@@ -18,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import PrivateDocumentPreview from '@/components/admin/PrivateDocumentPreview';
 import { getMissingMerchantDocumentTypes, isFoodBusinessType, merchantBusinessTypes, type MerchantApplicationDocument, type MerchantApplicationStatus, type MerchantBusinessType } from '@/lib/merchantApplications';
 
 interface Requirement {
@@ -46,6 +48,7 @@ interface ExpiringDocument {
 interface Application {
   id: string;
   merchant_code: string | null;
+  vendor_type?: 'retailer' | 'wholesaler' | 'street_food' | null;
   business_name: string;
   trading_name: string | null;
   business_type: MerchantBusinessType;
@@ -76,6 +79,7 @@ interface Application {
   alcohol_onboarding?: {
     mpesaTill?: string;
     mpesaRegisteredName?: string;
+    manualReview?: Record<string, unknown>;
   } | null;
   status: MerchantApplicationStatus;
   review_note?: string | null;
@@ -92,6 +96,15 @@ interface ApplicationEvent {
   created_at: string;
 }
 
+const alcoholManualChecks = [
+  { key: 'identity_verified', label: 'Identity document and selfie checked against the applicant', detail: 'Open and compare the submitted ID and selfie. Do not mark complete based on the declaration alone.' },
+  { key: 'county_licence_verified', label: 'County alcohol licence is present, current, and matches this business', detail: 'Check the document, business identity, location, and expiry.' },
+  { key: 'online_licence_verified', label: 'Online alcohol licence is present and current', detail: 'Confirm the online licence belongs to this seller and is still valid.' },
+  { key: 'till_name_verified', label: 'M-Pesa till number and registered name independently confirmed', detail: 'The submitted till name is not verified by the application; confirm it through an approved source.' },
+  { key: 'premises_distance_verified', label: 'Premises location and restricted-site distance verified', detail: 'Use the actual premises location and required local compliance process; the applicant-reported distance is not proof.' },
+  { key: 'excise_and_supplier_documents_verified', label: 'Excise stamps and supplier evidence checked', detail: 'Review the submitted evidence and confirm required supplier documentation.' }
+] as const;
+
 const labels: Record<string, string> = {
   bar: 'Bar / venue',
   kitchen: 'Kitchen',
@@ -103,6 +116,13 @@ const labels: Record<string, string> = {
   county_license: 'County licence',
   liquor_licence: 'Alcohol retail licence',
   wholesale_licence: 'Alcohol wholesale licence',
+  online_alcohol_licence: 'Online alcohol licence',
+  government_id: 'Government ID',
+  selfie_photo: 'Applicant selfie',
+  shopfront_photo: 'Shopfront photo',
+  business_permit: 'Business permit',
+  kra_pin: 'KRA PIN document',
+  supplier_invoice: 'Supplier invoice',
   food_hygiene: 'Food hygiene',
   tax_document: 'Tax / business info',
   premises_document: 'Premises documentation',
@@ -136,6 +156,8 @@ function missingRequiredDocs(application: Application) {
 }
 
 export default function MerchantApplicationsPage() {
+  const searchParams = useSearchParams();
+  const requestedApplicationId = searchParams.get('application');
   const [applications, setApplications] = useState<Application[]>([]);
   const [totalApplicationCount, setTotalApplicationCount] = useState(0);
   const [loadingMoreApplications, setLoadingMoreApplications] = useState(false);
@@ -168,6 +190,8 @@ export default function MerchantApplicationsPage() {
   const [savingDocumentPolicy, setSavingDocumentPolicy] = useState(false);
   const [documentUploadUrl, setDocumentUploadUrl] = useState('');
   const [requestingDocumentLink, setRequestingDocumentLink] = useState(false);
+  const [alcoholChecksByApplication, setAlcoholChecksByApplication] = useState<Record<string, Record<string, boolean>>>({});
+  const [documentPreview, setDocumentPreview] = useState<{ name: string; url: string; contentType: string } | null>(null);
 
   const fetchApplications = useCallback(async (append = false) => {
     if (append) setLoadingMoreApplications(true);
@@ -227,6 +251,12 @@ export default function MerchantApplicationsPage() {
       window.removeEventListener('focus', refresh);
     };
   }, [fetchApplications]);
+
+  useEffect(() => {
+    if (requestedApplicationId && !loading && selectedId !== requestedApplicationId) {
+      void fetchDetail(requestedApplicationId);
+    }
+  }, [fetchDetail, loading, requestedApplicationId, selectedId]);
 
   const fetchDocumentPolicy = useCallback(async () => {
     setDocumentPolicyLoading(true);
@@ -316,32 +346,34 @@ export default function MerchantApplicationsPage() {
 
   const openDocument = async (document: MerchantApplicationDocument) => {
     if (!selected) return;
-    const newTab = window.open('about:blank', '_blank', 'noopener,noreferrer');
-    if (!newTab) {
-      setError('Allow pop-ups for this admin page to view private documents.');
-      return;
-    }
     try {
       const response = await fetch(`/api/admin/merchant-applications?id=${encodeURIComponent(selected.id)}&document=${encodeURIComponent(document.id)}`, { cache: 'no-store' });
       const result = await response.json() as { url?: string; error?: string };
       if (!response.ok || !result.url) throw new Error(result.error || 'Document could not be opened.');
-      newTab.location.href = result.url;
+      setDocumentPreview({ name: document.name, url: result.url, contentType: document.contentType || 'application/octet-stream' });
     } catch (openError) {
-      newTab.close();
       setError(openError instanceof Error ? openError.message : 'Document could not be opened.');
     }
   };
 
   const changeStatus = async (status: MerchantApplicationStatus) => {
     if (!selected) return;
+    const isAlcoholRetailer = selected.business_type === 'bar'
+      && selected.vendor_type === 'retailer'
+      && Boolean(selected.alcohol_onboarding);
+    const alcoholChecks = Object.fromEntries(alcoholManualChecks.map(({ key }) => [
+      key,
+      alcoholChecksByApplication[selected.id]?.[key]
+        ?? (selected.alcohol_onboarding?.manualReview?.[key] === true)
+    ]));
     if (status === 'approved') {
-      const documents = selected.documents || [];
-      const missing = requiredDocs(selected).filter(type => {
-        const document = documents.find(candidate => candidate.type === type);
-        return !document || (document.expiresAt !== null && document.expiresAt < new Date().toISOString().slice(0, 10));
-      });
+      const missing = missingRequiredDocs(selected);
       if (missing.length) {
         setError(`Approval is blocked until required documents are present and current: ${missing.map(type => labels[type] || type).join(', ')}.`);
+        return;
+      }
+      if (isAlcoholRetailer && alcoholManualChecks.some(check => alcoholChecks[check.key] !== true)) {
+        setError('Complete all six alcohol verification checks after reviewing the actual evidence before approval.');
         return;
       }
     }
@@ -357,7 +389,12 @@ export default function MerchantApplicationsPage() {
       const response = await fetch('/api/admin/merchant-applications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: selected.id, status, note })
+        body: JSON.stringify({
+          id: selected.id,
+          status,
+          note,
+          ...(status === 'approved' && isAlcoholRetailer ? { alcoholChecks } : {})
+        })
       });
       const result = await response.json() as {
         application?: Application;
@@ -440,6 +477,17 @@ export default function MerchantApplicationsPage() {
       setError(createError instanceof Error ? createError.message : 'Checklist rule could not be created.');
     }
   };
+
+  const isSelectedAlcoholRetailer = selected?.business_type === 'bar'
+    && selected.vendor_type === 'retailer'
+    && Boolean(selected.alcohol_onboarding);
+  const selectedAlcoholChecks = selected ? alcoholChecksByApplication[selected.id] || {} : {};
+  const missingSelectedDocuments = selected ? missingRequiredDocs(selected) : [];
+  const alcoholChecksComplete = !isSelectedAlcoholRetailer || alcoholManualChecks.every(check =>
+    selectedAlcoholChecks[check.key] === true
+    || selected?.alcohol_onboarding?.manualReview?.[check.key] === true
+  );
+  const canApproveSelected = Boolean(selected && missingSelectedDocuments.length === 0 && alcoholChecksComplete);
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 pb-24 text-left sm:p-8">
@@ -526,6 +574,7 @@ export default function MerchantApplicationsPage() {
           <a href={vendorWorkspaceUrl} className="break-all underline" target="_blank" rel="noreferrer">{vendorWorkspaceUrl}</a>
         </div>
       )}
+      {documentPreview && <PrivateDocumentPreview {...documentPreview} onClose={() => setDocumentPreview(null)} />}
 
       <details className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" onToggle={event => { if (event.currentTarget.open && !requirements.length) void fetchRequirements(); }}>
         <summary className="cursor-pointer font-black uppercase text-slate-800">Configure document checklist by business type and county</summary>
@@ -636,6 +685,52 @@ export default function MerchantApplicationsPage() {
                 <p><span className="font-bold text-slate-500">Collection:</span> {selected.collection_available ? 'Available' : 'Not listed'}</p>
               </section>
 
+              {['submitted', 'under_review', 'information_requested'].includes(selected.status) && (
+                <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">How to review and approve</h3>
+                  <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                    <li>Review the business/contact details and each item in the compliance checklist.</li>
+                    <li>Open documents using the secure view link and confirm they are genuine, current, and match the business.</li>
+                    {isSelectedAlcoholRetailer && <li>Complete all six alcohol verification checks below after independently confirming the evidence.</li>}
+                    <li>If anything is missing or unclear, request a secure upload link and use <strong>Request information</strong> with a specific note. Approval stays blocked until required evidence is complete.</li>
+                    <li>When every gate is green, choose <strong>Approve</strong>. The server records approval and issues a merchant code. The vendor workspace link is emailed to the application address if delivery is configured and succeeds; the merchant still signs in through the protected account flow.</li>
+                  </ol>
+                  <p className="mt-3 text-xs leading-5 text-slate-600">Approval does not itself switch order availability on, verify a payout destination, set missing pickup coordinates, or issue a payout. Those remain separate operations.</p>
+                </section>
+              )}
+
+              {isSelectedAlcoholRetailer && ['submitted', 'under_review', 'information_requested'].includes(selected.status) && (
+                <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-amber-950">Alcohol retailer: six required manual checks</h3>
+                  <p className="mt-2 text-sm leading-6 text-amber-900">
+                    The application contains merchant declarations, not verification. Only check an item after independently examining its evidence. All six and all required current documents are mandatory before approval.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {alcoholManualChecks.map(check => {
+                      const saved = selected.alcohol_onboarding?.manualReview?.[check.key] === true;
+                      const checked = selectedAlcoholChecks[check.key] ?? saved;
+                      return (
+                        <label key={check.key} className="flex items-start gap-3 rounded-xl border border-amber-200 bg-white p-3">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={event => setAlcoholChecksByApplication(current => ({
+                              ...current,
+                              [selected.id]: { ...current[selected.id], [check.key]: event.target.checked }
+                            }))}
+                            className="mt-1 h-4 w-4 accent-amber-700"
+                          />
+                          <span>
+                            <span className="block text-sm font-bold text-slate-900">{check.label}</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">{check.detail}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
               <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -723,7 +818,7 @@ export default function MerchantApplicationsPage() {
                       <div key={type} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
                         <span className="flex items-center gap-2 text-sm font-semibold"><FileText size={16} /> {labels[type]}</span>
                         {document ? (
-                          <button onClick={() => void openDocument(document)} className="text-xs font-black text-primary underline">View securely</button>
+                          <button onClick={() => void openDocument(document)} className="text-xs font-black text-primary underline">View image / document</button>
                         ) : <span className="text-xs font-black text-rose-600">Missing</span>}
                       </div>
                     );
@@ -733,7 +828,7 @@ export default function MerchantApplicationsPage() {
                       <span className="flex items-center gap-2 text-sm font-semibold"><FileText size={16} /> {labels[document.type] || document.type}</span>
                       <div className="flex items-center gap-3">
                         {document.expiresAt && <span className="text-[10px] text-slate-500">Expires {document.expiresAt}</span>}
-                        <button onClick={() => void openDocument(document)} className="text-xs font-black text-primary underline">View</button>
+                        <button onClick={() => void openDocument(document)} className="text-xs font-black text-primary underline">View image / document</button>
                       </div>
                     </div>
                   ))}
@@ -742,9 +837,29 @@ export default function MerchantApplicationsPage() {
 
               {selected.review_note && <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Latest review note:</strong> {selected.review_note}</div>}
 
+              {selected.status === 'approved' && (
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-emerald-950">What approval did</h3>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-emerald-900">
+                    <li>Assigned merchant code: <strong>{selected.merchant_code || 'See application record'}</strong>.</li>
+                    <li>Saved the approved status and sent the protected vendor workspace link to the application email when email delivery succeeded. The merchant must still sign in through the protected account flow.</li>
+                    <li>Approval does not create a payout or verify submitted till details.</li>
+                    <li>Approval does not switch order-taking on or set a dispatch pickup location; confirm those separately in the merchant store after approval.</li>
+                  </ul>
+                  {vendorWorkspaceUrl && <p className="mt-3 break-all text-sm font-semibold text-emerald-900">Vendor workspace: <a className="underline" href={vendorWorkspaceUrl} target="_blank" rel="noreferrer">{vendorWorkspaceUrl}</a></p>}
+                </section>
+              )}
+
               <section className="border-t border-slate-100 pt-5">
                 <label className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-600">Review note</label>
-                <textarea value={note} onChange={event => setNote(event.target.value)} maxLength={2000} rows={3} placeholder="Required for information requests, rejection, and suspension." className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-primary" />
+                <textarea value={note} onChange={event => setNote(event.target.value)} maxLength={2000} rows={3} placeholder="Required for information requests, rejection, and suspension. For an information request, name each missing document or answer needed." className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-primary" />
+                {['submitted', 'under_review', 'information_requested'].includes(selected.status) && !canApproveSelected && (
+                  <p className="mb-3 rounded-lg bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                    Approval is locked: {missingSelectedDocuments.length > 0
+                      ? `upload and verify ${missingSelectedDocuments.map(type => labels[type] || type).join(', ')}${isSelectedAlcoholRetailer && !alcoholChecksComplete ? '; also complete all six alcohol checks' : ''}.`
+                      : 'complete all six alcohol verification checks.'}
+                  </p>
+                )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {selected.status === 'submitted' && (
                     <Button disabled={working} onClick={() => void changeStatus('under_review')} variant="outline" className="rounded-xl">Start review</Button>
@@ -753,13 +868,13 @@ export default function MerchantApplicationsPage() {
                     <>
                       <Button disabled={working} onClick={() => void changeStatus('information_requested')} variant="outline" className="rounded-xl">Request information</Button>
                       <Button disabled={working} onClick={() => void changeStatus('rejected')} variant="outline" className="rounded-xl text-rose-700"><XCircle size={15} className="mr-1" /> Reject</Button>
-                      <Button disabled={working} onClick={() => void changeStatus('approved')} className="rounded-xl"><ShieldCheck size={15} className="mr-1" /> Approve</Button>
+                      <Button disabled={working || !canApproveSelected} onClick={() => void changeStatus('approved')} className="rounded-xl"><ShieldCheck size={15} className="mr-1" /> Approve</Button>
                     </>
                   )}
                   {selected.status === 'information_requested' && (
                     <>
                       <Button disabled={working} onClick={() => void changeStatus('under_review')} variant="outline" className="rounded-xl">Resume review</Button>
-                      <Button disabled={working} onClick={() => void changeStatus('approved')} className="rounded-xl"><ShieldCheck size={15} className="mr-1" /> Approve</Button>
+                      <Button disabled={working || !canApproveSelected} onClick={() => void changeStatus('approved')} className="rounded-xl"><ShieldCheck size={15} className="mr-1" /> Approve</Button>
                     </>
                   )}
                   {selected.status === 'approved' && <Button disabled={working} onClick={() => void changeStatus('suspended')} variant="outline" className="rounded-xl text-rose-700">Suspend merchant</Button>}

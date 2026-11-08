@@ -157,6 +157,7 @@ export async function GET(
           id: document.id,
           type: document.type,
           name: document.name,
+          contentType: document.contentType || 'application/octet-stream',
           expiresAt: document.expiresAt
         }))
         : []

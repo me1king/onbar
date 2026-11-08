@@ -3,16 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, FileText, Loader2, PackageSearch, ShieldCheck, Store } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, FileText, Loader2, PackageSearch, ShieldCheck, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import PrivateDocumentPreview from '@/components/admin/PrivateDocumentPreview';
 import { isMerchantOpenAt, merchantWeekdays, normalizeMerchantOperatingHours } from '@/lib/merchantAvailability';
 
 interface MerchantDocument {
   id: string;
   type: string;
   name: string;
+  contentType: string;
   expiresAt?: string;
 }
 
@@ -126,6 +128,7 @@ export default function MerchantStorePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openingDocument, setOpeningDocument] = useState<string | null>(null);
+  const [documentPreview, setDocumentPreview] = useState<{ name: string; url: string; contentType: string } | null>(null);
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [savingLocation, setSavingLocation] = useState(false);
@@ -179,20 +182,14 @@ export default function MerchantStorePage() {
   };
 
   const openDocument = async (document: MerchantDocument) => {
-    const tab = window.open('about:blank', '_blank', 'noopener,noreferrer');
-    if (!tab) {
-      setError('Allow pop-ups for this admin page to securely view merchant documents.');
-      return;
-    }
     setOpeningDocument(document.id);
     setError(null);
     try {
       const response = await fetch(`/api/admin/merchant-applications?id=${encodeURIComponent(merchantId)}&document=${encodeURIComponent(document.id)}`, { cache: 'no-store' });
       const result = await response.json() as { url?: string; error?: string };
       if (!response.ok || !result.url) throw new Error(result.error || 'Merchant document could not be opened.');
-      tab.location.href = result.url;
+      setDocumentPreview({ name: document.name, url: result.url, contentType: document.contentType || 'application/octet-stream' });
     } catch (openError) {
-      tab.close();
       setError(openError instanceof Error ? openError.message : 'Merchant document could not be opened.');
     } finally {
       setOpeningDocument(null);
@@ -223,12 +220,36 @@ export default function MerchantStorePage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-xs font-black uppercase text-emerald-800"><ShieldCheck size={15} /> View only</span>
+          {['submitted', 'under_review', 'information_requested'].includes(application.status) && (
+            <Link
+              href={`/lord/merchants?application=${encodeURIComponent(application.id)}`}
+              className="inline-flex h-10 items-center rounded-xl bg-primary px-4 text-xs font-black uppercase text-white hover:bg-primary/90"
+            >
+              <ClipboardCheck size={15} className="mr-2" /> Review & decide
+            </Link>
+          )}
           <Link href="/lord/traceability" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black uppercase text-slate-700 hover:border-primary hover:text-primary"><PackageSearch size={15} className="mr-2" /> Traceability</Link>
         </div>
       </header>
 
       {error && <div role="alert" className="mb-5 rounded-xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}
       {loading && <p className="mb-4 flex items-center text-xs font-semibold text-slate-500"><Loader2 size={14} className="mr-2 animate-spin" />Refreshing store details...</p>}
+      {documentPreview && <PrivateDocumentPreview {...documentPreview} onClose={() => setDocumentPreview(null)} />}
+
+      {['submitted', 'under_review', 'information_requested'].includes(application.status) && (
+        <section className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-5">
+          <h2 className="text-sm font-black uppercase tracking-wide text-slate-900">This is not the approval screen</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
+            This page is a read-only snapshot. Open the application review to inspect each document, request missing evidence, complete any required manual checks, and make the recorded decision. Approval is blocked until required documents and alcohol checks (where applicable) are complete.
+          </p>
+          <Link
+            href={`/lord/merchants?application=${encodeURIComponent(application.id)}`}
+            className="mt-4 inline-flex min-h-10 items-center rounded-xl bg-primary px-4 text-xs font-black uppercase text-white hover:bg-primary/90"
+          >
+            <ClipboardCheck size={15} className="mr-2" /> Open review for {application.business_name}
+          </Link>
+        </section>
+      )}
 
       <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Detail label="Merchant type" value={application.business_type.replaceAll('_', ' ')} />
@@ -315,7 +336,7 @@ export default function MerchantStorePage() {
               <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3">
                 <div><p className="text-sm font-bold text-slate-800">{document.name}</p><p className="text-xs text-slate-500">{document.type.replaceAll('_', ' ')} · Expires {document.expiresAt || 'not recorded'}</p></div>
                 <Button variant="outline" disabled={openingDocument === document.id} onClick={() => void openDocument(document)} className="h-9 rounded-lg text-xs">
-                  {openingDocument === document.id ? <Loader2 size={14} className="animate-spin" /> : 'View securely'}
+                  {openingDocument === document.id ? <Loader2 size={14} className="animate-spin" /> : 'View image / document'}
                 </Button>
               </div>
             ))}
