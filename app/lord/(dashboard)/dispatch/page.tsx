@@ -111,6 +111,11 @@ interface DispatchJob {
         reasons: string[];
         selectedVendorIds: string[];
         selectedVendorNames: string[];
+        selectedVendors: Array<{
+            vendorId: string;
+            vendorName: string;
+            hasCoordinates: boolean;
+        }>;
         selectedVendorLocations: Array<{
             vendorId: string;
             vendorName: string;
@@ -119,6 +124,7 @@ interface DispatchJob {
         }>;
         priceBasis: string;
         productChecks: Array<{
+            orderItemId: number;
             productId: number | null;
             productName: string;
             quantity: number;
@@ -663,6 +669,28 @@ export default function AdminDispatchPage() {
                                                     {vendor.vendorName} <span aria-hidden="true">·</span> pickup location verified
                                                 </p>
                                             ))}
+                                            {order.fulfillment.selectedVendors.filter(vendor => !vendor.hasCoordinates).map(vendor => (
+                                                <p key={vendor.vendorId} className="mt-2 text-xs leading-relaxed text-amber-900">
+                                                    {vendor.vendorName} has no pickup pin.{' '}
+                                                    <Link href={`/lord/merchants/${encodeURIComponent(vendor.vendorId)}`} className="font-bold underline underline-offset-2">
+                                                        Add verified pickup coordinates
+                                                    </Link>
+                                                </p>
+                                            ))}
+                                            {order.fulfillment.productChecks.some(check => check.productId === null || check.quantity < 1) && (
+                                                <div className="mt-4 rounded-xl border border-rose-200 bg-white p-3 text-sm text-rose-900">
+                                                    <p className="font-bold">Order details need review before dispatch</p>
+                                                    <p className="mt-1 text-xs leading-relaxed">
+                                                        {order.fulfillment.productChecks
+                                                            .filter(check => check.productId === null || check.quantity < 1)
+                                                            .map(check => `Order line ${check.orderItemId} has no valid product or quantity.`)
+                                                                .join(' ')} The system cannot safely guess what the customer ordered. Verify the item with the customer; if it cannot be identified, cancel the order in Orders and create a corrected one.
+                                                    </p>
+                                                    <Link href="/lord/orders" className="mt-2 inline-flex text-xs font-bold underline underline-offset-2">
+                                                        Open Orders
+                                                    </Link>
+                                                </div>
+                                            )}
                                             <div className="mt-4 grid gap-2 sm:grid-cols-2">
                                                 {order.fulfillment.productChecks.map((check, index) => (
                                                     <p key={`${check.productId}-${index}`} className="min-w-0 break-words rounded-xl border border-border/70 bg-background/70 p-3 text-xs">
@@ -696,7 +724,7 @@ export default function AdminDispatchPage() {
                                                     Choose rider
                                                 </Button>
                                             </div>
-                                            {!order.fulfillment.ready && order.fulfillment.productChecks.some(check => check.reservedQuantity < check.quantity) && (
+                                            {!order.fulfillment.ready && order.fulfillment.productChecks.some(check => check.productId !== null && check.quantity >= 1 && check.reservedQuantity < check.quantity) && (
                                                 <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
                                                     <p className="text-xs leading-relaxed text-amber-950">
                                                         Stock is not reserved yet. Retry checks approved shops with available stock.

@@ -33,6 +33,14 @@ product page does not show them, run `PRODUCT_PAIRING_SUGGESTIONS_MIGRATION.sql`
 in the Supabase SQL Editor. The Admin editor writes to
 `products.pairing_suggestions`, and the storefront reads that same column.
 
+## Order history product links
+
+Apply `ORDER_ITEM_PRODUCT_RETENTION_MIGRATION.sql` to prevent catalog product
+deletion from erasing the product link on historical order items. Products used
+on orders must be hidden or marked unavailable instead of deleted. Existing
+order items whose product link is already null are preserved for review; the
+migration does not guess or rewrite their original products.
+
 ## Admin dashboard recovery
 
 The analytics, finance, staff, and dispatch dashboards expect schema that may not

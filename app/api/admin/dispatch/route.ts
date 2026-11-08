@@ -122,6 +122,7 @@ async function assessVendors(
   const selectedVendors = new Map<string, {
     vendorId: string;
     vendorName: string;
+    hasCoordinates: boolean;
     distanceKm: number | null;
     isOpen: boolean;
     acceptingOrders: boolean;
@@ -135,6 +136,7 @@ async function assessVendors(
     longitude: number;
   }>();
   const productChecks: Array<{
+    orderItemId: number;
     productId: number | null;
     productName: string;
     quantity: number;
@@ -188,6 +190,7 @@ async function assessVendors(
     if (!item.product_id || quantity < 1) {
       reasons.push(`Order line ${item.id} has no valid product or quantity.`);
       productChecks.push({
+        orderItemId: item.id,
         productId: item.product_id,
         productName: item.product?.name || 'Unknown product',
         quantity,
@@ -247,6 +250,7 @@ async function assessVendors(
         selectedVendors.set(merchant.id, {
           vendorId: merchant.id,
           vendorName: merchant.business_name || 'Approved merchant',
+          hasCoordinates: validCoordinates(numberOrNull(merchant.latitude), numberOrNull(merchant.longitude)),
           distanceKm: merchantDistance === null ? null : Number(merchantDistance.toFixed(2)),
           isOpen,
           acceptingOrders: merchant.accepting_orders !== false,
@@ -289,6 +293,7 @@ async function assessVendors(
       reasons.push(`Product ${item.product_id} has ${allocatedQuantity}/${quantity} units reserved with an approved merchant.`);
     }
     productChecks.push({
+      orderItemId: item.id,
       productId: item.product_id,
       productName: item.product?.name || `Product ${item.product_id}`,
       quantity,

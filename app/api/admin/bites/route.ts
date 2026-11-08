@@ -149,6 +149,11 @@ export async function DELETE(request: Request) {
 
   const { data, error } = await access.database.from('products').delete().eq('id', id).select('id').maybeSingle();
   if (error) {
+    if (error.code === '23503') {
+      return NextResponse.json({
+        error: 'This product is linked to order history or inventory and cannot be deleted. Set it to Draft instead.'
+      }, { status: 409 });
+    }
     console.error('[AdminBites] Could not delete food product:', error);
     return NextResponse.json({ error: `Food product could not be deleted: ${error.message}` }, { status: 500 });
   }
