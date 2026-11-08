@@ -756,7 +756,8 @@ function FoodMerchantTerminal({
   onToggleOrderSound,
   onAction,
   onFoodFulfillment,
-  onSectionChange
+  onSectionChange,
+  onOpenStock
 }: {
   section: Section;
   application: PartnerApplication['application'];
@@ -775,6 +776,7 @@ function FoodMerchantTerminal({
   onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
   onFoodFulfillment: (orderId: number, eventType: string) => Promise<void>;
   onSectionChange: (section: Section) => void;
+  onOpenStock: (productId?: number) => void;
 }) {
   const [campaignName, setCampaignName] = useState('');
   const [campaignOffer, setCampaignOffer] = useState('');
@@ -953,14 +955,14 @@ function FoodMerchantTerminal({
               >
                 {stock > 0 ? 'Mark out of stock' : 'Out of stock'}
               </button>
-              <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Edit price & stock</button>
+              <button type="button" onClick={() => onOpenStock(product.product_id)} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Edit price & stock</button>
             </div>
           </article>;
         })}
       </div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No menu products have been linked to this business yet. Contact OnBar to connect approved catalog items.</div>}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
         <div><h3 className="font-bold text-white">Stock and expiry tracking</h3><p className="mt-1 text-xs text-zinc-400">Add received batches, record lot numbers, and review expiry dates.</p></div>
-        <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Open inventory</button>
+        <button type="button" onClick={() => onOpenStock()} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Open inventory</button>
       </div>
     </>);
   }
@@ -1068,7 +1070,8 @@ function AlcoholMerchantTerminal({
   orderSoundEnabled,
   onToggleOrderSound,
   onAction,
-  onSectionChange
+  onSectionChange,
+  onOpenStock
 }: {
   section: Section;
   application: PartnerApplication['application'];
@@ -1082,6 +1085,7 @@ function AlcoholMerchantTerminal({
   onToggleOrderSound: () => Promise<void>;
   onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
   onSectionChange: (section: Section) => void;
+  onOpenStock: (productId?: number) => void;
 }) {
   const [campaignName, setCampaignName] = useState('');
   const [campaignOffer, setCampaignOffer] = useState('');
@@ -1169,7 +1173,7 @@ function AlcoholMerchantTerminal({
   if (section === 'liquor-catalog') {
     return panel('Catalog and stock', 'Approved catalogue items and actual received batch records. Excise-stamp status is an applicant attestation, not an authenticity scan.',
       <>
-        <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 hover:bg-amber-300">
+        <button type="button" onClick={() => onOpenStock()} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 hover:bg-amber-300">
           Update prices & stock
         </button>
         {application.offered_goods_pricing.length ? <div className="grid gap-3 md:grid-cols-2">{application.offered_goods_pricing.map(product => {
@@ -1198,7 +1202,7 @@ function AlcoholMerchantTerminal({
               >
                 Mark out of stock
               </button>
-              <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-lg bg-amber-400 px-3 py-2 text-[10px] font-black uppercase text-zinc-950">
+              <button type="button" onClick={() => onOpenStock(product.product_id)} className="rounded-lg bg-amber-400 px-3 py-2 text-[10px] font-black uppercase text-zinc-950">
                 Update quantity / restock
               </button>
             </div>
@@ -1325,6 +1329,7 @@ export default function OnBarPartnerNetworkPage() {
   const [appearanceBusy, setAppearanceBusy] = useState(false);
   const [deepLinkApplicationId, setDeepLinkApplicationId] = useState('');
   const [deepLinkOrderId, setDeepLinkOrderId] = useState('');
+  const [inventoryFocusProductId, setInventoryFocusProductId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -1336,6 +1341,7 @@ export default function OnBarPartnerNetworkPage() {
   const [loginError, setLoginError] = useState('');
   const [batchForm, setBatchForm] = useState({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '', exciseStampConfirmed: false });
   const [stockCountDraft, setStockCountDraft] = useState<Record<number, string>>({});
+  const [stockCountBase, setStockCountBase] = useState<Record<number, number>>({});
   const [offerPriceDraft, setOfferPriceDraft] = useState<Record<number, string>>({});
   const [offerVariantDraft, setOfferVariantDraft] = useState<Record<number, string>>({});
   const [stockCountDetails, setStockCountDetails] = useState<Record<number, {
@@ -1462,6 +1468,7 @@ export default function OnBarPartnerNetworkPage() {
 
   useEffect(() => {
     setStockCountDraft({});
+    setStockCountBase({});
     setOfferPriceDraft({});
     setStockCountDetails({});
   }, [selectedId]);
@@ -1498,6 +1505,18 @@ export default function OnBarPartnerNetworkPage() {
     setDeepLinkApplicationId(params.get('applicationId') || '');
     setDeepLinkOrderId(params.get('orderId') || '');
   }, []);
+
+  useEffect(() => {
+    if (section !== 'inventory' || inventoryFocusProductId === null || loading) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`merchant-stock-card-${inventoryFocusProductId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.getElementById(`merchant-stock-count-${inventoryFocusProductId}`)
+        ?.focus({ preventScroll: true });
+      setInventoryFocusProductId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [inventoryFocusProductId, loading, section, selectedId, workspace]);
 
   useEffect(() => {
     if (!deepLinkApplicationId || !workspace.length) return;
@@ -1551,8 +1570,10 @@ export default function OnBarPartnerNetworkPage() {
       setSelectedId(current => applications.some(item => item.application.id === current)
         ? current
         : applications[0]?.application.id || '');
+      return applications;
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Partner workspace could not be loaded.');
+      return null;
     } finally {
       if (!silent) setLoading(false);
     }
@@ -1784,8 +1805,22 @@ export default function OnBarPartnerNetworkPage() {
       });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Your update could not be saved.');
+      const refreshedApplications = await loadWorkspace(accessToken);
+      if (body.operation === 'set_stock_count') {
+        const productId = Number(body.productId);
+        const expectedQuantity = Number(body.quantity);
+        const refreshedApplication = refreshedApplications?.find(item => item.application.id === body.applicationId);
+        if (!refreshedApplication) {
+          throw new Error('Stock was accepted by the server, but the latest inventory could not be loaded. Refresh before making another stock change.');
+        }
+        const actualQuantity = refreshedApplication.batches
+          .filter(batch => batch.product_id === productId)
+          .reduce((total, batch) => total + batch.available_quantity, 0);
+        if (actualQuantity !== expectedQuantity) {
+          throw new Error(`Stock update was not confirmed. The latest inventory shows ${actualQuantity} available; refresh and try again.`);
+        }
+      }
       setMessage(successMessage);
-      await loadWorkspace(accessToken);
       return true;
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Your update could not be saved.');
@@ -1793,6 +1828,41 @@ export default function OnBarPartnerNetworkPage() {
     } finally {
       setWorking(false);
     }
+  };
+
+  const performMerchantAction = async (body: Record<string, unknown>, successMessage: string) => {
+    const saved = await apiAction(body, successMessage);
+    if (saved && body.operation === 'set_stock_count') {
+      const productId = Number(body.productId);
+      setStockCountDraft(current => {
+        const next = { ...current };
+        delete next[productId];
+        return next;
+      });
+      setStockCountBase(current => {
+        const next = { ...current };
+        delete next[productId];
+        return next;
+      });
+      setStockCountDetails(current => {
+        const next = { ...current };
+        delete next[productId];
+        return next;
+      });
+    }
+    return saved;
+  };
+
+  const openInventoryForProduct = (productId?: number) => {
+    setInventoryFocusProductId(productId ?? null);
+    setSection('inventory');
+  };
+
+  const updateStockCountDraft = (productId: number, currentAvailable: number, quantity: string) => {
+    setStockCountBase(current => current[productId] === undefined
+      ? { ...current, [productId]: currentAvailable }
+      : current);
+    setStockCountDraft(current => ({ ...current, [productId]: quantity }));
   };
 
   const updateFoodOrderFulfillment = async (orderId: number, eventType: string) => {
@@ -1983,7 +2053,16 @@ export default function OnBarPartnerNetworkPage() {
       ? `${product.name} marked out of stock. Existing reserved orders are unchanged.`
       : `${product.name} stock count saved to the merchant inventory ledger.`);
     if (saved) {
-      setStockCountDraft(current => ({ ...current, [product.id]: String(quantity) }));
+      setStockCountDraft(current => {
+        const next = { ...current };
+        delete next[product.id];
+        return next;
+      });
+      setStockCountBase(current => {
+        const next = { ...current };
+        delete next[product.id];
+        return next;
+      });
       setStockCountDetails(current => ({
         ...current,
         [product.id]: { lotCode: '', supplierName: '', expiryAt: '', exciseStampConfirmed: false }
@@ -1997,6 +2076,10 @@ export default function OnBarPartnerNetworkPage() {
     currentAvailable: number
   ) => {
     event.preventDefault();
+    if (stockCountBase[product.id] !== undefined && stockCountBase[product.id] !== currentAvailable) {
+      setError(`${product.name} stock changed while you were editing. Reload the current count before saving.`);
+      return;
+    }
     const quantity = Number(stockCountDraft[product.id] ?? currentAvailable);
     await setProductStockCount(product, currentAvailable, quantity);
   };
@@ -2317,9 +2400,10 @@ export default function OnBarPartnerNetworkPage() {
             deepLinkOrderId={deepLinkOrderId}
             orderSoundEnabled={orderSoundEnabled}
             onToggleOrderSound={toggleOrderSound}
-            onAction={apiAction}
+            onAction={performMerchantAction}
             onFoodFulfillment={updateFoodOrderFulfillment}
             onSectionChange={setSection}
+            onOpenStock={openInventoryForProduct}
           />
         )}
 
@@ -2335,8 +2419,9 @@ export default function OnBarPartnerNetworkPage() {
             performanceError={performanceError}
             orderSoundEnabled={orderSoundEnabled}
             onToggleOrderSound={toggleOrderSound}
-            onAction={apiAction}
+            onAction={performMerchantAction}
             onSectionChange={setSection}
+            onOpenStock={openInventoryForProduct}
           />
         )}
 
@@ -2703,6 +2788,8 @@ export default function OnBarPartnerNetworkPage() {
                     .filter(batch => batch.product_id === product.id)
                     .reduce((total, batch) => total + batch.available_quantity, 0);
                   const targetQuantity = Number(stockCountDraft[product.id] ?? currentAvailable);
+                  const stockDraftIsStale = stockCountBase[product.id] !== undefined
+                    && stockCountBase[product.id] !== currentAvailable;
                   const isAddingStock = targetQuantity > currentAvailable;
                   const stockStatus = currentAvailable === 0
                     ? { label: 'Out', className: 'bg-rose-100 text-rose-800' }
@@ -2718,34 +2805,65 @@ export default function OnBarPartnerNetworkPage() {
                   return (
                     <article
                       key={product.id}
-                      className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                      id={`merchant-stock-card-${product.id}`}
+                      className={`space-y-3 rounded-2xl border bg-white p-5 shadow-sm ${inventoryFocusProductId === product.id ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200'}`}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <h3 className="font-black text-slate-900">{product.name}</h3>
                           <p className="mt-1 text-xs text-slate-500">Current available stock: {currentAvailable}{currentAvailable > 0 && currentAvailable <= 5 ? ' · low stock' : ''}</p>
                         </div>
-                          <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stockStatus.className}`}>
-                            {stockStatus.label}
+                        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stockStatus.className}`}>
+                          {stockStatus.label}
                         </span>
                       </div>
                       <form onSubmit={event => void submitStockCount(event, product, currentAvailable)} className="space-y-3">
+                      {stockDraftIsStale && (
+                        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+                          Stock changed after you started editing. Reload the latest count before saving so you do not overwrite a newer update.
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStockCountDraft(current => {
+                                const next = { ...current };
+                                delete next[product.id];
+                                return next;
+                              });
+                              setStockCountBase(current => {
+                                const next = { ...current };
+                                delete next[product.id];
+                                return next;
+                              });
+                              setStockCountDetails(current => {
+                                const next = { ...current };
+                                delete next[product.id];
+                                return next;
+                              });
+                              setError('');
+                            }}
+                            className="ml-1 font-black underline"
+                          >
+                            Reload current count
+                          </button>
+                        </div>
+                      )}
                       <label className="block text-xs font-bold text-slate-700">
                         Set available units
                         <div className="mt-1 flex gap-2">
-                          <Button type="button" variant="outline" aria-label={`Decrease ${product.name} stock`} disabled={working || targetQuantity <= 0} onClick={() => setStockCountDraft(current => ({ ...current, [product.id]: String(targetQuantity - 1) }))}>−</Button>
+                          <Button type="button" variant="outline" aria-label={`Decrease ${product.name} stock`} disabled={working || targetQuantity <= 0} onClick={() => updateStockCountDraft(product.id, currentAvailable, String(targetQuantity - 1))}>−</Button>
                           <Input
+                            id={`merchant-stock-count-${product.id}`}
                             required
                             type="number"
                             min="0"
                             max="1000000"
                             step="1"
                             value={stockCountDraft[product.id] ?? String(currentAvailable)}
-                            onChange={event => setStockCountDraft(current => ({ ...current, [product.id]: event.target.value }))}
+                            onChange={event => updateStockCountDraft(product.id, currentAvailable, event.target.value)}
                             className="h-11 rounded-xl"
                             aria-label={`Available units for ${product.name}`}
                           />
-                          <Button type="button" variant="outline" aria-label={`Increase ${product.name} stock`} disabled={working || targetQuantity >= 1000000} onClick={() => setStockCountDraft(current => ({ ...current, [product.id]: String(targetQuantity + 1) }))}>+</Button>
+                          <Button type="button" variant="outline" aria-label={`Increase ${product.name} stock`} disabled={working || targetQuantity >= 1000000} onClick={() => updateStockCountDraft(product.id, currentAvailable, String(targetQuantity + 1))}>+</Button>
                         </div>
                       </label>
                       {isAddingStock && (
@@ -2805,7 +2923,7 @@ export default function OnBarPartnerNetworkPage() {
                       )}
                       <Button
                         type="submit"
-                        disabled={working || !Number.isSafeInteger(targetQuantity) || targetQuantity === currentAvailable}
+                        disabled={working || stockDraftIsStale || !Number.isSafeInteger(targetQuantity) || targetQuantity === currentAvailable}
                         className="h-10 rounded-xl font-bold"
                       >
                         {working ? <Loader2 size={15} className="mr-2 animate-spin" /> : <PackageCheck size={15} className="mr-2" />}
