@@ -250,4 +250,97 @@ $$;
 REVOKE ALL ON FUNCTION public.set_merchant_product_stock(UUID, BIGINT, INTEGER, INTEGER, TEXT, TEXT, DATE, BOOLEAN, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.set_merchant_product_stock(UUID, BIGINT, INTEGER, INTEGER, TEXT, TEXT, DATE, BOOLEAN, TEXT) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.set_merchant_offer_price(
+    p_application_id UUID,
+    p_product_id BIGINT,
+    p_price NUMERIC,
+    p_expected_price NUMERIC,
+    p_actor TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    application_row public.merchant_applications%ROWTYPE;
+    offer JSONB;
+    updated_offers JSONB;
+    current_price NUMERIC(12, 2);
+BEGIN
+    IF p_application_id IS NULL
+       OR p_product_id IS NULL OR p_product_id < 1
+       OR p_price IS NULL OR p_price <= 0 OR p_price > 10000000
+       OR p_price <> round(p_price, 2)
+       OR p_expected_price IS NULL OR p_expected_price < 0 OR p_expected_price > 10000000
+       OR p_expected_price <> round(p_expected_price, 2)
+       OR char_length(trim(coalesce(p_actor, ''))) < 1 THEN
+        RAISE EXCEPTION 'A valid product, KES price, and merchant identity are required.';
+    END IF;
+
+    SELECT *
+    INTO application_row
+    FROM public.merchant_applications
+    WHERE id = p_application_id AND status = 'approved'
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Only an approved merchant can update a proposed price.';
+    END IF;
+
+    SELECT entry.value
+    INTO offer
+    FROM jsonb_array_elements(coalesce(application_row.offered_goods_pricing, '[]'::JSONB)) AS entry(value)
+    WHERE entry.value->>'product_id' = p_product_id::TEXT;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'This product is not in the merchant approved catalog.';
+    END IF;
+
+    current_price := coalesce(nullif(offer->>'price', '')::NUMERIC, 0);
+    IF current_price <> p_expected_price THEN
+        RAISE EXCEPTION 'Price changed since this catalog was loaded. Refresh and try again.';
+    END IF;
+
+    SELECT jsonb_agg(
+        CASE
+            WHEN entry.value->>'product_id' = p_product_id::TEXT
+            THEN jsonb_set(entry.value, '{price}', to_jsonb(p_price), true)
+            ELSE entry.value
+        END
+        ORDER BY entry.ordinality
+    )
+    INTO updated_offers
+    FROM jsonb_array_elements(coalesce(application_row.offered_goods_pricing, '[]'::JSONB))
+         WITH ORDINALITY AS entry(value, ordinality);
+
+    UPDATE public.merchant_applications
+    SET offered_goods_pricing = updated_offers,
+        updated_at = now()
+    WHERE id = p_application_id;
+
+    INSERT INTO public.merchant_application_events (application_id, event_type, actor, details)
+    VALUES (
+        p_application_id,
+        'offer_price_updated',
+        trim(p_actor),
+        jsonb_build_object(
+            'product_id', p_product_id,
+            'product_name', offer->>'product_name',
+            'previous_price', current_price,
+            'proposed_price', p_price,
+            'requires_admin_review', true
+        )
+    );
+
+    RETURN jsonb_build_object(
+        'product_id', p_product_id,
+        'previous_price', current_price,
+        'proposed_price', p_price,
+        'requires_admin_review', true
+    );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_merchant_offer_price(UUID, BIGINT, NUMERIC, NUMERIC, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_merchant_offer_price(UUID, BIGINT, NUMERIC, NUMERIC, TEXT) TO service_role;
+
 NOTIFY pgrst, 'reload schema';

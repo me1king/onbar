@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { isValidMerchantOperatingHours } from '@/lib/merchantAvailability';
+import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
 import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,30 @@ const incidentCategories = new Set([
   'product_quality', 'food_safety', 'delivery', 'conduct', 'other',
   'age_check_failed', 'suspected_counterfeit'
 ]);
+
+type MerchantCatalogProduct = {
+  category: string | null;
+  sub_category: string | null;
+  is_bite: boolean | null;
+  is_snack: boolean | null;
+  is_souvenir: boolean | null;
+};
+
+function isAllowedMerchantProduct(
+  application: { business_type: string; vendor_type: string | null },
+  product: MerchantCatalogProduct
+) {
+  if (['kitchen', 'restaurant', 'food_vendor'].includes(application.business_type)
+    || application.vendor_type === 'street_food') {
+    return isKitchenFoodProduct(product);
+  }
+  if ((application.business_type === 'bar' && application.vendor_type === 'retailer')
+    || application.business_type === 'supplier'
+    || application.vendor_type === 'wholesaler') {
+    return isBeverageInventoryProduct(product);
+  }
+  return true;
+}
 
 function getClients(): Clients | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -129,7 +154,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
@@ -179,7 +204,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     traceRows
   ] = await Promise.all([
     productIds.length
-      ? database.from('products').select('id, name, sku, category, price').in('id', productIds)
+      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price').in('id', productIds)
       : Promise.resolve({ data: [], error: null }),
     getPagedBatchRows(batchIds, (ids, from, to) => database.from('merchant_inventory_movements')
         .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
@@ -226,8 +251,15 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   if (ordersError) throw ordersError;
 
   const productRows = products || [];
+  const merchantCategory = {
+    business_type: String(application.business_type || ''),
+    vendor_type: typeof application.vendor_type === 'string' ? application.vendor_type : null
+  };
+  const allowedProductIds = new Set(productRows
+    .filter(product => isAllowedMerchantProduct(merchantCategory, product))
+    .map(product => Number(product.id)));
   const today = new Date().toISOString().slice(0, 10);
-  const batchData = batchRows.map(batch => {
+  const batchData = batchRows.filter(batch => allowedProductIds.has(Number(batch.product_id))).map(batch => {
     const batchMovements = movementRows.filter(movement => movement.batch_id === batch.id);
     const batchHolds = holdRows.filter(hold => hold.batch_id === batch.id);
     const available = batchMovements.reduce((total, movement) => total + Number(movement.quantity_delta || 0), 0);
@@ -245,9 +277,13 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   });
 
   const orderRows = orders || [];
+  const allowedOrderIds = new Set(itemRows
+    .filter(item => allowedProductIds.has(Number(item.product_id)))
+    .map(item => Number(item.order_id)));
   const orderData = orderRows.map(order => {
     const items = itemRows
-      .filter(item => Number(item.order_id) === Number(order.id))
+      .filter(item => Number(item.order_id) === Number(order.id)
+        && allowedProductIds.has(Number(item.product_id)))
       .map(item => ({
         ...item,
         product_name: productRows.find(product => product.id === item.product_id)?.name || 'Product',
@@ -277,17 +313,27 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
       items,
       fulfillment: orderEvents
     };
-  }).filter(order => order.items.length > 0 || (fulfillment || []).some(event => Number(event.order_id) === Number(order.id)));
+  }).filter(order => order.items.length > 0
+    || (allowedOrderIds.has(Number(order.id))
+      && (fulfillment || []).some(event => Number(event.order_id) === Number(order.id))));
 
   return {
     application: {
       ...application,
-      offered_goods_pricing: applicationOffers.map(offer => {
+      offered_goods_pricing: applicationOffers.filter(offer => {
+        const product = productRows.find(row => Number(row.id) === Number(offer.product_id));
+        return product && isAllowedMerchantProduct(merchantCategory, product);
+      }).map(offer => {
         const product = productRows.find(row => Number(row.id) === Number(offer.product_id));
         const sellingPrice = Number(offer.price || 0);
         const listedPrice = Number(product?.price || 0);
         return {
           ...offer,
+          category: product?.category || null,
+          sub_category: product?.sub_category || null,
+          is_bite: product?.is_bite || false,
+          is_snack: product?.is_snack || false,
+          is_souvenir: product?.is_souvenir || false,
           listed_price: listedPrice,
           selling_price: sellingPrice,
           spread: sellingPrice - listedPrice,
@@ -404,6 +450,60 @@ export async function POST(request: Request) {
   if (!application) return NextResponse.json({ error: 'That business is not linked to your verified account.' }, { status: 404 });
   if (application.status !== 'approved') {
     return NextResponse.json({ error: 'Only currently approved partners can make operational updates.' }, { status: 403 });
+  }
+
+  if (body.operation === 'set_offer_price') {
+    const productId = Number(body.productId);
+    const price = Number(body.price);
+    const expectedPrice = Number(body.expectedPrice);
+    if (!Number.isSafeInteger(productId) || productId < 1
+      || !Number.isFinite(price) || price <= 0 || price > 10_000_000
+      || Math.round(price * 100) !== price * 100
+      || !Number.isFinite(expectedPrice) || expectedPrice < 0 || expectedPrice > 10_000_000
+      || Math.round(expectedPrice * 100) !== expectedPrice * 100) {
+      return NextResponse.json({ error: 'Enter a valid KES price with no more than two decimal places.' }, { status: 400 });
+    }
+
+    const offers = Array.isArray(application.offered_goods_pricing)
+      ? application.offered_goods_pricing as Array<{ product_id?: unknown }>
+      : [];
+    if (!offers.some(offer => Number(offer.product_id) === productId)) {
+      return NextResponse.json({ error: 'Prices can only be updated for products in your approved catalog.' }, { status: 403 });
+    }
+
+    const { data: product, error: productError } = await context.database
+      .from('products')
+      .select('category, sub_category, is_bite, is_snack, is_souvenir')
+      .eq('id', productId)
+      .maybeSingle();
+    if (productError) {
+      console.error('[MerchantNetwork] Could not verify product department for price update:', productError);
+      return NextResponse.json({ error: 'The catalog product could not be verified.' }, { status: 503 });
+    }
+    if (!product || !isAllowedMerchantProduct(application, product)) {
+      return NextResponse.json({ error: 'This product is not available to your merchant category.' }, { status: 403 });
+    }
+
+    const { data, error } = await context.database.rpc('set_merchant_offer_price', {
+      p_application_id: application.id,
+      p_product_id: productId,
+      p_price: price,
+      p_expected_price: expectedPrice,
+      p_actor: context.actor
+    });
+    if (error) {
+      console.error('[MerchantNetwork] Could not save merchant offer price:', error);
+      if (/set_merchant_offer_price|schema cache/i.test(error.message)) {
+        return NextResponse.json({
+          error: 'Merchant price updates are not installed yet. Run the current supabase/MERCHANT_STOCK_COUNTS_MIGRATION.sql migration.'
+        }, { status: 503 });
+      }
+      const stalePrice = /price changed since/i.test(error.message);
+      return NextResponse.json({
+        error: stalePrice ? error.message : 'The proposed price could not be saved. Refresh the catalog and try again.'
+      }, { status: stalePrice ? 409 : 400 });
+    }
+    return NextResponse.json({ offer: data }, { status: 200 });
   }
 
   if (body.operation === 'update_availability') {
@@ -558,6 +658,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Enter a valid product, available stock count, lot details, and optional expiry date.' }, { status: 400 });
     }
 
+    const { data: stockProduct, error: stockProductError } = await context.database
+      .from('products')
+      .select('category, sub_category, is_bite, is_snack, is_souvenir')
+      .eq('id', productId)
+      .maybeSingle();
+    if (stockProductError) {
+      console.error('[MerchantNetwork] Could not verify stock product department:', stockProductError);
+      return NextResponse.json({ error: 'The stock product could not be verified.' }, { status: 503 });
+    }
+    if (!stockProduct || !isAllowedMerchantProduct(application, stockProduct)) {
+      return NextResponse.json({ error: 'This product is not available to your merchant category.' }, { status: 403 });
+    }
+
     const { data, error } = await context.database.rpc('set_merchant_product_stock', {
       p_application_id: application.id,
       p_product_id: productId,
@@ -615,7 +728,7 @@ export async function POST(request: Request) {
 
     const { data: linkedProduct, error: productError } = await context.database
       .from('products')
-      .select('id')
+      .select('id, category, sub_category, is_bite, is_snack, is_souvenir')
       .eq('id', productId)
       .maybeSingle();
     if (productError) {
@@ -623,6 +736,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The linked product could not be verified.' }, { status: 503 });
     }
     if (!linkedProduct) return NextResponse.json({ error: 'This catalogue product is no longer available. Contact OnBar to update your approved catalogue.' }, { status: 404 });
+    if (!isAllowedMerchantProduct(application, linkedProduct)) {
+      return NextResponse.json({ error: 'This product is not available to your merchant category.' }, { status: 403 });
+    }
 
     const isAlcoholRetailer = application.business_type === 'bar' && application.vendor_type === 'retailer';
     if (isAlcoholRetailer && body.exciseStampConfirmed !== true) {

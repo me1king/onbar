@@ -1,1 +1,63 @@
 @import '../market/market.css';
+
+.merchant-light-terminal {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.merchant-light-terminal [class*="bg-[#111214]"],
+.merchant-light-terminal [class*="bg-[#18191c]"],
+.merchant-light-terminal [class*="bg-[#1a1b1e]"],
+.merchant-light-terminal [class*="bg-slate-950"] {
+  background-color: #fff !important;
+}
+
+.merchant-light-terminal [class*="bg-white/5"] {
+  background-color: #f1f5f9 !important;
+}
+
+.merchant-light-terminal [class*="bg-white/10"] {
+  background-color: #e2e8f0 !important;
+}
+
+.merchant-light-terminal [class*="border-white/10"] {
+  border-color: #e2e8f0 !important;
+}
+
+.merchant-light-terminal [class*="text-white"] {
+  color: #0f172a !important;
+}
+
+.merchant-light-terminal [class*="text-zinc-100"],
+.merchant-light-terminal [class*="text-zinc-200"],
+.merchant-light-terminal [class*="text-slate-100"],
+.merchant-light-terminal [class*="text-slate-200"] {
+  color: #1e293b !important;
+}
+
+.merchant-light-terminal [class*="text-amber-100"],
+.merchant-light-terminal [class*="text-amber-200"] {
+  color: #92400e !important;
+}
+
+.merchant-light-terminal [class*="text-rose-100"],
+.merchant-light-terminal [class*="text-rose-200"] {
+  color: #9f1239 !important;
+}
+
+.merchant-light-terminal [class*="text-emerald-100"],
+.merchant-light-terminal [class*="text-emerald-200"] {
+  color: #065f46 !important;
+}
+
+.merchant-light-terminal [class*="text-sky-100"],
+.merchant-light-terminal [class*="text-sky-200"] {
+  color: #075985 !important;
+}
+
+.merchant-light-terminal [class*="text-zinc-300"],
+.merchant-light-terminal [class*="text-zinc-400"],
+.merchant-light-terminal [class*="text-slate-300"],
+.merchant-light-terminal [class*="text-slate-400"] {
+  color: #64748b !important;
+}

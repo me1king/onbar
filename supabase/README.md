@@ -106,6 +106,11 @@ persistence and monitor the worker heartbeat in the merchant workspace.
 Twilio credentials, an approved sender/number, Redis, VAPID keys, the migration,
 and the continuously running worker are required for live delivery. The browser
 health check cannot verify phone volume or battery-optimization settings.
+The merchant terminal also has an optional in-tab new-order chime with adjustable
+browser playback volume and a temporary visual alert; staff must enable sound
+with a user gesture. Browser audio cannot override device mute/system volume or
+guarantee playback while the browser is suspended, so it supplements rather than
+replaces push, SMS, and voice escalation.
 
 ## Shared merchant stock catalog
 
@@ -120,7 +125,10 @@ device or an order changes availability first, the server rejects the stale
 count so the merchant can refresh and recount. The merchant workspace writes
 to this ledger; the Admin Traceability catalog re-reads it every 15 seconds.
 Regular, food, and alcohol merchant workspaces all link to the same stock
-editor. No second stock table is created.
+editor. The approved catalog is filtered to the merchant's business category.
+Merchants can submit updated proposed prices for products already in their
+approved catalog; these proposals are audited and remain non-customer-facing
+until OnBar reviews them. No second stock table is created.
 Web push uses the phone's normal notification behavior and cannot provide a
 reliable looping lock-screen alarm; native Android alert support remains a
 separate rollout step. Test on staging with real devices and provider accounts

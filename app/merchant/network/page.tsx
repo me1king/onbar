@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -26,7 +26,9 @@ import {
   Truck,
   UtensilsCrossed,
   Users,
-  UserRound
+  UserRound,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +39,7 @@ import {
   type MerchantOperatingHours,
   type MerchantWeekday
 } from '@/lib/merchantAvailability';
+import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
 import { supabase } from '@/lib/supabaseClient';
 import MerchantAlertsPanel from '@/components/merchant/MerchantAlertsPanel';
 
@@ -136,7 +139,21 @@ type PartnerApplication = {
     delivery_radius_km: number | null;
     collection_available: boolean;
     offered_goods: string[];
-    offered_goods_pricing: Array<{ product_id: number; product_name: string; price: number; currency: string; listed_price: number; selling_price: number; spread: number; margin_percent: number | null }>;
+    offered_goods_pricing: Array<{
+      product_id: number;
+      product_name: string;
+      price: number;
+      currency: string;
+      category: string | null;
+      sub_category: string | null;
+      is_bite: boolean;
+      is_snack: boolean;
+      is_souvenir: boolean;
+      listed_price: number;
+      selling_price: number;
+      spread: number;
+      margin_percent: number | null;
+    }>;
     documents: PartnerDocument[];
     alcohol_onboarding: {
       nationalIdLast4?: string;
@@ -706,7 +723,7 @@ function FoodMerchantTerminal({
         : 'phone number unavailable'}</p>
     </div>
     {allowActions && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
-      {nextEvents.map(eventType => <button key={eventType} disabled={working} onClick={() => void onFoodFulfillment(order.id, eventType)}
+      {nextEvents.map(eventType => <button key={eventType} type="button" disabled={working} onClick={() => void onFoodFulfillment(order.id, eventType)}
         className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase disabled:opacity-50 ${['rejected', 'cancelled'].includes(eventType) ? 'border border-rose-400/40 text-rose-300' : 'bg-amber-400 text-zinc-950'}`}>
         {fulfillmentLabels[eventType] || eventType.replaceAll('_', ' ')}
       </button>)}
@@ -752,7 +769,7 @@ function FoodMerchantTerminal({
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-black text-white">Current queue</h3>
-        <button onClick={() => onSectionChange('food-history')} className="text-xs font-bold text-amber-300 hover:text-amber-200">Order history →</button>
+        <button type="button" onClick={() => onSectionChange('food-history')} className="text-xs font-bold text-amber-300 hover:text-amber-200">Order history →</button>
       </div>
       {foodOrdersError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">{foodOrdersError}</p>}
       {foodOrdersLoading && <p role="status" className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-400">Loading assigned food orders…</p>}
@@ -772,7 +789,7 @@ function FoodMerchantTerminal({
         batchTotals.set(batch.product_id, (batchTotals.get(batch.product_id) || 0) + Math.max(0, batch.available_quantity));
       }
     }
-    return shell('Menu', 'Products linked to your approved OnBar menu, with the recorded selling price and traceable stock. Contact OnBar to change catalog names or prices.', <>
+    return shell('Menu', 'Products linked to your approved OnBar menu, with traceable stock and the current proposed price. You can update the proposed price and stock; OnBar reviews price changes before customer display.', <>
       {products.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {products.map(product => {
           const stock = batchTotals.get(product.product_id) || 0;
@@ -783,12 +800,13 @@ function FoodMerchantTerminal({
             </div>
             <p className="mt-5 text-2xl font-black text-amber-300">{currency(product.selling_price)}</p>
             <p className="mt-1 text-xs text-zinc-400">Recorded batch availability: {stock}</p>
+            <button type="button" onClick={() => onSectionChange('inventory')} className="mt-4 rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Edit price & stock</button>
           </article>;
         })}
       </div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No menu products have been linked to this business yet. Contact OnBar to connect approved catalog items.</div>}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
         <div><h3 className="font-bold text-white">Stock and expiry tracking</h3><p className="mt-1 text-xs text-zinc-400">Add received batches, record lot numbers, and review expiry dates.</p></div>
-        <button onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Open inventory</button>
+        <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Open inventory</button>
       </div>
     </>);
   }
@@ -957,7 +975,7 @@ function AlcoholMerchantTerminal({
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase text-amber-400">Order #{order.id}</p><h3 className="mt-1 font-bold text-white">{order.customer_name || 'Customer'}</h3><p className="mt-1 text-xs text-zinc-400">{dateTime(order.created_at)} · {order.status}</p></div><span className="rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase text-amber-200">{fulfillmentLabels[latest] || 'Awaiting response'}</span></div>
             <p className="mt-3 rounded-lg bg-amber-400/5 p-3 text-xs leading-5 text-amber-100">18+ ID check required at delivery. Confirm the recipient meets the configured minimum age and do not hand over if they appear intoxicated.</p>
             <div className="mt-3 space-y-2">{order.items.map((item, index) => <p key={`${item.product_name}-${index}`} className="text-sm text-zinc-200">{item.merchant_quantity} × {item.product_name}{item.size ? ` · ${item.size}` : ''}</p>)}</div>
-            {section === 'liquor-live' && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">{nextEvents.map(eventType => <button key={eventType} disabled={working} onClick={() => void onAction({ operation: 'fulfillment', applicationId: application.id, orderId: order.id, eventType }, `Order #${order.id}: ${fulfillmentLabels[eventType]}.`)} className={`rounded-lg px-3 py-2 text-[10px] font-black uppercase disabled:opacity-50 ${['rejected', 'cancelled'].includes(eventType) ? 'border border-rose-400/40 text-rose-200' : 'bg-amber-400 text-zinc-950'}`}>{fulfillmentLabels[eventType]}</button>)}</div>}
+            {section === 'liquor-live' && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">{nextEvents.map(eventType => <button key={eventType} type="button" disabled={working} onClick={() => void onAction({ operation: 'fulfillment', applicationId: application.id, orderId: order.id, eventType }, `Order #${order.id}: ${fulfillmentLabels[eventType]}.`)} className={`rounded-lg px-3 py-2 text-[10px] font-black uppercase disabled:opacity-50 ${['rejected', 'cancelled'].includes(eventType) ? 'border border-rose-400/40 text-rose-200' : 'bg-amber-400 text-zinc-950'}`}>{fulfillmentLabels[eventType]}</button>)}</div>}
           </article>;
         })}</div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No {section === 'liquor-live' ? 'open' : 'recorded'} traced orders for this shop.</div>}
       </>);
@@ -967,7 +985,7 @@ function AlcoholMerchantTerminal({
     return panel('Catalog and stock', 'Approved catalogue items and actual received batch records. Excise-stamp status is an applicant attestation, not an authenticity scan.',
       <>
         <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 hover:bg-amber-300">
-          Update available stock
+          Update prices & stock
         </button>
         {application.offered_goods_pricing.length ? <div className="grid gap-3 md:grid-cols-2">{application.offered_goods_pricing.map(product => {
           const details = alcoholProfile?.products?.find(item => item.productId === product.product_id);
@@ -975,7 +993,7 @@ function AlcoholMerchantTerminal({
           const available = batches.reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0);
           return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
             <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-white">{product.product_name}</h3><p className="mt-1 text-xs text-zinc-400">{details?.size || 'Size not recorded'} · {details?.abv === undefined ? 'ABV not recorded' : `${details.abv}% ABV`}</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${details?.exciseStampConfirmed ? 'bg-amber-400/10 text-amber-200' : 'bg-rose-400/10 text-rose-200'}`}>{details?.exciseStampConfirmed ? 'Stamp attested' : 'Stamp not confirmed'}</span></div>
-            <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.selling_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Proposed selling price</p></div></div>
+            <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.selling_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Proposed selling price · listed KSh {Number(product.listed_price).toLocaleString('en-KE')}</p></div></div>
             {batches.length > 0 && <div className="mt-3 space-y-2">{batches.map(batch => <p key={batch.id} className="rounded-lg bg-white/5 p-2 text-xs text-zinc-300">Lot {batch.lot_code} · {batch.available_quantity} units · {batch.on_hold ? 'ON HOLD' : batch.expiry_at ? `Expires ${batch.expiry_at}` : 'No expiry recorded'}</p>)}</div>}
           </article>;
         })}</div> : <p className="rounded-2xl bg-[#1a1b1e] p-6 text-sm text-zinc-400">No products were approved for this retailer.</p>}
@@ -1073,7 +1091,7 @@ function AlcoholMerchantTerminal({
     return panel('Trading hours', 'The saved business schedule controls routing and availability. Use the existing business controls to edit exact hours.',
       <>
         <div className="grid gap-2 sm:grid-cols-2">{operating.map(({ day, value }) => <p key={day} className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-200"><strong className="capitalize">{day}:</strong> {value.open}–{value.close}</p>)}</div>
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5"><div><p className="font-black text-white">{application.accepting_orders ? 'Accepting new orders' : 'Paused for new orders'}</p><p className="mt-1 text-xs text-zinc-400">Current application state: {application.status}</p></div><button type="button" disabled={!canOperate || working} onClick={() => void onAction({ operation: 'update_availability', applicationId: application.id, operatingHours: application.operating_hours, acceptingOrders: !application.accepting_orders }, application.accepting_orders ? 'New order routing paused.' : 'Shop is live and accepting orders during saved hours.')} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 disabled:opacity-50">{application.accepting_orders ? 'Pause orders' : application.status === 'approved' ? 'Go live' : 'Awaiting approval'}</button></div>
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5"><div><p className="font-black text-white">{application.accepting_orders ? 'Accepting new orders' : 'Paused for new orders'}</p><p className="mt-1 text-xs text-zinc-400">Current application state: {application.status}</p></div><button type="button" disabled={!canOperate || working} onClick={() => void onAction({ operation: 'update_availability', applicationId: application.id, operatingHours: hours, acceptingOrders: !application.accepting_orders }, application.accepting_orders ? 'New order routing paused.' : 'Shop is live and accepting orders during saved hours.')} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 disabled:opacity-50">{application.accepting_orders ? 'Pause orders' : application.status === 'approved' ? 'Go live' : 'Awaiting approval'}</button></div>
       </>);
   }
 
@@ -1110,6 +1128,7 @@ export default function OnBarPartnerNetworkPage() {
   const [loginError, setLoginError] = useState('');
   const [batchForm, setBatchForm] = useState({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '', exciseStampConfirmed: false });
   const [stockCountDraft, setStockCountDraft] = useState<Record<number, string>>({});
+  const [offerPriceDraft, setOfferPriceDraft] = useState<Record<number, string>>({});
   const [stockCountDetails, setStockCountDetails] = useState<Record<number, {
     lotCode: string;
     supplierName: string;
@@ -1123,6 +1142,77 @@ export default function OnBarPartnerNetworkPage() {
   const [riderPhone, setRiderPhone] = useState('');
   const [ridersLoading, setRidersLoading] = useState(false);
   const [riderActionId, setRiderActionId] = useState('');
+  const [orderSoundEnabled, setOrderSoundEnabled] = useState(false);
+  const [orderSoundVolume, setOrderSoundVolume] = useState(0.65);
+  const [newOrderAlert, setNewOrderAlert] = useState(false);
+  const orderAudioContextRef = useRef<AudioContext | null>(null);
+  const knownOrderIdsRef = useRef(new Map<string, Set<string>>());
+  const newOrderAlertTimerRef = useRef<number | null>(null);
+  const orderSoundEnabledRef = useRef(false);
+  const orderSoundVolumeRef = useRef(0.65);
+
+  const playOrderChime = useCallback((force = false) => {
+    const audio = orderAudioContextRef.current;
+    const volume = orderSoundVolumeRef.current;
+    if ((!orderSoundEnabledRef.current && !force) || !audio || audio.state !== 'running' || volume <= 0) return;
+    const now = audio.currentTime;
+    [880, 1174, 880].forEach((frequency, index) => {
+      const start = now + index * 0.18;
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.002, volume * 0.16), start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+      oscillator.connect(gain);
+      gain.connect(audio.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.16);
+    });
+  }, []);
+
+  const registerOrderSnapshot = useCallback((feed: string, orderIds: string[]) => {
+    let knownIds = knownOrderIdsRef.current.get(feed);
+    if (!knownIds) {
+      knownIds = new Set(orderIds);
+      knownOrderIdsRef.current.set(feed, knownIds);
+      return;
+    }
+
+    const newIds = orderIds.filter(orderId => !knownIds.has(orderId));
+    orderIds.forEach(orderId => knownIds.add(orderId));
+    if (newIds.length === 0) return;
+
+    setNewOrderAlert(true);
+    if (newOrderAlertTimerRef.current !== null) window.clearTimeout(newOrderAlertTimerRef.current);
+    newOrderAlertTimerRef.current = window.setTimeout(() => setNewOrderAlert(false), 15_000);
+    playOrderChime();
+  }, [playOrderChime]);
+
+  const toggleOrderSound = async () => {
+    if (orderSoundEnabled) {
+      orderSoundEnabledRef.current = false;
+      setOrderSoundEnabled(false);
+      return;
+    }
+    try {
+      if (!('AudioContext' in window)) throw new Error('This browser does not support in-terminal sound alerts.');
+      const audio = orderAudioContextRef.current || new AudioContext();
+      orderAudioContextRef.current = audio;
+      await audio.resume();
+      orderSoundEnabledRef.current = true;
+      setOrderSoundEnabled(true);
+      playOrderChime(true);
+    } catch (soundError) {
+      setError(soundError instanceof Error ? soundError.message : 'Sound alerts could not be enabled.');
+    }
+  };
+
+  useEffect(() => () => {
+    if (newOrderAlertTimerRef.current !== null) window.clearTimeout(newOrderAlertTimerRef.current);
+    void orderAudioContextRef.current?.close();
+  }, []);
 
   const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
   const canOperate = selected?.application.status === 'approved';
@@ -1163,6 +1253,7 @@ export default function OnBarPartnerNetworkPage() {
 
   useEffect(() => {
     setStockCountDraft({});
+    setOfferPriceDraft({});
     setStockCountDetails({});
   }, [selectedId]);
 
@@ -1244,6 +1335,9 @@ export default function OnBarPartnerNetworkPage() {
         throw new Error(payload.error || 'Partner workspace could not be loaded.');
       }
       const applications = payload.applications || [];
+      registerOrderSnapshot('network', applications.flatMap(item =>
+        item.orders.map(order => `${item.application.id}:${order.id}`)
+      ));
       setWorkspace(applications);
       setSelectedId(current => applications.some(item => item.application.id === current)
         ? current
@@ -1253,7 +1347,7 @@ export default function OnBarPartnerNetworkPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [registerOrderSnapshot]);
 
   const loadFoodOrders = useCallback(async (silent = false) => {
     if (!accessToken || !selected?.application.id || selected.application.status !== 'approved') return;
@@ -1267,13 +1361,14 @@ export default function OnBarPartnerNetworkPage() {
       });
       const payload = await response.json() as { orders?: FoodOrder[]; error?: string };
       if (!response.ok || !payload.orders) throw new Error(payload.error || 'Food orders could not be loaded.');
+      registerOrderSnapshot(`food:${selected.application.id}`, payload.orders.map(order => String(order.id)));
       setFoodOrders(payload.orders);
     } catch (loadError) {
       setFoodOrdersError(loadError instanceof Error ? loadError.message : 'Food orders could not be loaded.');
     } finally {
       if (!silent) setFoodOrdersLoading(false);
     }
-  }, [accessToken, selected?.application.id, selected?.application.status]);
+  }, [accessToken, registerOrderSnapshot, selected?.application.id, selected?.application.status]);
 
   useEffect(() => {
     if (!isFoodMerchant || !canOperate || !['sales', 'food-live', 'food-history'].includes(section) || !accessToken) {
@@ -1289,7 +1384,7 @@ export default function OnBarPartnerNetworkPage() {
   }, [accessToken, canOperate, isFoodMerchant, loadFoodOrders, section]);
 
   useEffect(() => {
-    if (!accessToken || !['food-live', 'sales'].includes(section)) return;
+    if (!accessToken || !['food-live', 'sales', 'orders', 'liquor-live'].includes(section)) return;
     const interval = window.setInterval(() => void loadWorkspace(accessToken, true), 20_000);
     return () => window.clearInterval(interval);
   }, [accessToken, loadWorkspace, section]);
@@ -1504,20 +1599,28 @@ export default function OnBarPartnerNetworkPage() {
 
   const productOptions = useMemo(() => {
     if (!selected) return [];
-    const products = new Map<number, NonNullable<PartnerBatch['product']>>();
-    for (const offer of selected.application.offered_goods_pricing) {
-      products.set(offer.product_id, {
+    return selected.application.offered_goods_pricing.filter(offer => {
+      const product = {
+        category: offer.category,
+        sub_category: offer.sub_category,
+        is_bite: offer.is_bite,
+        is_snack: offer.is_snack,
+        is_souvenir: offer.is_souvenir
+      };
+      if (isFoodMerchant) return isKitchenFoodProduct(product);
+      if (isLiquorMerchant || selected.application.business_type === 'supplier'
+        || selected.application.vendor_type === 'wholesaler') {
+        return isBeverageInventoryProduct(product);
+      }
+      return true;
+    }).map(offer => ({
         id: offer.product_id,
         name: offer.product_name,
         sku: null,
-        category: selected.application.cuisine_or_category
-      });
-    }
-    for (const batch of selected.batches) {
-      if (batch.product) products.set(batch.product.id, batch.product);
-    }
-    return [...products.values()];
-  }, [selected]);
+        category: offer.category,
+        offer
+      }));
+  }, [isFoodMerchant, isLiquorMerchant, selected]);
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1677,6 +1780,29 @@ export default function OnBarPartnerNetworkPage() {
         [product.id]: { lotCode: '', supplierName: '', expiryAt: '', exciseStampConfirmed: false }
       }));
     }
+  };
+
+  const submitOfferPrice = async (
+    event: FormEvent<HTMLFormElement>,
+    productId: number,
+    currentPrice: number
+  ) => {
+    event.preventDefault();
+    if (!selected) return;
+    const price = Number(offerPriceDraft[productId] ?? currentPrice);
+    if (!Number.isFinite(price) || price <= 0 || price > 10_000_000
+      || Math.round(price * 100) !== price * 100) {
+      setError('Enter a selling price between KES 0.01 and KES 10,000,000 with no more than two decimal places.');
+      return;
+    }
+    const saved = await apiAction({
+      operation: 'set_offer_price',
+      applicationId: selected.application.id,
+      productId,
+      price,
+      expectedPrice: currentPrice
+    }, 'Proposed selling price saved for OnBar review. It is not customer-facing yet.');
+    if (saved) setOfferPriceDraft(current => ({ ...current, [productId]: price.toFixed(2) }));
   };
 
   const submitIncident = async (event: FormEvent<HTMLFormElement>) => {
@@ -1840,7 +1966,7 @@ export default function OnBarPartnerNetworkPage() {
 
   return (
     <main
-      className={isFoodMerchant || isLiquorMerchant ? 'min-h-screen bg-[#111214] text-zinc-100' : 'min-h-screen bg-slate-50'}
+      className={`min-h-screen bg-slate-50 text-slate-900 ${isFoodMerchant || isLiquorMerchant ? 'merchant-light-terminal' : ''}`}
       style={{
         '--primary': merchantAccentColor,
         '--primary-foreground': getContrastForeground(merchantAccentColor)
@@ -1854,7 +1980,40 @@ export default function OnBarPartnerNetworkPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className={`hidden text-sm sm:inline ${isFoodMerchant ? 'text-zinc-400' : 'text-slate-500'}`}>{email}</span>
-            <Button variant="outline" onClick={() => void signOut()} className="rounded-xl"><LogOut size={16} className="mr-2" /> Sign out</Button>
+            {canOperate && (
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-pressed={orderSoundEnabled}
+                  onClick={() => void toggleOrderSound()}
+                  className="h-9 rounded-lg px-2.5 text-xs font-bold"
+                >
+                  {orderSoundEnabled ? <Volume2 size={15} className="mr-1.5" /> : <VolumeX size={15} className="mr-1.5" />}
+                  {orderSoundEnabled ? 'Sound on' : 'Enable order sound'}
+                </Button>
+                {orderSoundEnabled && (
+                  <label className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-600">
+                    <span>Volume</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={orderSoundVolume}
+                      aria-label="New order sound volume"
+                      onChange={event => {
+                        const volume = Number(event.target.value);
+                        orderSoundVolumeRef.current = volume;
+                        setOrderSoundVolume(volume);
+                      }}
+                      className="w-16 accent-primary"
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+            <Button type="button" variant="outline" onClick={() => void signOut()} className="rounded-xl"><LogOut size={16} className="mr-2" /> Sign out</Button>
           </div>
         </div>
       </header>
@@ -1900,15 +2059,28 @@ export default function OnBarPartnerNetworkPage() {
 
         {(error || message) && <div role={error ? 'alert' : 'status'} className={`mb-5 flex items-start justify-between gap-3 rounded-xl p-4 text-sm ${error ? (isFoodMerchant || isLiquorMerchant ? 'border border-rose-400/30 bg-rose-400/10 text-rose-200' : 'bg-rose-50 text-rose-800') : (isFoodMerchant || isLiquorMerchant ? 'border border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'bg-emerald-50 text-emerald-800')}`}>
           <span>{error || message}</span>
-          <button onClick={() => { setError(''); setMessage(''); }} aria-label="Dismiss message">×</button>
+          <button type="button" onClick={() => { setError(''); setMessage(''); }} aria-label="Dismiss message">×</button>
         </div>}
+
+        {newOrderAlert && (
+          <div role="alert" aria-live="assertive" className="mb-5 flex animate-pulse flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-rose-500 bg-rose-50 p-4 text-rose-950 shadow-md">
+            <p className="font-black">New order received — check your order queue.</p>
+            <div className="flex gap-2">
+              <Button type="button" onClick={() => {
+                setSection(isFoodMerchant ? 'food-live' : isLiquorMerchant ? 'liquor-live' : 'orders');
+                setNewOrderAlert(false);
+              }} className="rounded-lg">View orders</Button>
+              <Button type="button" variant="outline" onClick={() => setNewOrderAlert(false)} className="rounded-lg">Dismiss</Button>
+            </div>
+          </div>
+        )}
 
         {overview && <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
           {(isFoodMerchant ? foodSections : isLiquorMerchant ? liquorSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
             const Icon = item.icon;
-            return <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}</button>;
+            return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}</button>;
           })}
-          <button onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
+          <button type="button" disabled={loading} onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl disabled:opacity-50 ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
         </nav>}
 
         {loading && <div className="rounded-2xl bg-white p-12 text-center text-slate-500"><Loader2 className="mx-auto mb-3 animate-spin text-primary" /><p className="text-sm font-semibold">Loading your business workspace...</p></div>}
@@ -2249,7 +2421,7 @@ export default function OnBarPartnerNetworkPage() {
                     <p className="mt-3 text-xs text-slate-500">Customer: <a className="font-semibold text-primary underline" href={`tel:${order.customer_phone}`}>{order.customer_phone}</a>{order.customer_email && <> · <a className="font-semibold text-primary underline" href={`mailto:${order.customer_email}`}>Email</a></>}</p>
                   </div>
                   <div className="flex flex-wrap gap-2 md:max-w-sm md:justify-end">
-                    {canOperate && nextEvents.map(eventType => <Button key={eventType} disabled={working} variant={eventType === 'rejected' || eventType === 'cancelled' ? 'outline' : 'default'} onClick={() => void apiAction({ operation: 'fulfillment', applicationId: application.id, orderId: order.id, eventType }, `Order ${order.id}: ${fulfillmentLabels[eventType].toLowerCase()} recorded.`)} className="rounded-xl text-xs font-black uppercase">{fulfillmentLabels[eventType]}</Button>)}
+                    {canOperate && nextEvents.map(eventType => <Button key={eventType} type="button" disabled={working} variant={eventType === 'rejected' || eventType === 'cancelled' ? 'outline' : 'default'} onClick={() => void apiAction({ operation: 'fulfillment', applicationId: application.id, orderId: order.id, eventType }, `Order ${order.id}: ${fulfillmentLabels[eventType].toLowerCase()} recorded.`)} className="rounded-xl text-xs font-black uppercase">{fulfillmentLabels[eventType]}</Button>)}
                     {!canOperate && <p className="text-xs font-semibold text-slate-500">Fulfillment actions require approved status.</p>}
                   </div>
                 </div>
@@ -2285,9 +2457,8 @@ export default function OnBarPartnerNetworkPage() {
                     exciseStampConfirmed: false
                   };
                   return (
-                    <form
+                    <article
                       key={product.id}
-                      onSubmit={event => void submitStockCount(event, product, currentAvailable)}
                       className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2299,6 +2470,7 @@ export default function OnBarPartnerNetworkPage() {
                           {currentAvailable > 0 ? 'Available to order' : 'Out of stock'}
                         </span>
                       </div>
+                      <form onSubmit={event => void submitStockCount(event, product, currentAvailable)} className="space-y-3">
                       <label className="block text-xs font-bold text-slate-700">
                         Set available units
                         <Input
@@ -2376,7 +2548,37 @@ export default function OnBarPartnerNetworkPage() {
                         {working ? <Loader2 size={15} className="mr-2 animate-spin" /> : <PackageCheck size={15} className="mr-2" />}
                         Save stock count
                       </Button>
-                    </form>
+                      </form>
+                      <form onSubmit={event => void submitOfferPrice(event, product.id, product.offer.selling_price)} className="space-y-2 border-t border-slate-100 pt-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700" htmlFor={`offer-price-${product.id}`}>Proposed selling price (KES)</label>
+                          <p className="mt-1 text-[11px] leading-5 text-slate-500">OnBar reviews price changes before they affect customer-facing prices.</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Input
+                            id={`offer-price-${product.id}`}
+                            required
+                            type="number"
+                            min="0.01"
+                            max="10000000"
+                            step="0.01"
+                            value={offerPriceDraft[product.id] ?? product.offer.selling_price.toFixed(2)}
+                            onChange={event => setOfferPriceDraft(current => ({ ...current, [product.id]: event.target.value }))}
+                            className="h-10 min-w-0 flex-1 rounded-xl"
+                            aria-label={`Proposed selling price in Kenyan shillings for ${product.name}`}
+                          />
+                          <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={working || Number(offerPriceDraft[product.id] ?? product.offer.selling_price) === product.offer.selling_price}
+                            className="h-10 rounded-xl"
+                          >
+                            Save price
+                          </Button>
+                        </div>
+                        <p className="text-[11px] text-slate-500">Platform listed price: KES {product.offer.listed_price.toLocaleString('en-KE')}</p>
+                      </form>
+                    </article>
                   );
                 })}
               </div>

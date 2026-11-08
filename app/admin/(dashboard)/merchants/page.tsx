@@ -147,6 +147,7 @@ const labels: Record<string, string> = {
   availability_updated: 'Availability updated',
   food_campaign_requested: 'Food promotion requested',
   alcohol_campaign_requested: 'Alcohol promotion requested',
+  offer_price_updated: 'Merchant proposed a price update',
   alcohol_rules_updated: 'Alcohol compliance rules updated',
   alcohol_manual_checks_completed: 'Alcohol manual verification completed',
   onboarding_link_opened: 'Opened onboarding link',
@@ -818,7 +819,7 @@ export default function MerchantApplicationsPage() {
                 <div className="max-h-64 space-y-2 overflow-y-auto">
                   {events.map(event => (
                     <div key={`${event.event_type}-${event.id}-${event.created_at}`} className="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs">
-                      <span className="font-semibold text-slate-700">{labels[event.event_type] || event.event_type} · {event.actor}{typeof event.details?.stage === 'string' ? ` · ${event.details.stage.replace('_', ' ')}` : ''}{typeof event.details?.document_types === 'object' ? ` · ${Array.isArray(event.details.document_types) ? `${event.details.document_types.length} document(s)` : ''}` : ''}</span>
+                      <span className="font-semibold text-slate-700">{labels[event.event_type] || event.event_type} · {event.actor}{typeof event.details?.product_name === 'string' ? ` · ${event.details.product_name}` : ''}{typeof event.details?.previous_price === 'number' && typeof event.details?.proposed_price === 'number' ? ` · KES ${event.details.previous_price} → ${event.details.proposed_price}` : ''}{typeof event.details?.stage === 'string' ? ` · ${event.details.stage.replace('_', ' ')}` : ''}{typeof event.details?.document_types === 'object' ? ` · ${Array.isArray(event.details.document_types) ? `${event.details.document_types.length} document(s)` : ''}` : ''}</span>
                       <time className="shrink-0 text-slate-400">{new Date(event.created_at).toLocaleString()}</time>
                     </div>
                   ))}
