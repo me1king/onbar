@@ -85,6 +85,7 @@ export default function LiquorOnboardingForm({
     ownerRole: 'Owner',
     idLast4: '',
     address: '',
+    locationDescription: '',
     county: 'Nairobi',
     town: '',
     latitude: '',
@@ -298,6 +299,7 @@ export default function LiquorOnboardingForm({
         ownerName: form.ownerName.trim(),
         ownerRole: form.ownerRole.trim(),
         address: form.address.trim(),
+        locationDescription: form.locationDescription.trim(),
         country: 'Kenya',
         county: form.county.trim(),
         town: form.town.trim(),
@@ -437,6 +439,8 @@ export default function LiquorOnboardingForm({
           <h2 className="text-xl font-black">Shop location</h2>
           <p className="text-sm text-slate-500">The school / place-of-worship distance is self-reported and requires admin measurement. Under 300 m is flagged for review, not automatically blocked.</p>
           <Input required placeholder="Street address / estate *" value={form.address} onChange={event => updateForm('address', event.target.value)} />
+          <Input maxLength={300} placeholder="Nearest landmark or directions (e.g. opposite Ngumo Primary School)" value={form.locationDescription} onChange={event => updateForm('locationDescription', event.target.value)} />
+          <p className="-mt-2 text-xs leading-relaxed text-slate-500">This helps our team find the correct shop entrance and place your delivery pin during review.</p>
           <div className="grid gap-3 sm:grid-cols-2"><Input required placeholder="County" value={form.county} onChange={event => updateForm('county', event.target.value)} /><Input required placeholder="Town / city" value={form.town} onChange={event => updateForm('town', event.target.value)} /></div>
           <div className="grid gap-3 sm:grid-cols-2"><Input type="number" step="any" min="-90" max="90" placeholder="Latitude (optional)" value={form.latitude} onChange={event => updateForm('latitude', event.target.value)} /><Input type="number" step="any" min="-180" max="180" placeholder="Longitude (optional)" value={form.longitude} onChange={event => updateForm('longitude', event.target.value)} /></div>
           <Input required type="number" min="0" max="100000" placeholder="Approx. metres from nearest school / worship place" value={form.distanceToSchoolMeters} onChange={event => updateForm('distanceToSchoolMeters', event.target.value)} />

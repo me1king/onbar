@@ -128,6 +128,7 @@ type SharedDraftForm = {
   ownerName: string;
   ownerRole: string;
   address: string;
+  locationDescription: string;
   county: string;
   town: string;
   latitude: string;
@@ -179,6 +180,7 @@ export default function MerchantOnboarding() {
   const [ownerName, setOwnerName] = useState('');
   const [ownerRole, setOwnerRole] = useState('');
   const [address, setAddress] = useState('');
+  const [locationDescription, setLocationDescription] = useState('');
   const [county, setCounty] = useState('');
   const [town, setTown] = useState('');
   const [latitude, setLatitude] = useState('');
@@ -338,6 +340,7 @@ export default function MerchantOnboarding() {
           setOwnerName(readText('ownerName'));
           setOwnerRole(readText('ownerRole'));
           setAddress(readText('address'));
+          setLocationDescription(readText('locationDescription'));
           setCounty(readText('county'));
           setTown(readText('town'));
           setLatitude(readText('latitude'));
@@ -588,6 +591,7 @@ export default function MerchantOnboarding() {
     ownerName,
     ownerRole,
     address,
+    locationDescription,
     county,
     town,
     latitude,
@@ -601,7 +605,7 @@ export default function MerchantOnboarding() {
     selectedGoods,
     offeredGoodsPrices
   }), [
-    businessName, tradingName, email, phone, ownerName, ownerRole, address,
+    businessName, tradingName, email, phone, ownerName, ownerRole, address, locationDescription,
     county, town, latitude, longitude, operatingAreas, cuisineOrCategory,
     preparationCapacity, deliveryRadiusKm, collectionAvailable, hours,
     selectedGoods, offeredGoodsPrices
@@ -793,6 +797,7 @@ export default function MerchantOnboarding() {
     payload.set('ownerName', ownerName.trim());
     payload.set('ownerRole', ownerRole.trim());
     payload.set('address', address.trim());
+    payload.set('locationDescription', locationDescription.trim());
     payload.set('country', 'Kenya');
     payload.set('county', county.trim());
     payload.set('town', town.trim());
@@ -1202,6 +1207,8 @@ export default function MerchantOnboarding() {
                 <Input value={town} onChange={event => setTown(event.target.value)} maxLength={100} placeholder="Town / city *" className="h-12 rounded-xl" />
               </div>
               <Input value={address} onChange={event => setAddress(event.target.value)} maxLength={240} placeholder="Physical business address *" className="h-12 rounded-xl" />
+              <Input value={locationDescription} onChange={event => setLocationDescription(event.target.value)} maxLength={300} placeholder="Nearest landmark or directions (e.g. opposite Ngumo Primary School)" className="h-12 rounded-xl" />
+              <p className="-mt-3 text-xs leading-relaxed text-slate-500">A clear landmark helps our team find the correct shop entrance and place your delivery pin during review.</p>
               <Input value={operatingAreas} onChange={event => setOperatingAreas(event.target.value)} maxLength={2000} placeholder="Areas served, comma-separated (e.g. Westlands, Kilimani)" className="h-12 rounded-xl" />
               <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div>

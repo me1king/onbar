@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import PrivateDocumentPreview from '@/components/admin/PrivateDocumentPreview';
+import MerchantPickupLocationEditor from '@/components/admin/MerchantPickupLocationEditor';
 import { isMerchantOpenAt, merchantWeekdays, normalizeMerchantOperatingHours } from '@/lib/merchantAvailability';
 
 interface MerchantDocument {
@@ -35,6 +36,7 @@ interface MerchantApplication {
   town: string;
   latitude: number | null;
   longitude: number | null;
+  dispatch_location_description: string | null;
   operating_areas: string[];
   operating_hours: Record<string, unknown>;
   accepting_orders: boolean;
@@ -131,6 +133,7 @@ export default function MerchantStorePage() {
   const [documentPreview, setDocumentPreview] = useState<{ name: string; url: string; contentType: string } | null>(null);
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
+  const [locationDescription, setLocationDescription] = useState('');
   const [deliveryRadiusKm, setDeliveryRadiusKm] = useState('');
   const [savingLocation, setSavingLocation] = useState(false);
   const [locationMessage, setLocationMessage] = useState('');
@@ -145,6 +148,7 @@ export default function MerchantStorePage() {
       setData(result as MerchantStoreData);
       setLatitude(result.application.latitude == null ? '' : String(result.application.latitude));
       setLongitude(result.application.longitude == null ? '' : String(result.application.longitude));
+      setLocationDescription(result.application.dispatch_location_description || '');
       setDeliveryRadiusKm(result.application.delivery_radius_km == null ? '' : String(result.application.delivery_radius_km));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Merchant store could not be loaded.');
@@ -166,6 +170,7 @@ export default function MerchantStorePage() {
         body: JSON.stringify({
           latitude,
           longitude,
+          dispatchLocationDescription: locationDescription,
           deliveryRadiusKm: deliveryRadiusKm.trim() === '' ? null : Number(deliveryRadiusKm)
         })
       });
@@ -173,6 +178,7 @@ export default function MerchantStorePage() {
         success?: boolean;
         latitude?: number | null;
         longitude?: number | null;
+        dispatchLocationDescription?: string | null;
         deliveryRadiusKm?: number | null;
         error?: string;
       };
@@ -183,13 +189,14 @@ export default function MerchantStorePage() {
           ...current.application,
           latitude: result.latitude ?? null,
           longitude: result.longitude ?? null,
+          dispatch_location_description: result.dispatchLocationDescription ?? null,
           delivery_radius_km: result.deliveryRadiusKm ?? null
         }
       } : current);
       setLocationMessage(
         result.deliveryRadiusKm == null
-          ? 'Pickup coordinates saved. Delivery radius is not set.'
-          : `Pickup coordinates and ${result.deliveryRadiusKm} km service radius saved and audited.`
+          ? 'Pickup pin and landmark directions saved. Delivery radius is not set.'
+          : `Pickup pin, landmark directions, and ${result.deliveryRadiusKm} km service radius saved and audited.`
       );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Business coordinates could not be saved.');
@@ -277,12 +284,22 @@ export default function MerchantStorePage() {
         <Detail label="Category" value={application.cuisine_or_category} />
         <Detail label="Preparation capacity" value={application.preparation_capacity} />
         <Detail label="Delivery radius" value={application.delivery_radius_km ? `${application.delivery_radius_km} km` : null} />
+        <Detail label="Verified shop landmark" value={application.dispatch_location_description} />
         <div className="rounded-xl bg-slate-50 p-3 sm:col-span-2">
           <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Dispatch pickup coordinates</p>
-          <p className="mt-1 text-xs text-slate-600">Enter the verified pickup pin and the merchant&apos;s confirmed delivery radius. Dispatch uses both to check service coverage and estimate rider pickup distance.</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Input type="number" min="-90" max="90" step="any" value={latitude} onChange={event => setLatitude(event.target.value)} placeholder="Latitude (-90 to 90)" aria-label="Merchant latitude" />
-            <Input type="number" min="-180" max="180" step="any" value={longitude} onChange={event => setLongitude(event.target.value)} placeholder="Longitude (-180 to 180)" aria-label="Merchant longitude" />
+          <p className="mt-1 text-xs text-slate-600">Search the shop address or a nearby landmark, choose the right place, then tap or drag the pin to the exact shop entrance. The merchant&apos;s own landmark directions are saved for dispatch staff too.</p>
+          <div className="mt-3 space-y-3">
+            <MerchantPickupLocationEditor
+              latitude={latitude}
+              longitude={longitude}
+              onCoordinatesChange={(lat, lng) => {
+                setLatitude(lat);
+                setLongitude(lng);
+              }}
+              locationDescription={locationDescription}
+              onLocationDescriptionChange={setLocationDescription}
+              initialAddress={`${application.address}, ${application.town}, ${application.county}, ${application.country}`}
+            />
             <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
               Confirmed delivery radius (km)
               <Input

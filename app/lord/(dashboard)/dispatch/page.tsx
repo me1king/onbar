@@ -116,6 +116,7 @@ interface DispatchJob {
             vendorName: string;
             hasCoordinates: boolean;
             hasDeliveryRadius: boolean;
+            locationDescription: string | null;
         }>;
         selectedVendorLocations: Array<{
             vendorId: string;
@@ -687,6 +688,11 @@ export default function AdminDispatchPage() {
                                             {order.fulfillment.selectedVendorLocations.map(vendor => (
                                                 <p key={vendor.vendorId} className="mt-2 break-words text-xs text-muted-foreground">
                                                     {vendor.vendorName} <span aria-hidden="true">·</span> pickup location verified
+                                                </p>
+                                            ))}
+                                            {order.fulfillment.selectedVendors.filter(vendor => vendor.locationDescription).map(vendor => (
+                                                <p key={`${vendor.vendorId}-landmark`} className="mt-2 break-words text-xs text-muted-foreground">
+                                                    {vendor.vendorName} landmark: {vendor.locationDescription}
                                                 </p>
                                             ))}
                                             {order.fulfillment.selectedVendors.filter(vendor => !vendor.hasCoordinates).map(vendor => (

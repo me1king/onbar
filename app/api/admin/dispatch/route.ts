@@ -67,6 +67,7 @@ type MerchantTrace = {
       accepting_orders?: boolean;
       operating_hours?: Record<string, unknown>;
       delivery_radius_km?: number | string | null;
+      dispatch_location_description?: string | null;
       latitude?: number | string | null;
       longitude?: number | string | null;
     } | null;
@@ -124,6 +125,7 @@ async function assessVendors(
     vendorName: string;
     hasCoordinates: boolean;
     hasDeliveryRadius: boolean;
+    locationDescription: string | null;
     distanceKm: number | null;
     isOpen: boolean;
     acceptingOrders: boolean;
@@ -165,15 +167,22 @@ async function assessVendors(
   }
 
   if (itemIds.length > 0) {
-    const { data, error } = await database
+    const traceQuery = await database
       .from('merchant_order_item_trace')
-      .select('order_item_id, quantity, batch:merchant_product_batches(product_id, expiry_at, holds:merchant_batch_holds(id, released_at), application:merchant_applications(id, business_name, status, accepting_orders, operating_hours, delivery_radius_km, latitude, longitude))')
+      .select('order_item_id, quantity, batch:merchant_product_batches(product_id, expiry_at, holds:merchant_batch_holds(id, released_at), application:merchant_applications(id, business_name, status, accepting_orders, operating_hours, delivery_radius_km, dispatch_location_description, latitude, longitude))')
       .in('order_item_id', itemIds);
+    const legacyTraceQuery = traceQuery.error?.message.includes('dispatch_location_description')
+      ? await database
+        .from('merchant_order_item_trace')
+        .select('order_item_id, quantity, batch:merchant_product_batches(product_id, expiry_at, holds:merchant_batch_holds(id, released_at), application:merchant_applications(id, business_name, status, accepting_orders, operating_hours, delivery_radius_km, latitude, longitude))')
+        .in('order_item_id', itemIds)
+      : null;
+    const traceResult = legacyTraceQuery || traceQuery;
 
-    if (error) {
+    if (traceResult.error) {
       reasons.push('Merchant batch trace data is unavailable. Apply MERCHANT_OPERATIONS_MIGRATION.sql and DISPATCH_MIGRATION.sql.');
     } else {
-      traces = (data || []) as unknown as MerchantTrace[];
+      traces = (traceResult.data || []) as unknown as MerchantTrace[];
     }
   }
   const { data: returnedMovements, error: returnedMovementsError } = itemIds.length
@@ -288,6 +297,7 @@ async function assessVendors(
           vendorName: merchant.business_name || 'Approved merchant',
           hasCoordinates: validCoordinates(numberOrNull(merchant.latitude), numberOrNull(merchant.longitude)),
           hasDeliveryRadius: numberOrNull(merchant.delivery_radius_km) !== null,
+          locationDescription: merchant.dispatch_location_description || null,
           distanceKm: merchantDistance === null ? null : Number(merchantDistance.toFixed(2)),
           isOpen,
           acceptingOrders: merchant.accepting_orders !== false,

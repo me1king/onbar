@@ -3,11 +3,15 @@
 -- Replaces dispatch retry with complete per-line reporting and lets admins
 -- save verified merchant service radii alongside pickup coordinates.
 
+ALTER TABLE public.merchant_applications
+    ADD COLUMN IF NOT EXISTS dispatch_location_description TEXT;
+
 CREATE OR REPLACE FUNCTION public.update_merchant_dispatch_settings(
     p_application_id UUID,
     p_latitude NUMERIC,
     p_longitude NUMERIC,
     p_delivery_radius_km NUMERIC,
+    p_location_description TEXT,
     p_actor TEXT
 )
 RETURNS VOID
@@ -29,11 +33,16 @@ BEGIN
        AND p_delivery_radius_km NOT BETWEEN 0 AND 500 THEN
         RAISE EXCEPTION 'Delivery radius must be between 0 and 500 km.';
     END IF;
+    IF p_location_description IS NOT NULL
+       AND char_length(trim(p_location_description)) > 300 THEN
+        RAISE EXCEPTION 'Location directions must be 300 characters or fewer.';
+    END IF;
 
     UPDATE public.merchant_applications
     SET latitude = p_latitude,
         longitude = p_longitude,
         delivery_radius_km = p_delivery_radius_km,
+        dispatch_location_description = nullif(trim(p_location_description), ''),
         updated_at = now()
     WHERE id = p_application_id;
     IF NOT FOUND THEN
@@ -50,15 +59,16 @@ BEGIN
             'latitude', p_latitude,
             'longitude', p_longitude,
             'delivery_radius_km', p_delivery_radius_km,
+            'location_description', nullif(trim(p_location_description), ''),
             'updated_at', now()
         )
     );
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.update_merchant_dispatch_settings(UUID, NUMERIC, NUMERIC, NUMERIC, TEXT)
+REVOKE ALL ON FUNCTION public.update_merchant_dispatch_settings(UUID, NUMERIC, NUMERIC, NUMERIC, TEXT, TEXT)
     FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.update_merchant_dispatch_settings(UUID, NUMERIC, NUMERIC, NUMERIC, TEXT)
+GRANT EXECUTE ON FUNCTION public.update_merchant_dispatch_settings(UUID, NUMERIC, NUMERIC, NUMERIC, TEXT, TEXT)
     TO service_role;
 
 CREATE OR REPLACE FUNCTION public.retry_paid_order_merchant_allocation(

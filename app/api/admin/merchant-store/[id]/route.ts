@@ -149,9 +149,20 @@ export async function GET(
     return NextResponse.json({ error: 'Merchant incident history could not be loaded.' }, { status: 503 });
   }
 
+  const dispatchLocationEvent = (applicationEvents || []).find(event => event.event_type === 'dispatch_location_updated');
+  const submittedEvent = (applicationEvents || []).find(event => event.event_type === 'submitted');
+  const eventLocationDescription = (event: typeof dispatchLocationEvent) =>
+    typeof event?.details?.location_description === 'string'
+      ? event.details.location_description
+      : null;
+  const dispatchLocationDescription = dispatchLocationEvent
+    ? eventLocationDescription(dispatchLocationEvent)
+    : application.dispatch_location_description || eventLocationDescription(submittedEvent);
+
   return NextResponse.json({
     application: {
       ...application,
+      dispatch_location_description: dispatchLocationDescription,
       documents: Array.isArray(application.documents)
         ? application.documents.map((document: Record<string, unknown>) => ({
           id: document.id,
@@ -200,7 +211,12 @@ export async function PATCH(
   const { id } = await params;
   if (!isUuid(id)) return NextResponse.json({ error: 'A valid merchant ID is required.' }, { status: 400 });
 
-  let body: { latitude?: unknown; longitude?: unknown; deliveryRadiusKm?: unknown };
+  let body: {
+    latitude?: unknown;
+    longitude?: unknown;
+    deliveryRadiusKm?: unknown;
+    dispatchLocationDescription?: unknown;
+  };
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -215,6 +231,12 @@ export async function PATCH(
   };
   const latitude = parseCoordinate(body.latitude);
   const longitude = parseCoordinate(body.longitude);
+  const hasLocationDescription = Object.prototype.hasOwnProperty.call(body, 'dispatchLocationDescription');
+  const dispatchLocationDescription = body.dispatchLocationDescription === null
+    ? null
+    : typeof body.dispatchLocationDescription === 'string'
+      ? body.dispatchLocationDescription.trim() || null
+      : undefined;
   const hasDeliveryRadius = Object.prototype.hasOwnProperty.call(body, 'deliveryRadiusKm');
   const deliveryRadiusKm = !hasDeliveryRadius
     ? undefined
@@ -226,6 +248,10 @@ export async function PATCH(
     || ((latitude === null) !== (longitude === null))
     || (latitude !== null && (latitude < -90 || latitude > 90))
     || (longitude !== null && (longitude < -180 || longitude > 180))
+    || (hasLocationDescription && (
+      dispatchLocationDescription === undefined
+      || (dispatchLocationDescription !== null && dispatchLocationDescription.length > 300)
+    ))
     || (hasDeliveryRadius && (
       deliveryRadiusKm === undefined
       || (deliveryRadiusKm !== null && (deliveryRadiusKm < 0 || deliveryRadiusKm > 500))
@@ -248,6 +274,7 @@ export async function PATCH(
       p_latitude: latitude,
       p_longitude: longitude,
       p_delivery_radius_km: deliveryRadiusKm,
+      p_location_description: hasLocationDescription ? dispatchLocationDescription : null,
       p_actor: session.email || session.role
     })
     : await database.rpc('update_merchant_dispatch_location', {
@@ -271,6 +298,7 @@ export async function PATCH(
     success: true,
     latitude,
     longitude,
+    ...(hasLocationDescription ? { dispatchLocationDescription } : {}),
     ...(hasDeliveryRadius ? { deliveryRadiusKm } : {})
   });
 }

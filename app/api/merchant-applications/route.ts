@@ -346,6 +346,7 @@ export async function POST(request: Request) {
   const ownerName = value(form, 'ownerName', 120);
   const ownerRole = value(form, 'ownerRole', 80);
   const address = value(form, 'address', 240);
+  const locationDescription = value(form, 'locationDescription', 300);
   const country = value(form, 'country', 80) || 'Kenya';
   const county = value(form, 'county', 100);
   const town = value(form, 'town', 100);
@@ -714,7 +715,8 @@ export async function POST(request: Request) {
         business_type: businessTypeValue,
         document_count: documents.length,
         documents_deferred: missingRequiredTypes.length > 0,
-        deferred_document_types: missingRequiredTypes
+        deferred_document_types: missingRequiredTypes,
+        location_description: locationDescription || null
       }
     });
     if (eventError) throw new Error(`Could not record application audit history: ${eventError.message}`);

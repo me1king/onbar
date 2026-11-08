@@ -120,6 +120,7 @@ interface DispatchJob {
             vendorName: string;
             hasCoordinates: boolean;
             hasDeliveryRadius: boolean;
+            locationDescription: string | null;
             distanceKm: number | null;
             isOpen: boolean;
             acceptingOrders: boolean;
@@ -775,6 +776,11 @@ export default function AdminDispatchPage() {
                                             {order.fulfillment.selectedVendorLocations.map(vendor => (
                                                 <p key={vendor.vendorId} className="mt-1 text-xs">
                                                     Pickup: {vendor.vendorName} · {vendor.latitude.toFixed(5)}, {vendor.longitude.toFixed(5)}
+                                                </p>
+                                            ))}
+                                            {order.fulfillment.selectedVendors.filter(vendor => vendor.locationDescription).map(vendor => (
+                                                <p key={`${vendor.vendorId}-landmark`} className="mt-1 text-xs text-muted-foreground">
+                                                    {vendor.vendorName} landmark: {vendor.locationDescription}
                                                 </p>
                                             ))}
                                             <div className="mt-3 space-y-1 text-xs">

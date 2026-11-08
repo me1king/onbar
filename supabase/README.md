@@ -127,7 +127,10 @@ before launch.
 After `MERCHANT_OPERATIONS_MIGRATION.sql`, `DISPATCH_MIGRATION.sql`, and
 `COD_RIDER_DISPATCH_MIGRATION.sql`, apply
 `DISPATCH_FULFILLMENT_RECOVERY_MIGRATION.sql`. It adds an audited admin update
-for verified merchant pickup coordinates and delivery radius, and makes
+for verified merchant pickup coordinates, delivery radius, and saved landmark
+directions. Admins can search the merchant's address or landmark, select a
+matching map result, and fine-tune the pin by dragging or tapping the map. The
+dispatch board shows saved directions for selected merchants. The migration also makes
 allocation retries report every order line—including deleted/unlinked products
 and products with no recorded sellable stock. A retry never guesses an item,
 creates stock, or bypasses payment, merchant, location, or rider checks.
