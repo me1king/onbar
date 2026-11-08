@@ -154,7 +154,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected', 'stock_confirmed'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected', 'stock_confirmed', 'payment_statement_requested'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
@@ -712,6 +712,60 @@ export async function POST(request: Request) {
       }, { status: staleCount ? 409 : validationError ? 400 : 409 });
     }
     return NextResponse.json({ stock: data }, { status: 200 });
+  }
+
+  if (body.operation === 'request_payment_statement') {
+    if (!Array.isArray(body.orderIds) || body.orderIds.length < 1 || body.orderIds.length > 100) {
+      return NextResponse.json({ error: 'Choose between 1 and 100 delivered orders for the statement request.' }, { status: 400 });
+    }
+    const orderIds = [...new Set(body.orderIds.map(Number))];
+    if (orderIds.some(orderId => !Number.isSafeInteger(orderId) || orderId < 1)) {
+      return NextResponse.json({ error: 'The statement request contains an invalid order reference.' }, { status: 400 });
+    }
+
+    let workspace: Awaited<ReturnType<typeof getApplicationWorkspace>>;
+    try {
+      workspace = await getApplicationWorkspace(context.database, application as unknown as Record<string, unknown>);
+    } catch (workspaceError) {
+      console.error('[MerchantNetwork] Could not verify delivered orders for statement request:', workspaceError);
+      return NextResponse.json({ error: 'Delivered merchant orders could not be verified. Refresh the workspace and try again.' }, { status: 503 });
+    }
+
+    const selectedOrders = orderIds.map(orderId => workspace.orders.find(order => Number(order.id) === orderId));
+    if (selectedOrders.some(order => !order)) {
+      return NextResponse.json({ error: 'One or more selected orders are not linked to this merchant.' }, { status: 403 });
+    }
+    const deliveredOrders = selectedOrders.filter((order): order is NonNullable<typeof order> => {
+      if (!order) return false;
+      const status = String(order.status || '').toLowerCase();
+      const hasDeliveredEvent = order.fulfillment.some(event => event.event_type === 'delivered');
+      return ['delivered', 'completed'].includes(status) || hasDeliveredEvent;
+    });
+    if (deliveredOrders.length !== orderIds.length) {
+      return NextResponse.json({ error: 'A statement can only be requested for orders confirmed as delivered.' }, { status: 400 });
+    }
+
+    const recordedItemValue = deliveredOrders.reduce((total, order) => total + order.items.reduce(
+      (orderTotal, item) => orderTotal
+        + Math.max(0, Number(item.selling_price) || 0) * Math.max(0, Number(item.merchant_quantity) || 0),
+      0
+    ), 0);
+    const { data, error } = await context.database.from('merchant_application_events').insert({
+      application_id: application.id,
+      event_type: 'payment_statement_requested',
+      actor: context.actor,
+      details: {
+        order_ids: orderIds,
+        delivered_order_count: deliveredOrders.length,
+        recorded_item_value_kes: Math.round(recordedItemValue * 100) / 100,
+        note: 'Statement request only. Recorded item value is not a verified payout or withdrawable balance.'
+      }
+    }).select('id, created_at').single();
+    if (error) {
+      console.error('[MerchantNetwork] Could not record merchant payment statement request:', error);
+      return NextResponse.json({ error: 'The statement request could not be sent to OnBar Finance.' }, { status: 503 });
+    }
+    return NextResponse.json({ requestId: data.id, requestedAt: data.created_at }, { status: 201 });
   }
 
   if (body.operation === 'confirm_stock') {

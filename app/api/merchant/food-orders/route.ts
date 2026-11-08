@@ -108,7 +108,7 @@ export async function GET(request: Request) {
 
     const { data: traces, error: tracesError } = await access.database
       .from('merchant_order_item_trace')
-      .select('order_item_id')
+      .select('order_item_id, quantity')
       .in('batch_id', batchIds)
       .limit(5000);
     if (tracesError) throw tracesError;
@@ -125,9 +125,34 @@ export async function GET(request: Request) {
       .limit(1000);
     if (itemsError) throw itemsError;
 
+    const { data: returnedMovements, error: returnedMovementsError } = assignedItemIds.length
+      ? await access.database
+        .from('merchant_inventory_movements')
+        .select('order_item_id, quantity_delta')
+        .eq('movement_type', 'returned')
+        .eq('note', 'Returned for offline merchant redistribution')
+        .in('order_item_id', assignedItemIds)
+      : { data: [], error: null };
+    if (returnedMovementsError) throw returnedMovementsError;
+
+    const tracedQuantityByItem = new Map<number, number>();
+    for (const trace of traces || []) {
+      const itemId = Number(trace.order_item_id);
+      tracedQuantityByItem.set(itemId, (tracedQuantityByItem.get(itemId) || 0) + Number(trace.quantity || 0));
+    }
+    const returnedQuantityByItem = new Map<number, number>();
+    for (const movement of returnedMovements || []) {
+      const itemId = Number(movement.order_item_id);
+      returnedQuantityByItem.set(itemId, (returnedQuantityByItem.get(itemId) || 0) + Number(movement.quantity_delta || 0));
+    }
+
     const foodItems = (itemData || []).filter(item => {
       const product = Array.isArray(item.products) ? item.products[0] : item.products;
-      return product && isKitchenFoodProduct(product);
+      const merchantQuantity = Math.max(
+        0,
+        (tracedQuantityByItem.get(Number(item.id)) || 0) - (returnedQuantityByItem.get(Number(item.id)) || 0)
+      );
+      return product && isKitchenFoodProduct(product) && merchantQuantity > 0;
     });
     const orderIds = [...new Set(foodItems.map(item => Number(item.order_id)).filter(Number.isSafeInteger))];
     if (!orderIds.length) return NextResponse.json({ orders: [] });
@@ -172,7 +197,10 @@ export async function GET(request: Request) {
           return {
             id: Number(item.id),
             product_name: product?.name || 'Food item',
-            quantity: Number(item.quantity || 0),
+            quantity: Math.max(
+              0,
+              (tracedQuantityByItem.get(Number(item.id)) || 0) - (returnedQuantityByItem.get(Number(item.id)) || 0)
+            ),
             unit_price: Number(item.unit_price || 0),
             size: item.size,
             addons: item.addons,

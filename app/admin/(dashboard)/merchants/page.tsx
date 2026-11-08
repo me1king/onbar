@@ -159,6 +159,7 @@ const labels: Record<string, string> = {
   offer_price_updated: 'Merchant proposed a price update',
   offer_price_approved: 'Catalog price proposal approved',
   offer_price_rejected: 'Catalog price proposal rejected',
+  payment_statement_requested: 'Merchant requested a finance statement',
   alcohol_rules_updated: 'Alcohol compliance rules updated',
   alcohol_manual_checks_completed: 'Alcohol manual verification completed',
   onboarding_link_opened: 'Opened onboarding link',

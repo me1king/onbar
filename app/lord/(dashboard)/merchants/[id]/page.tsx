@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, ClipboardCheck, FileText, Loader2, PackageSearch, ShieldCheck, Store } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, FileText, Loader2, PackageSearch, RefreshCcw, ShieldCheck, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -82,6 +82,16 @@ interface MerchantApplication {
 interface MerchantStoreData {
   application: MerchantApplication;
   applicationEvents: Array<{ id: number; event_type: string; actor: string; details: Record<string, unknown>; created_at: string }>;
+  catalog: Array<{
+    product_id: number;
+    product_name: string;
+    sku: string | null;
+    merchant_price: number;
+    currency: string;
+    catalog_price: number;
+    available_quantity: number;
+    stock_updated_at: string | null;
+  }>;
   batches: Array<{
     id: string;
     product_id: number;
@@ -228,10 +238,13 @@ export default function MerchantStorePage() {
   }
 
   const application = data.application;
-  const availableCount = (batch: MerchantStoreData['batches'][number]) => Math.max(
-    0,
-    batch.movements.reduce((total, movement) => total + movement.quantity_delta, 0)
-  );
+  const availableCount = (batch: MerchantStoreData['batches'][number]) => {
+    const expired = Boolean(batch.expiry_at && batch.expiry_at < new Date().toISOString().slice(0, 10));
+    const onHold = batch.holds.some(hold => !hold.released_at);
+    return expired || onHold
+      ? 0
+      : Math.max(0, batch.movements.reduce((total, movement) => total + movement.quantity_delta, 0));
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 pb-24 sm:p-8">
@@ -407,7 +420,33 @@ export default function MerchantStorePage() {
       <section className="mb-6">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div><h2 className="text-xl font-black uppercase text-slate-900">Store inventory</h2><p className="text-sm text-slate-500">Read-only catalog and lot history.</p></div>
-          <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-600">{data.batches.length} tracked lots</span>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-600">{data.batches.length} tracked lots</span>
+            <Button type="button" variant="outline" onClick={() => void loadStore()} disabled={loading} className="h-9 rounded-lg text-xs">
+              <RefreshCcw size={14} className={`mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh merchant data
+            </Button>
+          </div>
+        </div>
+        <div className="mb-4 grid gap-3 md:grid-cols-2">
+          {data.catalog.map(item => (
+            <Card key={item.product_id} className="rounded-2xl border-0 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-black text-slate-900">{item.product_name}</h3>
+                  <p className="mt-1 text-xs text-slate-500">{item.sku || `Product #${item.product_id}`}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-black ${application.status !== 'approved' ? 'bg-slate-100 text-slate-700' : item.available_quantity > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                  {application.status !== 'approved' ? 'Not orderable · merchant not approved' : item.available_quantity > 0 ? `${item.available_quantity} available` : 'Out of stock'}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2">
+                <p>Merchant-listed price: {item.currency} {item.merchant_price.toLocaleString('en-KE')}</p>
+                <p>Shared catalog price: KES {item.catalog_price.toLocaleString('en-KE')}</p>
+                <p className="sm:col-span-2">Stock ledger last updated: {dateTime(item.stock_updated_at)}</p>
+              </div>
+            </Card>
+          ))}
+          {!data.catalog.length && <Card className="rounded-2xl border-0 p-5 text-sm text-slate-500 shadow-sm">No approved catalog products are linked to this merchant account.</Card>}
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           {data.batches.map(batch => (

@@ -83,15 +83,22 @@ export async function GET(
 
   const batches = batchRows || [];
   const batchIds = batches.map(batch => batch.id);
-  const productIds = [...new Set(batches.map(batch => batch.product_id))];
+  const offers = Array.isArray(application.offered_goods_pricing)
+    ? application.offered_goods_pricing as Array<{ product_id?: unknown; product_name?: unknown; price?: unknown; currency?: unknown }>
+    : [];
+  const offeredProductIds = [...new Set(offers
+    .map(offer => Number(offer.product_id))
+    .filter(productId => Number.isSafeInteger(productId) && productId > 0))];
+  const productIds = [...new Set([...batches.map(batch => batch.product_id), ...offeredProductIds])];
   const [
     { data: products, error: productsError },
     { data: movements, error: movementsError },
     { data: holds, error: holdsError },
-    { data: traces, error: tracesError }
+    { data: traces, error: tracesError },
+    { data: stockSummary, error: stockSummaryError }
   ] = await Promise.all([
     productIds.length
-      ? database.from('products').select('id, name, sku').in('id', productIds)
+      ? database.from('products').select('id, name, sku, price').in('id', productIds)
       : Promise.resolve({ data: [], error: null }),
     batchIds.length
       ? database.from('merchant_inventory_movements')
@@ -107,11 +114,22 @@ export async function GET(
       ? database.from('merchant_order_item_trace')
         .select('id, order_item_id, batch_id, quantity, created_by, created_at')
         .in('batch_id', batchIds).order('created_at', { ascending: false }).limit(2000)
+      : Promise.resolve({ data: [], error: null }),
+    offeredProductIds.length
+      ? database.from('merchant_product_stock_summary')
+        .select('product_id, available_quantity, updated_at')
+        .eq('application_id', id)
+        .in('product_id', offeredProductIds)
       : Promise.resolve({ data: [], error: null })
   ]);
-  if (productsError || movementsError || holdsError || tracesError) {
-    console.error('[MerchantStore] Could not load inventory history:', productsError || movementsError || holdsError || tracesError);
-    return NextResponse.json({ error: 'Merchant inventory history could not be loaded.' }, { status: 503 });
+  if (productsError || movementsError || holdsError || tracesError || stockSummaryError) {
+    const inventoryError = productsError || movementsError || holdsError || tracesError || stockSummaryError;
+    console.error('[MerchantStore] Could not load inventory history:', inventoryError);
+    return NextResponse.json({
+      error: stockSummaryError
+        ? 'Merchant stock summary could not be loaded. Confirm MERCHANT_STOCK_COUNTS_MIGRATION.sql is installed.'
+        : 'Merchant inventory history could not be loaded.'
+    }, { status: 503 });
   }
 
   const itemIds = [...new Set((traces || []).map(trace => trace.order_item_id))];
@@ -174,6 +192,21 @@ export async function GET(
         : []
     },
     applicationEvents: applicationEvents || [],
+    catalog: offers.map(offer => {
+      const productId = Number(offer.product_id);
+      const product = (products || []).find(candidate => Number(candidate.id) === productId);
+      const stock = (stockSummary || []).find(row => Number(row.product_id) === productId);
+      return {
+        product_id: productId,
+        product_name: product?.name || (typeof offer.product_name === 'string' ? offer.product_name : `Product #${productId}`),
+        sku: product?.sku || null,
+        merchant_price: Number(offer.price) || 0,
+        currency: typeof offer.currency === 'string' ? offer.currency : 'KES',
+        catalog_price: Number(product?.price) || 0,
+        available_quantity: Math.max(0, Number(stock?.available_quantity) || 0),
+        stock_updated_at: stock?.updated_at || null
+      };
+    }),
     batches: batches.map(batch => ({
       ...batch,
       product: (products || []).find(product => product.id === batch.product_id) || null,

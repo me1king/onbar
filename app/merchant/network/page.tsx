@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Clock3,
   CreditCard,
+  Download,
   FileText,
   History,
   Loader2,
@@ -75,6 +76,7 @@ type FoodOrderItem = {
   id: number;
   product_name: string;
   quantity: number;
+  ordered_quantity?: number;
   unit_price: number;
   size: string | null;
   addons: unknown;
@@ -88,6 +90,20 @@ type FoodOrder = {
   created_at: string;
   fulfillment: FulfillmentEvent[];
   items: FoodOrderItem[];
+};
+type MerchantPaymentOrder = {
+  id: number;
+  status: string;
+  created_at: string;
+  fulfillment: FulfillmentEvent[];
+  items: Array<{
+    product_name: string;
+    quantity: number;
+    merchant_quantity?: number;
+    unit_price: number;
+    selling_price?: number;
+    size: string | null;
+  }>;
 };
 type SellerSalesOrder = {
   id: number;
@@ -409,6 +425,125 @@ function statusClass(status: string): string {
 
 function latestFulfillment(events: FulfillmentEvent[]): string {
   return [...events].sort((left, right) => new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime())[0]?.event_type || '';
+}
+
+function MerchantPaymentsPanel({
+  application,
+  orders,
+  requests,
+  canOperate,
+  working,
+  onRequestStatement
+}: {
+  application: PartnerApplication['application'];
+  orders: MerchantPaymentOrder[];
+  requests: PartnerEvent[];
+  canOperate: boolean;
+  working: boolean;
+  onRequestStatement: (orderIds: number[]) => Promise<boolean>;
+}) {
+  const deliveredOrders = orders
+    .filter(order => ['delivered', 'completed'].includes(order.status.toLowerCase())
+      || latestFulfillment(order.fulfillment) === 'delivered')
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+  const orderValue = (order: MerchantPaymentOrder) => order.items.reduce((total, item) => {
+    const quantity = Math.max(0, Number(item.merchant_quantity ?? item.quantity) || 0);
+    const price = Math.max(0, Number(item.selling_price ?? item.unit_price) || 0);
+    return total + quantity * price;
+  }, 0);
+  const totalRecordedValue = deliveredOrders.reduce((total, order) => total + orderValue(order), 0);
+  const latestRequest = requests
+    .filter(event => event.event_type === 'payment_statement_requested')
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0];
+
+  const exportCsv = () => {
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const rows = [
+      ['Order', 'Delivered at', 'Items', 'Recorded item value KES', 'Order status'],
+      ...deliveredOrders.map(order => [
+        `#${order.id}`,
+        new Date(order.created_at).toISOString(),
+        order.items.map(item => `${item.merchant_quantity ?? item.quantity} x ${item.product_name}`).join('; '),
+        orderValue(order).toFixed(2),
+        order.status
+      ])
+    ];
+    const csv = [
+      'OnBar merchant delivered-order statement (not a payout statement)',
+      `Merchant,${quote(application.business_name)}`,
+      'Amounts use recorded merchant-traced item quantities and order prices; fees, deductions, refunds, and seller share are not included.',
+      ...rows.map(row => row.map(quote).join(','))
+    ].join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `merchant-${application.merchant_code || application.id.slice(0, 8)}-delivered-orders.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100">
+        Payments are not yet connected to a verified merchant payout ledger or M-Pesa disbursement. The delivered item values below are taken from this merchant&apos;s order records; they are not earnings, a balance owed, or a payout promise.
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <article className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4">
+          <p className="text-2xl font-black text-white">{deliveredOrders.length}</p>
+          <p className="mt-1 text-xs font-bold uppercase text-zinc-400">Delivered orders in records</p>
+        </article>
+        <article className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4">
+          <p className="text-2xl font-black text-white">KSh {totalRecordedValue.toLocaleString('en-KE', { maximumFractionDigits: 2 })}</p>
+          <p className="mt-1 text-xs font-bold uppercase text-zinc-400">Recorded delivered item value · not payout</p>
+        </article>
+      </div>
+      <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#1a1b1e]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-4">
+          <div>
+            <h3 className="font-black text-white">Delivered orders</h3>
+            <p className="mt-1 text-xs text-zinc-400">Only quantities linked to this merchant&apos;s stock trace are included.</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" disabled={!deliveredOrders.length} onClick={exportCsv} className="inline-flex items-center rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-zinc-200 disabled:opacity-50">
+              <Download size={14} className="mr-2" /> Export records
+            </button>
+            <button
+              type="button"
+              disabled={!canOperate || working || !deliveredOrders.length}
+              onClick={() => void onRequestStatement(deliveredOrders.map(order => order.id))}
+              className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-zinc-950 disabled:opacity-50"
+            >
+              {working ? 'Sending…' : 'Request finance statement'}
+            </button>
+          </div>
+        </div>
+        {deliveredOrders.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="text-xs uppercase text-zinc-400"><tr>
+                <th className="px-4 py-3">Order</th><th className="px-4 py-3">Delivered</th><th className="px-4 py-3">Items</th><th className="px-4 py-3 text-right">Recorded item value</th>
+              </tr></thead>
+              <tbody className="divide-y divide-white/10">
+                {deliveredOrders.map(order => <tr key={order.id}>
+                  <td className="px-4 py-3 font-bold text-white">#{order.id}</td>
+                  <td className="px-4 py-3 text-zinc-300">{dateTime(order.fulfillment.find(event => event.event_type === 'delivered')?.occurred_at || order.created_at)}</td>
+                  <td className="px-4 py-3 text-zinc-300">{order.items.map(item => `${item.merchant_quantity ?? item.quantity} × ${item.product_name}`).join(', ')}</td>
+                  <td className="px-4 py-3 text-right font-bold text-white">KSh {orderValue(order).toLocaleString('en-KE', { maximumFractionDigits: 2 })}</td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="p-6 text-sm text-zinc-400">No delivered order records are available for this business yet.</p>}
+      </section>
+      <section className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-4">
+        <h3 className="font-black text-white">Finance follow-up</h3>
+        {latestRequest
+          ? <p className="mt-2 text-sm text-zinc-300">Your statement request was recorded for OnBar Finance on {dateTime(latestRequest.created_at)}. This is a request only; it does not create or confirm a payout.</p>
+          : <p className="mt-2 text-sm text-zinc-400">A statement request will be recorded in this merchant account and visible in the Admin merchant audit history.</p>}
+        <p className="mt-3 text-xs leading-5 text-zinc-500">Payout destination setup, verification, fees, payout schedule, refunds, and settlement amounts require finance configuration and are not enabled here.</p>
+      </section>
+    </div>
+  );
 }
 
 function formatSeconds(seconds: number | null): string {
@@ -1012,12 +1147,34 @@ function FoodMerchantTerminal({
   }
 
   if (section === 'food-payments') {
-    return shell('Payments', 'Payment and settlement records for this merchant.', <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-6">
-      <div className="flex items-start gap-3"><CreditCard className="mt-1 text-amber-400" /><div>
-        <h3 className="font-black text-white">Settlement history is not connected yet</h3>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">This workspace does not currently have a merchant payout ledger or verified settlement status. We are not showing order totals as earnings or withdrawable balance. Contact OnBar finance for payout statements.</p>
-      </div></div>
-    </div>);
+    const paymentOrders: MerchantPaymentOrder[] = foodOrders.map(order => ({
+      id: order.id,
+      status: order.status,
+      created_at: order.created_at,
+      fulfillment: order.fulfillment,
+      items: order.items.map(item => ({
+        product_name: item.product_name,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        size: item.size
+      }))
+    }));
+    return shell('Payments', 'Delivered order records and finance statement requests. Recorded item values are not a payout or balance.', <>
+      {foodOrdersError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-200">{foodOrdersError}</p>}
+      {foodOrdersLoading && <p role="status" className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-400">Loading delivered order records…</p>}
+      <MerchantPaymentsPanel
+        application={application}
+        orders={paymentOrders}
+        requests={overview.events}
+        canOperate={canOperate}
+        working={working}
+        onRequestStatement={orderIds => onAction({
+          operation: 'request_payment_statement',
+          applicationId: application.id,
+          orderIds
+        }, 'Statement request recorded for OnBar Finance. It is not a payout request.')}
+      />
+    </>);
   }
 
   if (section === 'food-history') {
@@ -1249,8 +1406,33 @@ function AlcoholMerchantTerminal({
   }
 
   if (section === 'liquor-payments') {
-    return panel('Payments and settlement', 'This terminal has no verified merchant payout ledger or M-Pesa withdrawal integration. Orders and sales totals are not treated as withdrawable balance.',
-      <article className="flex items-start gap-3 rounded-2xl border border-white/10 bg-[#1a1b1e] p-6"><CreditCard className="mt-1 text-amber-400" /><div><h3 className="font-black text-white">Settlement history is not connected</h3><p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">Contact OnBar finance for statements. No sample balance, payout status, cash-held amount or withdrawal button is shown.</p></div></article>);
+    const paymentOrders: MerchantPaymentOrder[] = overview.orders.map(order => ({
+      id: order.id,
+      status: order.status,
+      created_at: order.created_at,
+      fulfillment: order.fulfillment,
+      items: order.items.map(item => ({
+        product_name: item.product_name,
+        quantity: item.quantity,
+        merchant_quantity: item.merchant_quantity,
+        unit_price: item.unit_price,
+        selling_price: item.selling_price,
+        size: item.size
+      }))
+    }));
+    return panel('Payments and settlement', 'Delivered order records and finance statement requests. Recorded item values are not a payout or balance.',
+      <MerchantPaymentsPanel
+        application={application}
+        orders={paymentOrders}
+        requests={overview.events}
+        canOperate={canOperate}
+        working={working}
+        onRequestStatement={orderIds => onAction({
+          operation: 'request_payment_statement',
+          applicationId: application.id,
+          orderIds
+        }, 'Statement request recorded for OnBar Finance. It is not a payout request.')}
+      />);
   }
 
   if (section === 'liquor-reviews') {
@@ -1601,7 +1783,7 @@ export default function OnBarPartnerNetworkPage() {
   }, [accessToken, registerOrderSnapshot, selected?.application.id, selected?.application.status]);
 
   useEffect(() => {
-    if (!isFoodMerchant || !canOperate || !['sales', 'food-live', 'food-history'].includes(section) || !accessToken) {
+    if (!isFoodMerchant || !canOperate || !['sales', 'food-live', 'food-history', 'food-payments'].includes(section) || !accessToken) {
       setFoodOrders([]);
       setFoodOrdersError('');
       setFoodOrdersLoading(false);
