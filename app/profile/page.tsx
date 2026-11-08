@@ -1015,13 +1015,13 @@ export default function ProfilePage() {
 
         {!workspaceAccess.loading
             && (hasWorkspaceProgress || Boolean(workspaceAccess.error))
-            && <section id="workspaces" aria-labelledby="workspaces-title" className="scroll-mt-24 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+            && <section id="workspaces" aria-labelledby="workspaces-title" className="scroll-mt-24 rounded-3xl border border-slate-200 bg-slate-50 p-6 text-slate-900 shadow-sm sm:p-8">
                 <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-primary">
                         <Store size={22} />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <h2 id="workspaces-title" className="text-lg font-black uppercase tracking-tight text-foreground">Your application progress & workspaces</h2>
+                        <h2 id="workspaces-title" className="text-lg font-black uppercase tracking-tight text-slate-900">Your application progress & workspaces</h2>
                         <p className="mt-1 text-sm text-slate-500">Check your application status here. Updates are refreshed automatically and when you return to this page.</p>
                         <Button
                             type="button"
@@ -1115,7 +1115,7 @@ export default function ProfilePage() {
                                 )}
                                 <div className="flex flex-wrap gap-3">
                                 {workspaceAccess.merchantApplications.filter(application => application.status === 'approved').map(application => (
-                                    <div key={application.id} className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                    <div key={application.id} className="w-full rounded-2xl border border-slate-200 bg-white p-4">
                                         <Link
                                             href="/merchant/network"
                                             className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-xs font-black uppercase tracking-wide text-white transition hover:opacity-90"
@@ -1139,7 +1139,7 @@ export default function ProfilePage() {
                                     <div className="w-full rounded-2xl border border-slate-100 bg-slate-50 p-4">
                                         <Link
                                             href="/rider/dashboard?account=1"
-                                            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-foreground transition hover:border-primary/40 hover:text-primary"
+                                            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-900 transition hover:border-primary/40 hover:text-primary"
                                         >
                                             <Truck size={15} /> Open {workspaceAccess.riderName ? `${workspaceAccess.riderName}'s` : 'your'} rider terminal
                                         </Link>
