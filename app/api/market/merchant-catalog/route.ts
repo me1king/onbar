@@ -20,13 +20,6 @@ type CatalogProduct = {
   status: string | null;
 };
 
-type CatalogSelection = {
-  product_id: number;
-  merchant_price: number;
-  stock: number;
-  is_listed: boolean;
-};
-
 function migrationError(error: { code?: string; message?: string }) {
   if (error.code === '42P01' || error.code === '42883' || /mm_merchant_catalog|mm_save_merchant_catalog_items/i.test(error.message || '')) {
     return 'Merchant catalog storage is not installed. Run supabase/MERCHANT_MASTER_CATALOG_MIGRATION.sql in Supabase.';
@@ -97,65 +90,7 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const context = await getMarketMerchantContext(request);
   if ('response' in context) return context.response;
-
-  let body: { items?: unknown };
-  try {
-    body = await request.json() as { items?: unknown };
-  } catch {
-    return NextResponse.json({ error: 'Send a valid list of catalog changes.' }, { status: 400 });
-  }
-
-  if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 500) {
-    return NextResponse.json({ error: 'Save between 1 and 500 catalog items at a time.' }, { status: 400 });
-  }
-
-  const items: CatalogSelection[] = [];
-  const seenProductIds = new Set<number>();
-  for (const value of body.items) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return NextResponse.json({ error: 'A catalog item contains invalid data.' }, { status: 400 });
-    }
-    const item = value as Record<string, unknown>;
-    const productId = Number(item.product_id);
-    const merchantPrice = Number(item.merchant_price);
-    const stock = Number(item.stock);
-    if (!Number.isSafeInteger(productId) || productId <= 0
-      || !Number.isFinite(merchantPrice) || merchantPrice < 0 || merchantPrice > 100000000
-      || !Number.isSafeInteger(stock) || stock < 0 || stock > 1000000
-      || typeof item.is_listed !== 'boolean'
-      || seenProductIds.has(productId)) {
-      return NextResponse.json({ error: 'Check the product, merchant price, stock and selection state.' }, { status: 400 });
-    }
-    seenProductIds.add(productId);
-    items.push({
-      product_id: productId,
-      merchant_price: Math.round(merchantPrice * 100) / 100,
-      stock,
-      is_listed: item.is_listed
-    });
-  }
-
-  const { data, error } = await context.database.rpc('mm_save_merchant_catalog_items', {
-    p_user_id: context.user.id,
-    p_merchant_id: context.merchantId,
-    p_items: items
-  });
-  if (error) {
-    const missingMigration = migrationError(error);
-    if (!missingMigration && /must leave at least KES/i.test(error.message)) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    if (/membership is required/i.test(error.message)) {
-      return NextResponse.json({ error: 'Only an active boutique owner or manager can update the master catalog.' }, { status: 403 });
-    }
-    console.error('[MerchantCatalog] Could not save merchant catalog:', error);
-    return NextResponse.json({
-      error: missingMigration || 'Your catalog changes could not be saved.'
-    }, { status: missingMigration ? 503 : 400 });
-  }
-
   return NextResponse.json({
-    saved: Number(data?.saved || 0),
-    minimumMargin: Number(data?.minimum_margin ?? 30)
-  }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+    error: 'Direct stock and payout-price updates are disabled. Submit a photo-backed stock offer for Market Operations to review.'
+  }, { status: 410 });
 }

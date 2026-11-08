@@ -145,7 +145,9 @@ export default function EmailCommandCenter() {
         <Card className="rounded-2xl p-5">
           <p className="text-xs font-bold uppercase text-slate-500">Provider</p>
           <p className="mt-2 text-lg font-black">{data?.provider.configured ? data.provider.provider : 'Not configured'}</p>
-          <p className="mt-1 break-all text-xs text-slate-500">{data?.provider.from || 'Set JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL in Vercel.'}</p>
+          <p className="mt-1 break-all text-xs text-slate-500">{data?.provider.configured
+            ? data.provider.from
+            : 'Configure JMSURF Mail or Resend credentials and a verified sender on the server.'}</p>
         </Card>
         <Card className="rounded-2xl p-5">
           <p className="text-xs font-bold uppercase text-slate-500">Known email contacts</p>
@@ -230,7 +232,12 @@ export default function EmailCommandCenter() {
             <Button type="submit" disabled={sending || !data?.provider.configured || data?.canSend === false} className="w-full rounded-xl">
               <Send size={15} className="mr-2" /> {sending ? 'Sending…' : mode === 'driver_invite' ? 'Send secure onboarding link' : 'Send email'}
             </Button>
-            {!data?.provider.configured && <p className="text-xs text-rose-700">Email sending is disabled until a provider and verified sender are configured.</p>}
+            {!data?.provider.configured && (
+              <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+                <p className="font-bold">Email delivery needs server setup</p>
+                <p className="mt-1">Add either <code>JMSURF_MAIL_KEY</code> and <code>JMSURF_FROM_EMAIL</code>, or <code>RESEND_API_KEY</code> and <code>RESEND_FROM_EMAIL</code>, to the deployment environment. Verify the sender address with that provider, then redeploy. Sending will unlock automatically when the app detects a complete provider setup.</p>
+              </div>
+            )}
           </form>
         </Card>
       </section>

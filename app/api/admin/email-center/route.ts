@@ -343,7 +343,9 @@ export async function POST(request: Request) {
 
   const config = getTransactionalEmailConfig();
   if (!config.configured || !config.from) {
-    return NextResponse.json({ error: 'Email is not configured. Set JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL in Vercel.' }, { status: 503 });
+    return NextResponse.json({
+      error: 'Email is not configured. Set JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL, or RESEND_API_KEY and RESEND_FROM_EMAIL, in the deployment environment.'
+    }, { status: 503 });
   }
 
   const { data: suppression, error: suppressionError } = await access.database

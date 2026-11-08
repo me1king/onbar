@@ -95,8 +95,8 @@ export default function LifecycleEmailPreview() {
       </div>
 
       {selectedId === 'waitlist' && (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
-          The launch hero image is not in this workspace yet, so the preview does not include it. Add the provided <code>hero.png</code> under <code>public/emails/</code> before using it in a real send.
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-900">
+          The launch email includes the Online Bar hero artwork and tells waitlist members a mystery gift comes with their first order during launch week. Send it to opted-in waitlist members from the Broadcast campaign builder.
         </p>
       )}
       {selectedId === 'rider-welcome' && (

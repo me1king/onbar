@@ -704,9 +704,9 @@ export default function AdminDispatchPage() {
                                             ))}
                                         </ol>
 
-                                        <div className={`rounded-xl border p-4 text-left ${order.fulfillment.ready ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                                            <p className="text-xs font-black uppercase">{order.fulfillment.ready ? 'Vendor fulfillment verified' : 'Vendor fulfillment has gaps'}</p>
-                                            <ul className="mt-2 space-y-1 text-xs">
+                                        <div className={`rounded-xl border p-4 text-left ${order.fulfillment.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
+                                            <p className={`text-xs font-black uppercase ${order.fulfillment.ready ? 'text-emerald-800' : 'text-rose-700'}`}>{order.fulfillment.ready ? 'Vendor fulfillment verified' : 'Vendor fulfillment has gaps'}</p>
+                                            <ul className={`mt-2 space-y-1 text-xs ${order.fulfillment.ready ? 'text-emerald-800' : 'text-rose-700'}`}>
                                                 {order.fulfillment.reasons.length > 0
                                                     ? order.fulfillment.reasons.map((reason, index) => <li key={index}>• {reason}</li>)
                                                     : <li>Product, reserved quantity, availability, price and delivery radius verified.</li>}
@@ -836,7 +836,12 @@ export default function AdminDispatchPage() {
                                                     <Button
                                                         onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
                                                         disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
-                                                        className="h-12 shrink-0 rounded-xl bg-primary px-6 text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-50"
+                                                        title={!order.fulfillment.ready
+                                                            ? 'Resolve the product, stock, and merchant pickup issues shown above before assigning a rider.'
+                                                            : !recommendation
+                                                                ? order.riderAvailabilityReason || 'No rider is currently eligible for automatic assignment.'
+                                                                : undefined}
+                                                        className="h-12 shrink-0 rounded-xl bg-primary px-6 text-[10px] font-black uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:bg-rose-100 disabled:text-rose-700 disabled:opacity-100"
                                                     >
                                                         {assigning === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign recommended rider'}
                                                     </Button>

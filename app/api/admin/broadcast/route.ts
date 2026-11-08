@@ -4,6 +4,13 @@ import { verifySessionCookie } from "@/lib/adminAuth";
 import { cookies } from "next/headers";
 import { createMarketingUnsubscribeToken } from '@/lib/marketingUnsubscribe';
 import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
+import {
+    renderWaitlistLaunchEmail,
+    WAITLIST_LAUNCH_GIFT_MESSAGE,
+    WAITLIST_LAUNCH_MESSAGE,
+    WAITLIST_LAUNCH_SUBJECT
+} from '@/lib/lifecycleEmailPreviews';
+import { getPublicBaseUrl } from '@/lib/utils';
 
 async function getAdminSession() {
     const cookieStore = await cookies();
@@ -88,6 +95,7 @@ export async function POST(request: Request) {
             message?: unknown;
             audience?: unknown;
             emailAudience?: unknown;
+            campaignTemplate?: unknown;
             schedule?: unknown;
         };
         const channel = body.channel;
@@ -95,6 +103,7 @@ export async function POST(request: Request) {
         const message = typeof body.message === 'string' ? body.message.trim() : '';
         const audience = typeof body.audience === 'string' ? body.audience : 'all';
         const emailAudience = body.emailAudience === 'waitlist' ? 'waitlist' : 'newsletter';
+        const campaignTemplate = body.campaignTemplate === 'waitlist_launch' ? 'waitlist_launch' : null;
 
         if (
             typeof channel !== 'string'
@@ -104,6 +113,12 @@ export async function POST(request: Request) {
             || subject.length > 200
         ) {
             return NextResponse.json({ error: "Choose a delivery channel and enter a message under 5,000 characters." }, { status: 400 });
+        }
+        if (body.campaignTemplate !== undefined && body.campaignTemplate !== 'waitlist_launch') {
+            return NextResponse.json({ error: 'Choose a supported email campaign template.' }, { status: 400 });
+        }
+        if (campaignTemplate && (channel !== 'email' || emailAudience !== 'waitlist')) {
+            return NextResponse.json({ error: 'The launch email can only be sent to the consented waitlist by email.' }, { status: 400 });
         }
         if (
             audience !== 'all'
@@ -309,19 +324,23 @@ export async function POST(request: Request) {
         if (channel === 'email') {
             const emailConfig = getTransactionalEmailConfig();
             if (!emailConfig.configured || !emailConfig.from) {
-                return NextResponse.json({ error: "Email delivery requires JMSURF_MAIL_KEY and a verified JMSURF_FROM_EMAIL on the server." }, { status: 503 });
+                return NextResponse.json({ error: "Email delivery requires JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL, or RESEND_API_KEY and RESEND_FROM_EMAIL, on the server." }, { status: 503 });
             }
 
+            const campaignSubject = campaignTemplate === 'waitlist_launch' ? WAITLIST_LAUNCH_SUBJECT : subject;
+            const campaignMessage = campaignTemplate === 'waitlist_launch'
+                ? `${WAITLIST_LAUNCH_MESSAGE}\n\n${WAITLIST_LAUNCH_GIFT_MESSAGE}`
+                : message;
             const { data: campaign, error: campaignError } = await adminDatabase
                 .from('message_campaigns')
                 .insert({
-                    name: subject || 'Onbar email campaign',
+                    name: campaignSubject || 'Onbar email campaign',
                     status: 'Sending',
                     sent_count: 0,
                     open_count: 0,
                     attributed_revenue: 0,
                     channel: 'email',
-                    message,
+                    message: campaignMessage,
                     sent_by: session.email || 'owner'
                 })
                 .select('id')
@@ -336,7 +355,7 @@ export async function POST(request: Request) {
                 "'": '&#39;'
             })[character] || character);
             const safeMessage = escapeHtml(message).replace(/\r?\n/g, '<br>');
-            const origin = new URL(request.url).origin;
+            const origin = getPublicBaseUrl();
             let delivered = 0;
             let failed = 0;
             let deliveryAuditError: string | null = null;
@@ -345,13 +364,19 @@ export async function POST(request: Request) {
                 const results = await Promise.all(batch.map(async (sub, index) => {
                     const unsubscribeUrl = `${origin}/newsletter/unsubscribe?token=${encodeURIComponent(createMarketingUnsubscribeToken(sub.email))}`;
                     try {
+                        const launchEmail = campaignTemplate === 'waitlist_launch'
+                            ? renderWaitlistLaunchEmail({
+                                heroImageUrl: `${origin}/emails/waitlist-launch-hero.png`,
+                                unsubscribeUrl
+                            })
+                            : null;
                         const result = await sendTransactionalEmail({
                             from: emailConfig.from,
                             to: sub.email,
-                            subject: subject || (emailAudience === 'waitlist' ? 'Online Bar ticket update' : 'Update from Online Bar Nairobi'),
-                            text: `${message}\n\nYou received this because you opted in to Online Bar ${emailAudience === 'waitlist' ? 'event email updates' : 'newsletter emails'}. Unsubscribe: ${unsubscribeUrl}`,
+                            subject: launchEmail?.subject || subject || (emailAudience === 'waitlist' ? 'Online Bar ticket update' : 'Update from Online Bar Nairobi'),
+                            text: launchEmail?.text || `${message}\n\nYou received this because you opted in to Online Bar ${emailAudience === 'waitlist' ? 'event email updates' : 'newsletter emails'}. Unsubscribe: ${unsubscribeUrl}`,
                             idempotencyKey: `campaign-${campaign.id}-${offset + index}`,
-                            html: `
+                            html: launchEmail?.html || `
                             <div style="font-family: sans-serif; padding: 20px; color: #333;">
                                 <h2 style="color: #ff6b00;">${emailAudience === 'waitlist' ? 'Online Bar Ticket Update' : 'Online Bar Nairobi Premium Update'}</h2>
                                 <p>${safeMessage}</p>

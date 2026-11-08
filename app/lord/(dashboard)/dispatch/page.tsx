@@ -643,12 +643,12 @@ export default function AdminDispatchPage() {
 
                                         <div className={cn(
                                             'min-w-0 rounded-2xl border p-4 text-left sm:p-5',
-                                            order.fulfillment.ready ? 'border-emerald-200 bg-emerald-50/80' : 'border-amber-200 bg-amber-50/80'
+                                            order.fulfillment.ready ? 'border-emerald-200 bg-emerald-50/80 text-emerald-800' : 'border-rose-200 bg-rose-50/80 text-rose-700'
                                         )}>
-                                            <p className="text-xs font-black uppercase tracking-wide">
+                                            <p className={`text-xs font-black uppercase tracking-wide ${order.fulfillment.ready ? 'text-emerald-800' : 'text-rose-700'}`}>
                                                 {order.fulfillment.ready ? 'Merchant fulfillment ready' : 'Merchant fulfillment needs attention'}
                                             </p>
-                                            <ul className="mt-3 space-y-2 text-sm leading-relaxed">
+                                            <ul className={`mt-3 space-y-2 text-sm leading-relaxed ${order.fulfillment.ready ? 'text-emerald-800' : 'text-rose-700'}`}>
                                                 {order.fulfillment.reasons.length > 0
                                                     ? order.fulfillment.reasons.map((reason, index) => <li key={index} className="break-words">{reason}</li>)
                                                     : <li>Products, stock, price and delivery area have been checked.</li>}
@@ -667,7 +667,7 @@ export default function AdminDispatchPage() {
                                                 {order.fulfillment.productChecks.map((check, index) => (
                                                     <p key={`${check.productId}-${index}`} className="min-w-0 break-words rounded-xl border border-border/70 bg-background/70 p-3 text-xs">
                                                         <span className="font-semibold">{check.productName}</span>
-                                                        <span className="mt-1 block text-muted-foreground">
+                                                        <span className={`mt-1 block ${order.fulfillment.ready ? 'text-emerald-800' : 'text-rose-700'}`}>
                                                             Qty {check.quantity} <span aria-hidden="true">·</span> Reserved {check.reservedQuantity}
                                                         </span>
                                                     </p>
@@ -734,7 +734,7 @@ export default function AdminDispatchPage() {
                                                     <Button
                                                         onClick={() => handleAssignRider(order.id, recommendation?.riderPhone || '', 'automatic')}
                                                         disabled={!order.fulfillment.ready || !recommendation || assigning === order.id}
-                                                        className="h-12 w-full rounded-xl px-5 text-xs font-bold sm:w-auto"
+                                                        className="h-12 w-full rounded-xl px-5 text-xs font-bold disabled:cursor-not-allowed disabled:bg-rose-100 disabled:text-rose-700 disabled:opacity-100 sm:w-auto"
                                                         title={!order.fulfillment.ready
                                                             ? 'Resolve the merchant fulfillment issues shown above before assigning a rider.'
                                                             : !recommendation
@@ -754,7 +754,7 @@ export default function AdminDispatchPage() {
                                                         Choose an eligible, verified rider. Manual selection cannot bypass missing product details, merchant stock, or payment checks.
                                                     </p>
                                                     {!order.fulfillment.ready && (
-                                                        <p className="text-xs font-medium text-amber-900" role="status">
+                                                        <p className="text-xs font-semibold text-rose-700" role="status">
                                                             Assignment is locked until the product, stock, and merchant pickup issues above are resolved.
                                                         </p>
                                                     )}

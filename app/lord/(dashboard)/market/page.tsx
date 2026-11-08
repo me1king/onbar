@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Check, RefreshCw, Store, X, Ban, ShieldCheck } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
+import MerchantStockOfferReview from '@/components/admin/MerchantStockOfferReview';
 
 interface Application {
   id: string;
@@ -435,6 +436,7 @@ export default function MarketOperationsPage() {
 
       {error && <div role="alert" className="mt-6 rounded-xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div>}
       {message && <div role="status" className="mt-6 rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">{message}</div>}
+      <MerchantStockOfferReview />
       {loading && <p className="mt-8 text-sm text-slate-500">Loading applications…</p>}
       {!loading && !error && applications.length === 0 && (
         <div className="mt-8 rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">No seller applications are waiting for review.</div>

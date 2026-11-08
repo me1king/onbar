@@ -3,6 +3,7 @@ import {
   type CustomerNotificationStatus
 } from '@/lib/customerMessaging';
 import { renderCustomerOrderEmail } from '@/lib/customerOrderEmail';
+import { getPublicBaseUrl } from '@/lib/utils';
 
 export const LIFECYCLE_EMAIL_PREVIEWS = [
   { id: 'waitlist', label: 'Waitlist launch', subject: 'You’re in. Online Bar is open 🎉' },
@@ -15,6 +16,9 @@ export const LIFECYCLE_EMAIL_PREVIEWS = [
 ] as const;
 
 export type LifecycleEmailPreviewId = typeof LIFECYCLE_EMAIL_PREVIEWS[number]['id'];
+export const WAITLIST_LAUNCH_SUBJECT = 'You’re in. Online Bar is open 🎉';
+export const WAITLIST_LAUNCH_MESSAGE = 'It’s finally here. Thank you for waiting. Online Bar is open, and you’re one of the first to order. Drinks, snacks and street food, delivered to your door.';
+export const WAITLIST_LAUNCH_GIFT_MESSAGE = 'Place your first order within the first week of launch and a mystery gift will arrive with it. The gift is a surprise—we’re keeping it under wraps for now.';
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({
@@ -103,6 +107,52 @@ export function renderWaitlistCampaignEmail(input: {
 </body></html>`;
 }
 
+export function renderWaitlistLaunchEmail(input: {
+  heroImageUrl: string;
+  unsubscribeUrl: string;
+}) {
+  const subject = WAITLIST_LAUNCH_SUBJECT;
+  const baseUrl = getPublicBaseUrl();
+  const shopUrl = `${baseUrl}/market`;
+  const text = `${WAITLIST_LAUNCH_MESSAGE}\n\n1. Open the app and browse what’s available near you.\n2. Pick your order: drinks, mixers, ice, snacks and street food.\n3. We bring it to your door. Track your rider in the app.\n\nA welcome gift, on us: ${WAITLIST_LAUNCH_GIFT_MESSAGE}\n\nStart ordering: ${shopUrl}\n\n18+ only for alcohol products. ID is checked at the door. Please drink responsibly.\n\nYou’re receiving this because you joined the Online Bar waitlist and opted in to email updates. Unsubscribe: ${input.unsubscribeUrl}`;
+  const heroImageUrl = escapeHtml(input.heroImageUrl);
+  const escapedShopUrl = escapeHtml(shopUrl);
+  const escapedUnsubscribeUrl = escapeHtml(input.unsubscribeUrl);
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;background:#0b1020;font-family:Arial,Helvetica,sans-serif;color:#14213a">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeHtml(`Online Bar is open. Your first order in launch week comes with a mystery gift.`)}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0b1020;padding:24px 12px"><tr><td align="center">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background:#ffffff;border-radius:20px;overflow:hidden">
+      <tr><td style="background:#0b1020;padding:20px 30px;color:#ffffff;font:bold 20px Arial,sans-serif;letter-spacing:3px">ONLINE <span style="color:#f59e0b">BAR</span></td></tr>
+      <tr><td style="padding:0"><img src="${heroImageUrl}" width="600" alt="Online Bar is open: a gift, drinks and the Nairobi night skyline" style="display:block;width:100%;height:auto;border:0" /></td></tr>
+      <tr><td style="padding:32px 32px 8px">
+        <p style="margin:0;color:#e58b00;font:bold 13px/1.5 Arial,sans-serif;letter-spacing:2px">YOU JOINED OUR WAITLIST</p>
+        <h1 style="margin:10px 0 16px;color:#14213a;font:bold 34px/1.15 Arial,sans-serif">It’s finally here.</h1>
+        <p style="margin:0;color:#26364f;font:18px/1.65 Arial,sans-serif">${escapeHtml(WAITLIST_LAUNCH_MESSAGE)}</p>
+      </td></tr>
+      <tr><td style="padding:16px 32px 8px">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+          <tr><td width="42" valign="top" style="padding:8px 0"><div style="width:30px;height:30px;line-height:30px;border-radius:50%;background:#f59e0b;color:#1b1300;font:bold 15px Arial,sans-serif;text-align:center">1</div></td><td style="padding:8px 0;color:#14213a;font:15px/1.5 Arial,sans-serif"><strong>Open the app</strong><br><span style="color:#667085">Browse what’s open near you.</span></td></tr>
+          <tr><td width="42" valign="top" style="padding:8px 0"><div style="width:30px;height:30px;line-height:30px;border-radius:50%;background:#f59e0b;color:#1b1300;font:bold 15px Arial,sans-serif;text-align:center">2</div></td><td style="padding:8px 0;color:#14213a;font:15px/1.5 Arial,sans-serif"><strong>Pick your order</strong><br><span style="color:#667085">Drinks, mixers, ice, snacks and street food.</span></td></tr>
+          <tr><td width="42" valign="top" style="padding:8px 0"><div style="width:30px;height:30px;line-height:30px;border-radius:50%;background:#f59e0b;color:#1b1300;font:bold 15px Arial,sans-serif;text-align:center">3</div></td><td style="padding:8px 0;color:#14213a;font:15px/1.5 Arial,sans-serif"><strong>We bring it</strong><br><span style="color:#667085">Track your rider live. ID is checked at the door for alcohol.</span></td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:16px 32px 8px">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fff7e6;border:1px solid #ffc943;border-radius:16px"><tr><td style="padding:20px 22px">
+          <p style="margin:0 0 8px;color:#713d12;font:bold 20px/1.3 Arial,sans-serif">🎁 A welcome gift, on us</p>
+          <p style="margin:0;color:#713d12;font:16px/1.6 Arial,sans-serif">${escapeHtml(WAITLIST_LAUNCH_GIFT_MESSAGE)}</p>
+        </td></tr></table>
+      </td></tr>
+      <tr><td align="center" style="padding:24px 32px 24px"><a href="${escapedShopUrl}" style="display:inline-block;background:#f59e0b;color:#111827;font:bold 17px Arial,sans-serif;text-decoration:none;padding:17px 38px;border-radius:14px">Start ordering</a></td></tr>
+      <tr><td style="padding:0 32px 26px;color:#667085;font:14px/1.65 Arial,sans-serif">18+ only. Alcohol is sold and delivered only to adults, and we check ID at the door. Please drink responsibly.</td></tr>
+      <tr><td style="background:#f3f4f6;padding:20px 32px;color:#7a8495;font:12px/1.7 Arial,sans-serif">You’re receiving this because you joined the Online Bar waitlist and opted in to email updates.<br>Online Bar · Nairobi, Kenya · <a href="${escapedUnsubscribeUrl}" style="color:#667085">Unsubscribe</a></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+  return { subject, text, html, message: `${WAITLIST_LAUNCH_MESSAGE}\n\n${WAITLIST_LAUNCH_GIFT_MESSAGE}` };
+}
+
 export function renderVendorApplicationEmail(input: { businessName: string; uploadUrl: string }) {
   const businessName = input.businessName.trim() || 'your business';
   return {
@@ -178,13 +228,10 @@ function renderCustomerPreview(status: CustomerNotificationStatus, headline: str
 export function renderLifecycleEmailPreview(id: LifecycleEmailPreviewId) {
   switch (id) {
     case 'waitlist':
-      return renderWaitlistCampaignEmail({
-        subject: 'You’re in. Online Bar is open 🎉',
-        message: 'It’s finally here. Thank you for waiting. Online Bar is open. Browse drinks, snacks and street food available near you.\n\nStart ordering: https://onlinebar.co.ke/market',
-        ticketUrl: 'https://onlinebar.co.ke/market',
-        unsubscribeUrl: 'https://onlinebar.co.ke/newsletter/unsubscribe?token=sample-preview',
-        buttonLabel: 'Start ordering'
-      });
+      return renderWaitlistLaunchEmail({
+        heroImageUrl: `${getPublicBaseUrl()}/emails/waitlist-launch-hero.png`,
+        unsubscribeUrl: 'https://www.onlinebar.co.ke/newsletter/unsubscribe?token=sample-preview'
+      }).html;
     case 'order':
       return renderCustomerPreview('Paid', 'Thanks, Wanjiru. We’ve got it.', 'Your payment was received and the shop is preparing your order. We’ll message you when your rider is on the way.');
     case 'rider':

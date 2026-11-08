@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title description">
+  <title id="title">Online Bar is open</title>
+  <desc id="description">A golden gift, bottle and glasses above the Nairobi skyline at night.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset=".62" stop-color="#21183f"/>
+      <stop offset="1" stop-color="#402557"/>
+    </linearGradient>
+    <radialGradient id="moonGlow">
+      <stop offset="0" stop-color="#ffd776" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gift" x1="0" x2="1">
+      <stop stop-color="#ffc126"/>
+      <stop offset="1" stop-color="#e57c0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="560" fill="url(#sky)"/>
+  <circle cx="900" cy="210" r="205" fill="url(#moonGlow)"/>
+  <circle cx="900" cy="210" r="75" fill="#ffe58f"/>
+  <g fill="#ffe17b">
+    <circle cx="154" cy="110" r="3"/><circle cx="310" cy="174" r="2.5"/>
+    <circle cx="450" cy="98" r="3"/><circle cx="604" cy="142" r="2"/>
+    <circle cx="744" cy="92" r="3"/><circle cx="1052" cy="125" r="2.5"/>
+    <circle cx="1110" cy="246" r="2"/><circle cx="222" cy="244" r="2"/>
+  </g>
+  <g fill="#0b1020">
+    <path d="M0 380h110v180H0zm123-65h112v245H123zm128 44h102v201H251zm118-92h118v293H369zm134 84h112v209H503zm127-44h108v253H630zm124 56h110v197H754zm129-78h115v275H883zm131 51h101v224h-101zm116-30h70v254h-70z"/>
+  </g>
+  <g fill="#f3b21b" opacity=".92">
+    <path d="M35 421h10v15H35zm73 47h9v16h-9zm32-130h10v13h-10zm74 43h10v14h-10zm92 73h9v15h-9zm72-118h10v13h-10zm92 62h10v15h-10zm73 73h9v14h-9zm75-114h10v14h-10zm81 56h10v15h-10zm93 73h10v14h-10zm75-119h9v13h-9zm79 47h10v15h-10zm78 67h9v14h-9zm55-108h10v14h-10z"/>
+  </g>
+  <path d="M0 510h1200v50H0z" fill="#090d19"/>
+  <g transform="translate(145 308)">
+    <path d="M79 22c-66-72-111-21-26 20m55-20c66-72 111-21 26 20" fill="#ffe58f" stroke="#f59e0b" stroke-width="7"/>
+    <rect x="14" y="46" width="208" height="194" rx="14" fill="url(#gift)"/>
+    <path d="M104 46h31v194h-31z" fill="#8f3e16"/>
+    <rect x="14" y="46" width="208" height="42" rx="12" fill="#ffc531"/>
+    <path d="M104 46h31v42h-31z" fill="#a84a16"/>
+  </g>
+  <g transform="translate(585 275)">
+    <path d="M68 0h46v60c31 40 43 75 43 117v132c0 11-8 19-19 19H44c-11 0-19-8-19-19V237c0-57 14-111 43-151z" fill="#0f5837" stroke="#29724e" stroke-width="4"/>
+    <path d="M69 1h44v18H69z" fill="#fbbf24"/>
+    <path d="M75 5h31v14H75z" fill="#8b6a4d"/>
+    <rect x="45" y="218" width="105" height="62" rx="8" fill="#ffe58f"/>
+  </g>
+  <g transform="translate(805 300)">
+    <path d="M0 0h118l-15 93c-7 36-81 36-88 0z" fill="#f59e0b" stroke="#d1d5db" stroke-width="7"/>
+    <path d="M23 18h73l-9 58c-20 14-40 14-59 0z" fill="#fbbf24" opacity=".45"/>
+    <path d="M59 128v83m-34 0c17-12 52-12 69 0-17 13-52 13-69 0" fill="#cbd5e1"/>
+  </g>
+  <g transform="translate(965 334) rotate(7)">
+    <path d="M0 0h91l-11 72c-6 28-63 28-69 0z" fill="#f8df83" stroke="#d1d5db" stroke-width="6"/>
+    <path d="M19 18h54l-7 39c-14 10-29 10-44 0z" fill="#f3c94f" opacity=".6"/>
+    <path d="M45 103v60m-26 0c13-9 39-9 52 0-13 9-39 9-52 0" fill="#cbd5e1"/>
+  </g>
+</svg>

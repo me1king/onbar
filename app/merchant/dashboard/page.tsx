@@ -69,6 +69,19 @@ type MerchantCatalogItem = {
   stock: number;
   is_listed: boolean;
 };
+type MerchantStockOffer = {
+  id: string;
+  product_id: number;
+  offered_quantity: number;
+  offered_merchant_price: number;
+  status: 'pending_review' | 'approved' | 'rejected';
+  review_note: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  product: { id: number; name: string; customer_price: number };
+  photo_url: string;
+};
+type StockOfferDraft = { quantity: string; price: string; photo: File | null };
 type CatalogSection = 'All' | 'Beverages' | 'Street food' | 'Snacks' | 'Souvenirs';
 
 const blankForm = { name: '', description: '', category: '', price: '', stock: '', size: '', color: '' };
@@ -97,9 +110,11 @@ export default function MerchantDashboardPage() {
   const [message, setMessage] = useState('');
   const [workingOfferId, setWorkingOfferId] = useState<string | null>(null);
   const [catalogItems, setCatalogItems] = useState<MerchantCatalogItem[]>([]);
-  const [catalogDirtyIds, setCatalogDirtyIds] = useState<number[]>([]);
+  const [stockOffers, setStockOffers] = useState<MerchantStockOffer[]>([]);
+  const [stockOfferDrafts, setStockOfferDrafts] = useState<Record<number, StockOfferDraft>>({});
+  const [expandedStockOffer, setExpandedStockOffer] = useState<number | null>(null);
+  const [workingStockOfferProduct, setWorkingStockOfferProduct] = useState<number | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogWorking, setCatalogWorking] = useState(false);
   const [catalogError, setCatalogError] = useState('');
   const [catalogMessage, setCatalogMessage] = useState('');
   const [minimumMargin, setMinimumMargin] = useState(30);
@@ -148,12 +163,25 @@ export default function MerchantDashboardPage() {
       const result = await response.json() as { items?: MerchantCatalogItem[]; minimumMargin?: number; error?: string };
       if (!response.ok || !result.items) throw new Error(result.error || 'Could not load the master product catalog.');
       setCatalogItems(result.items);
-      setMinimumMargin(Number(result.minimumMargin) || 0);
-      setCatalogDirtyIds([]);
+      setMinimumMargin(Number(result.minimumMargin ?? 30));
     } catch (cause) {
       setCatalogError(cause instanceof Error ? cause.message : 'Could not load the master product catalog.');
     } finally {
       setCatalogLoading(false);
+    }
+  }, []);
+
+  const loadStockOffers = useCallback(async (token: string) => {
+    try {
+      const response = await fetch('/api/market/merchant-stock-offers', {
+        headers: { Authorization: 'Bearer ' + token },
+        cache: 'no-store'
+      });
+      const result = await response.json() as { offers?: MerchantStockOffer[]; error?: string };
+      if (!response.ok || !result.offers) throw new Error(result.error || 'Could not load stock offer history.');
+      setStockOffers(result.offers);
+    } catch (cause) {
+      setCatalogError(cause instanceof Error ? cause.message : 'Could not load stock offer history.');
     }
   }, []);
 
@@ -198,6 +226,7 @@ export default function MerchantDashboardPage() {
           if (active) {
             setAccessToken(session.access_token);
             await loadCatalog(session.access_token);
+            await loadStockOffers(session.access_token);
           }
         } catch (cause) {
           const applicationResponse = await fetch('/api/market/merchant-application', {
@@ -222,7 +251,7 @@ export default function MerchantDashboardPage() {
     }
     void initialize();
     return () => { active = false; };
-  }, [loadCatalog, loadOffers, loadProducts]);
+  }, [loadCatalog, loadOffers, loadProducts, loadStockOffers]);
 
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     setImage(event.target.files?.[0] || null);
@@ -264,62 +293,45 @@ export default function MerchantDashboardPage() {
     }
   }
 
-  function updateCatalogItem(productId: number, patch: Partial<Pick<MerchantCatalogItem, 'merchant_price' | 'stock' | 'is_listed'>>) {
-    setCatalogItems(current => current.map(item => item.id === productId ? { ...item, ...patch } : item));
-    setCatalogDirtyIds(current => current.includes(productId) ? current : [...current, productId]);
-    setCatalogError('');
-    setCatalogMessage('');
-  }
-
-  async function saveCatalogChanges() {
+  async function submitStockOffer(event: FormEvent<HTMLFormElement>, item: MerchantCatalogItem) {
+    event.preventDefault();
     if (!accessToken) return;
-    const changedItems = catalogItems.filter(item => catalogDirtyIds.includes(item.id));
-    if (changedItems.length === 0) {
-      setCatalogMessage('Your catalog is already up to date.');
+    const draft = stockOfferDrafts[item.id];
+    const quantity = Number(draft?.quantity);
+    const offeredPrice = Number(draft?.price);
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000000
+      || !Number.isFinite(offeredPrice) || offeredPrice <= 0 || !draft?.photo) {
+      setCatalogError('Add a valid quantity, your per-unit offer price, and a clear photo of the stock.');
       return;
     }
-    const invalidListedItem = changedItems.find(item =>
-      item.is_listed && (
-        item.merchant_price <= 0
-        || item.price - item.merchant_price < minimumMargin
-      )
-    );
-    if (invalidListedItem) {
-      setCatalogError(
-        invalidListedItem.merchant_price <= 0
-          ? `Enter your payout price for ${invalidListedItem.name} before listing it.`
-          : `Your price for ${invalidListedItem.name} must leave at least KES ${minimumMargin} below the platform customer price.`
-      );
+    if (item.price - offeredPrice < minimumMargin) {
+      setCatalogError(`Your offered price must leave at least KES ${minimumMargin} below the KES ${item.price.toLocaleString('en-KE')} customer price.`);
       return;
     }
-
-    setCatalogWorking(true);
+    setWorkingStockOfferProduct(item.id);
     setCatalogError('');
     setCatalogMessage('');
+    const body = new FormData();
+    body.set('product_id', String(item.id));
+    body.set('quantity', String(quantity));
+    body.set('offered_merchant_price', String(offeredPrice));
+    body.set('photo', draft.photo);
     try {
-      const response = await fetch('/api/market/merchant-catalog', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          items: changedItems.map(item => ({
-            product_id: item.id,
-            merchant_price: item.merchant_price,
-            stock: item.stock,
-            is_listed: item.is_listed
-          }))
-        })
+      const response = await fetch('/api/market/merchant-stock-offers', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + accessToken },
+        body
       });
-      const result = await response.json() as { saved?: number; error?: string };
-      if (!response.ok) throw new Error(result.error || 'Could not save your stock and prices.');
-      setCatalogMessage(`${Number(result.saved) || changedItems.length} catalog ${Number(result.saved) === 1 ? 'item' : 'items'} saved.`);
-      await loadCatalog(accessToken);
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not submit your stock offer.');
+      setCatalogMessage(`Your offer for ${item.name} was sent to Market Operations. Your live stock and price will change only after approval.`);
+      setStockOfferDrafts(current => ({ ...current, [item.id]: { quantity: '', price: '', photo: null } }));
+      setExpandedStockOffer(null);
+      await Promise.all([loadCatalog(accessToken), loadStockOffers(accessToken)]);
     } catch (cause) {
-      setCatalogError(cause instanceof Error ? cause.message : 'Could not save your stock and prices.');
+      setCatalogError(cause instanceof Error ? cause.message : 'Could not submit your stock offer.');
     } finally {
-      setCatalogWorking(false);
+      setWorkingStockOfferProduct(null);
     }
   }
 
@@ -423,7 +435,7 @@ export default function MerchantDashboardPage() {
         <div className="mm-register-card">
           <div className="mm-eyebrow">Merchant Studio</div>
           <h1>Your boutique, in control.</h1>
-          <p className="mm-register-copy">Manage listings, pricing and stock. Every new or changed listing goes through Market review before it can appear in the customer market.</p>
+          <p className="mm-register-copy">Offer stock with a photo and your payout price. Market Operations reviews every offer before it changes your live inventory or pricing.</p>
 
           {loading && <div className="mm-state">Opening Merchant Studio…</div>}
           {!loading && error && !accessToken && !application && (
@@ -558,7 +570,7 @@ export default function MerchantDashboardPage() {
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Shared master catalog</div>
                   <h2 id="merchant-catalog-heading" className="mt-2 text-xl font-semibold text-white">Choose what you sell</h2>
-                  <p className="mt-1 text-sm text-slate-300">Products and photos are supplied by the platform. Set your payout price and stock.</p>
+                  <p className="mt-1 text-sm text-slate-300">Choose a shared catalog product, upload a photo of the stock you have, and submit the extra units and payout price for review.</p>
                 </div>
                 <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-100">
                   {catalogItems.filter(item => item.is_listed && item.stock > 0).length} listed and in stock
@@ -604,91 +616,97 @@ export default function MerchantDashboardPage() {
                     .filter(item => (catalogFilter === 'All' || getCatalogSection(item) === catalogFilter)
                       && `${item.name} ${item.category} ${item.sub_category || ''}`.toLowerCase().includes(catalogSearch.toLowerCase().trim()))
                     .map(item => {
-                      const maxMerchantPrice = Math.max(0, item.price - minimumMargin);
-                      const isDirty = catalogDirtyIds.includes(item.id);
+                      const draft = stockOfferDrafts[item.id] || { quantity: '', price: '', photo: null };
+                      const itemOffers = stockOffers.filter(offer => offer.product_id === item.id);
                       return (
-                        <article key={item.id} className={`overflow-hidden rounded-2xl border bg-[#1b2747] ${item.is_listed ? 'border-emerald-400/70' : 'border-white/10'}`}>
-                          <button
-                            type="button"
-                            aria-pressed={item.is_listed}
-                            aria-label={`${item.is_listed ? 'Stop selling' : 'Start selling'} ${item.name}`}
-                            disabled={catalogWorking}
-                            onClick={() => updateCatalogItem(item.id, { is_listed: !item.is_listed })}
-                            className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-100 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400 disabled:opacity-70"
-                          >
+                        <article key={item.id} className="overflow-hidden rounded-2xl border border-white/10 bg-[#1b2747]">
+                          <div className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-100">
                             {item.image_url ? (
                               <Image src={item.image_url} alt={item.name} fill unoptimized sizes="(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 25vw" className="object-contain p-5" />
                             ) : (
                               <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">{item.category}</div>
                             )}
-                            <span className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold shadow ${item.is_listed ? 'bg-emerald-500 text-white' : 'border border-slate-300 bg-white/90 text-slate-500'}`}>
-                              {item.is_listed ? '✓' : '+'}
+                            <span className={`absolute right-3 top-3 rounded-full px-3 py-1 text-[11px] font-bold ${item.is_listed ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-white'}`}>
+                              {item.is_listed ? 'Listed' : 'Not listed'}
                             </span>
-                          </button>
+                          </div>
 
                           <div className="space-y-3 p-4">
-                            <div className="min-h-12">
+                            <div>
                               <h3 className="line-clamp-2 text-sm font-bold text-white">{item.name}</h3>
-                              <p className="mt-1 text-xs text-slate-300">{item.sub_category || item.category}{isDirty ? ' · Unsaved' : ''}</p>
+                              <p className="mt-1 text-xs text-slate-300">{item.sub_category || item.category}</p>
                             </div>
-                            {item.is_listed ? (
-                              <>
-                                <div className="rounded-xl bg-white/5 p-3">
-                                  <label htmlFor={`merchant-price-${item.id}`} className="block text-xs font-semibold text-slate-200">Your payout price (KES)</label>
-                                  <div className="mt-2 flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      aria-label={`Decrease ${item.name} payout price by 10 shillings`}
-                                      disabled={catalogWorking}
-                                      onClick={() => updateCatalogItem(item.id, { merchant_price: Math.max(0, item.merchant_price - 10) })}
-                                      className="h-10 w-10 shrink-0 rounded-lg bg-slate-700 text-lg font-bold text-white hover:bg-slate-600 disabled:opacity-50"
-                                    >−</button>
-                                    <input
-                                      id={`merchant-price-${item.id}`}
-                                      type="number"
-                                      min="0"
-                                      max={maxMerchantPrice}
-                                      step="1"
-                                      value={item.merchant_price || ''}
-                                      disabled={catalogWorking}
-                                      onChange={event => updateCatalogItem(item.id, { merchant_price: Number(event.target.value) || 0 })}
-                                      className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-[#0d1630] px-2 text-center text-sm font-bold text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
-                                    />
-                                    <button
-                                      type="button"
-                                      aria-label={`Increase ${item.name} payout price by 10 shillings`}
-                                      disabled={catalogWorking || item.merchant_price + 10 > maxMerchantPrice}
-                                      onClick={() => updateCatalogItem(item.id, { merchant_price: Math.min(maxMerchantPrice, item.merchant_price + 10) })}
-                                      className="h-10 w-10 shrink-0 rounded-lg bg-slate-700 text-lg font-bold text-white hover:bg-slate-600 disabled:opacity-50"
-                                    >+</button>
-                                  </div>
-                                  <p className="mt-2 text-xs text-slate-300">Customer price: KES {item.price.toLocaleString('en-KE')}</p>
-                                  <p className="mt-1 rounded-lg bg-emerald-500/15 px-2 py-2 text-xs font-semibold text-emerald-200">
-                                    {item.merchant_price > 0 ? `You receive KES ${item.merchant_price.toLocaleString('en-KE')} each` : 'Enter what you receive per sale'}
-                                  </p>
-                                  <p className="mt-2 text-[11px] leading-4 text-slate-400">Your price must leave at least KES {minimumMargin} below the platform customer price.</p>
-                                </div>
-
-                                <div className="rounded-xl bg-white/5 p-3">
-                                  <label htmlFor={`merchant-stock-${item.id}`} className="block text-xs font-semibold text-slate-200">Units in stock</label>
+                            <div className="grid grid-cols-2 gap-2 rounded-xl bg-white/5 p-3 text-xs">
+                              <div><p className="text-slate-400">Current stock</p><p className="mt-1 font-bold text-white">{item.stock.toLocaleString('en-KE')} units</p></div>
+                              <div><p className="text-slate-400">Customer price</p><p className="mt-1 font-bold text-white">KES {item.price.toLocaleString('en-KE')}</p></div>
+                              <div className="col-span-2"><p className="text-slate-400">Current merchant payout</p><p className="mt-1 font-bold text-emerald-200">{item.merchant_price > 0 ? `KES ${item.merchant_price.toLocaleString('en-KE')} each` : 'Not set yet'}</p></div>
+                            </div>
+                            {itemOffers.some(offer => offer.status === 'pending_review') && (
+                              <p className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">An offer for this product is waiting for admin review.</p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => { setExpandedStockOffer(expandedStockOffer === item.id ? null : item.id); setCatalogError(''); setCatalogMessage(''); }}
+                              className="w-full rounded-xl bg-amber-300 px-3 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-200"
+                            >
+                              {expandedStockOffer === item.id ? 'Close stock offer' : 'Offer stock for review'}
+                            </button>
+                            {expandedStockOffer === item.id && (
+                              <form className="space-y-3 rounded-xl border border-white/10 bg-[#101b35] p-3" onSubmit={event => void submitStockOffer(event, item)}>
+                                <label className="block text-xs font-semibold text-slate-200">
+                                  Additional units to add
                                   <input
-                                    id={`merchant-stock-${item.id}`}
-                                    type="number"
-                                    min="0"
-                                    max="1000000"
-                                    step="1"
-                                    value={item.stock}
-                                    disabled={catalogWorking}
-                                    onChange={event => updateCatalogItem(item.id, { stock: Math.min(1000000, Math.max(0, Number(event.target.value) || 0)) })}
-                                    className="mt-2 h-10 w-full rounded-lg border border-white/10 bg-[#0d1630] px-3 text-sm font-bold text-white focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                                    required type="number" min="1" max="1000000" step="1"
+                                    value={draft.quantity}
+                                    onChange={event => setStockOfferDrafts(current => ({ ...current, [item.id]: { ...draft, quantity: event.target.value } }))}
+                                    className="mt-1 h-10 w-full rounded-lg border border-white/10 bg-[#0d1630] px-3 text-sm text-white"
                                   />
+                                  <span className="mt-1 block font-normal text-slate-400">Approval adds these units to your current {item.stock} units; it will not replace your existing stock.</span>
+                                </label>
+                                <label className="block text-xs font-semibold text-slate-200">
+                                  Your offered payout per unit (KES)
+                                  <input
+                                    required type="number" min="0.01" max={Math.max(0, item.price - minimumMargin)} step="0.01"
+                                    value={draft.price}
+                                    onChange={event => setStockOfferDrafts(current => ({ ...current, [item.id]: { ...draft, price: event.target.value } }))}
+                                    className="mt-1 h-10 w-full rounded-lg border border-white/10 bg-[#0d1630] px-3 text-sm text-white"
+                                  />
+                                  <span className="mt-1 block font-normal text-slate-400">Current customer price: KES {item.price.toLocaleString('en-KE')}. Minimum margin: KES {minimumMargin}.</span>
+                                </label>
+                                <label className="block text-xs font-semibold text-slate-200">
+                                  Photo of the stock you are offering
+                                  <input
+                                    required type="file" accept="image/jpeg,image/png,image/webp,image/avif"
+                                    onChange={event => setStockOfferDrafts(current => ({ ...current, [item.id]: { ...draft, photo: event.target.files?.[0] || null } }))}
+                                    className="mt-1 block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-bold file:text-slate-900"
+                                  />
+                                  <span className="mt-1 block font-normal text-slate-400">JPG, PNG, WebP or AVIF, maximum 4 MB.</span>
+                                </label>
+                                <button
+                                  type="submit"
+                                  disabled={workingStockOfferProduct === item.id}
+                                  className="w-full rounded-lg bg-emerald-400 px-3 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-50"
+                                >
+                                  {workingStockOfferProduct === item.id ? 'Submitting offer…' : 'Submit photo and offer'}
+                                </button>
+                              </form>
+                            )}
+                            {itemOffers.length > 0 && (
+                              <details className="rounded-lg bg-white/5 p-3">
+                                <summary className="cursor-pointer text-xs font-semibold text-slate-200">Offer history ({itemOffers.length})</summary>
+                                <div className="mt-3 space-y-3">
+                                  {itemOffers.map(offer => (
+                                    <div key={offer.id} className="flex gap-3 border-t border-white/10 pt-3">
+                                      <Image src={offer.photo_url} alt={`${item.name} stock offer`} width={64} height={64} unoptimized className="h-16 w-16 rounded-lg object-cover" />
+                                      <div className="text-xs">
+                                        <p className="font-bold text-white">{offer.offered_quantity} units · KES {offer.offered_merchant_price.toLocaleString('en-KE')} each</p>
+                                        <p className="mt-1 text-slate-300">{offer.status.replace('_', ' ')} · {new Date(offer.created_at).toLocaleDateString('en-KE')}</p>
+                                        {offer.review_note && <p className="mt-1 text-amber-200">Admin note: {offer.review_note}</p>}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                                {item.stock === 0 && (
-                                  <p className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">Out of stock. This offer will be unavailable.</p>
-                                )}
-                              </>
-                            ) : (
-                              <p className="rounded-xl border border-dashed border-white/15 bg-white/5 px-3 py-3 text-xs font-medium text-slate-300">Tap the product photo to add it to your catalog.</p>
+                              </details>
                             )}
                           </div>
                         </article>
@@ -707,18 +725,11 @@ export default function MerchantDashboardPage() {
 
               <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#101b35] p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="text-xs font-semibold text-slate-200">Your catalog</div>
-                  <div className="mt-1 text-sm text-white">{catalogItems.filter(item => item.is_listed).length} items listed · {catalogItems.filter(item => item.is_listed && item.stock > 0).length} in stock</div>
-                  <div className="text-xs text-slate-400">Items with zero stock are unavailable to customers.</div>
+                  <div className="text-xs font-semibold text-slate-200">Stock changes go through Market Operations</div>
+                  <div className="mt-1 text-sm text-white">{stockOffers.filter(offer => offer.status === 'pending_review').length} offers awaiting review</div>
+                  <div className="text-xs text-slate-400">Your live inventory and payout prices only change after approval. Approved quantities are added to existing stock.</div>
                 </div>
-                <button
-                  type="button"
-                  disabled={catalogWorking || catalogDirtyIds.length === 0}
-                  onClick={() => void saveCatalogChanges()}
-                  className="h-12 rounded-xl bg-emerald-400 px-6 text-sm font-bold text-slate-900 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {catalogWorking ? 'Saving changes…' : `Save stock and prices${catalogDirtyIds.length ? ` (${catalogDirtyIds.length})` : ''}`}
-                </button>
+                <p className="max-w-sm text-xs text-slate-300">Can’t find a product? Contact Market Operations to add it to the shared catalog first. Offers must use a listed catalog product.</p>
               </div>
             </section>
 

@@ -21,8 +21,8 @@ export interface TransactionalEmail {
 export function getTransactionalEmailConfig() {
   const jmsurfKey = process.env.JMSURF_MAIL_KEY?.trim();
   const jmsurfFrom = process.env.JMSURF_FROM_EMAIL?.trim();
-  if (jmsurfKey) {
-    return { provider: 'JMSURF Mail' as const, from: jmsurfFrom || '', configured: Boolean(jmsurfFrom) };
+  if (jmsurfKey && jmsurfFrom) {
+    return { provider: 'JMSURF Mail' as const, from: jmsurfFrom, configured: true };
   }
 
   const resendKey = process.env.RESEND_API_KEY?.trim();
@@ -47,13 +47,15 @@ export function withTransactionalEmailSenderName(from: string, name: string) {
 export async function sendTransactionalEmail(email: TransactionalEmail) {
   const jmsurfKey = process.env.JMSURF_MAIL_KEY?.trim();
   const jmsurfFrom = process.env.JMSURF_FROM_EMAIL?.trim();
-  const from = email.from?.trim() || jmsurfFrom || process.env.RESEND_FROM_EMAIL?.trim() || '';
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  const resendFrom = process.env.RESEND_FROM_EMAIL?.trim();
+  const config = getTransactionalEmailConfig();
+  const from = email.from?.trim() || config.from;
   if (!from || !/^(?:[^<>]+<[^<>@\s]+@[^<>@\s]+>|[^<>\s@]+@[^<>\s@]+)$/.test(from)) {
-    throw new Error('Email sender is missing or invalid. Configure JMSURF_FROM_EMAIL with a verified sender.');
+    throw new Error('Email sender is missing or invalid. Configure a verified JMSURF_FROM_EMAIL or RESEND_FROM_EMAIL.');
   }
 
-  if (jmsurfKey) {
-    if (!jmsurfFrom) throw new Error('JMSURF_FROM_EMAIL is required when using JMSURF_MAIL_KEY.');
+  if (config.provider === 'JMSURF Mail' && jmsurfKey && jmsurfFrom) {
     let html = email.html;
     const attachments = (email.attachments || []).map(attachment => {
       const content = Buffer.isBuffer(attachment.content)
@@ -107,27 +109,27 @@ export async function sendTransactionalEmail(email: TransactionalEmail) {
     return { provider: 'JMSURF Mail' as const, messageId };
   }
 
-  const resendKey = process.env.RESEND_API_KEY?.trim();
-  if (!resendKey) {
-    throw new Error('Email is not configured. Set JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL in the deployment environment.');
+  if (config.provider === 'Resend' && resendKey && resendFrom) {
+    const resend = new Resend(resendKey);
+    const result = await resend.emails.send({
+      from,
+      to: email.to,
+      subject: email.subject,
+      html: email.html,
+      ...(email.text ? { text: email.text } : {}),
+      ...(email.replyTo ? { replyTo: email.replyTo } : {}),
+      ...(email.attachments?.length ? {
+        attachments: email.attachments.map(attachment => ({
+          ...attachment,
+          content: typeof attachment.content === 'string' || Buffer.isBuffer(attachment.content)
+            ? attachment.content
+            : Buffer.from(attachment.content)
+        }))
+      } : {})
+    }, email.idempotencyKey ? { idempotencyKey: email.idempotencyKey } : undefined);
+    if (result.error) throw result.error;
+    return { provider: 'Resend' as const, messageId: result.data?.id };
   }
-  const resend = new Resend(resendKey);
-  const result = await resend.emails.send({
-    from,
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    ...(email.text ? { text: email.text } : {}),
-    ...(email.replyTo ? { replyTo: email.replyTo } : {}),
-    ...(email.attachments?.length ? {
-      attachments: email.attachments.map(attachment => ({
-        ...attachment,
-        content: typeof attachment.content === 'string' || Buffer.isBuffer(attachment.content)
-          ? attachment.content
-          : Buffer.from(attachment.content)
-      }))
-    } : {})
-  }, email.idempotencyKey ? { idempotencyKey: email.idempotencyKey } : undefined);
-  if (result.error) throw result.error;
-  return { provider: 'Resend' as const, messageId: result.data?.id };
+
+  throw new Error('Email is not configured. Set JMSURF_MAIL_KEY and JMSURF_FROM_EMAIL, or RESEND_API_KEY and RESEND_FROM_EMAIL, in the deployment environment.');
 }

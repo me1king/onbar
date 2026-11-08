@@ -12,13 +12,20 @@ import {
   Phone,
   BarChart3,
   Calendar,
-  MessageSquare
+  MessageSquare,
+  Gift
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn, formatPrice, getPublicBaseUrl } from '@/lib/utils';
+import {
+  renderWaitlistLaunchEmail,
+  WAITLIST_LAUNCH_GIFT_MESSAGE,
+  WAITLIST_LAUNCH_MESSAGE,
+  WAITLIST_LAUNCH_SUBJECT
+} from '@/lib/lifecycleEmailPreviews';
 
 export default function AdminBroadcastPage() {
     const [newsletterCount, setNewsletterCount] = React.useState(0);
@@ -34,6 +41,7 @@ export default function AdminBroadcastPage() {
     const schedule = 'now' as const;
     const [subject, setSubject] = React.useState('');
     const [message, setMessage] = React.useState('');
+    const [waitlistLaunchSelected, setWaitlistLaunchSelected] = React.useState(false);
     const [status, setStatus] = React.useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [resendActive, setResendActive] = React.useState<boolean | null>(null);
 
@@ -46,7 +54,17 @@ export default function AdminBroadcastPage() {
 
     const applyTemplate = (content: string) => {
         setMessage(content);
+        setWaitlistLaunchSelected(false);
         if (channel !== 'whatsapp') setSubject("Online Bar Nairobi Update");
+    };
+
+    const applyWaitlistLaunchTemplate = () => {
+        setChannel('email');
+        setEmailAudience('waitlist');
+        setSubject(WAITLIST_LAUNCH_SUBJECT);
+        setMessage(`${WAITLIST_LAUNCH_MESSAGE}\n\n${WAITLIST_LAUNCH_GIFT_MESSAGE}`);
+        setWaitlistLaunchSelected(true);
+        setStatus(null);
     };
 
     React.useEffect(() => {
@@ -121,6 +139,7 @@ export default function AdminBroadcastPage() {
                     message,
                     audience: channel === 'in_app' ? audience : 'all',
                     emailAudience: channel === 'email' ? emailAudience : undefined,
+                    campaignTemplate: waitlistLaunchSelected ? 'waitlist_launch' : undefined,
                     schedule
                 }),
             });
@@ -132,10 +151,13 @@ export default function AdminBroadcastPage() {
                 type: 'success',
                 text: channel === 'in_app'
                     ? `Delivered to ${data.count} opted-in customers in their Onbar inbox.`
-                    : `Email campaign delivered to ${data.count} ${emailAudience === 'waitlist' ? 'consented waitlist members' : 'newsletter subscribers'}.`
+                    : waitlistLaunchSelected
+                        ? `Waitlist launch email with the mystery-gift offer sent to ${data.count} opted-in waitlist members.`
+                        : `Email campaign delivered to ${data.count} ${emailAudience === 'waitlist' ? 'consented waitlist members' : 'newsletter subscribers'}.`
             });
             setMessage('');
             setSubject('');
+            setWaitlistLaunchSelected(false);
         } catch (err: unknown) {
             const error = err as Error;
             setStatus({ type: 'error', text: error.message || "Uplink failed." });
@@ -165,6 +187,13 @@ export default function AdminBroadcastPage() {
                         <div className="space-y-4">
                             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground ml-1">Campaign Launchpad</p>
                             <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={applyWaitlistLaunchTemplate}
+                                    className="flex items-center gap-2 rounded-xl border border-amber-400 bg-amber-100 px-5 py-2.5 text-[9px] font-black uppercase text-amber-950 transition-all hover:bg-amber-200 active:scale-95"
+                                >
+                                    <Gift size={14} /> Waitlist launch + mystery gift
+                                </button>
                                 {CAMPAIGN_TEMPLATES.map(t => (
                                     <button
                                         key={t.id}
@@ -201,6 +230,7 @@ export default function AdminBroadcastPage() {
                                         onChange={event => {
                                             if (event.target.value === 'newsletter' || event.target.value === 'waitlist') {
                                                 setEmailAudience(event.target.value);
+                                                if (event.target.value !== 'waitlist') setWaitlistLaunchSelected(false);
                                             }
                                         }}
                                         className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-foreground"
@@ -218,7 +248,7 @@ export default function AdminBroadcastPage() {
                                 <div className="space-y-4">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Dispatch Channel</label>
                                     <div className="flex p-1 bg-slate-50 rounded-2xl border border-slate-200">
-                                        <button onClick={() => setChannel('in_app')} className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", channel === 'in_app' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><MessageSquare size={14} /> Store</button>
+                                        <button onClick={() => { setChannel('in_app'); setWaitlistLaunchSelected(false); }} className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", channel === 'in_app' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><MessageSquare size={14} /> Store</button>
                                         <button onClick={() => setChannel('email')} className={cn("flex-1 py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all", channel === 'email' ? "bg-white text-foreground shadow-sm" : "text-muted hover:text-foreground")}><Mail size={14} /> Email</button>
                                         <button type="button" disabled title="WhatsApp delivery is not configured" className="flex-1 cursor-not-allowed rounded-xl py-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-300 opacity-60"><Phone size={14} /> WhatsApp unavailable</button>
                                     </div>
@@ -238,14 +268,32 @@ export default function AdminBroadcastPage() {
                             {channel !== 'whatsapp' && (
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">{channel === 'in_app' ? 'Announcement Title' : 'Email Subject'}</label>
-                                    <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder={channel === 'in_app' ? 'Store announcement' : 'Flash Sale: 20% OFF Everything!'} className="h-14 rounded-2xl bg-slate-50 border-slate-200 text-sm font-bold text-foreground" />
+                                    <Input value={subject} readOnly={waitlistLaunchSelected} onChange={e => { setSubject(e.target.value); setWaitlistLaunchSelected(false); }} placeholder={channel === 'in_app' ? 'Store announcement' : 'Flash Sale: 20% OFF Everything!'} className="h-14 rounded-2xl bg-slate-50 border-slate-200 text-sm font-bold text-foreground read-only:cursor-not-allowed read-only:opacity-70" />
                                 </div>
                             )}
 
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Payload Narrative (Message)</label>
-                                <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Write your announcement here..." rows={8} className="rounded-[2rem] bg-slate-50 border-slate-200 text-sm font-medium resize-none p-8 text-foreground" />
+                                <Textarea value={message} readOnly={waitlistLaunchSelected} onChange={e => { setMessage(e.target.value); setWaitlistLaunchSelected(false); }} placeholder="Write your announcement here..." rows={8} className="rounded-[2rem] bg-slate-50 border-slate-200 text-sm font-medium resize-none p-8 text-foreground read-only:cursor-not-allowed read-only:opacity-70" />
                             </div>
+
+                            {waitlistLaunchSelected && (
+                                <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                    <div>
+                                        <p className="text-sm font-bold text-amber-950">Waitlist launch email preview</p>
+                                        <p className="mt-1 text-xs leading-5 text-amber-900">This includes the hero image and the promise: place your first order within the first week of launch and a mystery gift will arrive with it. Send only when the gift offer is ready.</p>
+                                    </div>
+                                    <iframe
+                                        title="Waitlist launch email with mystery gift"
+                                        sandbox=""
+                                        srcDoc={renderWaitlistLaunchEmail({
+                                            heroImageUrl: `${getPublicBaseUrl()}/emails/waitlist-launch-hero.png`,
+                                            unsubscribeUrl: `${getPublicBaseUrl()}/newsletter/unsubscribe?token=sample-preview`
+                                        }).html}
+                                        className="h-[680px] w-full rounded-xl border border-slate-200 bg-white"
+                                    />
+                                </div>
+                            )}
 
                             <Button disabled={sending || !message.trim() || (channel === 'email' && (eligibleReach === 0 || resendActive === false || audiencesLoading || Boolean(audiencesError))) || (channel === 'in_app' && (audiencesLoading || eligibleReach === 0 || Boolean(audiencesError))) || channel === 'whatsapp'} className="w-full h-20 rounded-[1.5rem] bg-primary text-white font-black uppercase text-sm tracking-[0.3em] shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
                                 {sending ? <><Loader2 className="h-5 w-5 animate-spin mr-3" /> Engaging...</> : <><Send className="h-5 w-5 mr-3" /> {channel === 'in_app' ? 'Publish to Store' : 'Launch Campaign'}</>}
