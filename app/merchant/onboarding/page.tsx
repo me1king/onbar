@@ -860,12 +860,18 @@ export default function MerchantOnboarding() {
     return (
       <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <meta name="referrer" content="no-referrer" />
-        <Card className="w-full max-w-xl rounded-[2rem] border-0 p-8 text-center shadow-xl sm:p-12">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600">
-            <CheckCircle2 size={42} />
+        <Card role="status" aria-live="polite" className="w-full max-w-xl rounded-[2rem] border-0 p-8 text-center shadow-xl sm:p-12">
+          <div className="mx-auto mb-6 flex h-20 w-20 animate-in zoom-in-50 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600 duration-500 motion-reduce:animate-none">
+            <CheckCircle2 size={42} className="animate-in fade-in duration-700 motion-reduce:animate-none" />
           </div>
-          <p className="mb-2 text-xs font-black uppercase tracking-[0.25em] text-emerald-700">Application received</p>
-          <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900">Review is now in progress</h1>
+          <p className="mb-2 text-xs font-black uppercase tracking-[0.25em] text-emerald-700">Submitted successfully</p>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900">Your application is with us</h1>
+          <div className="mx-auto mt-5 max-w-md rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left">
+            <p className="text-sm font-black text-emerald-950">What happens next</p>
+            <p className="mt-1 text-sm leading-6 text-emerald-900">
+              We’ll review your submission and send you an update within the next 2–3 hours. If we need anything else, we’ll contact you using the details on your application.
+            </p>
+          </div>
           <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-slate-600">
             {documentsMayBeDeferred && requiredDocumentTypes.some(type => !documents[type])
               ? 'Your business details are with OnBar. The team will send you a secure link to upload the remaining documents; the link stays valid for seven days after it is issued. Approval and activation wait until verification is complete.'
