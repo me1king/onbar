@@ -134,6 +134,18 @@ reliable looping lock-screen alarm; native Android alert support remains a
 separate rollout step. Test on staging with real devices and provider accounts
 before launch.
 
+After the stock migration, apply `MERCHANT_CATALOG_PRICE_REVIEW_MIGRATION.sql`
+to enable the merchant price-request and admin review flow. A merchant request
+is stored as pending and does not change checkout. An authorized Admin inventory
+manager must approve it; approval updates the shared `products.price` for a base
+price request or the selected entry in `products.variant_prices` for a size
+request. Both are used for future storefront reads and checkouts, while existing
+order item prices remain unchanged. Rejecting a request leaves the catalog
+price unchanged. Only one request per product can be pending at a time. Deploy
+the application code and this migration together, then test base and size
+requests, their pending display, approval/rejection, and a fresh storefront read
+on staging.
+
 ## Dispatch fulfillment recovery
 
 After `MERCHANT_OPERATIONS_MIGRATION.sql`, `DISPATCH_MIGRATION.sql`, and

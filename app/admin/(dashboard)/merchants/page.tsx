@@ -94,7 +94,16 @@ interface Application {
   delivery_radius_km?: number | null;
   collection_available?: boolean;
   offered_goods?: string[];
-  offered_goods_pricing?: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
+  offered_goods_pricing?: Array<{
+    product_id: number;
+    product_name: string;
+    price: number;
+    currency: string;
+    listed_price?: number | null;
+    pending_price?: number | null;
+    pending_base_price?: number | null;
+    pending_variant?: string | null;
+  }>;
   documents?: MerchantApplicationDocument[];
   alcohol_onboarding?: AlcoholOnboardingProfile | null;
   documents_deferred?: boolean;
@@ -148,6 +157,8 @@ const labels: Record<string, string> = {
   food_campaign_requested: 'Food promotion requested',
   alcohol_campaign_requested: 'Alcohol promotion requested',
   offer_price_updated: 'Merchant proposed a price update',
+  offer_price_approved: 'Catalog price proposal approved',
+  offer_price_rejected: 'Catalog price proposal rejected',
   alcohol_rules_updated: 'Alcohol compliance rules updated',
   alcohol_manual_checks_completed: 'Alcohol manual verification completed',
   onboarding_link_opened: 'Opened onboarding link',
@@ -215,6 +226,7 @@ export default function MerchantApplicationsPage() {
   const [savingDocumentPolicy, setSavingDocumentPolicy] = useState(false);
   const [documentUploadUrl, setDocumentUploadUrl] = useState('');
   const [requestingDocumentLink, setRequestingDocumentLink] = useState(false);
+  const [reviewingPriceProductId, setReviewingPriceProductId] = useState<number | null>(null);
 
   const fetchApplications = useCallback(async () => {
     setLoading(true);
@@ -414,6 +426,34 @@ export default function MerchantApplicationsPage() {
       setError(updateError instanceof Error ? updateError.message : 'Review decision could not be saved.');
     } finally {
       setWorking(false);
+    }
+  };
+
+  const reviewCatalogPrice = async (productId: number, decision: 'approve' | 'reject') => {
+    if (!selected) return;
+    const proposal = selected.offered_goods_pricing?.find(good => good.product_id === productId);
+    if (decision === 'approve' && !window.confirm(
+      `Approve KES ${Number(proposal?.pending_price).toLocaleString()} for ${proposal?.pending_variant ? `${proposal.pending_variant} ` : ''}${proposal?.product_name || 'this product'}? This changes the shared catalog price for all customers and merchants using this product, not just ${selected.business_name}.`
+    )) return;
+    setReviewingPriceProductId(productId);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/admin/merchant-catalog-prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId: selected.id, productId, decision })
+      });
+      const result = await response.json() as { review?: { catalog_price?: number; variant?: string | null }; error?: string };
+      if (!response.ok || !result.review) throw new Error(result.error || 'Catalog price proposal could not be reviewed.');
+      setMessage(decision === 'approve'
+        ? `Catalog price approved. The shared storefront ${result.review.variant ? `${result.review.variant} ` : ''}price is now KES ${Number(result.review.catalog_price).toLocaleString('en-KE')}.`
+        : 'Price proposal rejected. The live catalog price was not changed.');
+      await Promise.all([fetchApplications(), fetchDetail(selected.id)]);
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : 'Catalog price proposal could not be reviewed.');
+    } finally {
+      setReviewingPriceProductId(null);
     }
   };
 
@@ -654,20 +694,26 @@ export default function MerchantApplicationsPage() {
               </section>
 
               <section className="rounded-2xl border border-slate-200 p-4">
-                <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Goods and proposed offer prices</h3>
+                <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Catalog prices and merchant requests</h3>
                 {selected.offered_goods_pricing?.length ? (
                   <ul className="mt-3 space-y-2">
                     {selected.offered_goods_pricing.map(good => (
-                      <li key={good.product_id} className="flex items-center justify-between gap-3 rounded-xl bg-primary/5 px-3 py-2 text-sm">
-                        <span className="font-semibold text-slate-800">{good.product_name}</span>
-                        <span className="shrink-0 font-black text-primary">{good.currency} {Number(good.price).toLocaleString()}</span>
+                      <li key={good.product_id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-primary/5 px-3 py-3 text-sm">
+                        <div><span className="font-semibold text-slate-800">{good.product_name}</span><p className="mt-1 text-xs text-slate-500">{good.pending_variant ? `${good.pending_variant} ` : ''}Current shared catalog price: {good.currency} {Number(good.listed_price ?? good.price).toLocaleString()}</p></div>
+                        {good.pending_price != null ? <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">Requested {good.pending_variant ? `${good.pending_variant} ` : ''}{good.currency} {Number(good.pending_price).toLocaleString()}</span>
+                          <Button type="button" disabled={reviewingPriceProductId !== null} onClick={() => void reviewCatalogPrice(good.product_id, 'approve')} className="h-9 rounded-lg px-3 text-xs">
+                            {reviewingPriceProductId === good.product_id ? <Loader2 size={14} className="animate-spin" /> : 'Approve & update catalog'}
+                          </Button>
+                          <Button type="button" variant="outline" disabled={reviewingPriceProductId !== null} onClick={() => void reviewCatalogPrice(good.product_id, 'reject')} className="h-9 rounded-lg px-3 text-xs">Reject</Button>
+                        </div> : <span className="text-xs font-semibold text-emerald-700">No pending request</span>}
                       </li>
                     ))}
                   </ul>
                 ) : (
                   <p className="mt-2 text-sm text-slate-500">{selected.offered_goods?.length ? `${selected.offered_goods.join(', ')} · No proposed prices recorded.` : 'No goods were selected on this application.'}</p>
                 )}
-                <p className="mt-3 text-xs text-slate-500">Proposed prices are not customer-facing until the application and offer setup are approved.</p>
+                <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-950">Important: approving changes the shared product price for every customer and merchant using this product, not only this business. Existing orders keep their saved prices. Confirm the intended market-wide change before approval.</p>
               </section>
 
               {selected.alcohol_onboarding && (
@@ -819,7 +865,7 @@ export default function MerchantApplicationsPage() {
                 <div className="max-h-64 space-y-2 overflow-y-auto">
                   {events.map(event => (
                     <div key={`${event.event_type}-${event.id}-${event.created_at}`} className="flex justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs">
-                      <span className="font-semibold text-slate-700">{labels[event.event_type] || event.event_type} · {event.actor}{typeof event.details?.product_name === 'string' ? ` · ${event.details.product_name}` : ''}{typeof event.details?.previous_price === 'number' && typeof event.details?.proposed_price === 'number' ? ` · KES ${event.details.previous_price} → ${event.details.proposed_price}` : ''}{typeof event.details?.stage === 'string' ? ` · ${event.details.stage.replace('_', ' ')}` : ''}{typeof event.details?.document_types === 'object' ? ` · ${Array.isArray(event.details.document_types) ? `${event.details.document_types.length} document(s)` : ''}` : ''}</span>
+                      <span className="font-semibold text-slate-700">{labels[event.event_type] || event.event_type} · {event.actor}{typeof event.details?.product_name === 'string' ? ` · ${event.details.product_name}` : ''}{typeof (event.details?.previous_catalog_price ?? event.details?.previous_price) === 'number' && typeof event.details?.proposed_price === 'number' ? ` · KES ${Number(event.details.previous_catalog_price ?? event.details.previous_price).toLocaleString()} → ${Number(event.details.proposed_price).toLocaleString()}` : ''}{typeof event.details?.stage === 'string' ? ` · ${event.details.stage.replace('_', ' ')}` : ''}{typeof event.details?.document_types === 'object' ? ` · ${Array.isArray(event.details.document_types) ? `${event.details.document_types.length} document(s)` : ''}` : ''}</span>
                       <time className="shrink-0 text-slate-400">{new Date(event.created_at).toLocaleString()}</time>
                     </div>
                   ))}

@@ -154,7 +154,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
@@ -204,7 +204,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     traceRows
   ] = await Promise.all([
     productIds.length
-      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price').in('id', productIds)
+      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price, sizes, variant_prices, beverage_specs').in('id', productIds)
       : Promise.resolve({ data: [], error: null }),
     getPagedBatchRows(batchIds, (ids, from, to) => database.from('merchant_inventory_movements')
         .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
@@ -335,9 +335,14 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
           is_snack: product?.is_snack || false,
           is_souvenir: product?.is_souvenir || false,
           listed_price: listedPrice,
+          sizes: Array.isArray(product?.sizes) ? product.sizes : [],
+          variant_prices: product?.variant_prices || product?.beverage_specs?.variant_prices || {},
           selling_price: sellingPrice,
           spread: sellingPrice - listedPrice,
-          margin_percent: listedPrice > 0 ? ((sellingPrice - listedPrice) / listedPrice) * 100 : null
+          margin_percent: listedPrice > 0 ? ((sellingPrice - listedPrice) / listedPrice) * 100 : null,
+          pending_price: offer.pending_price == null ? null : Number(offer.pending_price),
+          pending_base_price: offer.pending_base_price == null ? null : Number(offer.pending_base_price),
+          pending_variant: typeof offer.pending_variant === 'string' ? offer.pending_variant : null
         };
       }),
       documents: Array.isArray(application.documents)
@@ -456,6 +461,7 @@ export async function POST(request: Request) {
     const productId = Number(body.productId);
     const price = Number(body.price);
     const expectedPrice = Number(body.expectedPrice);
+    const variant = typeof body.variant === 'string' && body.variant.trim() ? body.variant.trim() : null;
     if (!Number.isSafeInteger(productId) || productId < 1
       || !Number.isFinite(price) || price <= 0 || price > 10_000_000
       || Math.round(price * 100) !== price * 100
@@ -473,7 +479,7 @@ export async function POST(request: Request) {
 
     const { data: product, error: productError } = await context.database
       .from('products')
-      .select('category, sub_category, is_bite, is_snack, is_souvenir')
+      .select('category, sub_category, is_bite, is_snack, is_souvenir, sizes')
       .eq('id', productId)
       .maybeSingle();
     if (productError) {
@@ -483,24 +489,30 @@ export async function POST(request: Request) {
     if (!product || !isAllowedMerchantProduct(application, product)) {
       return NextResponse.json({ error: 'This product is not available to your merchant category.' }, { status: 403 });
     }
+    if (variant && (!Array.isArray(product.sizes) || !product.sizes.includes(variant))) {
+      return NextResponse.json({ error: 'Choose a valid product size before requesting a price change.' }, { status: 400 });
+    }
 
-    const { data, error } = await context.database.rpc('set_merchant_offer_price', {
+    const { data, error } = await context.database.rpc('request_merchant_catalog_price', {
       p_application_id: application.id,
       p_product_id: productId,
       p_price: price,
       p_expected_price: expectedPrice,
+      p_variant: variant,
       p_actor: context.actor
     });
     if (error) {
       console.error('[MerchantNetwork] Could not save merchant offer price:', error);
-      if (/set_merchant_offer_price|schema cache/i.test(error.message)) {
+      if (/request_merchant_catalog_price|schema cache/i.test(error.message)) {
         return NextResponse.json({
-          error: 'Merchant price updates are not installed yet. Run the current supabase/MERCHANT_STOCK_COUNTS_MIGRATION.sql migration.'
+          error: 'Catalog price review is not installed yet. Run supabase/MERCHANT_CATALOG_PRICE_REVIEW_MIGRATION.sql in the Supabase SQL Editor.'
         }, { status: 503 });
       }
-      const stalePrice = /price changed since/i.test(error.message);
+      const stalePrice = /price changed since|catalog price changed/i.test(error.message);
       return NextResponse.json({
-        error: stalePrice ? error.message : 'The proposed price could not be saved. Refresh the catalog and try again.'
+        error: /already waiting for OnBar review/i.test(error.message)
+          ? error.message
+          : stalePrice ? error.message : 'The price proposal could not be saved. Refresh the catalog and try again.'
       }, { status: stalePrice ? 409 : 400 });
     }
     return NextResponse.json({ offer: data }, { status: 200 });

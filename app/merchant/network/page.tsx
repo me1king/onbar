@@ -153,6 +153,11 @@ type PartnerApplication = {
       selling_price: number;
       spread: number;
       margin_percent: number | null;
+      sizes: string[];
+      variant_prices: Record<string, number>;
+      pending_price?: number | null;
+      pending_base_price?: number | null;
+      pending_variant?: string | null;
     }>;
     documents: PartnerDocument[];
     alcohol_onboarding: {
@@ -230,7 +235,7 @@ type MerchantPerformance = {
   limitations: { responseTime: string; timeouts: string; ratingsAndComplaints: string };
 };
 
-type Section = 'sales' | 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders'
+type Section = 'sales' | 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders' | 'settings'
   | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff'
   | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours';
 type RiderConnection = {
@@ -276,7 +281,10 @@ const statusLabels: Record<string, string> = {
   approved: 'Approved',
   rejected: 'Not approved',
   suspended: 'Suspended',
-  expired: 'Compliance expired'
+  expired: 'Compliance expired',
+  offer_price_updated: 'Price request submitted',
+  offer_price_approved: 'Catalog price request approved',
+  offer_price_rejected: 'Catalog price request rejected'
 };
 const documentLabels: Record<string, string> = {
   business_registration: 'Business registration',
@@ -328,7 +336,8 @@ const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'riders', label: 'Riders', icon: UserRound },
   { id: 'alerts', label: 'Order alerts', icon: BellRing },
   { id: 'incidents', label: 'Reports', icon: AlertTriangle },
-  { id: 'business', label: 'Business profile', icon: Building2 }
+  { id: 'business', label: 'Business profile', icon: Building2 },
+  { id: 'settings', label: 'Settings', icon: Palette }
 ];
 const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'sales', label: 'Sales overview', icon: TrendingUp },
@@ -340,7 +349,8 @@ const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = 
   { id: 'food-history', label: 'Order history', icon: History },
   { id: 'food-reviews', label: 'Reviews', icon: Star },
   { id: 'food-business', label: 'Business profile', icon: Building2 },
-  { id: 'food-staff', label: 'Staff & riders', icon: Users }
+  { id: 'food-staff', label: 'Staff & riders', icon: Users },
+  { id: 'settings', label: 'Settings', icon: Palette }
 ];
 const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'sales', label: 'Sales overview', icon: TrendingUp },
@@ -355,7 +365,8 @@ const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> 
   { id: 'incidents', label: 'Incidents', icon: AlertTriangle },
   { id: 'liquor-hours', label: 'Hours', icon: Clock3 },
   { id: 'riders', label: 'Staff & riders', icon: Users },
-  { id: 'business', label: 'Business profile', icon: Building2 }
+  { id: 'business', label: 'Business profile', icon: Building2 },
+  { id: 'settings', label: 'Settings', icon: Palette }
 ];
 const weekdayLabels: Record<MerchantWeekday, string> = {
   monday: 'Monday',
@@ -798,7 +809,9 @@ function FoodMerchantTerminal({
               <div><p className="font-black text-white">{product.product_name}</p><p className="mt-1 text-xs text-zinc-500">Catalog price {currency(product.listed_price)}</p></div>
               <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stock > 0 ? 'bg-emerald-400/10 text-emerald-300' : 'bg-rose-400/10 text-rose-300'}`}>{stock > 0 ? 'In stock' : 'No tracked stock'}</span>
             </div>
-            <p className="mt-5 text-2xl font-black text-amber-300">{currency(product.selling_price)}</p>
+            <p className="mt-5 text-2xl font-black text-amber-300">{currency(product.listed_price)}</p>
+            <p className="mt-1 text-[10px] font-bold uppercase text-zinc-400">Current shared catalog base price</p>
+            {product.pending_price != null && <p className="mt-2 rounded-lg bg-amber-400/10 p-2 text-xs font-bold text-amber-200">Your {product.pending_variant ? `${product.pending_variant} ` : ''}price request: {currency(product.pending_price)} · waiting for OnBar review</p>}
             <p className="mt-1 text-xs text-zinc-400">Recorded batch availability: {stock}</p>
             <button type="button" onClick={() => onSectionChange('inventory')} className="mt-4 rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Edit price & stock</button>
           </article>;
@@ -993,7 +1006,7 @@ function AlcoholMerchantTerminal({
           const available = batches.reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0);
           return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
             <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-white">{product.product_name}</h3><p className="mt-1 text-xs text-zinc-400">{details?.size || 'Size not recorded'} · {details?.abv === undefined ? 'ABV not recorded' : `${details.abv}% ABV`}</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${details?.exciseStampConfirmed ? 'bg-amber-400/10 text-amber-200' : 'bg-rose-400/10 text-rose-200'}`}>{details?.exciseStampConfirmed ? 'Stamp attested' : 'Stamp not confirmed'}</span></div>
-            <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.selling_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Proposed selling price · listed KSh {Number(product.listed_price).toLocaleString('en-KE')}</p></div></div>
+            <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.listed_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Live catalog base price</p>{product.pending_price != null && <p className="mt-2 text-xs font-bold text-amber-700">Requested {product.pending_variant ? `${product.pending_variant} ` : ''}price: KSh {Number(product.pending_price).toLocaleString('en-KE')} · waiting for OnBar</p>}</div></div>
             {batches.length > 0 && <div className="mt-3 space-y-2">{batches.map(batch => <p key={batch.id} className="rounded-lg bg-white/5 p-2 text-xs text-zinc-300">Lot {batch.lot_code} · {batch.available_quantity} units · {batch.on_hold ? 'ON HOLD' : batch.expiry_at ? `Expires ${batch.expiry_at}` : 'No expiry recorded'}</p>)}</div>}
           </article>;
         })}</div> : <p className="rounded-2xl bg-[#1a1b1e] p-6 text-sm text-zinc-400">No products were approved for this retailer.</p>}
@@ -1129,6 +1142,7 @@ export default function OnBarPartnerNetworkPage() {
   const [batchForm, setBatchForm] = useState({ productId: '', lotCode: '', supplierName: '', quantity: '', expiryAt: '', notes: '', exciseStampConfirmed: false });
   const [stockCountDraft, setStockCountDraft] = useState<Record<number, string>>({});
   const [offerPriceDraft, setOfferPriceDraft] = useState<Record<number, string>>({});
+  const [offerVariantDraft, setOfferVariantDraft] = useState<Record<number, string>>({});
   const [stockCountDetails, setStockCountDetails] = useState<Record<number, {
     lotCode: string;
     supplierName: string;
@@ -1226,9 +1240,9 @@ export default function OnBarPartnerNetworkPage() {
 
   useEffect(() => {
     if (isFoodMerchant && !foodSections.some(item => item.id === section)) setSection('sales');
-    if (!isFoodMerchant && foodSections.some(item => item.id !== 'sales' && item.id === section)) setSection('overview');
+    if (!isFoodMerchant && foodSections.some(item => item.id !== 'sales' && item.id !== 'settings' && item.id === section)) setSection('overview');
     if (isLiquorMerchant && !liquorSections.some(item => item.id === section)) setSection('sales');
-    if (!isLiquorMerchant && liquorSections.some(item => item.id !== 'sales' && item.id === section)) setSection('overview');
+    if (!isLiquorMerchant && liquorSections.some(item => item.id !== 'sales' && item.id !== 'settings' && item.id === section)) setSection('overview');
   }, [isFoodMerchant, isLiquorMerchant, section]);
 
   useEffect(() => {
@@ -1283,7 +1297,7 @@ export default function OnBarPartnerNetworkPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedSection = params.get('section');
-    const validSections: Section[] = ['sales', 'overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts', 'riders',
+    const validSections: Section[] = ['sales', 'overview', 'orders', 'inventory', 'performance', 'incidents', 'business', 'alerts', 'riders', 'settings',
       'food-live', 'food-menu', 'food-promotions', 'food-payments', 'food-history', 'food-reviews', 'food-business', 'food-staff'];
     if (requestedSection && validSections.includes(requestedSection as Section)) setSection(requestedSection as Section);
     setDeepLinkApplicationId(params.get('applicationId') || '');
@@ -1785,7 +1799,8 @@ export default function OnBarPartnerNetworkPage() {
   const submitOfferPrice = async (
     event: FormEvent<HTMLFormElement>,
     productId: number,
-    currentPrice: number
+    currentPrice: number,
+    variant: string | null
   ) => {
     event.preventDefault();
     if (!selected) return;
@@ -1800,8 +1815,9 @@ export default function OnBarPartnerNetworkPage() {
       applicationId: selected.application.id,
       productId,
       price,
-      expectedPrice: currentPrice
-    }, 'Proposed selling price saved for OnBar review. It is not customer-facing yet.');
+      expectedPrice: currentPrice,
+      variant
+    }, 'Price request sent to OnBar. The shared catalog and future order price will change only after admin approval.');
     if (saved) setOfferPriceDraft(current => ({ ...current, [productId]: price.toFixed(2) }));
   };
 
@@ -1980,39 +1996,6 @@ export default function OnBarPartnerNetworkPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className={`hidden text-sm sm:inline ${isFoodMerchant ? 'text-zinc-400' : 'text-slate-500'}`}>{email}</span>
-            {canOperate && (
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-pressed={orderSoundEnabled}
-                  onClick={() => void toggleOrderSound()}
-                  className="h-9 rounded-lg px-2.5 text-xs font-bold"
-                >
-                  {orderSoundEnabled ? <Volume2 size={15} className="mr-1.5" /> : <VolumeX size={15} className="mr-1.5" />}
-                  {orderSoundEnabled ? 'Sound on' : 'Enable order sound'}
-                </Button>
-                {orderSoundEnabled && (
-                  <label className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-600">
-                    <span>Volume</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={orderSoundVolume}
-                      aria-label="New order sound volume"
-                      onChange={event => {
-                        const volume = Number(event.target.value);
-                        orderSoundVolumeRef.current = volume;
-                        setOrderSoundVolume(volume);
-                      }}
-                      className="w-16 accent-primary"
-                    />
-                  </label>
-                )}
-              </div>
-            )}
             <Button type="button" variant="outline" onClick={() => void signOut()} className="rounded-xl"><LogOut size={16} className="mr-2" /> Sign out</Button>
           </div>
         </div>
@@ -2026,35 +2009,6 @@ export default function OnBarPartnerNetworkPage() {
               {workspace.map(item => <option key={item.application.id} value={item.application.id}>{item.application.business_name} · {statusLabels[item.application.status] || item.application.status}</option>)}
             </select>
           </label>
-        )}
-
-        {canOperate && selected && !isFoodMerchant && (
-          <section aria-label="Merchant appearance" className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="mr-2">
-              <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-700"><Palette size={15} /> Workspace color</p>
-              <p role="status" className="mt-1 text-[11px] text-slate-500">{appearanceBusy ? 'Saving…' : appearanceMessage || 'Personalize this merchant workspace.'}</p>
-            </div>
-            {MERCHANT_ACCENT_PRESETS.map(color => (
-              <button
-                key={color}
-                type="button"
-                aria-label={`Choose ${color} workspace color`}
-                aria-pressed={merchantAccentColor === color}
-                onClick={() => void saveMerchantAccent(color)}
-                className={`h-8 w-8 rounded-full border-2 ${merchantAccentColor === color ? 'border-slate-900' : 'border-transparent'}`}
-                style={{ backgroundColor: color }}
-              />
-            ))}
-            <label aria-label="Choose custom workspace color" className="relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-100">
-              <Palette size={15} className="text-slate-600" />
-              <input
-                type="color"
-                value={merchantAccentColor}
-                onChange={event => void saveMerchantAccent(event.target.value)}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              />
-            </label>
-          </section>
         )}
 
         {(error || message) && <div role={error ? 'alert' : 'status'} className={`mb-5 flex items-start justify-between gap-3 rounded-xl p-4 text-sm ${error ? (isFoodMerchant || isLiquorMerchant ? 'border border-rose-400/30 bg-rose-400/10 text-rose-200' : 'bg-rose-50 text-rose-800') : (isFoodMerchant || isLiquorMerchant ? 'border border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'bg-emerald-50 text-emerald-800')}`}>
@@ -2082,6 +2036,48 @@ export default function OnBarPartnerNetworkPage() {
           })}
           <button type="button" disabled={loading} onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl disabled:opacity-50 ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
         </nav>}
+
+        {!loading && overview && selected && section === 'settings' && (
+          <section className="space-y-5">
+            <header><h2 className="text-xl font-black text-slate-900">Terminal settings</h2><p className="mt-1 text-sm text-slate-500">Appearance and new-order sound preferences for {selected.application.business_name}.</p></header>
+            <article className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mr-3 min-w-48">
+                <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-700"><Palette size={15} /> Workspace color</p>
+                <p role="status" className="mt-1 text-xs text-slate-500">{appearanceBusy ? 'Saving…' : appearanceMessage || 'Personalize this merchant workspace.'}</p>
+              </div>
+              {MERCHANT_ACCENT_PRESETS.map(color => (
+                <button key={color} type="button" aria-label={`Choose ${color} workspace color`}
+                  aria-pressed={merchantAccentColor === color} onClick={() => void saveMerchantAccent(color)}
+                  className={`h-9 w-9 rounded-full border-2 ${merchantAccentColor === color ? 'border-slate-900' : 'border-transparent'}`}
+                  style={{ backgroundColor: color }} />
+              ))}
+              <label aria-label="Choose custom workspace color" className="relative flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-100">
+                <Palette size={15} className="text-slate-600" />
+                <input type="color" value={merchantAccentColor} onChange={event => void saveMerchantAccent(event.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </label>
+            </article>
+            <article className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div><h3 className="flex items-center gap-2 font-black text-slate-900">{orderSoundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />} New-order sound</h3>
+                <p className="mt-1 max-w-2xl text-sm text-slate-500">A browser chime plays when a new order appears during refresh. It cannot override device mute or play reliably when the browser is suspended.</p></div>
+              <div className="flex flex-wrap items-center gap-3">
+                {orderSoundEnabled && <label className="flex items-center gap-2 text-xs font-bold text-slate-600">Volume
+                  <input type="range" min="0" max="1" step="0.05" value={orderSoundVolume} aria-label="New order sound volume"
+                    onChange={event => {
+                      const volume = Number(event.target.value);
+                      orderSoundVolumeRef.current = volume;
+                      setOrderSoundVolume(volume);
+                    }} className="w-28 accent-primary" />
+                </label>}
+                <Button type="button" variant={orderSoundEnabled ? 'outline' : 'default'} aria-pressed={orderSoundEnabled}
+                  onClick={() => void toggleOrderSound()} className="rounded-xl">
+                  {orderSoundEnabled ? 'Turn sound off' : 'Enable and test sound'}
+                </Button>
+              </div>
+            </article>
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">Order sound is an optional browser convenience. Keep push, SMS, or voice alerts configured in Order Alerts for background and locked-screen notifications.</p>
+          </section>
+        )}
 
         {loading && <div className="rounded-2xl bg-white p-12 text-center text-slate-500"><Loader2 className="mx-auto mb-3 animate-spin text-primary" /><p className="text-sm font-semibold">Loading your business workspace...</p></div>}
 
@@ -2121,7 +2117,8 @@ export default function OnBarPartnerNetworkPage() {
           'liquor-history',
           'liquor-reviews',
           'liquor-compliance',
-          'liquor-hours'
+          'liquor-hours',
+          'settings'
         ].includes(section) && (
           <AlcoholMerchantTerminal
             section={section}
@@ -2549,11 +2546,40 @@ export default function OnBarPartnerNetworkPage() {
                         Save stock count
                       </Button>
                       </form>
-                      <form onSubmit={event => void submitOfferPrice(event, product.id, product.offer.selling_price)} className="space-y-2 border-t border-slate-100 pt-3">
+                      {(() => {
+                        const selectedVariant = offerVariantDraft[product.id] ?? product.offer.sizes[0] ?? '';
+                        const currentPrice = selectedVariant
+                          ? Number(product.offer.variant_prices[selectedVariant] ?? product.offer.listed_price)
+                          : product.offer.listed_price;
+                        return <form onSubmit={event => void submitOfferPrice(
+                          event,
+                          product.id,
+                          currentPrice,
+                          selectedVariant || null
+                        )} className="space-y-2 border-t border-slate-100 pt-3">
                         <div>
-                          <label className="block text-xs font-bold text-slate-700" htmlFor={`offer-price-${product.id}`}>Proposed selling price (KES)</label>
-                          <p className="mt-1 text-[11px] leading-5 text-slate-500">OnBar reviews price changes before they affect customer-facing prices.</p>
+                          <label className="block text-xs font-bold text-slate-700" htmlFor={`offer-price-${product.id}`}>Request a catalog price (KES)</label>
+                          <p className="mt-1 text-[11px] leading-5 text-slate-500">Current price: KSh {currentPrice.toLocaleString('en-KE')}. OnBar approval changes this shared {selectedVariant ? `${selectedVariant} ` : ''}price for all customers and merchants using it, not just your shop.</p>
                         </div>
+                        {product.offer.pending_price != null && <p role="status" className="rounded-lg bg-amber-50 p-2 text-xs font-bold text-amber-900">Pending {product.offer.pending_variant ? `${product.offer.pending_variant} ` : ''}price request: KSh {product.offer.pending_price.toLocaleString('en-KE')}. No order price changes until approval. One request per product can be reviewed at a time.</p>}
+                        {product.offer.sizes.length > 0 && <label className="block text-xs font-bold text-slate-700">
+                          Product size
+                          <select
+                            value={selectedVariant}
+                            onChange={event => {
+                              const variant = event.target.value;
+                              setOfferVariantDraft(current => ({ ...current, [product.id]: variant }));
+                              setOfferPriceDraft(current => ({
+                                ...current,
+                                [product.id]: Number(product.offer.variant_prices[variant] ?? product.offer.listed_price).toFixed(2)
+                              }));
+                            }}
+                            className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                            aria-label={`Price request size for ${product.name}`}
+                          >
+                            {product.offer.sizes.map(size => <option key={size} value={size}>{size}</option>)}
+                          </select>
+                        </label>}
                         <div className="flex flex-wrap gap-2">
                           <Input
                             id={`offer-price-${product.id}`}
@@ -2562,7 +2588,7 @@ export default function OnBarPartnerNetworkPage() {
                             min="0.01"
                             max="10000000"
                             step="0.01"
-                            value={offerPriceDraft[product.id] ?? product.offer.selling_price.toFixed(2)}
+                            value={offerPriceDraft[product.id] ?? currentPrice.toFixed(2)}
                             onChange={event => setOfferPriceDraft(current => ({ ...current, [product.id]: event.target.value }))}
                             className="h-10 min-w-0 flex-1 rounded-xl"
                             aria-label={`Proposed selling price in Kenyan shillings for ${product.name}`}
@@ -2570,14 +2596,14 @@ export default function OnBarPartnerNetworkPage() {
                           <Button
                             type="submit"
                             variant="outline"
-                            disabled={working || Number(offerPriceDraft[product.id] ?? product.offer.selling_price) === product.offer.selling_price}
+                            disabled={working || product.offer.pending_price != null || Number(offerPriceDraft[product.id] ?? currentPrice) === currentPrice}
                             className="h-10 rounded-xl"
                           >
-                            Save price
+                            Request review
                           </Button>
                         </div>
-                        <p className="text-[11px] text-slate-500">Platform listed price: KES {product.offer.listed_price.toLocaleString('en-KE')}</p>
-                      </form>
+                      </form>;
+                      })()}
                     </article>
                   );
                 })}
@@ -2749,8 +2775,8 @@ export default function OnBarPartnerNetworkPage() {
                         <li key={good.product_id} className="flex items-center justify-between gap-3 rounded-xl bg-primary/5 px-3 py-2 text-sm">
                           <span className="font-semibold text-slate-800">{good.product_name}</span>
                           <span className="shrink-0 text-right">
-                            <strong className="block font-black text-primary">Sell {good.currency} {Number(good.selling_price).toLocaleString()}</strong>
-                            <small className={good.spread >= 0 ? 'text-emerald-700' : 'text-rose-700'}>Listed {good.currency} {Number(good.listed_price).toLocaleString()} · Spread {good.spread >= 0 ? '+' : ''}{good.currency} {Number(good.spread).toLocaleString()}</small>
+                            <strong className="block font-black text-primary">Catalog {good.currency} {Number(good.listed_price).toLocaleString()}</strong>
+                            {good.pending_price != null && <small className="block font-semibold text-amber-700">Requested {good.currency} {Number(good.pending_price).toLocaleString()} · pending OnBar review</small>}
                           </span>
                         </li>
                       ))}
@@ -2758,7 +2784,7 @@ export default function OnBarPartnerNetworkPage() {
                   ) : (
                     <p className="mt-2 text-sm text-slate-500">{application.offered_goods.length ? application.offered_goods.join(', ') : 'No goods were recorded on this application.'}{application.offered_goods.length ? ' · Proposed prices were not recorded.' : ''}</p>
                   )}
-                  <p className="mt-3 text-xs leading-5 text-slate-500">Sell is your proposed partner price. Listed is the current platform catalog price. Spread is the difference per unit; OnBar must approve and configure offers before they appear to customers.</p>
+                  <p className="mt-3 text-xs leading-5 text-slate-500">Catalog is the current shared customer price. Any requested change stays pending until OnBar approves it. Approval changes the shared product price for all customers and merchants using that product.</p>
                 </div>
               </article>
               <article className="rounded-2xl bg-white p-6 shadow-sm">

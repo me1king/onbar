@@ -225,6 +225,33 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Could not load merchant application history.' }, { status: 500 });
     }
     if (!application) return NextResponse.json({ error: 'Merchant application not found.' }, { status: 404 });
+    const offers = Array.isArray(application.offered_goods_pricing)
+      ? application.offered_goods_pricing as Array<{ product_id?: unknown; pending_variant?: unknown }>
+      : [];
+    const productIds = [...new Set(offers
+      .map(offer => Number(offer.product_id))
+      .filter(productId => Number.isSafeInteger(productId) && productId > 0))];
+    const { data: catalogProducts, error: catalogProductsError } = productIds.length
+      ? await access.database.from('products').select('id, price, variant_prices, beverage_specs').in('id', productIds)
+      : { data: [], error: null };
+    if (catalogProductsError) {
+      console.error('[MerchantAdmin] Could not load current catalog prices:', catalogProductsError);
+      return NextResponse.json({ error: 'Current shared catalog prices could not be loaded.' }, { status: 503 });
+    }
+    const catalogProductsById = new Map((catalogProducts || []).map(product => [Number(product.id), product]));
+    const offersWithCatalogPrice = offers.map(offer => ({
+      ...offer,
+      listed_price: (() => {
+        const product = catalogProductsById.get(Number(offer.product_id));
+        if (!product) return null;
+        const pendingVariant = typeof offer.pending_variant === 'string' ? offer.pending_variant : null;
+        const variantPrices = product.variant_prices
+          ?? (product.beverage_specs as { variant_prices?: Record<string, number> | null } | null)?.variant_prices;
+        return pendingVariant && variantPrices?.[pendingVariant] != null
+          ? Number(variantPrices[pendingVariant])
+          : Number(product.price);
+      })()
+    }));
     const { data: journeyEvents, error: journeyError } = application.onboarding_lead_id
       ? await access.database.from('vendor_onboarding_events')
         .select('id, event_type, actor, details, created_at')
@@ -289,7 +316,7 @@ export async function GET(request: Request) {
       })),
       accessEvent
     ].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
-    return NextResponse.json({ application: { ...application, requiredDocuments }, events: combinedEvents }, {
+    return NextResponse.json({ application: { ...application, offered_goods_pricing: offersWithCatalogPrice, requiredDocuments }, events: combinedEvents }, {
       headers: { 'Cache-Control': 'private, no-store, max-age=0' }
     });
   }
