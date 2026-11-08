@@ -328,7 +328,8 @@ const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = 
 const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'sales', label: 'Sales overview', icon: TrendingUp },
   { id: 'liquor-live', label: 'Live orders', icon: Store },
-  { id: 'liquor-catalog', label: 'Catalog & stock', icon: Box },
+  { id: 'liquor-catalog', label: 'Catalog', icon: Box },
+  { id: 'inventory', label: 'Update stock', icon: PackageCheck },
   { id: 'liquor-promotions', label: 'Promotions', icon: Megaphone },
   { id: 'liquor-payments', label: 'Payments', icon: CreditCard },
   { id: 'liquor-history', label: 'History', icon: History },
@@ -885,7 +886,8 @@ function AlcoholMerchantTerminal({
   performance,
   performanceLoading,
   performanceError,
-  onAction
+  onAction,
+  onSectionChange
 }: {
   section: Section;
   application: PartnerApplication['application'];
@@ -896,6 +898,7 @@ function AlcoholMerchantTerminal({
   performanceLoading: boolean;
   performanceError: string;
   onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
+  onSectionChange: (section: Section) => void;
 }) {
   const [campaignName, setCampaignName] = useState('');
   const [campaignOffer, setCampaignOffer] = useState('');
@@ -962,16 +965,21 @@ function AlcoholMerchantTerminal({
 
   if (section === 'liquor-catalog') {
     return panel('Catalog and stock', 'Approved catalogue items and actual received batch records. Excise-stamp status is an applicant attestation, not an authenticity scan.',
-      application.offered_goods_pricing.length ? <div className="grid gap-3 md:grid-cols-2">{application.offered_goods_pricing.map(product => {
-        const details = alcoholProfile?.products?.find(item => item.productId === product.product_id);
-        const batches = overview.batches.filter(batch => batch.product_id === product.product_id);
-        const available = batches.reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0);
-        return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
-          <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-white">{product.product_name}</h3><p className="mt-1 text-xs text-zinc-400">{details?.size || 'Size not recorded'} · {details?.abv === undefined ? 'ABV not recorded' : `${details.abv}% ABV`}</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${details?.exciseStampConfirmed ? 'bg-amber-400/10 text-amber-200' : 'bg-rose-400/10 text-rose-200'}`}>{details?.exciseStampConfirmed ? 'Stamp attested' : 'Stamp not confirmed'}</span></div>
-          <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.selling_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Proposed selling price</p></div></div>
-          {batches.length > 0 && <div className="mt-3 space-y-2">{batches.map(batch => <p key={batch.id} className="rounded-lg bg-white/5 p-2 text-xs text-zinc-300">Lot {batch.lot_code} · {batch.available_quantity} units · {batch.on_hold ? 'ON HOLD' : batch.expiry_at ? `Expires ${batch.expiry_at}` : 'No expiry recorded'}</p>)}</div>}
-        </article>;
-      })}</div> : <p className="rounded-2xl bg-[#1a1b1e] p-6 text-sm text-zinc-400">No products were approved for this retailer.</p>);
+      <>
+        <button type="button" onClick={() => onSectionChange('inventory')} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 hover:bg-amber-300">
+          Update available stock
+        </button>
+        {application.offered_goods_pricing.length ? <div className="grid gap-3 md:grid-cols-2">{application.offered_goods_pricing.map(product => {
+          const details = alcoholProfile?.products?.find(item => item.productId === product.product_id);
+          const batches = overview.batches.filter(batch => batch.product_id === product.product_id);
+          const available = batches.reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0);
+          return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+            <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-white">{product.product_name}</h3><p className="mt-1 text-xs text-zinc-400">{details?.size || 'Size not recorded'} · {details?.abv === undefined ? 'ABV not recorded' : `${details.abv}% ABV`}</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${details?.exciseStampConfirmed ? 'bg-amber-400/10 text-amber-200' : 'bg-rose-400/10 text-rose-200'}`}>{details?.exciseStampConfirmed ? 'Stamp attested' : 'Stamp not confirmed'}</span></div>
+            <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.selling_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Proposed selling price</p></div></div>
+            {batches.length > 0 && <div className="mt-3 space-y-2">{batches.map(batch => <p key={batch.id} className="rounded-lg bg-white/5 p-2 text-xs text-zinc-300">Lot {batch.lot_code} · {batch.available_quantity} units · {batch.on_hold ? 'ON HOLD' : batch.expiry_at ? `Expires ${batch.expiry_at}` : 'No expiry recorded'}</p>)}</div>}
+          </article>;
+        })}</div> : <p className="rounded-2xl bg-[#1a1b1e] p-6 text-sm text-zinc-400">No products were approved for this retailer.</p>}
+      </>);
   }
 
   if (section === 'liquor-promotions') {
@@ -1152,6 +1160,11 @@ export default function OnBarPartnerNetworkPage() {
     });
     return () => { active = false; };
   }, [accessToken, canOperate, selected?.application.id]);
+
+  useEffect(() => {
+    setStockCountDraft({});
+    setStockCountDetails({});
+  }, [selectedId]);
 
   const saveMerchantAccent = useCallback(async (color: string) => {
     if (!accessToken || !selected?.application.id || !/^#[\da-f]{6}$/i.test(color)) return;
@@ -1651,6 +1664,7 @@ export default function OnBarPartnerNetworkPage() {
       applicationId: selected.application.id,
       productId: product.id,
       quantity,
+      expectedQuantity: currentAvailable,
       lotCode: details.lotCode,
       supplierName: details.supplierName,
       expiryAt: details.expiryAt || null,
@@ -1947,6 +1961,7 @@ export default function OnBarPartnerNetworkPage() {
             performanceLoading={performanceLoading}
             performanceError={performanceError}
             onAction={apiAction}
+            onSectionChange={setSection}
           />
         )}
 

@@ -100,6 +100,24 @@ async function findApplication(database: SupabaseClient, id: unknown, context: M
   return { application: data, error };
 }
 
+async function getPagedBatchRows<T>(
+  batchIds: string[],
+  fetchPage: (ids: string[], from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let start = 0; start < batchIds.length; start += 100) {
+    const ids = batchIds.slice(start, start + 100);
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await fetchPage(ids, offset, offset + 999);
+      if (error) throw error;
+      const page = data || [];
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
+  }
+  return rows;
+}
+
 async function getApplicationWorkspace(database: SupabaseClient, application: Record<string, unknown>) {
   const applicationId = String(application.id);
   const [
@@ -156,49 +174,34 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   const productIds = [...new Set([...batchRows.map(batch => batch.product_id), ...offeredProductIds])];
   const [
     { data: products, error: productsError },
-    { data: movements, error: movementsError },
-    { data: holds, error: holdsError },
-    { data: traces, error: tracesError }
+    movementRows,
+    holdRows,
+    traceRows
   ] = await Promise.all([
     productIds.length
       ? database.from('products').select('id, name, sku, category, price').in('id', productIds)
       : Promise.resolve({ data: [], error: null }),
-    batchIds.length
-      ? database.from('merchant_inventory_movements')
+    getPagedBatchRows(batchIds, (ids, from, to) => database.from('merchant_inventory_movements')
         .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
-        .in('batch_id', batchIds)
+        .in('batch_id', ids)
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })
-        .range(0, 999)
-      : Promise.resolve({ data: [], error: null }),
-    batchIds.length
-      ? database.from('merchant_batch_holds')
+        .range(from, to)),
+    getPagedBatchRows(batchIds, (ids, from, to) => database.from('merchant_batch_holds')
         .select('id, batch_id, reason, placed_at, released_at, release_note')
-        .in('batch_id', batchIds).order('placed_at', { ascending: false }).limit(1000)
-      : Promise.resolve({ data: [], error: null }),
-    batchIds.length
-      ? database.from('merchant_order_item_trace')
+        .in('batch_id', ids)
+        .order('placed_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to)),
+    getPagedBatchRows(batchIds, (ids, from, to) => database.from('merchant_order_item_trace')
         .select('id, order_item_id, batch_id, quantity, created_at')
-        .in('batch_id', batchIds).order('created_at', { ascending: false }).limit(2000)
-      : Promise.resolve({ data: [], error: null })
+        .in('batch_id', ids)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to))
   ]);
-  const inventoryError = productsError || movementsError || holdsError || tracesError;
-  if (inventoryError) throw inventoryError;
+  if (productsError) throw productsError;
 
-  const movementRows = [...(movements || [])];
-  for (let offset = 1000; batchIds.length > 0 && movementRows.length === offset; offset += 1000) {
-    const { data: nextMovements, error: nextMovementsError } = await database.from('merchant_inventory_movements')
-      .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
-      .in('batch_id', batchIds)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .range(offset, offset + 999);
-    if (nextMovementsError) throw nextMovementsError;
-    movementRows.push(...(nextMovements || []));
-    if ((nextMovements || []).length < 1000) break;
-  }
-
-  const traceRows = traces || [];
   const itemIds = [...new Set(traceRows.map(trace => trace.order_item_id))];
   const { data: orderItems, error: itemsError } = itemIds.length
     ? await database.from('order_items')
@@ -226,7 +229,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   const today = new Date().toISOString().slice(0, 10);
   const batchData = batchRows.map(batch => {
     const batchMovements = movementRows.filter(movement => movement.batch_id === batch.id);
-    const batchHolds = (holds || []).filter(hold => hold.batch_id === batch.id);
+    const batchHolds = holdRows.filter(hold => hold.batch_id === batch.id);
     const available = batchMovements.reduce((total, movement) => total + Number(movement.quantity_delta || 0), 0);
     const onHold = batchHolds.some(hold => hold.released_at === null);
     const expired = Boolean(batch.expiry_at && batch.expiry_at < today);
@@ -538,6 +541,7 @@ export async function POST(request: Request) {
   if (body.operation === 'set_stock_count') {
     const productId = Number(body.productId);
     const quantity = Number(body.quantity);
+    const expectedQuantity = Number(body.expectedQuantity);
     const lotCode = typeof body.lotCode === 'string' ? body.lotCode.trim() : '';
     const supplierName = typeof body.supplierName === 'string' ? body.supplierName.trim().slice(0, 160) : '';
     const expiryAt: string | null = body.expiryAt === '' || body.expiryAt === null || body.expiryAt === undefined
@@ -545,6 +549,7 @@ export async function POST(request: Request) {
       : typeof body.expiryAt === 'string' ? body.expiryAt : null;
     if (!Number.isSafeInteger(productId) || productId < 1
       || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > 1_000_000
+      || !Number.isSafeInteger(expectedQuantity) || expectedQuantity < 0 || expectedQuantity > 1_000_000
       || (lotCode && lotCode.length > 120)
       || (body.expiryAt !== undefined && body.expiryAt !== null && body.expiryAt !== '' && typeof body.expiryAt !== 'string')
       || (expiryAt !== null && !validDate(expiryAt))
@@ -557,6 +562,7 @@ export async function POST(request: Request) {
       p_application_id: application.id,
       p_product_id: productId,
       p_quantity: quantity,
+      p_expected_quantity: expectedQuantity,
       p_lot_code: lotCode || null,
       p_supplier_name: supplierName || null,
       p_expiry_at: expiryAt,
@@ -570,12 +576,15 @@ export async function POST(request: Request) {
           error: 'Live stock counts are not installed yet. Run supabase/MERCHANT_STOCK_COUNTS_MIGRATION.sql after MERCHANT_OPERATIONS_MIGRATION.sql.'
         }, { status: 503 });
       }
+      const staleCount = /stock changed since|available stock changed while saving/i.test(error.message);
       const validationError = /approved merchant|approved catalog|catalog product|actual lot|excise[- ]stamp|expiry date|different expiry|held, or/i.test(error.message);
       return NextResponse.json({
-        error: validationError
+        error: staleCount
+          ? error.message
+          : validationError
           ? error.message
           : 'The stock count could not be saved. Refresh the catalog and try again.'
-      }, { status: validationError ? 400 : 409 });
+      }, { status: staleCount ? 409 : validationError ? 400 : 409 });
     }
     return NextResponse.json({ stock: data }, { status: 200 });
   }

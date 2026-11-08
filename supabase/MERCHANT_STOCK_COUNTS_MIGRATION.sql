@@ -42,10 +42,13 @@ GROUP BY application.id, application.business_name, application.merchant_code, b
 REVOKE ALL ON public.merchant_product_stock_summary FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.merchant_product_stock_summary TO service_role;
 
+DROP FUNCTION IF EXISTS public.set_merchant_product_stock(UUID, BIGINT, INTEGER, TEXT, TEXT, DATE, BOOLEAN, TEXT);
+
 CREATE OR REPLACE FUNCTION public.set_merchant_product_stock(
     p_application_id UUID,
     p_product_id BIGINT,
     p_quantity INTEGER,
+    p_expected_quantity INTEGER,
     p_lot_code TEXT,
     p_supplier_name TEXT,
     p_expiry_at DATE,
@@ -70,6 +73,7 @@ DECLARE
     is_alcohol_retailer BOOLEAN;
 BEGIN
     IF p_quantity IS NULL OR p_quantity NOT BETWEEN 0 AND 1000000
+       OR p_expected_quantity IS NULL OR p_expected_quantity NOT BETWEEN 0 AND 1000000
        OR p_product_id IS NULL OR p_product_id < 1
        OR char_length(trim(coalesce(p_actor, ''))) < 1 THEN
         RAISE EXCEPTION 'A valid product, available stock count, and merchant identity are required.';
@@ -125,6 +129,10 @@ BEGIN
           SELECT 1 FROM public.merchant_batch_holds hold
           WHERE hold.batch_id = batch.id AND hold.released_at IS NULL
       );
+
+    IF current_quantity <> p_expected_quantity THEN
+        RAISE EXCEPTION 'Stock changed since this count was loaded. Refresh and recount before saving.';
+    END IF;
 
     difference := target_quantity - current_quantity;
     IF difference = 0 THEN
@@ -239,5 +247,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.set_merchant_product_stock(UUID, BIGINT, INTEGER, TEXT, TEXT, DATE, BOOLEAN, TEXT) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.set_merchant_product_stock(UUID, BIGINT, INTEGER, TEXT, TEXT, DATE, BOOLEAN, TEXT) TO service_role;
+REVOKE ALL ON FUNCTION public.set_merchant_product_stock(UUID, BIGINT, INTEGER, INTEGER, TEXT, TEXT, DATE, BOOLEAN, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_merchant_product_stock(UUID, BIGINT, INTEGER, INTEGER, TEXT, TEXT, DATE, BOOLEAN, TEXT) TO service_role;
+
+NOTIFY pgrst, 'reload schema';

@@ -115,8 +115,12 @@ count operation and an admin-only catalog summary over the existing batch and
 movement ledger. Vendor count increases require the actual lot code, and
 alcohol retailers must attest to excise stamps. Count decreases are recorded as
 immutable adjustments and cannot consume stock already allocated to orders.
-The merchant workspace writes to this ledger; the Admin Traceability catalog
-re-reads it every 15 seconds. No second stock table is created.
+Stock updates include the count previously shown to the merchant; if another
+device or an order changes availability first, the server rejects the stale
+count so the merchant can refresh and recount. The merchant workspace writes
+to this ledger; the Admin Traceability catalog re-reads it every 15 seconds.
+Regular, food, and alcohol merchant workspaces all link to the same stock
+editor. No second stock table is created.
 Web push uses the phone's normal notification behavior and cannot provide a
 reliable looping lock-screen alarm; native Android alert support remains a
 separate rollout step. Test on staging with real devices and provider accounts
