@@ -136,7 +136,7 @@ export default function BehaviorOverview() {
                     <h1 className="break-words text-3xl font-black uppercase leading-tight tracking-tighter text-foreground italic sm:text-4xl lg:text-5xl">
                         Behavior <span className="text-primary">Intelligence.</span>
                     </h1>
-                    <p className="text-muted-foreground text-sm font-medium mt-1 italic">Decrypting the first-party journey through high-fidelity forensics.</p>
+                    <p className="text-muted-foreground text-sm font-medium mt-1 italic">Live activity shows public storefront browsing only for visitors who opt in to analytics; checkout and account pages are excluded.</p>
                 </div>
                 <div className="w-full sm:w-auto">
                     <Button onClick={fetchData} variant="outline" className="h-12 w-full rounded-xl border-slate-200 bg-white px-5 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-slate-50 sm:w-auto sm:px-6 sm:h-14">
@@ -168,7 +168,7 @@ export default function BehaviorOverview() {
                     {/* NAVIGATION MATRIX */}
                     <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4 2xl:gap-4">
                         {[
-                            { label: 'Live Radar', icon: Flame, href: '/lord/behavior/live', color: 'bg-primary' },
+                            { label: 'Live Radar', icon: Flame, href: '/admin/behavior/live', color: 'bg-primary' },
                             { label: 'Session Forensics', icon: ShieldCheck, href: '/lord/behavior/sessions', color: 'bg-indigo-600' },
                             { label: 'Conversion Funnels', icon: Zap, href: '/lord/behavior/funnels', color: 'bg-emerald-600' },
                             { label: 'Click Heatmap', icon: MousePointer2, href: '/lord/analytics?tab=ux_heatmaps', color: 'bg-sky-600' },

@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 
   const { data: order, error } = await database
     .from('orders')
-    .select('id, customer_name, customer_phone, total_price, status, payment_method, delivery_area, created_at, user_id, session_id')
+    .select('id, customer_name, customer_phone, total_price, status, payment_method, delivery_area, created_at, note, user_id, session_id')
     .eq('id', orderId)
     .maybeSingle();
   if (error) {
@@ -91,6 +91,7 @@ export async function GET(request: Request) {
       payment_method: order.payment_method,
       delivery_area: order.delivery_area,
       created_at: order.created_at,
+      note: order.note,
       order_items: (orderItems || []).map((item) => ({
         product_id: item.product_id,
         product_name: item.product_id ? productNames.get(item.product_id) : undefined,

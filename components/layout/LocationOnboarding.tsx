@@ -91,6 +91,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   const [preciseLocationConsent, setPreciseLocationConsent] = useState(false);
   const [exactLocationShareConsent, setExactLocationShareConsent] = useState(false);
   const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
+  const [waitlistWelcome, setWaitlistWelcome] = useState<{ email: string; phone: string; city: string; area: string } | null>(null);
 
   const counties = useMemo(() => [...new Set(locationAreas.map((item) => item.county))].sort(), [locationAreas]);
   const areasForCounty = useMemo(
@@ -461,6 +462,12 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
       const result = await response.json() as { error?: string; preciseLocationCaptured?: boolean };
       if (!response.ok) throw new Error(result.error || 'We could not add you to the area waitlist.');
       setWaitlistSubmitted(true);
+      setWaitlistWelcome({
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        city: location.city,
+        area: location.area
+      });
       setStatus(result.preciseLocationCaptured
         ? `You’re on the ${location.city} launch list. Your rounded location was added to the aggregated demand map.`
         : `You’re on the ${location.city} launch list. We’ll contact you when service is available.`);
@@ -718,9 +725,17 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
             )}
 
             {waitlistSubmitted && (
-              <p role="status" className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
-                You’re on the list. Thanks for helping us plan where to launch next.
-              </p>
+              <section role="status" className="mt-5 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-amber-50 p-5 text-left shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-800">Welcome to the early waitlist</p>
+                <h3 className="mt-2 text-xl font-black text-slate-950">You’re officially on the list.</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                  We’ve saved your place for {waitlistWelcome?.area}, {waitlistWelcome?.city}. We’ll reach out when Online Bar is ready in your area.
+                </p>
+                {waitlistWelcome?.email && <p className="mt-3 text-xs font-semibold text-slate-600">Launch updates: {waitlistWelcome.email}</p>}
+                <p className="mt-3 border-t border-emerald-100 pt-3 text-xs leading-relaxed text-slate-500">
+                  Your signup is recorded with its join date in our waitlist team’s admin list.
+                </p>
+              </section>
             )}
 
             {status && <p role="status" className="mt-4 rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">{status}</p>}

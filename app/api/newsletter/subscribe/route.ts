@@ -7,7 +7,7 @@ const AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID || '';
 
 export async function POST(request: Request) {
     try {
-        let body: { email?: unknown };
+        let body: { email?: unknown; consent?: unknown };
         try {
             body = await request.json() as typeof body;
         } catch {
@@ -15,6 +15,9 @@ export async function POST(request: Request) {
         }
         const email = body.email;
 
+        if (body.consent !== true) {
+            return NextResponse.json({ error: "Please confirm that you want to receive promotional emails." }, { status: 400 });
+        }
         if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || email.trim().length > 320) {
             return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
         }
@@ -35,7 +38,8 @@ export async function POST(request: Request) {
                 email: normalizedEmail,
                 is_active: true,
                 consented_at: new Date().toISOString(),
-                unsubscribed_at: null
+                unsubscribed_at: null,
+                signup_source: 'footer'
             }, { onConflict: 'email' });
 
         if (dbError) throw dbError;

@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { sanitizeSettingsRows } from '@/lib/settingsSanitizer';
 import { validateBuildMyNightConfig } from '@/lib/buildMyNightConfig';
+import { getDarajaCredentials } from '@/lib/darajaPayments.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,7 +79,9 @@ function isSettingUpdate(value: unknown): value is SettingUpdate {
   }
 
   if (update.key === 'payment_config') {
-    return update.value.online_provider === 'paystack' || update.value.online_provider === 'payhero';
+    return update.value.online_provider === 'paystack'
+      || update.value.online_provider === 'payhero'
+      || update.value.online_provider === 'daraja';
   }
 
   return true;
@@ -140,6 +143,17 @@ export async function PUT(request: Request) {
   const database = createServerSupabaseClient();
   if (!database) {
     return NextResponse.json({ error: 'Server database access is not configured.' }, { status: 500 });
+  }
+
+  const paymentSettings = body.settings.find((setting: SettingUpdate) => setting.key === 'payment_config');
+  if (paymentSettings?.value.online_provider === 'daraja') {
+    try {
+      await getDarajaCredentials(database);
+    } catch (error) {
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : 'Configure and verify Daraja credentials before enabling the checkout provider.'
+      }, { status: 503 });
+    }
   }
 
   const updatedAt = new Date().toISOString();

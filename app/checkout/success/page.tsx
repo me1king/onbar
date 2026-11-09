@@ -20,6 +20,7 @@ interface Order {
     total_price: number;
     status: string;
     created_at: string;
+    note?: string | null;
     user_id: string | null;
     session_id: string | null;
     payment_method: string | null;
@@ -270,9 +271,10 @@ function SuccessContent() {
     }
 
     const isAccepted = order && ['Processing', 'Packed', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered', 'Completed'].includes(order.status);
-    const isPaymentPending = ['Paystack', 'PayHero'].includes(order?.payment_method || '')
+    const isPaymentPending = ['Paystack', 'PayHero', 'Daraja'].includes(order?.payment_method || '')
         && ['Pending', 'Payment Pending'].includes(order?.status || '');
     const payheroPromptUnknown = searchParams?.get('prompt') === 'unknown';
+    const newsletterStatus = searchParams?.get('newsletter');
     const isPaymentReceived = order && ['Paid', 'Delivered', 'Completed'].includes(order.status);
     const isOnTheWay = order && ['Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(order.status);
 
@@ -292,20 +294,42 @@ function SuccessContent() {
                             : 'The merchant accepted your order and is preparing it.'
                         : isPaymentPending
                             ? payheroPromptUnknown
-                                ? 'Your order is saved, but we could not confirm whether PayHero started the M-Pesa prompt. Check your phone before trying to pay again.'
+                                ? `Your order is saved, but we could not confirm whether ${order?.payment_method === 'Daraja' ? 'Safaricom' : 'PayHero'} started the M-Pesa prompt. Check your phone before trying to pay again.`
                                 : order?.payment_method === 'PayHero'
                                     ? 'Your order is saved. Complete the PayHero M-Pesa prompt on your phone; we will update this page when payment is verified.'
-                                    : 'Your order is saved. Complete the payment prompt; we will update this page when payment is verified.'
+                                    : order?.payment_method === 'Daraja'
+                                        ? 'Your order is saved. Complete the Safaricom M-Pesa PIN prompt on your phone; we will update this page when payment is verified.'
+                                        : 'Your order is saved. Complete the payment prompt; we will update this page when payment is verified.'
                             : order
                                 ? 'Your order is saved and sent to the merchant. We are waiting for the merchant to accept it.'
                                 : 'We could not load the order status.'}
                 </p>
                 {statusError && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{statusError}</p>}
+                {order && newsletterStatus === 'joined' && (
+                    <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                        You’re on the Online Bar offers email list. You can unsubscribe from any promotional email.
+                    </p>
+                )}
+                {order && newsletterStatus === 'not-saved' && (
+                    <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                        Your order is saved, but we couldn’t save your optional offers signup. Please try the newsletter signup on our homepage later.
+                    </p>
+                )}
             </div>
 
             {order && (
                 <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left">
                     <DeliveryCountdown createdAt={order.created_at} status={order.status} deliveryArea={order.delivery_area} />
+                </div>
+            )}
+
+            {order?.note?.includes('Waitlist early-access member') && (
+                <div className="mb-8 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-amber-50 p-6 text-left shadow-sm">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Online Bar early crew</p>
+                    <h2 className="mt-2 text-xl font-black text-slate-950">You were here before the doors opened.</h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                        Your waitlist membership is linked to your account. Thanks for being one of the first to order with us.
+                    </p>
                 </div>
             )}
 
@@ -359,10 +383,12 @@ function SuccessContent() {
                                             : 'The merchant accepted your order and is preparing it.'
                                         : isPaymentPending
                                             ? payheroPromptUnknown
-                                                ? 'Check your phone before retrying. If there is no prompt, contact support with your order number.'
+                                                ? `Check your phone before retrying. If there is no ${order?.payment_method === 'Daraja' ? 'Safaricom ' : ''}prompt, contact support with your order number.`
                                                 : order?.payment_method === 'PayHero'
                                                     ? 'Enter your M-Pesa PIN on the PayHero prompt. This page updates after the provider confirms payment.'
-                                                    : 'Complete the payment prompt. This page will show confirmation when payment is verified.'
+                                                    : order?.payment_method === 'Daraja'
+                                                        ? 'Enter your M-Pesa PIN on the Safaricom prompt. This page updates after Safaricom confirms payment.'
+                                                        : 'Complete the payment prompt. This page will show confirmation when payment is verified.'
                                             : isPaymentReceived
                                                 ? 'Payment is verified. We are waiting for the merchant to accept your order.'
                                             : 'Your order has been saved. We will contact you to confirm delivery.'}

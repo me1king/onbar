@@ -24,6 +24,7 @@ interface Subscriber {
   is_active: boolean;
   consented_at: string | null;
   unsubscribed_at: string | null;
+  signup_source: 'newsletter' | 'footer' | 'checkout';
 }
 
 export default function AdminSubscribersPage() {
@@ -74,10 +75,11 @@ export default function AdminSubscribersPage() {
   );
 
   const exportToCSV = () => {
-      const headers = ["Email", "Joined At", "Status", "Consent Recorded"];
+      const headers = ["Email", "Joined At", "Signup Source", "Status", "Consent Recorded"];
       const rows = filteredSubscribers.map(s => [
           s.email,
           new Date(s.created_at).toLocaleString(),
+          s.signup_source || 'newsletter',
           s.is_active ? 'Subscribed' : 'Unsubscribed',
           s.consented_at ? new Date(s.consented_at).toLocaleString() : ''
       ]);
@@ -144,6 +146,7 @@ export default function AdminSubscribersPage() {
                       <tr className="bg-slate-50 text-slate-400 font-black uppercase text-[9px] tracking-[0.2em] whitespace-nowrap">
                           <th className="px-8 py-6">Identity</th>
                           <th className="px-8 py-6">Joined Date</th>
+                          <th className="px-8 py-6">Joined From</th>
                           <th className="px-8 py-6">Status</th>
                           <th className="px-8 py-6 text-right">Actions</th>
                       </tr>
@@ -169,6 +172,11 @@ export default function AdminSubscribersPage() {
                                       <Calendar className="h-3.5 w-3.5 text-slate-300" />
                                       {new Date(sub.created_at).toLocaleDateString()}
                                   </div>
+                              </td>
+                              <td className="px-8 py-6">
+                                  <span className={`rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-wider ${sub.signup_source === 'checkout' ? 'bg-violet-100 text-violet-800' : 'bg-slate-100 text-slate-600'}`}>
+                                      {sub.signup_source === 'checkout' ? 'Checkout' : sub.signup_source === 'footer' ? 'Footer' : 'Newsletter'}
+                                  </span>
                               </td>
                               <td className="px-8 py-6">
                                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[8px] font-black uppercase border ${sub.is_active ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>

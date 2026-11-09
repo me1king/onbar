@@ -169,7 +169,7 @@ export default function AdminSettingsPage() {
     const [social, setSocial] = useState(DEFAULTS.social_links);
     const [store, setStore] = useState(DEFAULTS.store_info);
     const [aiConfig, setAiConfig] = useState(DEFAULTS.ai_config);
-    const [onlinePaymentProvider, setOnlinePaymentProvider] = useState<'paystack' | 'payhero'>('paystack');
+    const [onlinePaymentProvider, setOnlinePaymentProvider] = useState<'paystack' | 'payhero' | 'daraja'>('paystack');
     const [gatewaysConfig, setGatewaysConfig] = useState({
         paystack_secret_key: '',
         paystack_public_key: '',
@@ -260,7 +260,11 @@ export default function AdminSettingsPage() {
                     if (item.key === 'social_links') setSocial(item.value as typeof DEFAULTS.social_links);
                     if (item.key === 'store_info') setStore(item.value as typeof DEFAULTS.store_info);
                     if (item.key === 'payment_config') {
-                        setOnlinePaymentProvider(item.value.online_provider === 'payhero' ? 'payhero' : 'paystack');
+                        setOnlinePaymentProvider(
+                            item.value.online_provider === 'payhero' || item.value.online_provider === 'daraja'
+                                ? item.value.online_provider
+                                : 'paystack'
+                        );
                     }
                     if (item.key === 'ai_config') setAiConfig({
                         ...DEFAULTS.ai_config,
@@ -1757,7 +1761,8 @@ export default function AdminSettingsPage() {
                                     <legend className="sr-only">Active drink-order payment provider</legend>
                                     {([
                                         ['paystack', 'Paystack', 'Pay by card or a payment method enabled on your Paystack account.'],
-                                        ['payhero', 'PayHero', 'Send an M-Pesa STK prompt to the customer’s phone.']
+                                        ['payhero', 'PayHero', 'Send an M-Pesa STK prompt to the customer’s phone through PayHero.'],
+                                        ['daraja', 'Direct Daraja', 'Send a Safaricom M-Pesa Express prompt directly from your business shortcode.']
                                     ] as const).map(([provider, label, description]) => (
                                         <label
                                             key={provider}
@@ -1784,7 +1789,7 @@ export default function AdminSettingsPage() {
                                     ))}
                                 </fieldset>
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
-                                    Configure credentials as Vercel environment variables before switching: Paystack needs <code>PAYSTACK_SECRET_KEY</code> and <code>NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY</code>; PayHero needs <code>PAYHERO_AUTH_TOKEN</code> and <code>PAYHERO_CHANNEL_ID</code>. Never paste secret keys into this settings page.
+                                    Configure Paystack or PayHero credentials as server environment variables. Direct Daraja credentials are configured and stored encrypted in Admin Settings → Integrations; never paste credentials into public settings.
                                 </div>
                                 <div className="flex flex-wrap items-center gap-3">
                                     <Button
@@ -1793,7 +1798,7 @@ export default function AdminSettingsPage() {
                                         onClick={() => void handleSave('payment_config', { online_provider: onlinePaymentProvider })}
                                         className="h-11 rounded-xl bg-violet-700 px-5 font-black text-white hover:bg-violet-800"
                                     >
-                                        {savingKey === 'payment_config' ? 'Saving…' : `Save ${onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'} for drinks`}
+                                        {savingKey === 'payment_config' ? 'Saving…' : `Save ${onlinePaymentProvider === 'payhero' ? 'PayHero' : onlinePaymentProvider === 'daraja' ? 'Direct Daraja' : 'Paystack'} for drinks`}
                                     </Button>
                                     <span className="text-xs text-slate-500">The setting controls new online drink orders only.</span>
                                 </div>

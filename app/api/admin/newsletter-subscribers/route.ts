@@ -32,7 +32,7 @@ export async function GET() {
     for (let offset = 0; ; offset += 500) {
         const { data, error } = await database
             .from('newsletter_subscribers')
-            .select('id, email, created_at, is_active, consented_at, unsubscribed_at')
+            .select('id, email, created_at, is_active, consented_at, unsubscribed_at, signup_source')
             .order('created_at', { ascending: false })
             .range(offset, offset + 499);
         if (error) {

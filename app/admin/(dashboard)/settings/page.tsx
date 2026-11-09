@@ -141,6 +141,7 @@ const THEME_PRESETS = {
 } as const;
 
 type TabId = 'identity' | 'homepage' | 'promotions' | 'theme' | 'seo' | 'ops' | 'catalog' | 'ai' | 'onboarding' | 'integrations' | 'features' | 'advanced';
+type OnlinePaymentProvider = 'paystack' | 'payhero' | 'daraja';
 
 interface HomepageProduct {
     id: number;
@@ -172,12 +173,25 @@ export default function AdminSettingsPage() {
     const [gatewaysConfig, setGatewaysConfig] = useState({
         paystack_secret_key: '',
         paystack_public_key: '',
-        mpesa_consumer_key: '',
-        mpesa_consumer_secret: '',
-        mpesa_shortcode: '174379',
-        mpesa_passkey: '',
         google_maps_api_key: ''
     });
+    const [onlinePaymentProvider, setOnlinePaymentProvider] = useState<OnlinePaymentProvider>('paystack');
+    const [darajaCredentials, setDarajaCredentials] = useState({
+        consumerKey: '',
+        consumerSecret: '',
+        passkey: '',
+        shortcode: '',
+        shortcodeType: 'paybill' as 'paybill' | 'till',
+        environment: 'sandbox' as 'sandbox' | 'production'
+    });
+    const [darajaConfiguration, setDarajaConfiguration] = useState<{
+        configured: boolean;
+        source: 'environment' | 'admin' | null;
+        shortcode: string | null;
+        environment: 'sandbox' | 'production' | null;
+    }>({ configured: false, source: null, shortcode: null, environment: null });
+    const [darajaBusy, setDarajaBusy] = useState(false);
+    const [darajaMessage, setDarajaMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [onboarding, setOnboarding] = useState(DEFAULTS.onboarding_config);
     const [features, setFeatures] = useState<{
         ai_concierge_enabled: boolean;
@@ -273,6 +287,12 @@ export default function AdminSettingsPage() {
                         setMessage({ type: 'error', text: 'Planner settings are invalid. Review and save the managed planner controls before publishing.' });
                     }
                     if (item.key === 'onboarding_config') setOnboarding(item.value as typeof DEFAULTS.onboarding_config);
+                    if (item.key === 'payment_config') {
+                        const provider = item.value.online_provider;
+                        setOnlinePaymentProvider(
+                            provider === 'daraja' || provider === 'payhero' ? provider : 'paystack'
+                        );
+                    }
                     if (item.key === 'features') setFeatures({
                         ...features,
                         ...item.value,
@@ -320,6 +340,81 @@ export default function AdminSettingsPage() {
         fetchSettings();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        let active = true;
+        void fetch('/api/admin/integrations/daraja', { cache: 'no-store' })
+            .then(async response => {
+                const result = await response.json() as typeof darajaConfiguration & { error?: string };
+                if (!response.ok) throw new Error(result.error || 'Daraja setup status could not be loaded.');
+                if (active) setDarajaConfiguration(result);
+            })
+            .catch(error => {
+                if (active) setDarajaMessage({
+                    type: 'error',
+                    text: error instanceof Error ? error.message : 'Daraja setup status could not be loaded.'
+                });
+            });
+        return () => { active = false; };
+    }, []);
+
+    const verifyAndSaveDarajaCredentials = async () => {
+        setDarajaBusy(true);
+        setDarajaMessage(null);
+        try {
+            const credentials = {
+                ...darajaCredentials,
+                consumerKey: darajaCredentials.consumerKey.trim(),
+                consumerSecret: darajaCredentials.consumerSecret.trim(),
+                passkey: darajaCredentials.passkey.trim(),
+                shortcode: darajaCredentials.shortcode.trim()
+            };
+            const verificationResponse = await fetch('/api/admin/integrations/daraja', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ credentials })
+            });
+            const verification = await verificationResponse.json() as { verified?: boolean; error?: string; message?: string };
+            if (!verificationResponse.ok || verification.verified !== true) {
+                throw new Error(verification.error || 'Safaricom did not verify these credentials.');
+            }
+
+            const saveResponse = await fetch('/api/admin/integrations/daraja', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ credentials })
+            });
+            const saved = await saveResponse.json() as { saved?: boolean; error?: string; shortcode?: string; environment?: 'sandbox' | 'production' };
+            if (!saveResponse.ok || saved.saved !== true) {
+                throw new Error(saved.error || 'The verified credentials could not be saved.');
+            }
+            setDarajaConfiguration({
+                configured: true,
+                source: 'admin',
+                shortcode: saved.shortcode || null,
+                environment: saved.environment || null
+            });
+            setDarajaCredentials({
+                consumerKey: '',
+                consumerSecret: '',
+                passkey: '',
+                shortcode: '',
+                shortcodeType: credentials.shortcodeType,
+                environment: credentials.environment
+            });
+            setDarajaMessage({
+                type: 'success',
+                text: `Credentials verified and stored encrypted. Values cleared from this form. ${verification.message || ''}`.trim()
+            });
+        } catch (error) {
+            setDarajaMessage({
+                type: 'error',
+                text: error instanceof Error ? error.message : 'Daraja credentials could not be verified and saved.'
+            });
+        } finally {
+            setDarajaBusy(false);
+        }
+    };
 
     const uploadAsset = async (file: File, folder: string) => {
         if (!supabase) throw new Error("Database not connected");
@@ -1786,7 +1881,7 @@ export default function AdminSettingsPage() {
                                         CREDENTIALS REQUIRED
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-500 leading-relaxed">Keys entered here are used only for a connection test and are not saved. Configure server-side environment variables for persistent payment credentials.</p>
+                                <p className="text-xs text-slate-500 leading-relaxed">Paystack keys entered here are only used for a connection test. Daraja credentials are verified and stored encrypted on the server; they are never published to the browser or written to public settings.</p>
 
                                 <div className="grid lg:grid-cols-2 gap-8">
                                     {/* Paystack Node */}
@@ -1839,61 +1934,140 @@ export default function AdminSettingsPage() {
                                         </div>
                                     </div>
 
-                                    {/* M-Pesa Daraja Node */}
-                                    <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 space-y-4 text-left">
-                                        <div className="flex justify-between items-center">
-                                            <h3 className="text-sm font-black uppercase text-foreground">M-Pesa Daraja STK Push</h3>
+                                    {/* Safaricom Daraja checkout setup */}
+                                    <div className="space-y-5 rounded-3xl border border-emerald-200 bg-emerald-50/60 p-6 text-left lg:col-span-2">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <h3 className="text-sm font-black uppercase text-foreground">Direct Safaricom M-Pesa Express</h3>
+                                                <p className="mt-1 text-xs leading-5 text-slate-600">Adds a third checkout gateway for customer payments. Orders are marked paid only after Safaricom confirms the callback. This is not merchant payout / B2C disbursement.</p>
+                                            </div>
+                                            <span className={cn(
+                                                "rounded-full px-3 py-1 text-[9px] font-black uppercase",
+                                                darajaConfiguration.configured ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                                            )}>
+                                                {darajaConfiguration.configured
+                                                    ? `Configured · ${darajaConfiguration.environment} · ${darajaConfiguration.shortcode}`
+                                                    : 'Not configured'}
+                                            </span>
+                                        </div>
+                                        <div role="alert" className="rounded-xl border border-rose-200 bg-white p-3 text-xs leading-5 text-rose-800">
+                                            The Daraja credentials in your screenshot were exposed. Revoke/rotate them in Safaricom Daraja first. Do not enter the exposed values here; use only the replacement credentials.
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <label className="space-y-1 text-[9px] font-black uppercase text-slate-500">
+                                                Safaricom environment
+                                                <select
+                                                    value={darajaCredentials.environment}
+                                                    onChange={event => setDarajaCredentials({ ...darajaCredentials, environment: event.target.value as 'sandbox' | 'production' })}
+                                                    className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono text-xs text-slate-800"
+                                                >
+                                                    <option value="sandbox">Sandbox</option>
+                                                    <option value="production">Production</option>
+                                                </select>
+                                            </label>
+                                            <label className="space-y-1 text-[9px] font-black uppercase text-slate-500">
+                                                Shortcode type
+                                                <select
+                                                    value={darajaCredentials.shortcodeType}
+                                                    onChange={event => setDarajaCredentials({ ...darajaCredentials, shortcodeType: event.target.value as 'paybill' | 'till' })}
+                                                    className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono text-xs text-slate-800"
+                                                >
+                                                    <option value="paybill">Paybill</option>
+                                                    <option value="till">Buy Goods / Till</option>
+                                                </select>
+                                            </label>
+                                            <label className="space-y-1 text-[9px] font-black uppercase text-slate-500">
+                                                Business shortcode
+                                                <Input
+                                                    inputMode="numeric"
+                                                    autoComplete="off"
+                                                    placeholder="Your Daraja shortcode"
+                                                    value={darajaCredentials.shortcode}
+                                                    onChange={event => setDarajaCredentials({ ...darajaCredentials, shortcode: event.target.value })}
+                                                    className="h-12 rounded-xl bg-white font-mono text-xs"
+                                                />
+                                            </label>
+                                            {([
+                                                ['Consumer key', 'consumerKey'],
+                                                ['Consumer secret', 'consumerSecret'],
+                                                ['Lipa na M-Pesa passkey', 'passkey']
+                                            ] as const).map(([label, key]) => (
+                                                <label key={key} className="space-y-1 text-[9px] font-black uppercase text-slate-500">
+                                                    {label}
+                                                    <Input
+                                                        type="password"
+                                                        autoComplete="new-password"
+                                                        placeholder={`Enter rotated ${label.toLowerCase()}`}
+                                                        value={darajaCredentials[key]}
+                                                        onChange={event => setDarajaCredentials({ ...darajaCredentials, [key]: event.target.value })}
+                                                        className="h-12 rounded-xl bg-white font-mono text-xs"
+                                                    />
+                                                </label>
+                                            ))}
+                                        </div>
+                                        {darajaMessage && (
+                                            <p role={darajaMessage.type === 'error' ? 'alert' : 'status'} className={cn(
+                                                "rounded-xl p-3 text-xs font-semibold",
+                                                darajaMessage.type === 'success' ? "bg-emerald-100 text-emerald-900" : "bg-rose-100 text-rose-800"
+                                            )}>{darajaMessage.text}</p>
+                                        )}
+                                        <div className="flex flex-wrap items-center gap-3">
                                             <Button
                                                 type="button"
-                                                variant="outline"
-                                                onClick={async () => {
-                                                    try {
-                                                        const res = await fetch('/api/admin/integrations/verify', {
-                                                            method: 'POST',
-                                                            headers: { 'Content-Type': 'application/json' },
-                                                            body: JSON.stringify({ nodeId: 'MPESA' })
-                                                        });
-                                                        const data = await res.json();
-                                                        alert(data.message || data.error || (data.success ? 'M-Pesa verified.' : 'M-Pesa connection was not verified.'));
-                                                    } catch (err) { alert(`M-Pesa Error: ${err}`); }
-                                                }}
-                                                className="h-8 px-3 rounded-xl border-slate-200 text-slate-600 text-[8px] font-black uppercase hover:bg-emerald-50 hover:text-emerald-600"
+                                                disabled={darajaBusy}
+                                                onClick={() => void verifyAndSaveDarajaCredentials()}
+                                                className="rounded-xl bg-emerald-700 px-5 text-xs font-black uppercase text-white hover:bg-emerald-800"
                                             >
-                                                Test M-Pesa Link
+                                                {darajaBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldAlert className="mr-2 h-4 w-4" />}
+                                                Verify & save encrypted
                                             </Button>
+                                            <p className="text-[10px] leading-4 text-slate-500">
+                                                Before saving, apply <code>supabase/DARAJA_CHECKOUT_MIGRATION.sql</code> and configure <code>PAYMENT_CREDENTIAL_ENCRYPTION_KEY</code> on the server.
+                                            </p>
                                         </div>
+                                    </div>
 
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase text-slate-400">Shortcode / Till</label>
-                                                <Input
-                                                    placeholder="174379"
-                                                    value={gatewaysConfig.mpesa_shortcode}
-                                                    onChange={e => setGatewaysConfig({...gatewaysConfig, mpesa_shortcode: e.target.value})}
-                                                    className="h-12 rounded-xl bg-white border-slate-200 font-mono text-xs"
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase text-slate-400">Consumer Key</label>
-                                                <Input
-                                                    type="password"
-                                                    placeholder="Daraja Key"
-                                                    value={gatewaysConfig.mpesa_consumer_key}
-                                                    onChange={e => setGatewaysConfig({...gatewaysConfig, mpesa_consumer_key: e.target.value})}
-                                                    className="h-12 rounded-xl bg-white border-slate-200 font-mono text-xs"
-                                                />
-                                            </div>
+                                    <div className="space-y-4 rounded-3xl border border-slate-100 bg-white p-6 text-left lg:col-span-2">
+                                        <div>
+                                            <h3 className="text-sm font-black uppercase text-foreground">Storefront M-Pesa checkout provider</h3>
+                                            <p className="mt-1 text-xs text-slate-500">Choose which provider creates the customer payment prompt. Daraja can be enabled only after credentials are configured.</p>
                                         </div>
-
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black uppercase text-slate-400">M-Pesa Passkey</label>
-                                            <Input
-                                                type="password"
-                                                placeholder="bfb279f..."
-                                                value={gatewaysConfig.mpesa_passkey}
-                                                onChange={e => setGatewaysConfig({...gatewaysConfig, mpesa_passkey: e.target.value})}
-                                                className="h-12 rounded-xl bg-white border-slate-200 font-mono text-xs"
-                                            />
+                                        <div className="flex flex-wrap gap-2">
+                                            {([
+                                                ['paystack', 'Paystack'],
+                                                ['payhero', 'PayHero'],
+                                                ['daraja', 'Direct Daraja']
+                                            ] as const).map(([provider, label]) => (
+                                                <button
+                                                    key={provider}
+                                                    type="button"
+                                                    disabled={provider === 'daraja' && !darajaConfiguration.configured}
+                                                    aria-pressed={onlinePaymentProvider === provider}
+                                                    onClick={() => setOnlinePaymentProvider(provider)}
+                                                    className={cn(
+                                                        "rounded-xl border px-4 py-3 text-xs font-black uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                                                        onlinePaymentProvider === provider
+                                                            ? "border-emerald-700 bg-emerald-700 text-white"
+                                                            : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                                                    )}
+                                                >{label}</button>
+                                            ))}
+                                            <Button
+                                                type="button"
+                                                disabled={savingKey === 'payment_config' || (onlinePaymentProvider === 'daraja' && !darajaConfiguration.configured)}
+                                                onClick={async () => {
+                                                    setSavingKey('payment_config');
+                                                    try {
+                                                        await saveSettings([{ key: 'payment_config', value: { online_provider: onlinePaymentProvider } }]);
+                                                        setMessage({ type: 'success', text: `${onlinePaymentProvider === 'daraja' ? 'Direct Daraja' : onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'} is saved for storefront M-Pesa checkout.` });
+                                                    } catch (error) {
+                                                        setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Payment provider could not be saved.' });
+                                                    } finally {
+                                                        setSavingKey(null);
+                                                    }
+                                                }}
+                                                className="rounded-xl px-5 text-xs font-black uppercase"
+                                            >{savingKey === 'payment_config' ? 'Saving…' : 'Save checkout provider'}</Button>
                                         </div>
                                     </div>
                                 </div>

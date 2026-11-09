@@ -91,6 +91,10 @@ function CheckoutContent() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [emailMarketingConsent, setEmailMarketingConsent] = useState(false);
+  const [emailMarketingConsentEmail, setEmailMarketingConsentEmail] = useState<string | null>(null);
+  const [emailMarketingConsentBusy, setEmailMarketingConsentBusy] = useState(false);
+  const [emailMarketingConsentError, setEmailMarketingConsentError] = useState('');
   const [showCustomerErrors, setShowCustomerErrors] = useState(false);
   const customerNameInputRef = useRef<HTMLInputElement>(null);
   const customerPhoneInputRef = useRef<HTMLInputElement>(null);
@@ -799,7 +803,9 @@ function CheckoutContent() {
               customerPhone,
               customerEmail: customerEmail.trim() || null,
               paymentMethod: paymentMethod === 'M-Pesa'
-                ? onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'
+                ? onlinePaymentProvider === 'payhero'
+                  ? 'PayHero'
+                  : onlinePaymentProvider === 'daraja' ? 'Daraja' : 'Paystack'
                 : 'COD',
               sessionId,
               deliveryZoneId: selectedZone?.id || null,
@@ -835,7 +841,7 @@ function CheckoutContent() {
           reference?: string | null;
           total?: number;
           currency?: string;
-          provider?: 'Paystack' | 'PayHero' | 'COD';
+          provider?: 'Paystack' | 'PayHero' | 'Daraja' | 'COD';
           paymentStarted?: boolean;
       };
       if (!orderResponse.ok || !orderResult.orderId || typeof orderResult.total !== 'number') {
@@ -847,6 +853,7 @@ function CheckoutContent() {
       const orderId = orderResult.orderId;
       submittedOrderId = orderId;
       const authoritativeTotal = orderResult.total;
+      const newsletterStatus = emailMarketingConsent ? 'joined' : null;
       setPlacedOrderId(orderId);
 
       if (paymentMethod === "M-Pesa") {
@@ -854,7 +861,15 @@ function CheckoutContent() {
         if (orderResult.provider === 'PayHero') {
           clearGiftDraft();
           const warning = orderResult.paymentStarted === false ? '&prompt=unknown' : '';
-          window.location.href = `/checkout/success?orderId=${orderId}&payment=payhero${warning}`;
+          const newsletter = newsletterStatus ? `&newsletter=${newsletterStatus}` : '';
+          window.location.href = `/checkout/success?orderId=${orderId}&payment=payhero${warning}${newsletter}`;
+          return;
+        }
+        if (orderResult.provider === 'Daraja') {
+          clearGiftDraft();
+          const warning = orderResult.paymentStarted === false ? '&prompt=unknown' : '';
+          const newsletter = newsletterStatus ? `&newsletter=${newsletterStatus}` : '';
+          window.location.href = `/checkout/success?orderId=${orderId}&payment=daraja${warning}${newsletter}`;
           return;
         }
         if (!window.PaystackPop) {
@@ -896,7 +911,8 @@ function CheckoutContent() {
 
                     // FORCE REDIRECT - prevent being stuck in Paystack modal
                     clearGiftDraft();
-                    window.location.href = `/checkout/success?orderId=${orderId}`;
+                    const newsletter = newsletterStatus ? `&newsletter=${newsletterStatus}` : '';
+                    window.location.href = `/checkout/success?orderId=${orderId}${newsletter}`;
                 })();
             },
             onClose: () => {
@@ -911,7 +927,7 @@ function CheckoutContent() {
 
         handler.openIframe();
       } else {
-        finalizeOrder(orderId, authoritativeTotal);
+        finalizeOrder(orderId, authoritativeTotal, newsletterStatus);
       }
     } catch (error: unknown) {
         const err = error as Error;
@@ -930,7 +946,7 @@ function CheckoutContent() {
     }
   };
 
-  const finalizeOrder = async (orderId?: number, orderTotal = total) => {
+  const finalizeOrder = async (orderId?: number, orderTotal = total, newsletterStatus: string | null = null) => {
     const finalId = orderId || placedOrderId;
 
     // 🚀 [MASTER_OS] Track Purchase Completion
@@ -974,7 +990,8 @@ function CheckoutContent() {
 
     // Redirect to success page if we have a placed order ID
     if (finalId) {
-        window.location.href = `/checkout/success?orderId=${finalId}`;
+        const newsletter = newsletterStatus ? `&newsletter=${newsletterStatus}` : '';
+        window.location.href = `/checkout/success?orderId=${finalId}${newsletter}`;
     } else {
         setCheckoutStatus({
             type: "success",
@@ -982,6 +999,47 @@ function CheckoutContent() {
               ? "Order received! Please complete the PIN prompt on your phone."
               : "Order placed successfully! We will contact you shortly to confirm delivery.",
         });
+    }
+  };
+
+  const updateEmailMarketingConsent = async (consent: boolean) => {
+    const email = (consent ? customerEmail : emailMarketingConsentEmail || customerEmail).trim().toLowerCase();
+    if (consent && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailMarketingConsentError('Enter a valid email address before choosing promotional emails.');
+      return;
+    }
+    setEmailMarketingConsentBusy(true);
+    setEmailMarketingConsentError('');
+    try {
+      const savePreference = async (targetEmail: string, value: boolean) => {
+        const response = await fetch('/api/checkout/marketing-consent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000),
+          body: JSON.stringify({ email: targetEmail, consent: value })
+        });
+        const result = await response.json() as { error?: string; saved?: boolean };
+        if (!response.ok || result.saved !== value) {
+          throw new Error(result.error || 'Your promotional email preference could not be saved.');
+        }
+      };
+      if (consent && emailMarketingConsentEmail && emailMarketingConsentEmail !== email) {
+        await savePreference(emailMarketingConsentEmail, false);
+        setEmailMarketingConsent(false);
+        setEmailMarketingConsentEmail(null);
+      }
+      await savePreference(email, consent);
+      setEmailMarketingConsent(consent);
+      setEmailMarketingConsentEmail(consent ? email : null);
+    } catch (error) {
+      console.error('[Checkout] Could not update promotional email preference:', error);
+      setEmailMarketingConsentError(error instanceof Error ? error.message : 'Your promotional email preference could not be saved.');
+      if (consent && emailMarketingConsentEmail && emailMarketingConsentEmail !== email) {
+        setEmailMarketingConsent(false);
+        setEmailMarketingConsentEmail(null);
+      }
+    } finally {
+      setEmailMarketingConsentBusy(false);
     }
   };
 
@@ -1162,6 +1220,22 @@ function CheckoutContent() {
                   <label htmlFor="checkout-customer-email" className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Address {paymentMethod === "M-Pesa" ? `(Required for ${onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'})` : "(For PDF Receipt)"}</label>
                   <Input id="checkout-customer-email" data-behavior-id="checkout.customer_email" ref={customerEmailInputRef} type="email" autoComplete="email" required={paymentMethod === "M-Pesa"} aria-invalid={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())} aria-describedby={showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "checkout-customer-email-error" : undefined} placeholder="you@example.com" className={cn("rounded-2xl bg-slate-50/50 h-14", showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? "border-rose-400 ring-2 ring-rose-100" : "border-slate-100")} value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} disabled={isPlacingOrder} />
                   {showCustomerErrors && paymentMethod === "M-Pesa" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && <p id="checkout-customer-email-error" role="alert" className="text-xs font-semibold text-rose-600">Enter a valid email address for {onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'}.</p>}
+                  <label htmlFor="checkout-email-marketing-consent" className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-xs leading-relaxed text-slate-600">
+                    <input
+                      id="checkout-email-marketing-consent"
+                      type="checkbox"
+                      checked={emailMarketingConsent}
+                      onChange={event => void updateEmailMarketingConsent(event.target.checked)}
+                      disabled={isPlacingOrder || emailMarketingConsentBusy}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      Email me Online Bar offers, new arrivals, and early access. This is optional and separate from order updates. You can unsubscribe at any time.
+                      {emailMarketingConsentBusy && <span className="mt-1 block font-semibold">Saving your preference…</span>}
+                      {emailMarketingConsent && !emailMarketingConsentBusy && <span className="mt-1 block font-semibold text-emerald-700">Saved for {emailMarketingConsentEmail}. Uncheck to remove this address from promotional emails.</span>}
+                      {emailMarketingConsentError && <span role="alert" className="mt-1 block font-semibold text-rose-700">{emailMarketingConsentError}</span>}
+                    </span>
+                  </label>
                 </div>
             </div>
             {user && accountProfileLoaded && (
@@ -1420,8 +1494,16 @@ function CheckoutContent() {
                     setPaymentMethod("M-Pesa");
                     OB_OS.track('UI_INTERACTION', { userId: user?.id, details: { id: 'checkout.payment_method', method: 'M-Pesa' } });
                   }} className={`p-6 rounded-3xl border-2 text-left transition-all ${paymentMethod === 'M-Pesa' ? 'border-primary bg-white shadow-xl' : 'border-slate-50 bg-slate-50/50 opacity-60 hover:opacity-100'}`}>
-                    <p className="font-black uppercase tracking-tight text-foreground text-lg">{onlinePaymentProvider === 'payhero' ? 'PayHero M-Pesa' : 'Paystack'}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">{onlinePaymentProvider === 'payhero' ? 'Receive an M-Pesa prompt on your phone' : 'Pay now by card or a Paystack payment method'}</p>
+                    <p className="font-black uppercase tracking-tight text-foreground text-lg">
+                      {onlinePaymentProvider === 'payhero' ? 'PayHero M-Pesa' : onlinePaymentProvider === 'daraja' ? 'Safaricom M-Pesa' : 'Paystack'}
+                    </p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
+                      {onlinePaymentProvider === 'payhero'
+                        ? 'Receive an M-Pesa prompt on your phone'
+                        : onlinePaymentProvider === 'daraja'
+                          ? 'Receive a secure STK prompt directly from Safaricom'
+                          : 'Pay now by card or a Paystack payment method'}
+                    </p>
                   </button>
 
                   <button data-behavior-id="checkout.payment_method" onClick={() => {
@@ -1607,7 +1689,7 @@ function CheckoutContent() {
                 data-behavior-event="PAYMENT_STARTED"
                 className="w-full h-20 bg-primary text-white hover:bg-primary/90 rounded-[1.8rem] font-black uppercase tracking-[0.2em] text-[11px] mt-4 shadow-2xl disabled:bg-slate-200 transition-all active:scale-95"
                 onClick={handlePlaceOrder}
-                disabled={isPlacingOrder || checkoutStatus.type === 'success' || placedOrderId !== null}
+                disabled={isPlacingOrder || emailMarketingConsentBusy || checkoutStatus.type === 'success' || placedOrderId !== null}
               >
                 {isPlacingOrder ? (
                     <div className="flex items-center gap-3">

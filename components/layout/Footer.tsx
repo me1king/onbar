@@ -43,7 +43,7 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
         const response = await fetch('/api/newsletter/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
+            body: JSON.stringify({ email, consent: true }),
         });
 
         const data = await response.json();

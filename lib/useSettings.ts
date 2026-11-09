@@ -64,7 +64,7 @@ export function normalizeCatalogNavigation(value: unknown): CatalogNavigationIte
 
 export interface StoreSettings {
     payment_config: {
-        online_provider: 'paystack' | 'payhero';
+        online_provider: 'paystack' | 'payhero' | 'daraja';
     };
     contact: {
         whatsapp: string;
@@ -364,7 +364,9 @@ export function useSettings() {
                     data.forEach(item => {
                         if (item.key === 'payment_config') {
                             newSettings.payment_config = {
-                                online_provider: item.value.online_provider === 'payhero' ? 'payhero' : 'paystack'
+                                online_provider: item.value.online_provider === 'payhero' || item.value.online_provider === 'daraja'
+                                    ? item.value.online_provider
+                                    : 'paystack'
                             };
                         }
                         if (item.key === 'contact') newSettings.contact = { ...newSettings.contact, ...item.value };

@@ -591,6 +591,7 @@ function MerchantSalesOverview({
   performanceError,
   outOfStockProducts,
   onGoToStock,
+  onGoToPayments,
   historyOnly = false
 }: {
   application: PartnerApplication['application'];
@@ -604,6 +605,7 @@ function MerchantSalesOverview({
   performanceError: string;
   outOfStockProducts: Array<{ productId: number; productName: string }>;
   onGoToStock: (productId: number) => void;
+  onGoToPayments?: () => void;
   historyOnly?: boolean;
 }) {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
@@ -807,8 +809,18 @@ function MerchantSalesOverview({
         <h3 className="font-black text-white">Sales & payouts</h3>
         <p className="mt-3 text-sm leading-6 text-zinc-400">Sales are calculated from the item quantities and prices recorded against this business&apos;s orders. They are order values, not verified earnings.</p>
         <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-4">
-          <p className="text-sm font-bold text-amber-200">Settlement history is not connected</p>
-          <p className="mt-1 text-xs leading-5 text-zinc-400">Seller share and withdrawable balance are not available until a verified payout ledger is connected.</p>
+          <p className="text-sm font-bold text-amber-200">Merchant payouts are not configured yet</p>
+          <p className="mt-1 text-xs leading-5 text-zinc-400">A withdrawable balance will appear only after OnBar configures the seller-share rules and connects a verified payout provider.</p>
+          {onGoToPayments && (
+            <button
+              type="button"
+              onClick={onGoToPayments}
+              className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-zinc-950 hover:bg-amber-300"
+            >
+              <CreditCard size={14} className="mr-2" />
+              View delivered order records
+            </button>
+          )}
         </div>
       </section>
       <section className="grid gap-4 sm:grid-cols-2 xl:col-span-2">
@@ -945,6 +957,7 @@ function FoodMerchantTerminal({
       performanceError={performanceError}
       outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
       onGoToStock={onOpenStock}
+      onGoToPayments={() => onSectionChange('food-payments')}
     />;
   }
 
@@ -1232,6 +1245,7 @@ function AlcoholMerchantTerminal({
   orderSoundEnabled,
   onToggleOrderSound,
   onAction,
+  onSectionChange,
   onOpenStock
 }: {
   section: Section;
@@ -1245,6 +1259,7 @@ function AlcoholMerchantTerminal({
   orderSoundEnabled: boolean;
   onToggleOrderSound: () => Promise<void>;
   onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
+  onSectionChange: (section: Section) => void;
   onOpenStock: (productId?: number) => void;
 }) {
   const [campaignName, setCampaignName] = useState('');
@@ -1285,6 +1300,7 @@ function AlcoholMerchantTerminal({
       performanceError={performanceError}
       outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
       onGoToStock={onOpenStock}
+      onGoToPayments={() => onSectionChange('liquor-payments')}
     />;
   }
 
@@ -2651,6 +2667,7 @@ export default function OnBarPartnerNetworkPage() {
             orderSoundEnabled={orderSoundEnabled}
             onToggleOrderSound={toggleOrderSound}
             onAction={performMerchantAction}
+            onSectionChange={setSection}
             onOpenStock={openInventoryForProduct}
           />
         )}

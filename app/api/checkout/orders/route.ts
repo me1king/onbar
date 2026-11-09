@@ -6,6 +6,7 @@ import { findDeliveryZones, parseDeliveryAreas, parseDeliveryPricing, resolveLeg
 import { getStoredVariantPrices } from '@/lib/productPricing';
 import { getPublicBaseUrl } from '@/lib/utils';
 import { assertPayHeroOrderPaymentConfiguration, initializePayHeroOrderPayment } from '@/lib/payheroOrders.server';
+import { getDarajaCredentials, initializeDarajaStkPush } from '@/lib/darajaPayments.server';
 import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
 import { normalizeKenyanPhone } from '@/lib/spinCampaign';
 
@@ -31,7 +32,7 @@ type CheckoutBody = {
   customerName: string;
   customerPhone: string;
   customerEmail: string | null;
-  paymentMethod: 'Paystack' | 'PayHero' | 'COD';
+  paymentMethod: 'Paystack' | 'PayHero' | 'Daraja' | 'COD';
   sessionId: string;
   deliveryZoneId: string | null;
   coordinates: { lat: number; lng: number } | null;
@@ -195,7 +196,7 @@ function readBody(value: unknown): CheckoutBody | null {
     || typeof customerPhone !== 'string' || !customerPhone.trim() || customerPhone.length > 40
     || (customerEmail !== null && typeof customerEmail !== 'string')
     || (typeof customerEmail === 'string' && customerEmail.length > 254)
-    || (paymentMethod !== 'Paystack' && paymentMethod !== 'PayHero' && paymentMethod !== 'COD')
+    || (paymentMethod !== 'Paystack' && paymentMethod !== 'PayHero' && paymentMethod !== 'Daraja' && paymentMethod !== 'COD')
     || typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 160
     || (deliveryZoneId !== null && typeof deliveryZoneId !== 'string')
     || typeof usePoints !== 'boolean'
@@ -290,6 +291,7 @@ export async function POST(request: Request) {
   try {
     const authorization = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
     let userId: string | null = null;
+    let verifiedUserEmail: string | null = null;
     if (authorization) {
       const auth = createClient(configuration.url, configuration.publicKey, {
         auth: { autoRefreshToken: false, persistSession: false }
@@ -299,9 +301,27 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Your sign-in session expired. Sign in again before placing this order.' }, { status: 401 });
       }
       userId = data.user.id;
+      if (data.user.email && data.user.email_confirmed_at) {
+        verifiedUserEmail = data.user.email.trim().toLowerCase();
+      }
     }
 
     const { database } = configuration;
+    let waitlistMemberIds: string[] = [];
+    if (userId && verifiedUserEmail) {
+      const { data: waitlistMembers, error: waitlistLookupError } = await database
+        .from('market_waitlist')
+        .select('id,converted_to_user')
+        .eq('email', verifiedUserEmail)
+        .neq('status', 'UNSUBSCRIBED');
+      if (waitlistLookupError) {
+        console.error('[CheckoutOrder] Could not verify early-member status:', waitlistLookupError);
+      } else if (waitlistMembers?.length
+        && !waitlistMembers.some(member => member.converted_to_user && member.converted_to_user !== userId)) {
+        waitlistMemberIds = waitlistMembers.map(member => member.id);
+      }
+    }
+
     const settingKeys = ['system_lockdown', 'free_delivery_areas', 'delivery_pricing', 'shipping', 'payment_config'];
     const [settingsResult, customizedProductsResult] = await Promise.all([
       database.from('settings').select('key, value').eq('is_published', true).in('key', settingKeys),
@@ -335,11 +355,14 @@ export async function POST(request: Request) {
     const settingsByKey = new Map((settings || []).map((setting) => [setting.key, setting.value]));
     const paymentConfig = settingsByKey.get('payment_config');
     const configuredProvider = isRecord(paymentConfig) ? paymentConfig.online_provider : undefined;
-    if (paymentConfig !== undefined && configuredProvider !== 'paystack' && configuredProvider !== 'payhero') {
+    if (paymentConfig !== undefined && configuredProvider !== 'paystack'
+        && configuredProvider !== 'payhero' && configuredProvider !== 'daraja') {
       console.error('[CheckoutOrder] Published online payment provider setting is invalid.');
       return NextResponse.json({ error: 'Online payment settings are invalid. Contact support.' }, { status: 503 });
     }
-    const activeProvider = configuredProvider === 'payhero' ? 'PayHero' : 'Paystack';
+    const activeProvider = configuredProvider === 'payhero'
+      ? 'PayHero'
+      : configuredProvider === 'daraja' ? 'Daraja' : 'Paystack';
     if (body.paymentMethod !== 'COD' && body.paymentMethod !== activeProvider) {
       return NextResponse.json({
         error: 'The online payment provider changed. Refresh checkout and try again.',
@@ -370,6 +393,34 @@ export async function POST(request: Request) {
         return NextResponse.json({
           error: 'Enter a valid Kenyan M-Pesa number and email address for PayHero checkout.'
         }, { status: 400 });
+      }
+    }
+    if (body.paymentMethod === 'Daraja') {
+      try {
+        await getDarajaCredentials(database);
+      } catch (configurationError) {
+        console.error('[CheckoutOrder] Direct Daraja is selected but not configured:', configurationError);
+        return NextResponse.json({
+          error: configurationError instanceof Error
+            ? configurationError.message
+            : 'Direct M-Pesa checkout is not configured. Contact support.'
+        }, { status: 503 });
+      }
+      if (!normalizeTicketPhoneNumber(body.customerPhone)
+          || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.customerEmail || '')) {
+        return NextResponse.json({
+          error: 'Enter a valid Kenyan M-Pesa number and email address for direct M-Pesa checkout.'
+        }, { status: 400 });
+      }
+      const { error: darajaSchemaError } = await database
+        .from('daraja_order_payment_attempts')
+        .select('order_id')
+        .limit(0);
+      if (darajaSchemaError) {
+        console.error('[CheckoutOrder] Daraja order-payment migration is missing:', darajaSchemaError);
+        return NextResponse.json({
+          error: 'Direct M-Pesa checkout is not installed yet. Apply supabase/DARAJA_CHECKOUT_MIGRATION.sql.'
+        }, { status: 503 });
       }
     }
     const lockdownValue = settingsByKey.get('system_lockdown');
@@ -627,9 +678,9 @@ export async function POST(request: Request) {
       && (!body.customerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.customerEmail))) {
       return NextResponse.json({ error: 'Enter a valid email address for online payment.' }, { status: 400 });
     }
-    if (body.paymentMethod === 'PayHero' && !Number.isSafeInteger(total)) {
+    if ((body.paymentMethod === 'PayHero' || body.paymentMethod === 'Daraja') && !Number.isSafeInteger(total)) {
       return NextResponse.json({
-        error: 'PayHero M-Pesa checkout requires a whole-KSh order total. Please contact the store to correct the order total.'
+        error: `${body.paymentMethod} M-Pesa checkout requires a whole-KSh order total. Please contact the store to correct the order total.`
       }, { status: 400 });
     }
 
@@ -641,6 +692,7 @@ export async function POST(request: Request) {
       spinCampaignWin ? `Campaign prize: ${spinCampaignWin.prize_label}` : null,
       pointsRedeemed > 0 ? `Used ${pointsRedeemed} points` : null,
       referralCode ? `Referred by ${referralCode}` : null,
+      waitlistMemberIds.length ? 'Waitlist early-access member' : null,
       body.isGift ? `Gift: ${body.giftMessage || ''}` : null
     ].filter(Boolean);
     const orderPayload = {
@@ -686,6 +738,9 @@ export async function POST(request: Request) {
     const payHeroCallbackSecret = body.paymentMethod === 'PayHero'
       ? randomBytes(32).toString('hex')
       : null;
+    const darajaCallbackToken = body.paymentMethod === 'Daraja'
+      ? randomBytes(32).toString('hex')
+      : null;
     if (body.paymentMethod === 'PayHero' && reference && payHeroCallbackSecret) {
       const { error: attemptError } = await database.from('payhero_order_payment_attempts').insert({
         order_id: order.id,
@@ -699,6 +754,23 @@ export async function POST(request: Request) {
         await database.from('orders').delete().eq('id', order.id);
         return NextResponse.json({
           error: 'PayHero payment could not be prepared. No payment prompt was sent. Please try again.'
+        }, { status: 503 });
+      }
+    }
+    if (body.paymentMethod === 'Daraja' && reference && darajaCallbackToken) {
+      const { error: attemptError } = await database.from('daraja_order_payment_attempts').insert({
+        order_id: order.id,
+        external_reference: reference,
+        callback_token_hash: createHash('sha256').update(darajaCallbackToken).digest('hex'),
+        amount_ksh: Math.round(total),
+        phone_e164: normalizeTicketPhoneNumber(body.customerPhone)!,
+        status: 'initializing'
+      });
+      if (attemptError) {
+        console.error('[CheckoutOrder] Could not reserve a Daraja payment attempt:', attemptError);
+        await database.from('orders').delete().eq('id', order.id);
+        return NextResponse.json({
+          error: 'Direct M-Pesa checkout could not be prepared. No payment prompt was sent. Please try again.'
         }, { status: 503 });
       }
     }
@@ -874,7 +946,7 @@ export async function POST(request: Request) {
       console.error('[CheckoutOrder] Order was created, but INTERNAL_API_SECRET is not configured for placed notifications.');
     }
 
-    let paymentStarted = body.paymentMethod !== 'PayHero';
+    let paymentStarted = body.paymentMethod !== 'PayHero' && body.paymentMethod !== 'Daraja';
     if (body.paymentMethod === 'PayHero' && reference && payHeroCallbackSecret) {
       try {
         const callbackUrl = new URL('/api/payhero/orders/webhook', getPublicBaseUrl());
@@ -908,6 +980,55 @@ export async function POST(request: Request) {
         }
       }
     }
+    if (body.paymentMethod === 'Daraja' && reference && darajaCallbackToken) {
+      try {
+        const callbackUrl = new URL(
+          `/api/mpesa/orders/webhook/${encodeURIComponent(darajaCallbackToken)}`,
+          getPublicBaseUrl()
+        );
+        if (callbackUrl.protocol !== 'https:' && process.env.NODE_ENV === 'production') {
+          throw new Error('M-Pesa callbacks require a public HTTPS application URL.');
+        }
+        const payment = await initializeDarajaStkPush({
+          database,
+          amountKsh: Math.round(total),
+          phone: body.customerPhone,
+          orderId: Number(order.id),
+          callbackUrl: callbackUrl.toString()
+        });
+        const { error: savePaymentError } = await database.from('daraja_order_payment_attempts')
+          .update({
+            merchant_request_id: payment.merchantRequestId,
+            checkout_request_id: payment.checkoutRequestId,
+            status: 'queued',
+            updated_at: new Date().toISOString()
+          })
+          .eq('order_id', order.id)
+          .eq('external_reference', reference)
+          .eq('status', 'initializing');
+        if (savePaymentError) throw savePaymentError;
+        paymentStarted = true;
+      } catch (paymentError) {
+        console.error('[CheckoutOrder] Safaricom could not confirm whether the M-Pesa prompt started:', paymentError);
+        const { error: attemptUpdateError } = await database.from('daraja_order_payment_attempts')
+          .update({ status: 'unknown', updated_at: new Date().toISOString() })
+          .eq('order_id', order.id)
+          .eq('external_reference', reference);
+        if (attemptUpdateError) {
+          console.error('[CheckoutOrder] Could not mark ambiguous Daraja initialization:', attemptUpdateError);
+        }
+      }
+    }
+
+    if (userId && waitlistMemberIds.length) {
+      const { error: linkError } = await database.from('market_waitlist')
+        .update({ converted_to_user: userId, updated_at: new Date().toISOString() })
+        .in('id', waitlistMemberIds)
+        .is('converted_to_user', null);
+      if (linkError) {
+        console.error('[CheckoutOrder] Order was created, but the early-member account link could not be saved:', linkError);
+      }
+    }
 
     return NextResponse.json({
       orderId: order.id,
@@ -915,9 +1036,9 @@ export async function POST(request: Request) {
       total,
       currency: 'KES',
       provider: body.paymentMethod,
-      paymentStarted
+      paymentStarted,
     }, {
-      status: body.paymentMethod === 'PayHero' && !paymentStarted ? 202 : 201,
+      status: ['PayHero', 'Daraja'].includes(body.paymentMethod) && !paymentStarted ? 202 : 201,
       headers: { 'Cache-Control': 'no-store' }
     });
   } catch (error) {
