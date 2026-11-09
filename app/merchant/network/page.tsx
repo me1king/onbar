@@ -1625,9 +1625,9 @@ export default function OnBarPartnerNetworkPage() {
 
   useEffect(() => {
     if (isFoodMerchant && !foodSections.some(item => item.id === section)) setSection('sales');
-    if (!isFoodMerchant && foodSections.some(item => item.id !== 'sales' && item.id !== 'settings' && item.id === section)) setSection('overview');
+    if (!isFoodMerchant && section !== 'inventory' && foodSections.some(item => item.id !== 'sales' && item.id !== 'settings' && item.id === section)) setSection('overview');
     if (isLiquorMerchant && !liquorSections.some(item => item.id === section)) setSection('sales');
-    if (!isLiquorMerchant && liquorSections.some(item => item.id !== 'sales' && item.id !== 'settings' && item.id === section)) setSection('overview');
+    if (!isLiquorMerchant && section !== 'inventory' && liquorSections.some(item => item.id !== 'sales' && item.id !== 'settings' && item.id === section)) setSection('overview');
   }, [isFoodMerchant, isLiquorMerchant, section]);
 
   useEffect(() => {
