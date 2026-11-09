@@ -1328,7 +1328,11 @@ function AlcoholMerchantTerminal({
   if (section === 'liquor-catalog') {
     return panel('Catalog and stock', 'Approved catalogue items and actual received batch records. Excise-stamp status is an applicant attestation, not an authenticity scan.',
       <>
-        <button type="button" onClick={() => onOpenStock()} className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 hover:bg-amber-300">
+        <button
+          type="button"
+          onClick={() => onOpenStock(getOutOfStockProducts(overview.application, overview.batches)[0]?.productId)}
+          className="rounded-xl bg-amber-400 px-4 py-3 text-xs font-black uppercase text-zinc-950 hover:bg-amber-300"
+        >
           Update prices & stock
         </button>
         {application.offered_goods_pricing.length ? <div className="grid gap-3 md:grid-cols-2">{application.offered_goods_pricing.map(product => {
@@ -1691,8 +1695,11 @@ export default function OnBarPartnerNetworkPage() {
     const frame = window.requestAnimationFrame(() => {
       document.getElementById(`merchant-stock-card-${inventoryFocusProductId}`)
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      document.getElementById(`merchant-stock-count-${inventoryFocusProductId}`)
-        ?.focus({ preventScroll: true });
+      const quantityInput = document.getElementById(`merchant-stock-count-${inventoryFocusProductId}`);
+      if (quantityInput instanceof HTMLInputElement) {
+        quantityInput.focus({ preventScroll: true });
+        quantityInput.select();
+      }
       setInventoryFocusProductId(null);
     });
     return () => window.cancelAnimationFrame(frame);
