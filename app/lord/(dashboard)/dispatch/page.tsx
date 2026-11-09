@@ -353,6 +353,7 @@ export default function AdminDispatchPage() {
                 error?: string;
                 message?: string;
                 allocation?: {
+                    success?: boolean;
                     fully_allocated?: boolean;
                     unallocated_items?: Array<{
                         order_item_id?: number;
@@ -364,15 +365,18 @@ export default function AdminDispatchPage() {
                     }>;
                 };
             };
-            if (!response.ok) throw new Error(result.error || 'Merchant stock could not be redistributed.');
+            if (!response.ok && !result.allocation?.success) {
+                throw new Error(result.error || 'Merchant stock could not be redistributed.');
+            }
             const remaining = result.allocation?.unallocated_items || [];
             const remainingText = remaining.length
                 ? ` ${remaining.map(item => `${item.product_name} ${item.allocated_quantity}/${item.requested_quantity}: ${item.reason || 'verify merchant stock and availability'}`).join(' ')}`
                 : '';
             const refreshed = await fetchData();
+            const alertWarning = response.ok ? '' : ` ${result.error || 'Merchant stock was reserved, but its alert could not be scheduled.'}`;
             setMessage({
-                type: result.allocation?.fully_allocated && refreshed ? 'success' : 'error',
-                text: `${result.message || 'Merchant availability rechecked.'}${remainingText}${refreshed ? '' : ' The dispatch board did not refresh; use Sync System to confirm current status.'}`
+                type: response.ok && result.allocation?.fully_allocated && refreshed ? 'success' : 'error',
+                text: `${result.message || (result.allocation?.success ? 'Merchant availability rechecked.' : 'Merchant stock could not be redistributed.')}${remainingText}${alertWarning}${refreshed ? '' : ' The dispatch board did not refresh; use Sync System to confirm current status.'}`
             });
         } catch (error) {
             setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Merchant stock could not be redistributed.' });
