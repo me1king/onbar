@@ -52,6 +52,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
   }
 
+  let paymentReceipt: string | null = null;
+  if (order.payment_method === 'Daraja' && ['Paid', 'Processing', 'Packed', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered', 'Completed'].includes(order.status)) {
+    const { data: paymentAttempt, error: paymentAttemptError } = await database
+      .from('daraja_order_payment_attempts')
+      .select('mpesa_receipt')
+      .eq('order_id', orderId)
+      .eq('status', 'paid')
+      .maybeSingle();
+    if (paymentAttemptError) {
+      console.error('[OrderStatus] Could not load the Safaricom payment receipt:', paymentAttemptError);
+      return NextResponse.json({ error: 'Payment confirmation could not be loaded.' }, { status: 503 });
+    }
+    paymentReceipt = paymentAttempt?.mpesa_receipt || null;
+  }
+
   let orderItems: Array<{ product_id: number | null; quantity: number; unit_price: number; size: string | null }> = [];
   if (['Paid', 'Delivered', 'Completed'].includes(order.status)) {
     const { data, error } = await database
@@ -89,6 +104,7 @@ export async function GET(request: Request) {
       total_price: order.total_price,
       status: order.status,
       payment_method: order.payment_method,
+      payment_receipt: paymentReceipt,
       delivery_area: order.delivery_area,
       created_at: order.created_at,
       note: order.note,

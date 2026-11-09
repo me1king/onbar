@@ -24,6 +24,7 @@ interface Order {
     user_id: string | null;
     session_id: string | null;
     payment_method: string | null;
+    payment_receipt?: string | null;
     delivery_area?: string | null;
     order_items?: Array<{
         product_id: number | null;
@@ -142,7 +143,7 @@ function SuccessContent() {
         let statusPollCount = 0;
 
         const scheduleStatusPoll = (fetchStatus: () => Promise<void>, delay = 2500) => {
-            if (!active || statusPollCount >= 24) return;
+            if (!active) return;
             statusPollCount += 1;
             pollTimer = setTimeout(() => {
                 fetchStatus().catch((error: unknown) => {
@@ -150,7 +151,7 @@ function SuccessContent() {
                     if (active) setStatusError('Order status is still syncing. This page will keep checking automatically.');
                     scheduleStatusPoll(fetchStatus, 5000);
                 });
-            }, delay);
+            }, statusPollCount > 24 ? Math.max(delay, 10000) : delay);
         };
 
         const loadStatus = async () => {
@@ -220,7 +221,10 @@ function SuccessContent() {
                 await fetchStatus();
             } catch (error) {
                 console.error('Could not load order confirmation:', error);
-                if (active) setStatusError('Order status could not be loaded. Please refresh this page or contact support.');
+                if (active) {
+                    setStatusError('Order status could not be loaded. This page will keep checking; you can also refresh or contact support.');
+                    scheduleStatusPoll(fetchStatus, 5000);
+                }
             } finally {
                 if (active) setLoading(false);
             }
@@ -273,6 +277,7 @@ function SuccessContent() {
     const isAccepted = order && ['Processing', 'Packed', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered', 'Completed'].includes(order.status);
     const isPaymentPending = ['Paystack', 'PayHero', 'Daraja'].includes(order?.payment_method || '')
         && ['Pending', 'Payment Pending'].includes(order?.status || '');
+    const isPaymentFailed = order?.status === 'Payment Failed';
     const payheroPromptUnknown = searchParams?.get('prompt') === 'unknown';
     const newsletterStatus = searchParams?.get('newsletter');
     const isPaymentReceived = order && ['Paid', 'Delivered', 'Completed'].includes(order.status);
@@ -285,10 +290,12 @@ function SuccessContent() {
                     {isPaymentPending ? <Clock3 className="h-12 w-12" /> : <CheckCircle2 className="h-12 w-12 animate-in zoom-in duration-500" />}
                 </div>
                 <h1 className="text-5xl font-black uppercase tracking-tighter text-foreground mb-2">
-                    {isAccepted ? 'Order Accepted' : isPaymentPending ? 'Payment Pending' : order ? 'Order Received' : 'Order Status'}
+                    {isPaymentFailed ? 'Payment Not Completed' : isAccepted ? 'Order Accepted' : isPaymentReceived ? 'Payment Confirmed' : isPaymentPending ? 'Payment Pending' : order ? 'Order Received' : 'Order Status'}
                 </h1>
                 <p className="text-slate-500 font-medium italic">
-                    {isAccepted
+                    {isPaymentFailed
+                        ? 'Safaricom did not confirm this payment. Check your M-Pesa messages before trying again, and contact support if money was deducted.'
+                        : isAccepted
                         ? isOnTheWay
                             ? 'Your order has been accepted and is on the way.'
                             : 'The merchant accepted your order and is preparing it.'
@@ -305,6 +312,17 @@ function SuccessContent() {
                                 : 'We could not load the order status.'}
                 </p>
                 {statusError && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{statusError}</p>}
+                {isPaymentReceived && order?.payment_method === 'Daraja' && (
+                    <div role="status" className="mt-5 w-full max-w-lg rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left text-emerald-950">
+                        <p className="text-sm font-black uppercase">Safaricom payment confirmed</p>
+                        <p className="mt-1 text-sm">
+                            {order.payment_receipt
+                                ? <>M-Pesa receipt: <span className="font-mono font-black">{order.payment_receipt}</span></>
+                                : 'Safaricom confirmed the payment. Receipt details are still syncing.'}
+                        </p>
+                        <p className="mt-1 text-xs">Paid {formatPrice(order.total_price)} for order #{order.id}.</p>
+                    </div>
+                )}
                 {order && newsletterStatus === 'joined' && (
                     <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
                         You’re on the Online Bar offers email list. You can unsubscribe from any promotional email.
@@ -317,7 +335,7 @@ function SuccessContent() {
                 )}
             </div>
 
-            {order && (
+            {order && !isPaymentFailed && (
                 <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left">
                     <DeliveryCountdown createdAt={order.created_at} status={order.status} deliveryArea={order.delivery_area} />
                 </div>

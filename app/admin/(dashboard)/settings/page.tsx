@@ -143,6 +143,12 @@ const THEME_PRESETS = {
 type TabId = 'identity' | 'homepage' | 'promotions' | 'theme' | 'seo' | 'ops' | 'catalog' | 'ai' | 'onboarding' | 'integrations' | 'features' | 'advanced';
 type OnlinePaymentProvider = 'paystack' | 'payhero' | 'daraja';
 
+const ONLINE_PAYMENT_PROVIDER_LABELS: Record<OnlinePaymentProvider, string> = {
+    paystack: 'Paystack',
+    payhero: 'PayHero',
+    daraja: 'Direct Daraja'
+};
+
 interface HomepageProduct {
     id: number;
     name: string;
@@ -176,6 +182,7 @@ export default function AdminSettingsPage() {
         google_maps_api_key: ''
     });
     const [onlinePaymentProvider, setOnlinePaymentProvider] = useState<OnlinePaymentProvider>('paystack');
+    const [savedOnlinePaymentProvider, setSavedOnlinePaymentProvider] = useState<OnlinePaymentProvider>('paystack');
     const [darajaCredentials, setDarajaCredentials] = useState({
         consumerKey: '',
         consumerSecret: '',
@@ -289,9 +296,10 @@ export default function AdminSettingsPage() {
                     if (item.key === 'onboarding_config') setOnboarding(item.value as typeof DEFAULTS.onboarding_config);
                     if (item.key === 'payment_config') {
                         const provider = item.value.online_provider;
-                        setOnlinePaymentProvider(
-                            provider === 'daraja' || provider === 'payhero' ? provider : 'paystack'
-                        );
+                        const savedProvider: OnlinePaymentProvider =
+                            provider === 'daraja' || provider === 'payhero' ? provider : 'paystack';
+                        setOnlinePaymentProvider(savedProvider);
+                        setSavedOnlinePaymentProvider(savedProvider);
                     }
                     if (item.key === 'features') setFeatures({
                         ...features,
@@ -2030,7 +2038,16 @@ export default function AdminSettingsPage() {
                                     <div className="space-y-4 rounded-3xl border border-slate-100 bg-white p-6 text-left lg:col-span-2">
                                         <div>
                                             <h3 className="text-sm font-black uppercase text-foreground">Storefront M-Pesa checkout provider</h3>
-                                            <p className="mt-1 text-xs text-slate-500">Choose which provider creates the customer payment prompt. Daraja can be enabled only after credentials are configured.</p>
+                                            <p className="mt-1 text-xs text-slate-500">Choose which provider handles new online drink orders. Save your selection to switch the live checkout; existing orders keep their original provider.</p>
+                                        </div>
+                                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Currently active at checkout</p>
+                                            <p className="mt-1 text-lg font-black text-emerald-950">{ONLINE_PAYMENT_PROVIDER_LABELS[savedOnlinePaymentProvider]}</p>
+                                            {onlinePaymentProvider !== savedOnlinePaymentProvider && (
+                                                <p role="status" className="mt-1 text-xs font-semibold text-amber-800">
+                                                    Unsaved change: {ONLINE_PAYMENT_PROVIDER_LABELS[onlinePaymentProvider]} will become active after you save.
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="flex flex-wrap gap-2">
                                             {([
@@ -2054,12 +2071,15 @@ export default function AdminSettingsPage() {
                                             ))}
                                             <Button
                                                 type="button"
-                                                disabled={savingKey === 'payment_config' || (onlinePaymentProvider === 'daraja' && !darajaConfiguration.configured)}
+                                                disabled={savingKey === 'payment_config'
+                                                    || onlinePaymentProvider === savedOnlinePaymentProvider
+                                                    || (onlinePaymentProvider === 'daraja' && !darajaConfiguration.configured)}
                                                 onClick={async () => {
                                                     setSavingKey('payment_config');
                                                     try {
                                                         await saveSettings([{ key: 'payment_config', value: { online_provider: onlinePaymentProvider } }]);
-                                                        setMessage({ type: 'success', text: `${onlinePaymentProvider === 'daraja' ? 'Direct Daraja' : onlinePaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'} is saved for storefront M-Pesa checkout.` });
+                                                        setSavedOnlinePaymentProvider(onlinePaymentProvider);
+                                                        setMessage({ type: 'success', text: `${ONLINE_PAYMENT_PROVIDER_LABELS[onlinePaymentProvider]} is now active for new online checkout orders.` });
                                                     } catch (error) {
                                                         setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Payment provider could not be saved.' });
                                                     } finally {
@@ -2067,7 +2087,11 @@ export default function AdminSettingsPage() {
                                                     }
                                                 }}
                                                 className="rounded-xl px-5 text-xs font-black uppercase"
-                                            >{savingKey === 'payment_config' ? 'Saving…' : 'Save checkout provider'}</Button>
+                                            >{savingKey === 'payment_config'
+                                                ? 'Switching checkout…'
+                                                : onlinePaymentProvider === savedOnlinePaymentProvider
+                                                    ? `${ONLINE_PAYMENT_PROVIDER_LABELS[savedOnlinePaymentProvider]} is active`
+                                                    : `Activate ${ONLINE_PAYMENT_PROVIDER_LABELS[onlinePaymentProvider]}`}</Button>
                                         </div>
                                     </div>
                                 </div>
