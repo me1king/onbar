@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, ShieldCheck, Store } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowLeft, ArrowRight, CheckCircle2, ImageIcon, Loader2, ShieldCheck, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabaseClient';
@@ -72,6 +73,7 @@ export default function LiquorOnboardingForm({
   const [session, setSession] = useState<{ token: string; email: string; verified: boolean } | null>(null);
   const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
   const [catalogueError, setCatalogueError] = useState('');
+  const [unavailableProductImages, setUnavailableProductImages] = useState<Set<number>>(() => new Set());
   const [files, setFiles] = useState<Record<string, File>>({});
   const [fileInputResetKey, setFileInputResetKey] = useState(0);
   const [expiryDates, setExpiryDates] = useState({ liquor_licence: '', online_alcohol_licence: '' });
@@ -473,15 +475,41 @@ export default function LiquorOnboardingForm({
         </div>}
 
         {step === 5 && <div className="space-y-4">
-          <div><h2 className="text-xl font-black">First products and excise stamps</h2><p className="mt-1 text-sm text-slate-500">Choose at least three products from the catalogue. Your stamp declaration is recorded for review; it is not an authenticity scan.</p></div>
+          <div><h2 className="text-xl font-black">First products and excise stamps</h2><p className="mt-1 text-sm text-slate-500">Choose at least three products by photo and name. Your stamp declaration is recorded for review; it is not an authenticity scan.</p></div>
           {catalogueError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{catalogueError}</p>}
           {!catalogue.length && !catalogueError && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Loading catalogue…</p>}
-          <div className="space-y-3">{catalogue.map(product => {
+          <div className="grid gap-3 sm:grid-cols-2">{catalogue.map(product => {
             const selected = selectedProducts.includes(product.id);
             const details = productDetails[product.id];
-            return <article key={product.id} className={`rounded-2xl border p-4 ${selected ? 'border-amber-400 bg-amber-50/50' : 'border-slate-200'}`}>
-              <label className="flex cursor-pointer items-start gap-3"><input type="checkbox" checked={selected} onChange={() => toggleProduct(product)} className="mt-1 h-4 w-4 accent-amber-500" /><span><strong>{product.name}</strong><span className="ml-2 text-xs text-slate-500">{product.category}</span></span></label>
-              {selected && details && <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            const imageUrl = product.image_url?.trim();
+            return <article key={product.id} className={`overflow-hidden rounded-2xl border transition-colors ${selected ? 'border-amber-400 bg-amber-50/50 shadow-sm' : 'border-slate-200 bg-white'}`}>
+              <label className="flex cursor-pointer items-center gap-3 p-3">
+                <input type="checkbox" checked={selected} onChange={() => toggleProduct(product)} className="h-4 w-4 shrink-0 accent-amber-500" />
+                <span className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 to-slate-100 text-amber-700">
+                  {imageUrl && !unavailableProductImages.has(product.id) ? (
+                    <Image
+                      src={imageUrl}
+                      alt={product.name}
+                      fill
+                      sizes="80px"
+                      unoptimized
+                      className="object-contain p-1"
+                      onError={() => setUnavailableProductImages(current => new Set(current).add(product.id))}
+                    />
+                  ) : (
+                    <span className="flex flex-col items-center gap-1 text-slate-400">
+                      <ImageIcon size={22} aria-hidden="true" />
+                      <span className="text-[9px] font-semibold">Image unavailable</span>
+                    </span>
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <strong className="block leading-5 text-slate-900">{product.name}</strong>
+                  <span className="mt-1 block text-xs text-slate-500">{product.category || 'Catalogue product'}</span>
+                  <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">KSh {product.price.toLocaleString()}</span>
+                </span>
+              </label>
+              {selected && details && <div className="grid gap-3 px-3 pb-3 sm:grid-cols-2">
                 <Input required placeholder="Pack / bottle size" value={details.size} onChange={event => updateProduct(product.id, { size: event.target.value })} />
                 <Input required type="number" min="0" max="100" step="0.1" placeholder="ABV %" value={details.abv} onChange={event => updateProduct(product.id, { abv: event.target.value })} />
                 <Input required type="number" min="1" step="0.01" placeholder="Your price (KSh)" value={details.price} onChange={event => updateProduct(product.id, { price: event.target.value })} />

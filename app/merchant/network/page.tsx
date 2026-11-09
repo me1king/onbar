@@ -2,6 +2,7 @@
 
 import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -14,11 +15,14 @@ import {
   Download,
   FileText,
   History,
+  ImageIcon,
   Loader2,
   LogOut,
   Megaphone,
   PackageCheck,
   Palette,
+  Search,
+  X,
   RefreshCw,
   ShieldCheck,
   Star,
@@ -172,6 +176,7 @@ type PartnerApplication = {
       spread: number;
       margin_percent: number | null;
       sizes: string[];
+      image_url: string | null;
       variant_prices: Record<string, number>;
       pending_price?: number | null;
       pending_base_price?: number | null;
@@ -1514,6 +1519,11 @@ export default function OnBarPartnerNetworkPage() {
   const [deepLinkApplicationId, setDeepLinkApplicationId] = useState('');
   const [deepLinkOrderId, setDeepLinkOrderId] = useState('');
   const [inventoryFocusProductId, setInventoryFocusProductId] = useState<number | null>(null);
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [inventoryCategory, setInventoryCategory] = useState('all');
+  const [enlargedProductPhoto, setEnlargedProductPhoto] = useState<{ name: string; imageUrl: string } | null>(null);
+  const [photoRequestPending, setPhotoRequestPending] = useState<Set<number>>(() => new Set());
+  const [unavailableInventoryPhotos, setUnavailableInventoryPhotos] = useState<Set<number>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -2040,6 +2050,18 @@ export default function OnBarPartnerNetworkPage() {
     return saved;
   };
 
+  const requestProductPhoto = async (productId: number) => {
+    if (!selected?.application.id) return;
+    const saved = await apiAction({
+      operation: 'request_product_photo',
+      applicationId: selected.application.id,
+      productId
+    }, 'Photo request recorded for OnBar review. The approved catalog image will be shared across the app.');
+    if (saved) {
+      setPhotoRequestPending(current => new Set(current).add(productId));
+    }
+  };
+
   const openInventoryForProduct = (productId?: number) => {
     setInventoryFocusProductId(productId ?? null);
     setSection('inventory');
@@ -2084,9 +2106,31 @@ export default function OnBarPartnerNetworkPage() {
         name: offer.product_name,
         sku: null,
         category: offer.category,
+        imageUrl: offer.image_url,
         offer
       }));
   }, [isFoodMerchant, isLiquorMerchant, selected]);
+  const inventoryCategoryOptions = useMemo(() => [...new Set(
+    productOptions
+      .map(product => product.category?.trim())
+      .filter((category): category is string => Boolean(category))
+  )].sort((a, b) => a.localeCompare(b)), [productOptions]);
+  const filteredInventoryProducts = useMemo(() => {
+    const query = inventorySearch.trim().toLowerCase();
+    return productOptions.filter(product => {
+      const currentAvailable = selected?.batches
+        .filter(batch => batch.product_id === product.id)
+        .reduce((total, batch) => total + batch.available_quantity, 0) ?? 0;
+      const matchesSearch = !query
+        || product.name.toLowerCase().includes(query)
+        || (product.category || '').toLowerCase().includes(query);
+      const matchesCategory = inventoryCategory === 'all'
+        || (inventoryCategory === 'needs-attention'
+          ? currentAvailable <= 5
+          : product.category?.trim() === inventoryCategory);
+      return matchesSearch && matchesCategory;
+    });
+  }, [inventoryCategory, inventorySearch, productOptions, selected?.batches]);
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2710,7 +2754,7 @@ export default function OnBarPartnerNetworkPage() {
                   />
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
                   <article className="rounded-2xl border border-slate-200 bg-white p-5">
                     <h3 className="font-black text-slate-900">What to do this week</h3>
                     {coachingTips.length ? (
@@ -2968,8 +3012,42 @@ export default function OnBarPartnerNetworkPage() {
               </div>
             )}
             {canOperate && productOptions.length > 0 && (
+              <>
+              <section className="space-y-3" aria-label="Find stock products">
+                <label className="relative block">
+                  <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={inventorySearch}
+                    onChange={event => setInventorySearch(event.target.value)}
+                    placeholder="Search products"
+                    aria-label="Search stock products"
+                    className="h-12 rounded-xl pl-10"
+                  />
+                </label>
+                <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Filter stock products">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'needs-attention', label: 'Needs attention' },
+                    ...inventoryCategoryOptions.map(category => ({ id: category, label: category }))
+                  ].map(filter => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      aria-pressed={inventoryCategory === filter.id}
+                      onClick={() => setInventoryCategory(filter.id)}
+                      className={`shrink-0 rounded-full border px-4 py-2 text-xs font-black transition-colors ${
+                        inventoryCategory === filter.id
+                          ? 'border-amber-400 bg-amber-400 text-slate-950'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-amber-300'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
               <div className="grid gap-4 lg:grid-cols-2">
-                {productOptions.map(product => {
+                {filteredInventoryProducts.map(product => {
                   const currentAvailable = overview.batches
                     .filter(batch => batch.product_id === product.id)
                     .reduce((total, batch) => total + batch.available_quantity, 0);
@@ -2992,16 +3070,51 @@ export default function OnBarPartnerNetworkPage() {
                     <article
                       key={product.id}
                       id={`merchant-stock-card-${product.id}`}
-                      className={`space-y-3 rounded-2xl border bg-white p-5 shadow-sm ${inventoryFocusProductId === product.id ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200'}`}
+                      className={`space-y-3 rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5 ${inventoryFocusProductId === product.id ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200'}`}
                     >
+                      <div className="relative flex h-48 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 via-slate-50 to-amber-50">
+                        <span className={`absolute left-3 top-3 z-10 rounded-full px-3 py-1 text-[10px] font-black uppercase ${stockStatus.className}`}>
+                          {stockStatus.label}
+                        </span>
+                        {product.imageUrl && !unavailableInventoryPhotos.has(product.id) ? (
+                          <button
+                            type="button"
+                            onClick={() => setEnlargedProductPhoto({ name: product.name, imageUrl: product.imageUrl || '' })}
+                            aria-label={`Tap to enlarge ${product.name} photo`}
+                            className="absolute inset-0 flex items-center justify-center"
+                          >
+                            <Image
+                              src={product.imageUrl}
+                              alt={product.name}
+                              fill
+                              sizes="(max-width: 1024px) 90vw, 560px"
+                              unoptimized
+                              className="object-contain p-8 transition-transform duration-300 hover:scale-105"
+                              onError={() => setUnavailableInventoryPhotos(current => new Set(current).add(product.id))}
+                            />
+                            <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-white">Tap to enlarge</span>
+                          </button>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 px-4 text-center">
+                            <ImageIcon size={34} aria-hidden="true" className="text-slate-400" />
+                            <p className="text-sm font-bold text-slate-600">No product photo yet</p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={working || photoRequestPending.has(product.id)}
+                              onClick={() => void requestProductPhoto(product.id)}
+                              className="h-9 rounded-full border-slate-300 bg-white text-xs font-bold"
+                            >
+                              {photoRequestPending.has(product.id) ? 'Photo requested' : 'Request a product photo'}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <h3 className="font-black text-slate-900">{product.name}</h3>
-                          <p className="mt-1 text-xs text-slate-500">Current available stock: {currentAvailable}{currentAvailable > 0 && currentAvailable <= 5 ? ' · low stock' : ''}</p>
+                          <p className="mt-1 text-xs text-slate-500">Current available stock: {currentAvailable}{product.category ? ` · ${product.category}` : ''}</p>
                         </div>
-                        <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stockStatus.className}`}>
-                          {stockStatus.label}
-                        </span>
                       </div>
                       <form onSubmit={event => void submitStockCount(event, product, currentAvailable)} className="space-y-3">
                       {stockDraftIsStale && (
@@ -3186,6 +3299,51 @@ export default function OnBarPartnerNetworkPage() {
                     </article>
                   );
                 })}
+              </div>
+              {!filteredInventoryProducts.length && (
+                <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+                  No products match these filters. Try another category or search.
+                </p>
+              )}
+              </>
+            )}
+            {enlargedProductPhoto && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="merchant-product-photo-title"
+                onClick={event => {
+                  if (event.target === event.currentTarget) setEnlargedProductPhoto(null);
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Escape') setEnlargedProductPhoto(null);
+                }}
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm"
+              >
+                <div className="relative w-full max-w-3xl rounded-2xl bg-white p-3 shadow-2xl sm:p-5">
+                  <div className="flex items-center justify-between gap-3 pb-3">
+                    <h2 id="merchant-product-photo-title" className="font-black text-slate-900">{enlargedProductPhoto.name}</h2>
+                    <button
+                      type="button"
+                      autoFocus
+                      onClick={() => setEnlargedProductPhoto(null)}
+                      aria-label="Close enlarged product photo"
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="relative aspect-square max-h-[75vh] overflow-hidden rounded-xl bg-slate-50">
+                    <Image
+                      src={enlargedProductPhoto.imageUrl}
+                      alt={enlargedProductPhoto.name}
+                      fill
+                      sizes="(max-width: 768px) 95vw, 768px"
+                      unoptimized
+                      className="object-contain p-4"
+                    />
+                  </div>
+                </div>
               </div>
             )}
             <div>

@@ -204,7 +204,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     traceRows
   ] = await Promise.all([
     productIds.length
-      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price, sizes, variant_prices, beverage_specs').in('id', productIds)
+      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price, image_url, sizes, variant_prices, beverage_specs').in('id', productIds)
       : Promise.resolve({ data: [], error: null }),
     getPagedBatchRows(batchIds, (ids, from, to) => database.from('merchant_inventory_movements')
         .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
@@ -334,6 +334,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
           is_bite: product?.is_bite || false,
           is_snack: product?.is_snack || false,
           is_souvenir: product?.is_souvenir || false,
+          image_url: typeof product?.image_url === 'string' ? product.image_url : null,
           listed_price: listedPrice,
           sizes: Array.isArray(product?.sizes) ? product.sizes : [],
           variant_prices: product?.variant_prices || product?.beverage_specs?.variant_prices || {},
@@ -455,6 +456,71 @@ export async function POST(request: Request) {
   if (!application) return NextResponse.json({ error: 'That business is not linked to your verified account.' }, { status: 404 });
   if (application.status !== 'approved') {
     return NextResponse.json({ error: 'Only currently approved partners can make operational updates.' }, { status: 403 });
+  }
+
+  if (body.operation === 'request_product_photo') {
+    const productId = Number(body.productId);
+    if (!Number.isSafeInteger(productId) || productId < 1) {
+      return NextResponse.json({ error: 'Choose a valid catalog product.' }, { status: 400 });
+    }
+
+    const offers = Array.isArray(application.offered_goods_pricing)
+      ? application.offered_goods_pricing as Array<{ product_id?: unknown }>
+      : [];
+    if (!offers.some(offer => Number(offer.product_id) === productId)) {
+      return NextResponse.json({ error: 'Photo requests are limited to products in your approved catalog.' }, { status: 403 });
+    }
+
+    const { data: product, error: productError } = await context.database
+      .from('products')
+      .select('category, sub_category, is_bite, is_snack, is_souvenir, image_url')
+      .eq('id', productId)
+      .maybeSingle();
+    if (productError) {
+      console.error('[MerchantNetwork] Could not verify product photo request:', productError);
+      return NextResponse.json({ error: 'The catalog product could not be verified.' }, { status: 503 });
+    }
+    if (!product || !isAllowedMerchantProduct(application, product)) {
+      return NextResponse.json({ error: 'This product is not available to your merchant category.' }, { status: 403 });
+    }
+    if (typeof product.image_url === 'string' && product.image_url.trim()) {
+      return NextResponse.json({ error: 'This product already has a catalog photo. Contact OnBar if it needs replacing.' }, { status: 409 });
+    }
+
+    const { data: existingRequest, error: existingError } = await context.database
+      .from('photo_requests')
+      .select('id')
+      .eq('application_id', application.id)
+      .eq('product_id', productId)
+      .eq('status', 'pending')
+      .maybeSingle();
+    if (existingError) {
+      console.error('[MerchantNetwork] Could not check pending product photo requests:', existingError);
+      return NextResponse.json({
+        error: /photo_requests|schema cache|does not exist/i.test(existingError.message)
+          ? 'Product photo requests are not installed yet. Run supabase/MERCHANT_PRODUCT_PHOTO_REQUESTS_MIGRATION.sql in the Supabase SQL Editor.'
+          : 'The existing photo request could not be checked.'
+      }, { status: 503 });
+    }
+    if (existingRequest) return NextResponse.json({ pending: true, existing: true });
+
+    const { error: insertError } = await context.database.from('photo_requests').insert({
+      application_id: application.id,
+      product_id: productId,
+      kind: 'missing'
+    });
+    if (insertError) {
+      if (insertError.code === '23505') {
+        return NextResponse.json({ pending: true, existing: true });
+      }
+      console.error('[MerchantNetwork] Could not save product photo request:', insertError);
+      return NextResponse.json({
+        error: /photo_requests|schema cache|does not exist/i.test(insertError.message)
+          ? 'Product photo requests are not installed yet. Run supabase/MERCHANT_PRODUCT_PHOTO_REQUESTS_MIGRATION.sql in the Supabase SQL Editor.'
+          : 'The product photo request could not be saved.'
+      }, { status: 503 });
+    }
+    return NextResponse.json({ pending: true, existing: false }, { status: 201 });
   }
 
   if (body.operation === 'set_offer_price') {
