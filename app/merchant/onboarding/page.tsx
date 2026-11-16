@@ -1239,7 +1239,8 @@ export default function MerchantOnboarding() {
               {businessType === 'kitchen' && (
                 <Input type="number" min="1" max="100000" value={preparationCapacity} onChange={event => setPreparationCapacity(event.target.value)} placeholder="Orders / portions per day" className="h-12 rounded-xl" />
               )}
-              <Input type="number" min="0" max="500" step="0.5" value={deliveryRadiusKm} onChange={event => setDeliveryRadiusKm(event.target.value)} placeholder="Delivery radius in km (if applicable)" className="h-12 rounded-xl" />
+              <Input type="number" min="0" max="500" step="0.5" value={deliveryRadiusKm} onChange={event => setDeliveryRadiusKm(event.target.value)} placeholder="Delivery radius in km (if offering delivery)" className="h-12 rounded-xl" />
+              <p className="-mt-3 text-xs leading-relaxed text-slate-500">The maximum distance from your business pin used for delivery eligibility. Dispatch requires an approved location and radius; leave this blank if you only offer collection.</p>
               <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 text-sm font-medium">
                 <input type="checkbox" checked={collectionAvailable} onChange={event => setCollectionAvailable(event.target.checked)} className="h-4 w-4 accent-primary" />
                 Customer collection is available

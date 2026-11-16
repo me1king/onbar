@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { getMerchantMinutesUntilClose, isMerchantOpenAt } from '@/lib/merchantAvailability';
-import { isSameOriginRequest } from '@/lib/adminAccess.server';
+import { isInternalRequest, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { routingEngine, type GeoPoint } from '@/lib/engines/routingEngine';
 import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
 import { alertAssignedRider } from '@/lib/riderOrderAlerts.server';
@@ -114,10 +114,19 @@ async function assessVendors(
   database: SupabaseClient,
   order: Order,
   items: OrderItem[],
-  events: Array<{ application_id: string; event_type: string }>,
+  events: Array<{ id: number; application_id: string; event_type: string; occurred_at: string }>,
   eventsAvailable: boolean
 ) {
   const reasons: string[] = [];
+  const latestMerchantEvents = new Map<string, { id: number; event_type: string; occurred_at: string }>();
+  for (const event of events) {
+    const previous = latestMerchantEvents.get(event.application_id);
+    if (!previous
+      || event.occurred_at.localeCompare(previous.occurred_at) > 0
+      || (event.occurred_at === previous.occurred_at && event.id > previous.id)) {
+      latestMerchantEvents.set(event.application_id, event);
+    }
+  }
   const selectedVendorIds = new Set<string>();
   const selectedVendorNames = new Map<string, string>();
   const selectedVendors = new Map<string, {
@@ -131,6 +140,7 @@ async function assessVendors(
     acceptingOrders: boolean;
     minutesUntilClose: number | null;
     accepted: boolean;
+    ready: boolean;
   }>();
   const selectedVendorLocations = new Map<string, {
     vendorId: string;
@@ -289,15 +299,16 @@ async function assessVendors(
       if (activeQuantity <= 0) continue;
       const batch = trace.batch;
       const merchant = batch?.application;
-      if (!batch || Number(batch.product_id) !== item.product_id || !merchant || merchant.status !== 'approved') continue;
+      const merchantId = merchant?.id;
+      if (!batch || Number(batch.product_id) !== item.product_id || !merchant || !merchantId || merchant.status !== 'approved') continue;
       if (batch.expiry_at && batch.expiry_at < new Date().toISOString().slice(0, 10)) continue;
       if (batch.holds?.some(hold => hold.released_at === null)) continue;
-      const merchantAccepted = events.some(event =>
-        event.application_id === merchant.id && event.event_type === 'accepted'
-      );
-      const merchantRejected = events.some(event =>
-        event.application_id === merchant.id && event.event_type === 'rejected'
-      );
+      const latestMerchantEvent = latestMerchantEvents.get(merchantId);
+      const merchantAccepted = Boolean(latestMerchantEvent
+        && ['accepted', 'preparing', 'ready', 'handed_to_rider', 'collected', 'delivered'].includes(latestMerchantEvent.event_type));
+      const merchantRejected = latestMerchantEvent?.event_type === 'rejected';
+      const merchantReady = ['ready', 'handed_to_rider', 'collected', 'delivered']
+        .includes(latestMerchantEvent?.event_type || '');
       const isOnline = merchant.accepting_orders !== false && isMerchantOpenAt(merchant.operating_hours);
       if ((!isOnline || merchantRejected) && !merchantAccepted) continue;
       allocatedQuantity += activeQuantity;
@@ -325,7 +336,8 @@ async function assessVendors(
           isOpen,
           acceptingOrders: merchant.accepting_orders !== false,
           minutesUntilClose: isOpen ? getMerchantMinutesUntilClose(merchant.operating_hours) : null,
-          accepted: merchantAccepted
+          accepted: merchantAccepted,
+          ready: merchantReady
         });
       }
       const vendorLat = numberOrNull(merchant.latitude);
@@ -352,11 +364,15 @@ async function assessVendors(
       if (merchant.id && !merchantAccepted) {
         if (merchantRejected) {
           reasons.push(`${merchant.business_name || 'A selected merchant'} declined this order; retry allocation to an available merchant before dispatch.`);
+        } else if (['cancelled', 'exception'].includes(latestMerchantEvent?.event_type || '')) {
+          reasons.push(`${merchant.business_name || 'A selected merchant'} has a cancelled or exceptional fulfillment that requires review.`);
         } else if (!isOnline) {
           reasons.push(`${merchant.business_name || 'A selected merchant'} is offline or outside its operating hours; this order needs allocation to an available merchant before dispatch.`);
         } else {
           reasons.push(`${merchant.business_name || 'A selected merchant'} has not accepted this order.`);
         }
+      } else if (merchant.id && !merchantReady) {
+        reasons.push(`${merchant.business_name || 'A selected merchant'} has not marked the order ready for pickup.`);
       }
     }
     if (allocatedQuantity < quantity) {
@@ -543,6 +559,51 @@ function getRiderVerificationStoragePath(value: unknown): string | null {
   }
 }
 
+async function notifyCustomerOfDispatch(orderId: number, requestUrl: string): Promise<string | null> {
+  const secret = process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
+  if (!secret) {
+    console.error('[AdminDispatch] Rider assigned, but customer notification is not configured.');
+    return 'Rider assigned, but the customer notification bridge is not configured.';
+  }
+
+  try {
+    const response = await fetch(new URL('/api/admin/notify-customer', requestUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ orderId, status: 'Dispatched' }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10_000)
+    });
+    const result = await response.json().catch(() => null) as {
+      ok?: boolean;
+      error?: string;
+      skipped?: string[];
+      results?: Array<{ status?: string }>;
+    } | null;
+    if (!response.ok || result?.ok === false) {
+      console.error('[AdminDispatch] Rider assigned, but customer notification failed:', response.status);
+      return 'Rider assigned, but the customer dispatch notification failed.';
+    }
+    if (result?.skipped?.length) {
+      return `Rider assigned; customer notification skipped: ${result.skipped.join(', ')}.`;
+    }
+    const statuses = result?.results?.map(item => item.status) || [];
+    if (!statuses.length) {
+      return 'Rider assigned, but no customer notification channel was eligible.';
+    }
+    if (statuses.some(status => status === 'failed' || status === 'skipped')) {
+      return 'Rider assigned, but one or more customer notification channels need attention.';
+    }
+    return null;
+  } catch (error) {
+    console.error('[AdminDispatch] Rider assigned, but customer notification request failed:', error);
+    return 'Rider assigned, but the customer notification request could not be completed.';
+  }
+}
+
 async function getRiderVerificationUrl(database: SupabaseClient, value: unknown, riderPhone: string, label: string) {
   const path = getRiderVerificationStoragePath(value);
   if (!path) return null;
@@ -671,7 +732,7 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
   if (itemError) throw itemError;
   const { data: eventData, error: eventError } = orderIds.length
     ? await database.from('merchant_fulfillment_events')
-      .select('order_id, application_id, event_type')
+      .select('id, order_id, application_id, event_type, occurred_at')
       .in('order_id', orderIds)
     : { data: [], error: null };
 
@@ -686,7 +747,12 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
     const items = itemsByOrder.get(order.id) || [];
     const orderEvents = (eventData || [])
       .filter(event => Number(event.order_id) === order.id)
-      .map(event => ({ application_id: event.application_id, event_type: event.event_type }));
+      .map(event => ({
+        id: Number(event.id),
+        application_id: event.application_id,
+        event_type: event.event_type,
+        occurred_at: event.occurred_at
+      }));
     const fulfillment = await assessVendors(database, order, items, orderEvents, !eventError);
     return {
       ...order,
@@ -819,11 +885,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!isSameOriginRequest(request)) {
+  const internal = isInternalRequest(request);
+  if (!internal && !isSameOriginRequest(request)) {
     return NextResponse.json({ error: 'Dispatch mutations must come from this site.' }, { status: 403 });
   }
-  const session = await getAdminSession();
-  if (!session) {
+  const session = internal ? null : await getAdminSession();
+  if (!internal && !session) {
     return NextResponse.json({ error: 'Dispatch access requires an authorized admin session.' }, { status: 403 });
   }
   const database = getDatabase();
@@ -838,13 +905,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'A valid dispatch request is required.' }, { status: 400 });
   }
   const orderId = Number(body.orderId);
+  if (internal && (body.mode !== 'automatic' || body.operation !== undefined)) {
+    return NextResponse.json({ error: 'Internal dispatch is limited to automatic rider assignment.' }, { status: 403 });
+  }
+  if (internal && Number.isSafeInteger(orderId) && orderId > 0) {
+    const { data: currentOrder, error: currentOrderError } = await database
+      .from('orders')
+      .select('id,status,rider_phone')
+      .eq('id', orderId)
+      .maybeSingle();
+    if (currentOrderError) {
+      console.error('[AdminDispatch] Could not verify an automatic dispatch order:', currentOrderError);
+      return NextResponse.json({ error: 'Order eligibility could not be verified.' }, { status: 503 });
+    }
+    if (!currentOrder) {
+      return NextResponse.json({ assignment: { completed: true, order_id: orderId } });
+    }
+    if (['Cancelled', 'Payment Failed', 'Refunded', 'Warranty', 'Returned', 'Delivered', 'Completed']
+      .includes(String(currentOrder.status || ''))) {
+      return NextResponse.json({ assignment: { completed: true, order_id: orderId } });
+    }
+    if (currentOrder.rider_phone) {
+      return NextResponse.json({ assignment: { alreadyAssigned: true, order_id: orderId } });
+    }
+  }
   if (body.operation === 'retry_merchant_allocation') {
     if (!Number.isSafeInteger(orderId) || orderId <= 0) {
       return NextResponse.json({ error: 'A valid paid order is required.' }, { status: 400 });
     }
     const { data, error } = await database.rpc('retry_paid_order_merchant_allocation', {
       p_order_id: orderId,
-      p_actor: session.email || session.role
+      p_actor: session?.email || session?.role || 'automatic-dispatch-worker'
     });
     if (error) {
       console.error('[AdminDispatch] Merchant allocation retry failed:', error);
@@ -928,7 +1019,7 @@ export async function POST(request: Request) {
     const { data, error } = await database.rpc('assign_paid_order_rider', {
       p_order_id: orderId,
       p_rider_phone: selectedRider.riderPhone,
-      p_actor: session.email || session.role,
+      p_actor: session?.email || session?.role || 'automatic-dispatch-worker',
       p_is_override: mode === 'override',
       p_override_reason: mode === 'override' ? reason : null,
       p_criteria: criteria
@@ -952,20 +1043,22 @@ export async function POST(request: Request) {
       }, { status: result?.code === 'PAYMENT_NOT_CONFIRMED' ? 409 : 409 });
     }
 
-    let notificationWarning: string | undefined;
+    const notificationWarnings: string[] = [];
+    const customerNotificationWarning = await notifyCustomerOfDispatch(orderId, request.url);
+    if (customerNotificationWarning) notificationWarnings.push(customerNotificationWarning);
     if (typeof result.rider_phone === 'string') {
       try {
         const notification = await alertAssignedRider(database, orderId, result.rider_phone);
-        notificationWarning = notification.warning || undefined;
+        if (notification.warning) notificationWarnings.push(notification.warning);
       } catch (notificationError) {
         console.error('[AdminDispatch] Rider assignment saved but rider alerts failed:', notificationError);
-        notificationWarning = 'Assignment was saved, but rider alerts could not be scheduled.';
+        notificationWarnings.push('Assignment was saved, but rider alerts could not be scheduled.');
       }
     }
 
     return NextResponse.json({
       assignment: result,
-      ...(notificationWarning ? { warning: notificationWarning } : {})
+      ...(notificationWarnings.length ? { warning: notificationWarnings.join(' ') } : {})
     });
   } catch (error) {
     console.error('[AdminDispatch] Assignment request failed:', error);

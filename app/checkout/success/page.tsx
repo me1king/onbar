@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, PackageCheck, Smartphone, MessageSquare, ArrowRight, Truck, ShieldCheck, Heart, Zap, Clock3, MapPin } from "lucide-react";
+import { CheckCircle2, PackageCheck, Smartphone, MessageSquare, ArrowRight, Truck, ShieldCheck, Heart, Zap, Clock3, MapPin, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
@@ -24,6 +24,7 @@ interface Order {
     user_id: string | null;
     session_id: string | null;
     payment_method: string | null;
+    checkout_request_id?: string | null;
     payment_receipt?: string | null;
     delivery_area?: string | null;
     order_items?: Array<{
@@ -57,6 +58,7 @@ function SuccessContent() {
     const [loading, setLoading] = useState(true);
     const [loyaltyNotice, setLoyaltyNotice] = useState('');
     const [statusError, setStatusError] = useState('');
+    const [isCheckingPayment, setIsCheckingPayment] = useState(false);
     const [showArrivalAnimation, setShowArrivalAnimation] = useState(false);
     const { settings } = useSettings();
 
@@ -283,6 +285,67 @@ function SuccessContent() {
     const isPaymentReceived = order && ['Paid', 'Delivered', 'Completed'].includes(order.status);
     const isOnTheWay = order && ['Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(order.status);
 
+    const checkPaymentStatus = async () => {
+        if (!orderId || !supabase) return;
+        setIsCheckingPayment(true);
+        setStatusError('');
+        try {
+            const session = await getSessionWithTimeout(supabase);
+            const sessionId = localStorage.getItem('ob_session_id');
+            const params = new URLSearchParams({ id: orderId });
+            if (sessionId) params.set('sessionId', sessionId);
+            const headers = session?.access_token
+                ? { Authorization: `Bearer ${session.access_token}` }
+                : undefined;
+            const fetchOrder = async () => {
+                const response = await fetch(`/api/orders/status?${params.toString()}`, {
+                    cache: 'no-store',
+                    headers
+                });
+                const result = await response.json() as { error?: string; order?: Order };
+                if (!response.ok || !result.order) {
+                    throw new Error(result.error || 'Order status could not be loaded.');
+                }
+                setOrder(result.order);
+                setReceiptDetailsLoaded(true);
+                return result.order;
+            };
+
+            let latestOrder = await fetchOrder();
+            if (latestOrder.status === 'Pending' && latestOrder.payment_method === 'Paystack'
+                && latestOrder.checkout_request_id) {
+                const verification = await fetch('/api/paystack/verify-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reference: latestOrder.checkout_request_id })
+                });
+                const verificationResult = await verification.json() as {
+                    error?: string;
+                    paymentStatus?: string;
+                };
+                if (!verification.ok && verification.status !== 409) {
+                    throw new Error(verificationResult.error || 'Payment status could not be verified.');
+                }
+                latestOrder = await fetchOrder();
+                if (verification.ok && verificationResult.paymentStatus === 'awaiting_signed_webhook'
+                    && latestOrder.status === 'Pending') {
+                    setStatusError('Paystack confirms payment. The order status is syncing; do not pay again or place another order.');
+                    return;
+                }
+            }
+
+            if (['Pending', 'Payment Pending'].includes(latestOrder.status)
+                && ['Paystack', 'PayHero', 'Daraja'].includes(latestOrder.payment_method || '')) {
+                setStatusError('Payment is not confirmed yet. No new prompt was sent. Check your phone and keep this page open; contact support with your order number if money was deducted.');
+            }
+        } catch (error) {
+            console.error('Could not manually check payment status:', error);
+            setStatusError(error instanceof Error ? error.message : 'Payment status could not be checked. Please try again.');
+        } finally {
+            setIsCheckingPayment(false);
+        }
+    };
+
     return (
         <div className="container mx-auto px-4 py-12 max-w-2xl text-center">
             <div className="mb-12 flex flex-col items-center">
@@ -312,6 +375,23 @@ function SuccessContent() {
                                 : 'We could not load the order status.'}
                 </p>
                 {statusError && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{statusError}</p>}
+                {isPaymentPending && (
+                    <div className="mt-5 w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 text-left">
+                        <p className="text-sm text-slate-600">
+                            Checking status will not send another payment prompt. Please do not place a second order while this one is pending.
+                        </p>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={checkPaymentStatus}
+                            disabled={isCheckingPayment}
+                            className="mt-3 min-h-11 w-full rounded-xl font-bold"
+                        >
+                            <RefreshCw className={`mr-2 h-4 w-4 ${isCheckingPayment ? 'animate-spin' : ''}`} />
+                            {isCheckingPayment ? 'Checking payment…' : 'Check payment status'}
+                        </Button>
+                    </div>
+                )}
                 {isPaymentReceived && order?.payment_method === 'Daraja' && (
                     <div role="status" className="mt-5 w-full max-w-lg rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left text-emerald-950">
                         <p className="text-sm font-black uppercase">Safaricom payment confirmed</p>

@@ -66,7 +66,15 @@ export default function InstallAppWidget() {
             >
                 <Smartphone size={15} className="text-primary" />
                 <Download size={14} />
-                Install app
+                <span className="flex flex-col items-start">
+                    <span>Install app</span>
+                    <span className="text-[9px] font-medium leading-tight text-slate-500">
+                        Unlock the Home Screen Command Node
+                    </span>
+                    <span className="text-[9px] font-medium leading-tight text-slate-500">
+                        Real-time Buzz &amp; Discovery
+                    </span>
+                </span>
             </button>
             <button
                 type="button"

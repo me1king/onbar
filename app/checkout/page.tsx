@@ -918,10 +918,8 @@ function CheckoutContent() {
             onClose: () => {
                 OB_OS.track('PAYMENT_FAIL', { userId: user?.id, orderId, details: { reason: 'PAYMENT_PROMPT_CLOSED' } });
                 setIsPlacingOrder(false);
-                setCheckoutStatus({
-                    type: "error",
-                    message: `Payment was not completed. Order #${orderId} remains pending. Contact support before placing another order.`
-                });
+                clearGiftDraft();
+                window.location.href = `/checkout/success?orderId=${orderId}${newsletterStatus ? `&newsletter=${newsletterStatus}` : ''}`;
             }
         });
 
@@ -1185,6 +1183,7 @@ function CheckoutContent() {
             </Link>
             <h1 className="text-5xl font-black uppercase tracking-tighter text-foreground">Checkout</h1>
             <p className="mt-2 text-slate-500 font-medium italic">Complete your order to begin dispatch.</p>
+            <p className="mt-2 text-sm font-medium text-slate-500">No account is needed. Your contact and delivery details are saved while you check out.</p>
         </div>
       </div>
 

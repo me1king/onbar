@@ -1,4 +1,4 @@
-export const CUSTOMER_NOTIFICATION_STATUSES = ['Pending', 'Payment Failed', 'Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'] as const;
+export const CUSTOMER_NOTIFICATION_STATUSES = ['Pending', 'Confirmed', 'Payment Failed', 'Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'] as const;
 export type CustomerNotificationStatus = typeof CUSTOMER_NOTIFICATION_STATUSES[number];
 
 export const CUSTOMER_NOTIFICATION_CHANNELS = ['email', 'whatsapp', 'sms', 'push'] as const;
@@ -27,6 +27,11 @@ export type CustomerNotificationConfig = Record<CustomerNotificationStatus, Cust
 const DEFAULT_EMAIL_DESIGNS: Record<CustomerNotificationStatus, Pick<CustomerNotificationRule, 'emailHeadline' | 'emailButtonLabel' | 'emailAccentColor'>> = {
   Pending: {
     emailHeadline: 'Your order is in',
+    emailButtonLabel: 'Track my order',
+    emailAccentColor: '#00a884'
+  },
+  Confirmed: {
+    emailHeadline: 'Your order is confirmed',
     emailButtonLabel: 'Track my order',
     emailAccentColor: '#00a884'
   },
@@ -70,6 +75,14 @@ export const DEFAULT_CUSTOMER_NOTIFICATION_CONFIG: CustomerNotificationConfig = 
     message: 'Hi {name}, we received order #{orderId} for {total}. Payment may still be pending. Track your order: {trackingUrl}',
     smsMessage: 'Order #{orderId} received ({total}). Payment may be pending. Track: {trackingUrl}',
     ...DEFAULT_EMAIL_DESIGNS.Pending
+  },
+  Confirmed: {
+    enabled: true,
+    channels: ['email', 'sms', 'push'],
+    subject: 'Order #{orderId} is confirmed',
+    message: 'Hi {name}, order #{orderId} is confirmed. Payment is due when your order arrives. Track your order: {trackingUrl}',
+    smsMessage: 'Order #{orderId} is confirmed. Payment is due on delivery. Track: {trackingUrl}',
+    ...DEFAULT_EMAIL_DESIGNS.Confirmed
   },
   'Payment Failed': {
     enabled: true,

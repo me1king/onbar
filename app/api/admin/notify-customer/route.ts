@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  CUSTOMER_NOTIFICATION_STATUSES,
   CUSTOMER_NOTIFICATION_CHANNELS,
   normalizeCustomerNotificationConfig,
   normalizeCustomerContactKey,
@@ -246,14 +247,12 @@ export async function POST(request: Request) {
   }
 
   const orderId = Number(body.orderId);
-  const status = body.status;
   if (!Number.isSafeInteger(orderId) || orderId < 1
-    || !['Pending', 'Payment Failed', 'Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
+    || typeof body.status !== 'string'
+    || !CUSTOMER_NOTIFICATION_STATUSES.includes(body.status as CustomerNotificationStatus)) {
     return NextResponse.json({ error: 'A valid order and notification status are required.' }, { status: 400 });
   }
-  if (internal && !['Pending', 'Payment Failed', 'Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'].includes(String(status))) {
-    return NextResponse.json({ error: 'This delivery status cannot be sent as an internal notification.' }, { status: 403 });
-  }
+  const status = body.status as CustomerNotificationStatus;
   const retryChannel = body.retryChannel;
   if (retryChannel !== undefined && !CUSTOMER_NOTIFICATION_CHANNELS.includes(retryChannel as CustomerNotificationChannel)) {
     return NextResponse.json({ error: 'Choose a valid notification channel to retry.' }, { status: 400 });
@@ -447,6 +446,7 @@ export async function POST(request: Request) {
         if (channel === 'push') {
           const pushMessage: Record<CustomerNotificationStatus, string> = {
             Pending: 'We received your order. Payment may still be pending.',
+            Confirmed: 'Your order is confirmed. Payment is due on delivery.',
             'Payment Failed': 'Payment was not confirmed. Check your account to retry.',
             Paid: 'Payment confirmed. We are preparing your order.',
             Dispatched: 'A rider has been assigned to your order.',

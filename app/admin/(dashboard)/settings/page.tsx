@@ -142,6 +142,7 @@ const THEME_PRESETS = {
 
 type TabId = 'identity' | 'homepage' | 'promotions' | 'theme' | 'seo' | 'ops' | 'catalog' | 'ai' | 'onboarding' | 'integrations' | 'features' | 'advanced';
 type OnlinePaymentProvider = 'paystack' | 'payhero' | 'daraja';
+type TicketingPaymentProvider = 'paystack' | 'payhero';
 
 const ONLINE_PAYMENT_PROVIDER_LABELS: Record<OnlinePaymentProvider, string> = {
     paystack: 'Paystack',
@@ -183,6 +184,8 @@ export default function AdminSettingsPage() {
     });
     const [onlinePaymentProvider, setOnlinePaymentProvider] = useState<OnlinePaymentProvider>('paystack');
     const [savedOnlinePaymentProvider, setSavedOnlinePaymentProvider] = useState<OnlinePaymentProvider>('paystack');
+    const [ticketingPaymentProvider, setTicketingPaymentProvider] = useState<TicketingPaymentProvider>('paystack');
+    const [savedTicketingPaymentProvider, setSavedTicketingPaymentProvider] = useState<TicketingPaymentProvider>('paystack');
     const [darajaCredentials, setDarajaCredentials] = useState({
         consumerKey: '',
         consumerSecret: '',
@@ -245,9 +248,14 @@ export default function AdminSettingsPage() {
             const response = await fetch('/api/admin/settings', { cache: 'no-store' });
             const result = await response.json() as {
                 settings?: Array<{ key: string; value: Record<string, unknown> }>;
+                ticketingPaymentProvider?: TicketingPaymentProvider | null;
                 error?: string;
             };
             if (!response.ok) throw new Error(result.error || 'Could not load settings.');
+            if (result.ticketingPaymentProvider === 'paystack' || result.ticketingPaymentProvider === 'payhero') {
+                setTicketingPaymentProvider(result.ticketingPaymentProvider);
+                setSavedTicketingPaymentProvider(result.ticketingPaymentProvider);
+            }
             if (result.settings && result.settings.length > 0) {
                 result.settings.forEach((item: { key: string; value: Record<string, unknown> }) => {
                     if (item.key === 'contact') setContact(item.value as typeof DEFAULTS.contact);
@@ -300,6 +308,11 @@ export default function AdminSettingsPage() {
                             provider === 'daraja' || provider === 'payhero' ? provider : 'paystack';
                         setOnlinePaymentProvider(savedProvider);
                         setSavedOnlinePaymentProvider(savedProvider);
+                    }
+                    if (item.key === 'ticketing_payment_config') {
+                        const provider: TicketingPaymentProvider = item.value.provider === 'payhero' ? 'payhero' : 'paystack';
+                        setTicketingPaymentProvider(provider);
+                        setSavedTicketingPaymentProvider(provider);
                     }
                     if (item.key === 'features') setFeatures({
                         ...features,
@@ -2040,6 +2053,9 @@ export default function AdminSettingsPage() {
                                             <h3 className="text-sm font-black uppercase text-foreground">Storefront M-Pesa checkout provider</h3>
                                             <p className="mt-1 text-xs text-slate-500">Choose which provider handles new online drink orders. Save your selection to switch the live checkout; existing orders keep their original provider.</p>
                                         </div>
+                                        <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
+                                            PayHero requires server-only <code>PAYHERO_AUTH_TOKEN</code> and <code>PAYHERO_CHANNEL_ID</code>, plus the drink-payment database migration. Configure these before activating PayHero; credentials are not entered here.
+                                        </p>
                                         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                                             <p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Currently active at checkout</p>
                                             <p className="mt-1 text-lg font-black text-emerald-950">{ONLINE_PAYMENT_PROVIDER_LABELS[savedOnlinePaymentProvider]}</p>
@@ -2095,6 +2111,81 @@ export default function AdminSettingsPage() {
                                         </div>
                                     </div>
                                 </div>
+                            </Card>
+
+                            <Card className="space-y-6 rounded-[2rem] border border-violet-100 bg-white p-6 shadow-sm sm:p-8">
+                                <div>
+                                    <h2 className="text-xl font-black uppercase text-foreground">Ticket checkout payments</h2>
+                                    <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                                        Switch the provider for new event-ticket orders independently of drink delivery. Existing payment attempts continue with their original provider.
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Currently active for tickets</p>
+                                    <p className="mt-1 text-lg font-black text-emerald-950">
+                                        {savedTicketingPaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'}
+                                    </p>
+                                    {ticketingPaymentProvider !== savedTicketingPaymentProvider && (
+                                        <p role="status" className="mt-1 text-xs font-semibold text-amber-800">
+                                            Unsaved change: {ticketingPaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'} will be used after you save.
+                                        </p>
+                                    )}
+                                </div>
+                                <fieldset className="flex flex-wrap gap-2">
+                                    <legend className="sr-only">Ticket checkout payment provider</legend>
+                                    {([
+                                        ['paystack', 'Paystack'],
+                                        ['payhero', 'PayHero']
+                                    ] as const).map(([provider, label]) => (
+                                        <button
+                                            key={provider}
+                                            type="button"
+                                            disabled={savingKey !== null}
+                                            aria-pressed={ticketingPaymentProvider === provider}
+                                            onClick={() => setTicketingPaymentProvider(provider)}
+                                            className={cn(
+                                                "rounded-xl border px-4 py-3 text-xs font-black uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                                                ticketingPaymentProvider === provider
+                                                    ? "border-violet-700 bg-violet-700 text-white"
+                                                    : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                                            )}
+                                        >{label}</button>
+                                    ))}
+                                </fieldset>
+                                <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
+                                    PayHero requires server-side <code>PAYHERO_AUTH_TOKEN</code> and <code>PAYHERO_CHANNEL_ID</code>, plus the ticketing PayHero database migration. Do not enter credentials here.
+                                </p>
+                                <Button
+                                    type="button"
+                                    disabled={savingKey !== null || ticketingPaymentProvider === savedTicketingPaymentProvider}
+                                    onClick={async () => {
+                                        setSavingKey('ticketing_payment_config');
+                                        try {
+                                            await saveSettings([{
+                                                key: 'ticketing_payment_config',
+                                                value: { provider: ticketingPaymentProvider },
+                                                is_published: false
+                                            }]);
+                                            setSavedTicketingPaymentProvider(ticketingPaymentProvider);
+                                            setMessage({
+                                                type: 'success',
+                                                text: `${ticketingPaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'} is now active for new ticket orders.`
+                                            });
+                                        } catch (error) {
+                                            setMessage({
+                                                type: 'error',
+                                                text: error instanceof Error ? error.message : 'Ticket payment provider could not be saved.'
+                                            });
+                                        } finally {
+                                            setSavingKey(null);
+                                        }
+                                    }}
+                                    className="h-11 rounded-xl bg-violet-700 px-5 font-black text-white hover:bg-violet-800"
+                                >
+                                    {savingKey === 'ticketing_payment_config'
+                                        ? 'Switching ticket checkout…'
+                                        : `Save ${ticketingPaymentProvider === 'payhero' ? 'PayHero' : 'Paystack'} for tickets`}
+                                </Button>
                             </Card>
 
                             {/* 2. GOOGLE MAPS PLATFORM NODE */}

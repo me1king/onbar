@@ -2016,7 +2016,7 @@ export default function OnBarPartnerNetworkPage() {
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      const payload = await response.json() as { error?: string };
+      const payload = await response.json() as { error?: string; warning?: string };
       if (!response.ok) throw new Error(payload.error || 'Your update could not be saved.');
       const refreshedApplications = await loadWorkspace(accessToken);
       if (body.operation === 'set_stock_count') {
@@ -2033,7 +2033,7 @@ export default function OnBarPartnerNetworkPage() {
           throw new Error(`Stock update was not confirmed. The latest inventory shows ${actualQuantity} available; refresh and try again.`);
         }
       }
-      setMessage(successMessage);
+      setMessage(payload.warning ? `${successMessage} ${payload.warning}` : successMessage);
       return true;
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Your update could not be saved.');

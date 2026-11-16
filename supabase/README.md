@@ -6,6 +6,7 @@ After the core schema plus `OPERATIONAL_FEATURES_MIGRATION.sql`,
 `CRM_CONSENT_MESSAGING_MIGRATION.sql`, and
 `TICKETING_EMAIL_DELIVERY_MIGRATION.sql` are installed, apply
 `CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql`, then
+`CUSTOMER_NOTIFICATION_CONFIRMATION_MIGRATION.sql`, then
 `JMSURF_EMAIL_WEBHOOK_MIGRATION.sql`, then
 `EMAIL_COMMAND_CENTER_MIGRATION.sql`. The sequence installs order-notification
 history, provider event tracking, direct operational-email audit records, and
@@ -84,10 +85,11 @@ analytics consent and therefore stay hidden unless the visitor opts in again.
 ## Merchant order alerts
 
 After applying `FINAL_ESTABLISHMENT_SQL.sql`, `MERCHANT_OPERATIONS_MIGRATION.sql`,
-and `DISPATCH_MIGRATION.sql`, apply `MERCHANT_ORDER_ALERTS_MIGRATION.sql`.
-The migration creates private merchant contact/device/delivery-log storage and
-atomic accept, decline, and timeout functions. Do not apply it before the
-merchant and dispatch migrations.
+`DISPATCH_MIGRATION.sql`, and `MERCHANT_ORDER_ALERTS_MIGRATION.sql`, apply
+`ORDER_DISPATCH_AUTOMATION_MIGRATION.sql`.
+`MERCHANT_ORDER_ALERTS_MIGRATION.sql` creates private merchant contact/device/
+delivery-log storage and atomic accept, decline, and timeout functions. The
+dispatch automation migration adds the durable ready-order rider queue.
 
 Configure the web application and the separate alert-worker service with
 `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_BASE_URL`
@@ -97,11 +99,16 @@ Configure the web application and the separate alert-worker service with
 `WEB_PUSH_VAPID_PRIVATE_KEY`, and `WEB_PUSH_SUBJECT`. Generate VAPID keys with
 `npx web-push generate-vapid-keys`; keep private keys server-side. The worker
 must run continuously as a separate process with `npm run worker:merchant-alerts`.
-The web process schedules 20-second SMS, 60-second voice, and 90-second timeout
+The web process schedules 20-second SMS, 45-second voice, and 60-second timeout
 jobs in Redis; the worker sends the Twilio messages/calls, records provider
 status callbacks, and invokes the authenticated internal dispatch endpoint to
-alert newly allocated merchants after a timeout. Configure adequate Redis
-persistence and monitor the worker heartbeat in the merchant workspace.
+alert newly allocated merchants after a timeout. It also polls the durable
+ready-order dispatch queue and runs the existing rider eligibility, vendor
+readiness, and road-distance checks before assigning a rider. Configure
+`INTERNAL_API_BASE_URL` for the deployed app origin if `NEXT_PUBLIC_BASE_URL`
+is not available to the worker. Dispatch retries every minute; after 20
+unsuccessful attempts, the order is left for manual review. Configure adequate
+Redis persistence and monitor the worker heartbeat in the merchant workspace.
 
 Twilio credentials, an approved sender/number, Redis, VAPID keys, the migration,
 and the continuously running worker are required for live delivery. The browser
@@ -188,21 +195,23 @@ release; do not treat the owner account as an accounting or settlement system.
 
 After applying `DISPATCH_MIGRATION.sql`, apply
 `RIDER_ORDER_ALERTS_MIGRATION.sql`. Riders must enable push notifications in
-Rider Command while signed in. On an admin-confirmed assignment, the server
-sends a web push immediately, queues a Twilio SMS escalation after 20 seconds,
+Rider Command while signed in. On an automatic or admin-confirmed assignment,
+the server sends a web push immediately, queues a Twilio SMS escalation after 20 seconds,
 and escalates to voice at 45 seconds. If no approved merchant accepts within
 60 seconds, the server redistributes the paid order and the admin dispatch
 queue can take control of rider scheduling.
 The existing `worker:merchant-alerts` process handles both merchant escalations
-and rider SMS. Redis, Twilio, VAPID keys, and an always-running worker are
-required for those channels.
+and rider SMS, and now also processes ready-order automatic dispatch jobs.
+Redis, Twilio, VAPID keys, and an always-running worker are required for those
+notification channels.
 
-The current dispatch path is an admin-controlled assignment, not a rider offer
-queue: the order is assigned before its alert is sent. The 25-second push TTL
-only expires stale notifications; it does not automatically reassign an
-unanswered mission. Automatic rider acceptance/decline, timeout rerouting, and
-native Android full-screen alerts require separate implementation and staging
-validation.
+Automatic dispatch is queued only after the merchant records `ready`; every
+allocated merchant must be ready, in-radius, and have valid stock before rider
+assignment. Rider verification, fresh location, capacity, payment proof, and
+road routing are still enforced. If no eligible rider is found after 20
+one-minute retries, the order remains available for manual dispatch review.
+Assignment notifications do not mean the rider accepted the mission; rider
+delivery status and the existing secure handover checks remain authoritative.
 
 ## Rider verification onboarding
 
@@ -304,6 +313,18 @@ single and bulk admin updates and verified-rider assignment. The API does not
 fall back to direct status writes if those functions are missing: apply the
 migration rather than bypassing the state machine. Payment callbacks remain
 the authority for online payment confirmation.
+
+After merchant operations and dispatch are installed, apply
+`ORDER_DISPATCH_AUTOMATION_MIGRATION.sql` to create the service-role-only
+durable rider-dispatch queue. The database enqueues an order when a merchant
+records it ready. The continuously running `worker:merchant-alerts` process
+claims jobs with a lease, calls the protected automatic-dispatch route, and
+retries transient unavailability. Dispatch still requires the order's verified
+payment (or supported COD state), fully accepted and ready merchant allocations,
+in-radius stock, and an eligible rider. Configure `INTERNAL_API_SECRET` and
+`NEXT_PUBLIC_BASE_URL` or `INTERNAL_API_BASE_URL` on the worker; apply the
+migration before expecting automatic assignment. Orders that exhaust 20 retries
+are marked for manual review rather than silently discarded.
 
 ## Delivery merchant scorecard
 
@@ -424,13 +445,17 @@ For the Online Bar Admin Ticketing module, apply
 `TICKETING_EVENT_DETAILS_MIGRATION.sql`,
 `TICKETING_EMAIL_DELIVERY_MIGRATION.sql`,
 `TICKETING_WHATSAPP_DELIVERY_MIGRATION.sql`,
-`TICKETING_BUYER_EMAIL_THEME_MIGRATION.sql`, and
-`PAYHERO_TICKETING_MIGRATION.sql`, then
-`TICKETING_PROMOTIONS_MIGRATION.sql`. The commerce migration creates the
+`TICKETING_BUYER_EMAIL_THEME_MIGRATION.sql`,
+`TICKETING_PROMOTIONS_MIGRATION.sql`, and finally
+`PAYHERO_TICKETING_MIGRATION.sql`. The commerce migration creates the
 Paystack-backed standard checkout; the promotions migration adds transactional
-promo redemption handling and a promo-aware checkout that also uses Paystack.
-`PAYHERO_TICKETING_MIGRATION.sql` remains for verifying and completing legacy
-PayHero payment attempts; new ticket checkouts do not require PayHero. After the customer
+promo redemption handling and a promo-aware checkout. Paystack remains the
+default ticket provider. Choose PayHero in Admin Settings → Integrations →
+Ticket checkout payments and configure server-only `PAYHERO_AUTH_TOKEN` and
+`PAYHERO_CHANNEL_ID`; `TICKETING_PAYMENT_PROVIDER` is used only before an admin
+choice is saved. The PayHero migration installs regular and promo checkout RPCs
+as well as callback processing. Existing databases must apply the promotions
+migration before applying or re-running the PayHero migration. After the customer
 messaging and ticketing email delivery migrations (including
 `CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql`) are installed, run
 `JMSURF_EMAIL_WEBHOOK_MIGRATION.sql` to record signed JMSURF email events and
@@ -443,9 +468,6 @@ JMSURF webhook; a provider accepting a send is not proof that the message
 reached the recipient's mail server or inbox. Point the provider webhook at
 `/api/webhooks/jmsurf-mail` and configure the matching server-only
 `JMSURF_WEBHOOK_SECRET`.
-For databases that already applied the earlier promotions migration, re-run
-`TICKETING_PROMOTIONS_MIGRATION.sql` after deploying the Paystack checkout
-change so its promo RPC stops converting new attempts to PayHero.
 Wave I/II/III configuration, audited admin controls, transactional reservation
 gates, and the server-side availability query support public event listings.
 The publishing migration installs the owner-only event publish/pause RPC used

@@ -4,6 +4,7 @@ import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/
 import { sanitizeSettingsRows } from '@/lib/settingsSanitizer';
 import { validateBuildMyNightConfig } from '@/lib/buildMyNightConfig';
 import { getDarajaCredentials } from '@/lib/darajaPayments.server';
+import { assertPayHeroOrderPaymentConfiguration } from '@/lib/payheroOrders.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,8 @@ const allowedSettings = new Set([
   'onboarding_config',
   'features',
   'ai_config',
-  'payment_config'
+  'payment_config',
+  'ticketing_payment_config'
 ]);
 
 type SettingUpdate = {
@@ -84,6 +86,11 @@ function isSettingUpdate(value: unknown): value is SettingUpdate {
       || update.value.online_provider === 'daraja';
   }
 
+  if (update.key === 'ticketing_payment_config') {
+    return (update.value.provider === 'paystack' || update.value.provider === 'payhero')
+      && update.is_published === false;
+  }
+
   return true;
 }
 
@@ -104,7 +111,26 @@ export async function GET() {
     console.error('[AdminSettings] Could not load settings:', error);
     return NextResponse.json({ error: 'Settings could not be loaded.' }, { status: 503 });
   }
-  return NextResponse.json({ settings: sanitizeSettingsRows(data || []) }, {
+  const ticketingPaymentSetting = (data || []).find((setting) => setting.key === 'ticketing_payment_config');
+  const storedProvider = ticketingPaymentSetting?.value
+    && typeof ticketingPaymentSetting.value === 'object'
+    && !Array.isArray(ticketingPaymentSetting.value)
+    ? (ticketingPaymentSetting.value as Record<string, unknown>).provider
+    : undefined;
+  const environmentProvider = process.env.TICKETING_PAYMENT_PROVIDER?.trim().toLowerCase();
+  let ticketingPaymentProvider: 'paystack' | 'payhero' | null;
+  if (ticketingPaymentSetting) {
+    ticketingPaymentProvider = storedProvider === 'paystack' || storedProvider === 'payhero'
+      ? storedProvider
+      : null;
+  } else {
+    ticketingPaymentProvider = environmentProvider === 'payhero' ? 'payhero' : 'paystack';
+  }
+
+  return NextResponse.json({
+    settings: sanitizeSettingsRows(data || []),
+    ticketingPaymentProvider
+  }, {
     headers: { 'Cache-Control': 'private, no-store, max-age=0' }
   });
 }
@@ -152,6 +178,28 @@ export async function PUT(request: Request) {
     } catch (error) {
       return NextResponse.json({
         error: error instanceof Error ? error.message : 'Configure and verify Daraja credentials before enabling the checkout provider.'
+      }, { status: 503 });
+    }
+  }
+  if (paymentSettings?.value.online_provider === 'payhero') {
+    try {
+      assertPayHeroOrderPaymentConfiguration();
+    } catch (error) {
+      return NextResponse.json({
+        error: error instanceof Error
+          ? error.message
+          : 'Configure PayHero server credentials before enabling the checkout provider.'
+      }, { status: 503 });
+    }
+
+    const { error: payHeroSchemaError } = await database
+      .from('payhero_order_payment_attempts')
+      .select('order_id')
+      .limit(0);
+    if (payHeroSchemaError) {
+      console.error('[AdminSettings] PayHero drink-payment migration is missing:', payHeroSchemaError);
+      return NextResponse.json({
+        error: 'PayHero drink payments are not installed yet. Apply supabase/PAYHERO_DRINK_ORDERS_MIGRATION.sql before enabling PayHero.'
       }, { status: 503 });
     }
   }

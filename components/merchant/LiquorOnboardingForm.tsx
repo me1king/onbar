@@ -92,6 +92,7 @@ export default function LiquorOnboardingForm({
     town: '',
     latitude: '',
     longitude: '',
+    deliveryRadiusKm: '',
     distanceToSchoolMeters: '',
     countyLicenceNumber: '',
     onlineLicenceNumber: '',
@@ -248,6 +249,10 @@ export default function LiquorOnboardingForm({
     if (step === 2) {
       if (form.address.trim().length < 4) return 'Enter the shop street address or estate.';
       if (form.town.trim().length < 2) return 'Enter the town or city.';
+      const deliveryRadiusKm = Number(form.deliveryRadiusKm);
+      if (!Number.isFinite(deliveryRadiusKm) || deliveryRadiusKm <= 0 || deliveryRadiusKm > 500) {
+        return 'Enter a delivery radius greater than 0 and no more than 500 km.';
+      }
       if (!/^\d+(\.\d+)?$/.test(form.distanceToSchoolMeters)) return 'Enter the approximate distance to the nearest school or place of worship.';
     }
     if (step === 3) {
@@ -307,6 +312,7 @@ export default function LiquorOnboardingForm({
         town: form.town.trim(),
         latitude: form.latitude,
         longitude: form.longitude,
+        deliveryRadiusKm: form.deliveryRadiusKm,
         operatingAreas: JSON.stringify([form.town.trim()]),
         operatingHours: JSON.stringify({
           monday: { enabled: true, open: '10:00', close: '22:00' },
@@ -319,7 +325,6 @@ export default function LiquorOnboardingForm({
         }),
         cuisineOrCategory: 'Alcohol retail',
         preparationCapacity: '',
-        deliveryRadiusKm: '',
         collectionAvailable: 'false',
         offeredGoods: JSON.stringify(selectedProducts),
         offeredGoodsPricing: JSON.stringify(selectedProductRecords.map(product => ({ productId: product.productId, price: product.price }))),
@@ -445,6 +450,13 @@ export default function LiquorOnboardingForm({
           <p className="-mt-2 text-xs leading-relaxed text-slate-500">This helps our team find the correct shop entrance and place your delivery pin during review.</p>
           <div className="grid gap-3 sm:grid-cols-2"><Input required placeholder="County" value={form.county} onChange={event => updateForm('county', event.target.value)} /><Input required placeholder="Town / city" value={form.town} onChange={event => updateForm('town', event.target.value)} /></div>
           <div className="grid gap-3 sm:grid-cols-2"><Input type="number" step="any" min="-90" max="90" placeholder="Latitude (optional)" value={form.latitude} onChange={event => updateForm('latitude', event.target.value)} /><Input type="number" step="any" min="-180" max="180" placeholder="Longitude (optional)" value={form.longitude} onChange={event => updateForm('longitude', event.target.value)} /></div>
+          <label className="block text-sm font-bold text-slate-700">
+            Delivery radius (km) *
+            <Input required type="number" step="0.5" min="0.5" max="500" placeholder="e.g. 8" value={form.deliveryRadiusKm} onChange={event => updateForm('deliveryRadiusKm', event.target.value)} className="mt-2" />
+          </label>
+          <p className="-mt-2 text-xs leading-relaxed text-slate-500">
+            This is the maximum distance from your shop for delivery eligibility. Your radius and shop pin are reviewed before OnBar enables delivery dispatch.
+          </p>
           <Input required type="number" min="0" max="100000" placeholder="Approx. metres from nearest school / worship place" value={form.distanceToSchoolMeters} onChange={event => updateForm('distanceToSchoolMeters', event.target.value)} />
           {Number(form.distanceToSchoolMeters) < 300 && form.distanceToSchoolMeters !== '' && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">This self-reported distance will be flagged for manual review.</p>}
           {uploadTypes.slice(2, 3).map(([type, label]) => <label key={type} className="block text-sm font-bold text-slate-700">{label} (optional for now)<Input key={`${type}-${fileInputResetKey}`} type="file" accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; if (file) setFiles(current => ({ ...current, [type]: file })); }} className="mt-2 h-auto min-h-11 py-2" /></label>)}
@@ -538,6 +550,7 @@ export default function LiquorOnboardingForm({
             ['Business', form.businessName],
             ['Owner', form.ownerName],
             ['Location', `${form.town}, ${form.county}`],
+            ['Requested delivery radius', `${form.deliveryRadiusKm} km`],
             ['County licence', form.countyLicenceNumber || 'To be provided for review'],
             ['Till', `ending ${form.mpesaTill.slice(-4)}`],
             ['Products', `${selectedProducts.length} selected`],

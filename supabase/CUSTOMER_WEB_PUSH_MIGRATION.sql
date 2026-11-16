@@ -1,4 +1,5 @@
--- Apply after CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql.
+-- Apply after CUSTOMER_NOTIFICATION_AUTOMATION_MIGRATION.sql and
+-- CUSTOMER_NOTIFICATION_CONFIRMATION_MIGRATION.sql.
 -- PWA push subscriptions require an authenticated opt-in and are only readable by service_role.
 
 ALTER TABLE public.orders
@@ -41,6 +42,6 @@ ALTER TABLE public.customer_notification_deliveries
     DROP CONSTRAINT IF EXISTS customer_notification_deliveries_notification_status_check;
 ALTER TABLE public.customer_notification_deliveries
     ADD CONSTRAINT customer_notification_deliveries_notification_status_check
-        CHECK (notification_status IN ('Pending', 'Payment Failed', 'Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'));
+        CHECK (notification_status IN ('Pending', 'Confirmed', 'Payment Failed', 'Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'));
 
 NOTIFY pgrst, 'reload schema';

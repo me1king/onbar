@@ -12,6 +12,19 @@ const twilioNumber = process.env.TWILIO_PHONE_NUMBER?.trim();
 const publicBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://onlinebar.onrender.com').replace(/\/+$/, '');
 const voiceSecret = process.env.TWILIO_ALERT_TOKEN_SECRET?.trim();
 const internalApiSecret = process.env.INTERNAL_API_SECRET?.trim();
+const dispatchAutomationBaseUrl = process.env.INTERNAL_API_BASE_URL?.trim()
+  || process.env.NEXT_PUBLIC_BASE_URL?.trim()
+  || '';
+const dispatchAutomationConfigured = (() => {
+  if (!internalApiSecret || !dispatchAutomationBaseUrl) return false;
+  try {
+    const url = new URL(dispatchAutomationBaseUrl);
+    return url.protocol === 'https:'
+      || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname));
+  } catch {
+    return false;
+  }
+})();
 
 if (!supabaseUrl || !serviceRoleKey || !redisUrl) {
   throw new Error('Set NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and REDIS_URL for the alert worker.');
@@ -382,6 +395,84 @@ async function processJob(job) {
   throw new Error(`Unknown merchant alert job: ${job.name}`);
 }
 
+let dispatchPollRunning = false;
+let dispatchPollWarning = '';
+async function pollAutomaticDispatchJobs() {
+  if (dispatchPollRunning || !dispatchAutomationConfigured) return;
+  dispatchPollRunning = true;
+  try {
+    const baseUrl = new URL(dispatchAutomationBaseUrl);
+    for (let index = 0; index < 10; index += 1) {
+      const { data, error } = await database.rpc('claim_ready_order_dispatch');
+      if (error) {
+        if (dispatchPollWarning !== error.message) {
+          console.error('[OrderDispatchAutomation] Could not claim dispatch jobs:', error.message);
+          dispatchPollWarning = error.message;
+        }
+        break;
+      }
+      dispatchPollWarning = '';
+      const job = Array.isArray(data) ? data[0] : data;
+      if (!job) break;
+
+      const orderId = Number(job.order_id);
+      if (!Number.isSafeInteger(orderId) || orderId < 1) {
+        console.error('[OrderDispatchAutomation] Claimed job has an invalid order ID.');
+        break;
+      }
+
+      let outcome = 'retry';
+      let reason = 'Automatic rider dispatch did not return a confirmed result.';
+      try {
+        const response = await fetch(new URL('/api/admin/dispatch', baseUrl), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${internalApiSecret}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ orderId, mode: 'automatic' }),
+          cache: 'no-store'
+        });
+        const payload = await response.json().catch(() => null);
+        const assignment = payload?.assignment;
+        if (response.ok && assignment && typeof assignment === 'object') {
+          outcome = assignment.completed === true ? 'completed' : 'assigned';
+          reason = '';
+        } else {
+          reason = typeof payload?.error === 'string'
+            ? payload.error
+            : `Automatic rider dispatch failed (${response.status}).`;
+        }
+      } catch (error) {
+        reason = error instanceof Error ? error.message : 'Automatic rider dispatch request failed.';
+      }
+
+      const { data: finishedStatus, error: finishError } = await database.rpc('finish_ready_order_dispatch', {
+        p_order_id: orderId,
+        p_outcome: outcome,
+        p_error: reason || null
+      });
+      if (finishError) {
+        console.error('[OrderDispatchAutomation] Could not finish dispatch job:', finishError.message);
+        break;
+      }
+      if (finishedStatus === 'manual_review') {
+        console.error(`[OrderDispatchAutomation] Order #${orderId} needs manual dispatch review: ${reason}`);
+      } else if (outcome === 'assigned') {
+        console.log(`[OrderDispatchAutomation] Rider assigned to order #${orderId}.`);
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Automatic dispatch polling failed.';
+    if (dispatchPollWarning !== message) {
+      console.error('[OrderDispatchAutomation] Dispatch polling is unavailable:', message);
+      dispatchPollWarning = message;
+    }
+  } finally {
+    dispatchPollRunning = false;
+  }
+}
+
 const worker = new Worker(queueName, processJob, {
   connection,
   concurrency: 20,
@@ -394,10 +485,22 @@ async function heartbeat() {
     last_seen_at: new Date().toISOString()
   });
   if (error) console.error('[MerchantOrderAlerts] Worker heartbeat failed:', error.message);
+  if (dispatchAutomationConfigured) {
+    const { error: dispatchError } = await database.from('merchant_alert_worker_heartbeats').upsert({
+      worker_key: 'order-dispatch',
+      last_seen_at: new Date().toISOString()
+    });
+    if (dispatchError) console.error('[OrderDispatchAutomation] Worker heartbeat failed:', dispatchError.message);
+  }
 }
 
 await heartbeat();
+if (!dispatchAutomationConfigured) {
+  console.error('[OrderDispatchAutomation] Automatic dispatch is inactive. Configure INTERNAL_API_SECRET and an HTTPS INTERNAL_API_BASE_URL or NEXT_PUBLIC_BASE_URL.');
+}
 const heartbeatTimer = setInterval(() => void heartbeat(), 30_000);
+void pollAutomaticDispatchJobs();
+const dispatchPollTimer = setInterval(() => void pollAutomaticDispatchJobs(), 5_000);
 worker.on('completed', job => console.log(`[MerchantOrderAlerts] Completed ${job.name} for order #${job.data.orderId}`));
 worker.on('failed', (job, error) => console.error(`[MerchantOrderAlerts] Failed ${job?.name || 'job'}:`, error.message));
 worker.on('error', error => console.error('[MerchantOrderAlerts] Worker error:', error.message));
@@ -406,6 +509,7 @@ console.log(`[MerchantOrderAlerts] Worker listening on queue "${queueName}".`);
 async function shutdown(signal) {
   console.log(`[MerchantOrderAlerts] Shutting down on ${signal}.`);
   clearInterval(heartbeatTimer);
+  clearInterval(dispatchPollTimer);
   await worker.close();
   process.exit(0);
 }

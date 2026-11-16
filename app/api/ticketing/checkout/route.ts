@@ -111,10 +111,44 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Enter a valid promo code.' }, { status: 400 });
   }
 
+  const { data: ticketPaymentSetting, error: ticketPaymentSettingError } = await database
+    .from('settings')
+    .select('value')
+    .eq('key', 'ticketing_payment_config')
+    .maybeSingle();
+  if (ticketPaymentSettingError) {
+    console.error('[TicketingCheckout] Could not load the ticket payment provider setting:', ticketPaymentSettingError);
+    return NextResponse.json({ error: 'Ticket payment settings could not be loaded. Contact ONLINE BAR support.' }, { status: 503 });
+  }
+  const storedConfig = ticketPaymentSetting?.value;
+  const storedProvider = typeof storedConfig === 'object' && storedConfig !== null && !Array.isArray(storedConfig)
+    ? (storedConfig as Record<string, unknown>).provider
+    : undefined;
+  const configuredPaymentProvider = ticketPaymentSetting
+    ? storedProvider
+    : process.env.TICKETING_PAYMENT_PROVIDER?.trim().toLowerCase() || 'paystack';
+  if (configuredPaymentProvider !== 'paystack' && configuredPaymentProvider !== 'payhero') {
+    console.error('[TicketingCheckout] The saved ticket payment provider must be paystack or payhero.');
+    return NextResponse.json({ error: 'Ticket payment settings are invalid. Contact ONLINE BAR support.' }, { status: 503 });
+  }
+  const usePayHero = configuredPaymentProvider === 'payhero';
+  if (usePayHero) {
+    try {
+      assertPayHeroTicketPaymentConfiguration();
+    } catch (configurationError) {
+      console.error('[TicketingCheckout] PayHero configuration is missing:', configurationError);
+      return NextResponse.json({ error: 'Ticketing M-Pesa payment is not configured. Contact ONLINE BAR support.' }, { status: 503 });
+    }
+  }
+
   const paymentReference = `OBT-${randomBytes(16).toString('hex').toUpperCase()}`;
-  const checkoutRpc = promotionCode
-    ? 'ticketing_create_checkout_with_promotion'
-    : 'ticketing_create_checkout';
+  const checkoutRpc = usePayHero
+    ? promotionCode
+      ? 'ticketing_create_payhero_checkout_with_promotion'
+      : 'ticketing_create_payhero_checkout'
+    : promotionCode
+      ? 'ticketing_create_checkout_with_promotion'
+      : 'ticketing_create_checkout';
   const { data, error } = await database.rpc(checkoutRpc, {
     p_event_id: eventId,
     p_ticket_type_id: ticketTypeId,
@@ -135,17 +169,21 @@ export async function POST(request: Request) {
     if (mapped) return NextResponse.json({ error: mapped.message }, { status: mapped.status });
     console.error('[TicketingCheckout] Could not create checkout:', error);
     if (error.code === 'PGRST202') {
-      const requiredMigration = promotionCode
-        ? 'TICKETING_PROMOTIONS_MIGRATION.sql'
-        : 'TICKETING_COMMERCE_MIGRATION.sql';
+      const requiredMigration = usePayHero
+        ? 'TICKETING_PROMOTIONS_MIGRATION.sql and PAYHERO_TICKETING_MIGRATION.sql'
+        : promotionCode
+          ? 'TICKETING_PROMOTIONS_MIGRATION.sql'
+          : 'TICKETING_COMMERCE_MIGRATION.sql';
       return NextResponse.json({
         error: `Ticket checkout is temporarily unavailable. The ticketing database setup needs attention (${requiredMigration}). Please contact support.`
       }, { status: 503 });
     }
     if (error.code === '42883') {
-      const requiredMigrations = promotionCode
-        ? 'TICKETING_COMMERCE_MIGRATION.sql and TICKETING_PROMOTIONS_MIGRATION.sql'
-        : 'TICKETING_COMMERCE_MIGRATION.sql';
+      const requiredMigrations = usePayHero
+        ? `TICKETING_COMMERCE_MIGRATION.sql, TICKETING_PROMOTIONS_MIGRATION.sql, and PAYHERO_TICKETING_MIGRATION.sql`
+        : promotionCode
+          ? 'TICKETING_COMMERCE_MIGRATION.sql and TICKETING_PROMOTIONS_MIGRATION.sql'
+          : 'TICKETING_COMMERCE_MIGRATION.sql';
       return NextResponse.json({
         error: `Ticket checkout is temporarily unavailable. The ticketing database setup needs attention (${requiredMigrations}). Please contact support.`
       }, { status: 503 });

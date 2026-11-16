@@ -1,5 +1,5 @@
 -- PayHero M-Pesa checkout for paid ticket orders only.
--- Apply after the ticketing commerce and sales-report migrations.
+-- Apply after the commerce, sales-report, and promotions migrations.
 BEGIN;
 
 ALTER TABLE public.ticketing_payment_attempts
@@ -71,6 +71,48 @@ BEGIN
     END IF;
 
     RETURN v_checkout;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.ticketing_create_payhero_checkout_with_promotion(
+    p_event_id UUID,
+    p_ticket_type_id UUID,
+    p_quantity INTEGER,
+    p_buyer_email TEXT,
+    p_buyer_name TEXT,
+    p_idempotency_key TEXT,
+    p_access_token_hash TEXT,
+    p_payment_reference TEXT,
+    p_promotion_code TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    PERFORM public.ticketing_create_checkout_with_promotion(
+        p_event_id,
+        p_ticket_type_id,
+        p_quantity,
+        p_buyer_email,
+        p_buyer_name,
+        p_idempotency_key,
+        p_access_token_hash,
+        p_payment_reference,
+        p_promotion_code
+    );
+
+    RETURN public.ticketing_create_payhero_checkout(
+        p_event_id,
+        p_ticket_type_id,
+        p_quantity,
+        p_buyer_email,
+        p_buyer_name,
+        p_idempotency_key,
+        p_access_token_hash,
+        p_payment_reference
+    );
 END;
 $$;
 
@@ -266,6 +308,10 @@ $$;
 REVOKE ALL ON FUNCTION public.ticketing_create_payhero_checkout(UUID, UUID, INTEGER, TEXT, TEXT, TEXT, TEXT, TEXT)
     FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.ticketing_create_payhero_checkout(UUID, UUID, INTEGER, TEXT, TEXT, TEXT, TEXT, TEXT)
+    TO service_role;
+REVOKE ALL ON FUNCTION public.ticketing_create_payhero_checkout_with_promotion(UUID, UUID, INTEGER, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT)
+    FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ticketing_create_payhero_checkout_with_promotion(UUID, UUID, INTEGER, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT)
     TO service_role;
 REVOKE ALL ON FUNCTION public.ticketing_claim_payhero_initialization(TEXT)
     FROM PUBLIC, anon, authenticated;

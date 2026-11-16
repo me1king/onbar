@@ -1066,7 +1066,37 @@ export async function POST(request: Request) {
           : 'The fulfillment update could not be saved.'
       }, { status: 409 });
     }
-    return NextResponse.json({ event: data }, { status: 201 });
+    let warning: string | undefined;
+    if (eventType === 'ready') {
+      const { data: dispatchJob, error: dispatchJobError } = await context.database
+        .from('order_dispatch_automation_jobs')
+        .select('status')
+        .eq('order_id', orderId)
+        .maybeSingle();
+      if (dispatchJobError || !dispatchJob) {
+        if (dispatchJobError) {
+          console.error('[MerchantNetwork] Ready event saved, but dispatch automation could not be checked:', dispatchJobError);
+        }
+        warning = 'The order is marked ready, but automatic rider dispatch is not installed or available. Admin dispatch remains available.';
+      } else {
+        const { data: worker, error: workerError } = await context.database
+          .from('merchant_alert_worker_heartbeats')
+          .select('last_seen_at')
+          .eq('worker_key', 'order-dispatch')
+          .maybeSingle();
+        const workerIsFresh = worker?.last_seen_at
+          && Date.now() - new Date(worker.last_seen_at).getTime() <= 90_000;
+        if (workerError || !workerIsFresh) {
+          if (workerError) {
+            console.error('[MerchantNetwork] Could not verify the order dispatch worker:', workerError);
+          }
+          warning = 'The order is marked ready and queued, but the automatic dispatch worker is offline. Admin dispatch remains available.';
+        } else if (dispatchJob.status === 'manual_review') {
+          warning = 'The order is marked ready, but automatic dispatch needs admin review.';
+        }
+      }
+    }
+    return NextResponse.json({ event: data, ...(warning ? { warning } : {}) }, { status: 201 });
   }
 
   if (body.operation === 'report_incident') {

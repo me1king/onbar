@@ -35,7 +35,10 @@ ALTER TABLE public.customer_notification_deliveries
     DROP CONSTRAINT IF EXISTS customer_notification_deliveries_notification_status_check;
 ALTER TABLE public.customer_notification_deliveries
     ADD CONSTRAINT customer_notification_deliveries_notification_status_check
-        CHECK (notification_status IN ('Paid', 'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'));
+        CHECK (notification_status IN (
+            'Pending', 'Confirmed', 'Payment Failed', 'Paid',
+            'Dispatched', 'Picked Up', 'Out for Delivery', 'Delivered'
+        ));
 
 CREATE INDEX IF NOT EXISTS customer_notification_deliveries_order_idx
     ON public.customer_notification_deliveries (order_id, created_at DESC);

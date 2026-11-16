@@ -88,6 +88,7 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
         { href: "/blog", label: "Mixology" },
         { href: "/delivery", label: "Delivery Areas" },
         { href: "/build-the-night", label: "Build the Night" },
+        { href: "/card-games", label: "Date-night Card Game · 18+" },
         { href: "/concierge", label: "Event Concierge" },
         { href: "/guides/how-much-alcohol-for-a-party", label: "Party Drinks Guide" },
         { href: "/contact", label: "Support" },
