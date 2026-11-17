@@ -272,6 +272,41 @@ one-minute retries, the order remains available for manual dispatch review.
 Assignment notifications do not mean the rider accepted the mission; rider
 delivery status and the existing secure handover checks remain authoritative.
 
+## Operations order recovery and rider contacts
+
+After applying `DISPATCH_MIGRATION.sql` and
+`COD_RIDER_DISPATCH_MIGRATION.sql`, apply
+`ORDER_RIDER_REASSIGNMENT_MIGRATION.sql`. The Operations control room can retry
+failed customer notifications only for the order's current status and through
+the selected channel's existing consent and notification rules. Failed
+merchant alerts can be retried while the order remains eligible for merchant
+fulfillment. Supplier reallocation is available only before rider dispatch.
+Rider replacement is limited to `Dispatched` orders before pickup; it rechecks
+merchant readiness, rider verification, heartbeat, capacity, and route
+eligibility, records the admin reason in dispatch history, and notifies the
+customer and replacement rider. Contact the previous rider directly to prevent
+a duplicate pickup. Orders already picked up, out for delivery, or completed
+must be resolved through the delivery incident process instead.
+
+After applying `DISPATCH_MIGRATION.sql`, apply
+`RIDER_PROFILE_DETAILS_MIGRATION.sql` to enable the rider terminal's Emergency
+Contact and Payments sections. Riders can save their emergency contact and
+M-Pesa payout number/name themselves. The saved payout details are preferences,
+not proof of name verification or a live payout transaction; name checks remain
+an admin responsibility.
+
+After applying `DISPATCH_MIGRATION.sql` and
+`RIDER_ORDER_ALERTS_MIGRATION.sql`, apply
+`RIDER_OFFLINE_LOCATION_AND_BUZZ_MIGRATION.sql`. When a verified rider goes
+offline, the server atomically records the last saved GPS coordinates and GPS
+timestamp in a private, service-role-only audit table before changing the
+online state. Admins with rider-management access can view the latest snapshot
+on the rider profile. If the rider had no valid GPS fix, the offline event is
+still recorded without coordinates. Operations can also send an assigned,
+not-yet-collected rider a push buzz that vibrates on supported devices and
+opens Rider Command; an SMS fallback is queued through the existing Redis/Twilio
+worker. Keep web push, Redis, Twilio, and the worker configured for delivery.
+
 ## Rider verification onboarding
 
 After applying `DISPATCH_MIGRATION.sql` and

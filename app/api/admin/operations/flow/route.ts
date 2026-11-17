@@ -26,6 +26,11 @@ type OrderFlow = {
   id: number;
   status: string;
   createdAt: string;
+  paymentMethod: string | null;
+  riderName: string | null;
+  riderPhone: string | null;
+  retryableCustomerChannels: string[];
+  retryableMerchantAlerts: number;
   stages: {
     order: { status: EventStatus; label: string };
     payment: { status: EventStatus; label: string };
@@ -369,6 +374,11 @@ export async function GET() {
       const dispatchDecision = latestDispatch.get(order.id);
       const orderNotifications = notificationsByOrder.get(order.id) || [];
       const merchantAlerts = merchantAlertsByOrder.get(order.id) || [];
+      const retryableCustomerChannels = [...new Set(orderNotifications
+        .filter(row => row.notification_status === order.status && row.delivery_status === 'failed')
+        .map(row => row.channel)
+        .filter(channel => ['email', 'sms', 'whatsapp', 'push'].includes(channel)))];
+      const retryableMerchantAlerts = merchantAlerts.filter(alert => alert.status === 'failed').length;
       const paymentVerified = Boolean(payment || order.payment_verified_at);
       const isCash = (order.payment_method || '').toLowerCase() === 'cod';
       const merchantEvent = merchant?.event_type || null;
@@ -388,6 +398,11 @@ export async function GET() {
         id: order.id,
         status: orderStatus,
         createdAt: order.created_at,
+        paymentMethod: order.payment_method,
+        riderName: order.rider_name,
+        riderPhone: order.rider_phone,
+        retryableCustomerChannels,
+        retryableMerchantAlerts,
         stages: {
           order: { status: 'success', label: `Placed ${new Date(order.created_at).toLocaleTimeString()}` },
           payment: paymentVerified
@@ -471,6 +486,10 @@ export async function GET() {
       workers,
       providers: providerReadiness,
       internalNotificationBridge: Boolean(process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim()),
+      permissions: {
+        manageOrders: hasAdminPermission(session, 'can_manage_orders'),
+        manageCommunications: hasAdminPermission(session, 'can_manage_communications')
+      },
       notificationRules: {
         enabledStatuses: enabledNotificationStatuses.length,
         totalStatuses: CUSTOMER_NOTIFICATION_STATUSES.length,

@@ -46,6 +46,11 @@ type OrderFlow = {
   id: number;
   status: string;
   createdAt: string;
+  paymentMethod: string | null;
+  riderName: string | null;
+  riderPhone: string | null;
+  retryableCustomerChannels: string[];
+  retryableMerchantAlerts: number;
   stages: {
     order: FlowStage;
     payment: FlowStage;
@@ -64,6 +69,14 @@ type FlowEvent = {
   detail: string;
   status: string;
   occurredAt: string;
+};
+type RiderCandidate = {
+  riderPhone: string;
+  riderName: string;
+  activeLoad: number;
+  maxDeliveries: number;
+  distanceKm: number | null;
+  etaMinutes: number | null;
 };
 type FlowData = {
   checkedAt: string;
@@ -84,6 +97,7 @@ type FlowData = {
   workers: Array<{ key: string; status: string; lastSeenAt: string | null }>;
   providers: Record<string, boolean>;
   internalNotificationBridge: boolean;
+  permissions: { manageOrders: boolean; manageCommunications: boolean };
   notificationRules: {
     enabledStatuses: number;
     totalStatuses: number;
@@ -124,6 +138,14 @@ export default function OperationsCommandCenter() {
   const [flow, setFlow] = React.useState<FlowData | null>(null);
   const [flowError, setFlowError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [actionBusy, setActionBusy] = React.useState<string | null>(null);
+  const [actionNotice, setActionNotice] = React.useState<{ orderId: number; message: string; error: boolean } | null>(null);
+  const [reassignOrder, setReassignOrder] = React.useState<OrderFlow | null>(null);
+  const [riderCandidates, setRiderCandidates] = React.useState<RiderCandidate[]>([]);
+  const [replacementRiderPhone, setReplacementRiderPhone] = React.useState('');
+  const [reassignmentReason, setReassignmentReason] = React.useState('');
+  const [reassignmentLoading, setReassignmentLoading] = React.useState(false);
+  const [reassignmentError, setReassignmentError] = React.useState<string | null>(null);
 
   const refreshFlow = React.useCallback(async () => {
     try {
@@ -173,6 +195,148 @@ export default function OperationsCommandCenter() {
     }
   }, [refreshFlow]);
 
+  const sendAdminAction = async (
+    order: OrderFlow,
+    operation: string,
+    label: string,
+    extra: Record<string, string> = {}
+  ) => {
+    const key = `${operation}:${order.id}`;
+    setActionBusy(key);
+    setActionNotice(null);
+    try {
+      const response = await fetch('/api/admin/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, operation, ...extra }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as {
+        error?: string;
+        warning?: string;
+        message?: string;
+        allocation?: { fully_allocated?: boolean };
+      };
+      if (!response.ok) throw new Error(result.error || `${label} could not be completed.`);
+      setActionNotice({
+        orderId: order.id,
+        message: result.warning || result.message || `${label} completed.`,
+        error: Boolean(result.warning || result.allocation?.fully_allocated === false)
+      });
+      await refreshFlow();
+    } catch (error) {
+      console.error(`[Operations] ${label} failed for order #${order.id}:`, error);
+      setActionNotice({
+        orderId: order.id,
+        message: error instanceof Error ? error.message : `${label} could not be completed.`,
+        error: true
+      });
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const retryCustomerNotice = async (order: OrderFlow, channel: string) => {
+    const key = `customer:${order.id}:${channel}`;
+    setActionBusy(key);
+    setActionNotice(null);
+    try {
+      const response = await fetch('/api/admin/notify-customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, status: order.status, retryChannel: channel }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as {
+        error?: string;
+        skipped?: string[];
+        results?: Array<{ status?: string; error?: string }>;
+      };
+      if (!response.ok) throw new Error(result.error || 'Customer notification could not be retried.');
+      const failed = result.results?.some(item => item.status === 'failed' || item.status === 'skipped');
+      setActionNotice({
+        orderId: order.id,
+        message: result.skipped?.join(', ')
+          || (failed ? 'Retry returned a failed or skipped channel; check notification settings and consent.' : `${channel} retry completed.`),
+        error: Boolean(result.skipped?.length || failed)
+      });
+      await refreshFlow();
+    } catch (error) {
+      console.error(`[Operations] Customer ${channel} retry failed for order #${order.id}:`, error);
+      setActionNotice({
+        orderId: order.id,
+        message: error instanceof Error ? error.message : 'Customer notification could not be retried.',
+        error: true
+      });
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const openRiderReassignment = async (order: OrderFlow) => {
+    setReassignOrder(order);
+    setRiderCandidates([]);
+    setReplacementRiderPhone('');
+    setReassignmentReason('');
+    setReassignmentError(null);
+    setReassignmentLoading(true);
+    try {
+      const response = await fetch(`/api/admin/dispatch?orderId=${order.id}`, { cache: 'no-store' });
+      const result = await response.json() as {
+        error?: string;
+        job?: { riderCandidates?: RiderCandidate[]; fulfillment?: { ready: boolean; reasons: string[] } };
+      };
+      if (!response.ok || !result.job) throw new Error(result.error || 'Replacement rider options could not be loaded.');
+      if (!result.job.fulfillment?.ready) {
+        throw new Error(result.job.fulfillment?.reasons.join(' ') || 'Merchant readiness could not be verified.');
+      }
+      const candidates = (result.job.riderCandidates || [])
+        .filter(candidate => candidate.riderPhone !== order.riderPhone);
+      setRiderCandidates(candidates);
+      setReplacementRiderPhone(candidates[0]?.riderPhone || '');
+      if (!candidates.length) setReassignmentError('No verified, online rider with capacity and a valid route is available.');
+    } catch (error) {
+      setReassignmentError(error instanceof Error ? error.message : 'Replacement rider options could not be loaded.');
+    } finally {
+      setReassignmentLoading(false);
+    }
+  };
+
+  const submitRiderReassignment = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!reassignOrder) return;
+    setReassignmentLoading(true);
+    setReassignmentError(null);
+    setActionNotice(null);
+    try {
+      const response = await fetch('/api/admin/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: reassignOrder.id,
+          operation: 'reassign_rider',
+          riderPhone: replacementRiderPhone,
+          reason: reassignmentReason
+        }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as { error?: string; warning?: string };
+      if (!response.ok) throw new Error(result.error || 'Rider reassignment could not be completed.');
+      setReassignOrder(null);
+      setActionNotice({
+        orderId: reassignOrder.id,
+        message: result.warning || 'Rider reassigned.',
+        error: Boolean(result.warning)
+      });
+      await refreshFlow();
+    } catch (error) {
+      console.error(`[Operations] Rider reassignment failed for order #${reassignOrder.id}:`, error);
+      setReassignmentError(error instanceof Error ? error.message : 'Rider reassignment could not be completed.');
+    } finally {
+      setReassignmentLoading(false);
+    }
+  };
+
   React.useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => void refresh(), 15_000);
@@ -188,11 +352,11 @@ export default function OperationsCommandCenter() {
   ];
 
   return (
-    <main className="min-h-screen bg-slate-50 p-5 text-left sm:p-8">
+    <main className="min-h-screen min-w-0 bg-slate-50 p-3 text-left sm:p-8">
       <header className="flex flex-col justify-between gap-5 border-b border-slate-200 pb-8 sm:flex-row sm:items-end">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Operations control room</p>
-          <h1 className="mt-2 text-4xl font-black uppercase tracking-tighter text-slate-950">Run the shift</h1>
+          <h1 className="mt-2 text-3xl font-black uppercase tracking-tighter text-slate-950 sm:text-4xl">Run the shift</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-500">One live starting point for customers, orders, riders, merchants, and supply operations.</p>
         </div>
         <Button onClick={() => void refresh()} variant="outline" className="h-11 rounded-xl bg-white text-xs font-black uppercase">
@@ -213,7 +377,7 @@ export default function OperationsCommandCenter() {
       </section>
 
       <section className="mt-8">
-        <Card className="rounded-2xl border-slate-100 bg-white p-5 shadow-sm sm:p-6">
+        <Card className="min-w-0 rounded-2xl border-slate-100 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-end">
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-primary">End-to-end automation</p>
@@ -346,6 +510,27 @@ export default function OperationsCommandCenter() {
                       const currentStage = activeStageIndex >= 0
                         ? `${operationalStages[activeStageIndex][0]} · ${operationalStages[activeStageIndex][1].label}`
                         : order.status;
+                      const canRetryMerchantAllocation = flow.permissions.manageOrders
+                        && !order.riderPhone
+                        && ['Paid', 'Confirmed'].includes(order.status)
+                        && (order.stages.merchant.status !== 'success' || order.stages.dispatch.status === 'failed');
+                      const canRetryMerchantAlert = flow.permissions.manageOrders
+                        && !order.riderPhone
+                        && ['Paid', 'Confirmed'].includes(order.status)
+                        && order.retryableMerchantAlerts > 0;
+                      const canReplaceRider = flow.permissions.manageOrders
+                        && order.status === 'Dispatched'
+                        && Boolean(order.riderPhone);
+                      const canBuzzRider = flow.permissions.manageOrders
+                        && order.status === 'Dispatched'
+                        && Boolean(order.riderPhone);
+                      const canRetryCustomer = flow.permissions.manageOrders || flow.permissions.manageCommunications;
+                      const customerRetryChannels = canRetryCustomer ? order.retryableCustomerChannels : [];
+                      const hasRecoveryActions = customerRetryChannels.length > 0
+                        || canRetryMerchantAllocation
+                        || canRetryMerchantAlert
+                        || canReplaceRider
+                        || canBuzzRider;
                       return (
                       <div
                         key={order.id}
@@ -364,7 +549,7 @@ export default function OperationsCommandCenter() {
                             <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black uppercase text-slate-600">{order.status}</span>
                           </div>
                         </div>
-                        <div aria-hidden="true" className="mb-3 overflow-x-auto">
+                        <div aria-hidden="true" className="mb-3 hidden overflow-x-auto sm:block">
                           <div className="flex min-w-[650px] items-center px-1 py-2">
                             {stages.map(([label, stage], index) => (
                               <React.Fragment key={label}>
@@ -405,6 +590,87 @@ export default function OperationsCommandCenter() {
                             </div>
                           ))}
                         </div>
+                        {hasRecoveryActions && (
+                          <div className="mt-4 border-t border-slate-100 pt-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Recovery actions</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {customerRetryChannels.map(channel => {
+                                const key = `customer:${order.id}:${channel}`;
+                                return (
+                                  <Button
+                                    key={channel}
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={Boolean(actionBusy)}
+                                    onClick={() => void retryCustomerNotice(order, channel)}
+                                    className="min-h-11 w-full justify-start whitespace-normal text-left text-[10px] font-bold sm:h-8 sm:min-h-8 sm:w-auto sm:justify-center sm:whitespace-nowrap sm:text-center"
+                                  >
+                                    {actionBusy === key ? 'Retrying…' : `Retry customer ${channel}`}
+                                  </Button>
+                                );
+                              })}
+                              {canRetryMerchantAlert && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={Boolean(actionBusy)}
+                                  onClick={() => void sendAdminAction(order, 'retry_merchant_alerts', 'Merchant alert retry')}
+                                  className="min-h-11 w-full justify-start whitespace-normal text-left text-[10px] font-bold sm:h-8 sm:min-h-8 sm:w-auto sm:justify-center sm:whitespace-nowrap sm:text-center"
+                                >
+                                  {actionBusy === `retry_merchant_alerts:${order.id}` ? 'Retrying…' : `Retry ${order.retryableMerchantAlerts} merchant alert${order.retryableMerchantAlerts === 1 ? '' : 's'}`}
+                                </Button>
+                              )}
+                              {canRetryMerchantAllocation && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={Boolean(actionBusy)}
+                                  onClick={() => void sendAdminAction(order, 'retry_merchant_allocation', 'Supplier reallocation')}
+                                  className="min-h-11 w-full justify-start whitespace-normal text-left text-[10px] font-bold sm:h-8 sm:min-h-8 sm:w-auto sm:justify-center sm:whitespace-nowrap sm:text-center"
+                                >
+                                  {actionBusy === `retry_merchant_allocation:${order.id}` ? 'Checking suppliers…' : 'Find replacement supplier'}
+                                </Button>
+                              )}
+                              {canReplaceRider && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={Boolean(actionBusy) || reassignmentLoading}
+                                  onClick={() => void openRiderReassignment(order)}
+                                  className="min-h-11 w-full justify-start whitespace-normal text-left text-[10px] font-bold sm:h-8 sm:min-h-8 sm:w-auto sm:justify-center sm:whitespace-nowrap sm:text-center"
+                                >
+                                  Replace rider
+                                </Button>
+                              )}
+                              {canBuzzRider && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={Boolean(actionBusy)}
+                                  onClick={() => void sendAdminAction(order, 'buzz_rider', 'Rider buzz')}
+                                  className="min-h-11 w-full justify-start whitespace-normal text-left text-[10px] font-bold text-amber-900 hover:bg-amber-50 sm:h-8 sm:min-h-8 sm:w-auto sm:justify-center sm:whitespace-nowrap sm:text-center"
+                                >
+                                  {actionBusy === `buzz_rider:${order.id}` ? 'Buzzing rider…' : 'Buzz rider to open app'}
+                                </Button>
+                              )}
+                            </div>
+                            {actionNotice?.orderId === order.id && (
+                              <p role={actionNotice.error ? 'alert' : 'status'} className={cn(
+                                'mt-2 rounded-lg border p-2 text-[10px] font-semibold',
+                                actionNotice.error
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              )}>
+                                {actionNotice.message}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                     })}
@@ -505,6 +771,76 @@ export default function OperationsCommandCenter() {
           </Link>
         ))}
       </section>
+
+      {reassignOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reassign-rider-title"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Pre-pickup recovery</p>
+                <h2 id="reassign-rider-title" className="mt-1 text-xl font-black">Replace rider · order #{reassignOrder.id}</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Current rider: {reassignOrder.riderName || reassignOrder.riderPhone}. This is allowed only before pickup.
+                </p>
+              </div>
+              <Button type="button" variant="outline" disabled={reassignmentLoading} onClick={() => setReassignOrder(null)}>
+                Close
+              </Button>
+            </div>
+
+            {reassignmentLoading && <p role="status" className="mt-4 text-sm text-slate-500">Checking fulfillment and eligible riders…</p>}
+            <form onSubmit={event => void submitRiderReassignment(event)} className="mt-4 space-y-4">
+              <label className="block text-xs font-bold text-slate-700">
+                Replacement rider
+                <select
+                  required
+                  disabled={reassignmentLoading || !riderCandidates.length}
+                  value={replacementRiderPhone}
+                  onChange={event => setReplacementRiderPhone(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+                >
+                  {riderCandidates.map(candidate => (
+                    <option key={candidate.riderPhone} value={candidate.riderPhone}>
+                      {candidate.riderName} · {candidate.activeLoad}/{candidate.maxDeliveries} deliveries
+                      {candidate.distanceKm === null ? '' : ` · ${candidate.distanceKm} km`}
+                      {candidate.etaMinutes === null ? '' : ` · ${candidate.etaMinutes} min`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs font-bold text-slate-700">
+                Reason for reassignment
+                <textarea
+                  required
+                  minLength={8}
+                  maxLength={500}
+                  value={reassignmentReason}
+                  onChange={event => setReassignmentReason(event.target.value)}
+                  rows={3}
+                  className="mt-2 w-full rounded-lg border border-slate-200 p-3 text-sm"
+                  placeholder="Explain why the assigned rider must be replaced."
+                />
+              </label>
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                The order stays in Dispatched status. Pickup, out-for-delivery, and completed orders cannot be reassigned here.
+                You must contact the previous rider to prevent a duplicate collection.
+              </p>
+              {reassignmentError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">{reassignmentError}</p>}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" disabled={reassignmentLoading} onClick={() => setReassignOrder(null)}>Cancel</Button>
+                <Button type="submit" disabled={reassignmentLoading || !riderCandidates.length || reassignmentReason.trim().length < 8}>
+                  {reassignmentLoading ? 'Saving…' : 'Confirm replacement'}
+                </Button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

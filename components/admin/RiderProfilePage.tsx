@@ -67,6 +67,13 @@ interface RiderProfileData {
   };
   orders: RiderOrder[];
   activeOrders: RiderOrder[];
+  lastOfflineLocation: {
+    latitude: number | null;
+    longitude: number | null;
+    location_recorded_at: string | null;
+    went_offline_at: string;
+  } | null;
+  lastOfflineLocationUnavailable: boolean;
   documents: {
     id_number_last4: string | null;
     license_number: string | null;
@@ -359,6 +366,38 @@ export default function RiderProfilePage() {
                   }]} showDemand={false} />
                 : <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-slate-500"><MapPin size={22} /><span>Location is shown only when the rider has a recent, valid GPS update.</span></div>}
             </div>
+          </Card>
+
+          <Card className="rounded-2xl p-5 shadow-sm">
+            <h2 className="flex items-center gap-2 font-bold"><ShieldCheck size={18} />Last location before going offline</h2>
+            {data.lastOfflineLocationUnavailable
+              ? <p className="mt-2 text-sm text-amber-800">Offline location audit is not installed. Apply supabase/RIDER_OFFLINE_LOCATION_AND_BUZZ_MIGRATION.sql.</p>
+              : data.lastOfflineLocation
+                ? <>
+                    <p className="mt-2 text-sm text-slate-600">
+                      Went offline {new Date(data.lastOfflineLocation.went_offline_at).toLocaleString()}
+                      {data.lastOfflineLocation.location_recorded_at
+                        ? ` · last GPS fix ${new Date(data.lastOfflineLocation.location_recorded_at).toLocaleString()}`
+                        : ' · no GPS fix was recorded'}
+                    </p>
+                    {data.lastOfflineLocation.latitude !== null && data.lastOfflineLocation.longitude !== null
+                      ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm">
+                          <span className="font-mono text-xs text-slate-700">
+                            {Number(data.lastOfflineLocation.latitude).toFixed(6)}, {Number(data.lastOfflineLocation.longitude).toFixed(6)}
+                          </span>
+                          <Button asChild size="sm" variant="outline">
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${data.lastOfflineLocation.latitude},${data.lastOfflineLocation.longitude}`)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Open map
+                            </a>
+                          </Button>
+                        </div>
+                      : <p className="mt-2 text-sm text-slate-500">The rider had no valid saved GPS coordinates when going offline.</p>}
+                  </>
+                : <p className="mt-2 text-sm text-slate-500">No rider online-to-offline events have been recorded yet.</p>}
           </Card>
 
           <Card className="overflow-hidden rounded-2xl shadow-sm">

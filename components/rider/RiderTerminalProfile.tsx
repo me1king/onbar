@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { formatPrice } from '@/lib/utils';
 
-type TerminalTab = 'overview' | 'documents' | 'zones' | 'payments' | 'performance' | 'incidents' | 'security';
+type TerminalTab = 'overview' | 'contacts' | 'documents' | 'zones' | 'payments' | 'performance' | 'incidents' | 'security';
 type TerminalOrder = {
   id: number;
   status: string;
@@ -99,6 +99,7 @@ type RiderProfileResponse = {
 
 const tabItems: Array<{ id: TerminalTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
+  { id: 'contacts', label: 'Emergency contact' },
   { id: 'documents', label: 'Documents' },
   { id: 'zones', label: 'Zones & shifts' },
   { id: 'payments', label: 'Payments' },
@@ -390,6 +391,56 @@ export default function RiderTerminalProfile({
               </Card>
               {children}
             </div>
+          )}
+
+          {tab === 'contacts' && (
+            <Card className="space-y-5 rounded-xl border-slate-200 bg-white p-5 shadow-sm">
+              <div>
+                <h2 className="font-bold">Emergency contact</h2>
+                <p className="mt-1 text-sm text-slate-500">Keep a trusted contact up to date for rider safety. This information is private to your rider profile.</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-sm font-semibold">
+                  Contact name
+                  <Input
+                    autoComplete="name"
+                    disabled={!details || saving}
+                    value={details?.emergencyContactName || ''}
+                    onChange={event => setData(current => current?.details
+                      ? { ...current, details: { ...current.details, emergencyContactName: event.target.value || null } }
+                      : current)}
+                    className="mt-2"
+                  />
+                </label>
+                <label className="text-sm font-semibold">
+                  Contact phone
+                  <Input
+                    type="tel"
+                    autoComplete="tel"
+                    disabled={!details || saving}
+                    value={details?.emergencyContactPhone || ''}
+                    onChange={event => setData(current => current?.details
+                      ? { ...current, details: { ...current.details, emergencyContactPhone: event.target.value || null } }
+                      : current)}
+                    className="mt-2"
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-slate-500">Enter both fields to record a complete emergency contact. Phone numbers are validated when saved.</p>
+              {Boolean((details?.emergencyContactName || '').trim()) !== Boolean((details?.emergencyContactPhone || '').trim()) && (
+                <p role="alert" className="text-xs font-semibold text-rose-700">Add both the contact name and phone number, or clear both fields.</p>
+              )}
+              <Button
+                type="button"
+                disabled={!details || saving || Boolean((details.emergencyContactName || '').trim()) !== Boolean((details.emergencyContactPhone || '').trim())}
+                onClick={() => void saveProfile({
+                  emergencyContactName: details?.emergencyContactName || null,
+                  emergencyContactPhone: details?.emergencyContactPhone || null
+                })}
+              >
+                {saving ? 'Saving…' : 'Save emergency contact'}
+              </Button>
+            </Card>
           )}
 
           {tab === 'documents' && (

@@ -332,15 +332,48 @@ export default function AdminLayoutClient({
           />
 
           {/* Mobile Header */}
-          <div className="lg:hidden flex items-center justify-between px-4 py-4 bg-background border-b border-border sticky top-0 z-50 shadow-sm">
+          <div className="lg:hidden flex items-center justify-between gap-2 px-3 py-3 bg-background border-b border-border sticky top-0 z-50 shadow-sm">
             <div className="flex items-center gap-2">
               <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
                 <Wine className="h-5 w-5 text-white" />
               </div>
               <span className="font-black text-foreground uppercase tracking-tighter text-sm">Bar Admin</span>
             </div>
-            <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="rounded-xl h-10 w-10 text-foreground" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+            <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Search admin pages"
+                  className="rounded-xl h-9 w-9 text-foreground"
+                  onClick={() => setIsSearchOpen(true)}
+                >
+                  <Search className="h-5 w-5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Open notifications"
+                  className="relative rounded-xl h-9 w-9 text-foreground"
+                  onClick={() => setIsNotificationsOpen(true)}
+                >
+                  <Bell className="h-5 w-5" />
+                  {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full border-2 border-background bg-rose-600 px-1 text-[8px] font-black leading-3 text-white">
+                      {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0)}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={isSidebarOpen ? 'Close admin navigation' : 'Open admin navigation'}
+                  aria-expanded={isSidebarOpen}
+                  className="rounded-xl h-10 w-10 text-foreground"
+                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                >
                   {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
                 </Button>
             </div>
@@ -374,7 +407,7 @@ export default function AdminLayoutClient({
               </div>
 
               {/* Nav Links */}
-              <nav className="flex-1 p-6 space-y-8 overflow-y-auto no-scrollbar">
+              <nav className="flex-1 p-4 lg:p-6 space-y-8 overflow-y-auto no-scrollbar">
                 {visibleNavGroups.map((group) => (
                   <div key={group.group} className="space-y-3">
                     {!isSidebarCollapsed && (
@@ -402,7 +435,7 @@ export default function AdminLayoutClient({
                           onClick={() => setIsSidebarOpen(false)}
                           className={cn(
                             "relative flex items-center rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 group overflow-hidden",
-                            isSidebarCollapsed ? "justify-center p-3.5" : "gap-4 px-5 py-3",
+                            isSidebarCollapsed ? "justify-center p-3.5" : "min-h-11 gap-4 px-4 py-3 lg:px-5",
                             isActive(item.href)
                               ? "bg-primary text-white shadow-lg shadow-primary/20"
                               : "text-slate-400 hover:bg-brand-accent/10 hover:text-foreground"
@@ -439,7 +472,7 @@ export default function AdminLayoutClient({
               </nav>
 
               {/* Sidebar Footer */}
-              <div className="p-6 border-t border-border">
+              <div className="p-4 lg:p-6 border-t border-border">
                 <Button
                   variant="ghost"
                   className={cn(

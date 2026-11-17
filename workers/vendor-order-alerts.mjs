@@ -107,16 +107,20 @@ async function claimDelivery({ orderId, applicationId, contactId, channel, step,
   }
   const oldSentAt = existing.sent_at ? new Date(existing.sent_at).getTime() : 0;
   if (existing.status === 'sending' && Date.now() - oldSentAt < 120_000) return null;
-  const { error: updateError } = await database.from('merchant_order_alert_log')
+  const claimedAt = new Date().toISOString();
+  let reclaim = database.from('merchant_order_alert_log')
     .update({
       status: 'sending',
       error: null,
-      sent_at: new Date().toISOString(),
+      sent_at: claimedAt,
       attempt_count: (existing.attempt_count || 1) + 1
     })
-    .eq('id', existing.id);
-  if (updateError) throw updateError;
-  return existing.id;
+    .eq('id', existing.id)
+    .eq('status', existing.status);
+  reclaim = existing.sent_at ? reclaim.eq('sent_at', existing.sent_at) : reclaim.is('sent_at', null);
+  const { data: reclaimed, error: reclaimError } = await reclaim.select('id').maybeSingle();
+  if (reclaimError) throw reclaimError;
+  return reclaimed?.id || null;
 }
 
 async function recordAlert(id, patch) {
@@ -279,26 +283,27 @@ async function processChannel(job, channel) {
 }
 
 async function processTimeout(job) {
+  const alertId = await claimDelivery({
+    orderId: job.orderId,
+    applicationId: job.applicationId,
+    contactId: null,
+    channel: 'timeout',
+    step: 'timeout_60s',
+    recipientKey: 'scheduler'
+  });
+  if (!alertId) return;
+
   const { data, error } = await database.rpc('expire_merchant_order_alert', {
     p_order_id: job.orderId,
     p_application_id: job.applicationId
   });
   if (error) throw error;
   const state = typeof data?.status === 'string' ? data.status : 'unknown';
-  const { error: logError } = await database.from('merchant_order_alert_log').upsert({
-    order_id: job.orderId,
-    application_id: job.applicationId,
-    contact_id: null,
-    channel: 'timeout',
-    step: 'timeout_60s',
-    recipient_key: 'scheduler',
+  const { error: logError } = await database.from('merchant_order_alert_log').update({
     status: state === 'missed' ? 'missed' : state === 'already_answered' ? 'stopped' : 'failed',
     error: state === 'missed' ? null : `Timeout was not applied: ${state}`,
     sent_at: new Date().toISOString()
-  }, {
-    onConflict: 'order_id,application_id,channel,step,recipient_key',
-    ignoreDuplicates: true
-  });
+  }).eq('id', alertId);
   if (logError) throw logError;
   console.log(`[MerchantOrderAlerts] Order #${job.orderId}, merchant ${job.applicationId}: ${state}`);
   if (state === 'missed' || state === 'already_answered') {
@@ -319,6 +324,7 @@ async function processTimeout(job) {
 }
 
 async function processRiderSms(job) {
+  const isBuzz = typeof job.buzzAttemptId === 'string';
   const { data: order, error: orderError } = await database.from('orders')
     .select('id,status,rider_phone')
     .eq('id', job.orderId)
@@ -329,8 +335,8 @@ async function processRiderSms(job) {
     p_order_id: job.orderId,
     p_rider_phone: job.riderPhone,
     p_channel: 'sms',
-    p_step: 'sms_10s',
-    p_recipient_key: job.riderPhone
+    p_step: isBuzz ? 'buzz' : 'sms_10s',
+    p_recipient_key: isBuzz ? `buzz-sms-${job.buzzAttemptId}` : job.riderPhone
   });
   if (alertId.error) throw alertId.error;
   if (typeof alertId.data !== 'string') return;
@@ -354,7 +360,9 @@ async function processRiderSms(job) {
   const form = new URLSearchParams({
     To: job.riderPhone,
     From: twilioNumber,
-    Body: `Online Bar: You have been assigned delivery order #${job.orderId}. Open Rider Command: ${publicBaseUrl}/rider/dashboard?orderId=${job.orderId}`
+    Body: isBuzz
+      ? `Online Bar: Order #${job.orderId} is waiting. Open Rider Command to receive it: ${publicBaseUrl}/rider/dashboard?orderId=${job.orderId}`
+      : `Online Bar: You have been assigned delivery order #${job.orderId}. Open Rider Command: ${publicBaseUrl}/rider/dashboard?orderId=${job.orderId}`
   });
   const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`, {
     method: 'POST',
@@ -391,7 +399,7 @@ async function processJob(job) {
   if (job.name === 'sms') return processChannel(job.data, 'sms');
   if (job.name === 'voice') return processChannel(job.data, 'voice');
   if (job.name === 'timeout') return processTimeout(job.data);
-  if (job.name === 'rider-sms') return processRiderSms(job.data);
+  if (job.name === 'rider-sms' || job.name === 'rider-buzz-sms') return processRiderSms(job.data);
   throw new Error(`Unknown merchant alert job: ${job.name}`);
 }
 

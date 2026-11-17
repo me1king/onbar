@@ -114,6 +114,22 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }, { status: 503 });
   }
 
+  const { data: lastOfflineLocation, error: offlineLocationError } = await database
+    .from('rider_offline_location_events')
+    .select('latitude,longitude,location_recorded_at,went_offline_at')
+    .eq('rider_phone', rider.rider_phone)
+    .order('went_offline_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastOfflineLocationUnavailable = Boolean(offlineLocationError
+    && (offlineLocationError.code === '42P01'
+      || offlineLocationError.code === 'PGRST205'
+      || /rider_offline_location_events|schema cache/i.test(offlineLocationError.message)));
+  if (offlineLocationError && !lastOfflineLocationUnavailable) {
+    console.error('[AdminRiderProfile] Could not load the last offline rider location:', offlineLocationError);
+    return NextResponse.json({ error: 'The rider location security history could not be loaded.' }, { status: 503 });
+  }
+
   const sensitiveAllowed = session.role.toLowerCase() === 'owner'
     || hasAdminPermission(session, 'can_view_sensitive_data');
   let documents: {
@@ -211,6 +227,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     },
     orders: recentOrdersResult.data || [],
     activeOrders: activeOrdersResult.data || [],
+    lastOfflineLocation: offlineLocationError ? null : lastOfflineLocation,
+    lastOfflineLocationUnavailable,
     documents,
     refreshedAt: now.toISOString()
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });

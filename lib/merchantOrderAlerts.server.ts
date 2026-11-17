@@ -20,6 +20,7 @@ type OrderAlertJob = {
   orderId: number;
   applicationId: string;
   merchantName: string;
+  attemptId?: string;
 };
 
 let queue: Queue<OrderAlertJob> | null = null;
@@ -89,17 +90,52 @@ async function claimDelivery(
 ) {
   const { data, error } = await database
     .from('merchant_order_alert_log')
-    .upsert(row, {
+    .upsert({ ...row, sent_at: new Date().toISOString() }, {
       onConflict: 'order_id,application_id,channel,step,recipient_key',
       ignoreDuplicates: true
     })
-    .select('id')
+    .select('id,status,sent_at,attempt_count')
     .maybeSingle();
   if (error) {
     console.error('[MerchantOrderAlerts] Could not claim alert delivery:', error);
     return null;
   }
-  return data?.id ?? null;
+  if (data) return data.id;
+
+  const { data: existing, error: existingError } = await database.from('merchant_order_alert_log')
+    .select('id,status,sent_at,attempt_count')
+    .eq('order_id', row.order_id)
+    .eq('application_id', row.application_id)
+    .eq('channel', row.channel)
+    .eq('step', row.step)
+    .eq('recipient_key', row.recipient_key)
+    .maybeSingle();
+  if (existingError) {
+    console.error('[MerchantOrderAlerts] Could not inspect an existing alert delivery:', existingError);
+    return null;
+  }
+  if (!existing || ['sent', 'delivered', 'opened', 'accepted', 'stopped', 'missed', 'no_device'].includes(existing.status)) {
+    return null;
+  }
+  const sentAt = existing.sent_at ? new Date(existing.sent_at).getTime() : 0;
+  if (existing.status === 'sending' && Date.now() - sentAt < 120_000) return null;
+
+  let reclaim = database.from('merchant_order_alert_log')
+    .update({
+      status: 'sending',
+      error: null,
+      sent_at: new Date().toISOString(),
+      attempt_count: (existing.attempt_count || 1) + 1
+    })
+    .eq('id', existing.id)
+    .eq('status', existing.status);
+  reclaim = existing.sent_at ? reclaim.eq('sent_at', existing.sent_at) : reclaim.is('sent_at', null);
+  const { data: reclaimed, error: reclaimError } = await reclaim.select('id').maybeSingle();
+  if (reclaimError) {
+    console.error('[MerchantOrderAlerts] Could not reclaim a failed alert delivery:', reclaimError);
+    return null;
+  }
+  return reclaimed?.id ?? null;
 }
 
 async function pushToDevice(
@@ -178,7 +214,7 @@ async function scheduleEscalation(input: OrderAlertJob) {
   }
   try {
     await targetQueue.add('sms', input, {
-      jobId: `sms-${input.orderId}-${input.applicationId}`,
+      jobId: `sms-${input.orderId}-${input.applicationId}${input.attemptId ? `-${input.attemptId}` : ''}`,
       delay: 20_000,
       attempts: 4,
       backoff: { type: 'exponential', delay: 5000 },
@@ -186,7 +222,7 @@ async function scheduleEscalation(input: OrderAlertJob) {
       removeOnFail: 5000
     });
     await targetQueue.add('voice', input, {
-      jobId: `voice-${input.orderId}-${input.applicationId}`,
+      jobId: `voice-${input.orderId}-${input.applicationId}${input.attemptId ? `-${input.attemptId}` : ''}`,
       delay: 45_000,
       attempts: 4,
       backoff: { type: 'exponential', delay: 5000 },
@@ -194,7 +230,7 @@ async function scheduleEscalation(input: OrderAlertJob) {
       removeOnFail: 5000
     });
     await targetQueue.add('timeout', input, {
-      jobId: `timeout-${input.orderId}-${input.applicationId}`,
+      jobId: `timeout-${input.orderId}-${input.applicationId}${input.attemptId ? `-${input.attemptId}` : ''}`,
       delay: 60_000,
       attempts: 4,
       backoff: { type: 'exponential', delay: 5000 },
@@ -208,7 +244,7 @@ async function scheduleEscalation(input: OrderAlertJob) {
   }
 }
 
-export async function alertAllocatedMerchants(database: SupabaseClient, orderId: number) {
+export async function alertAllocatedMerchants(database: SupabaseClient, orderId: number, attemptId?: string) {
   const { data: order, error: orderError } = await database.from('orders')
     .select('id,status,payment_method,payment_verified_at')
     .eq('id', orderId)
@@ -292,7 +328,8 @@ export async function alertAllocatedMerchants(database: SupabaseClient, orderId:
     const escalation = await scheduleEscalation({
       orderId,
       applicationId: application.id,
-      merchantName: application.business_name
+      merchantName: application.business_name,
+      attemptId
     });
     escalationQueued ||= escalation.queued;
     if (!escalation.queued) {
@@ -309,6 +346,25 @@ export async function alertAllocatedMerchants(database: SupabaseClient, orderId:
     }
   }
   return { applications: alertedApplications, pushSent, escalationQueued };
+}
+
+export async function retryFailedMerchantOrderAlerts(
+  database: SupabaseClient,
+  orderId: number,
+  attemptId: string
+) {
+  const { data: failures, error } = await database.from('merchant_order_alert_log')
+    .select('id')
+    .eq('order_id', orderId)
+    .eq('status', 'failed')
+    .limit(100);
+  if (error) throw error;
+  if (!failures?.length) {
+    return { applications: 0, pushSent: 0, escalationQueued: false, retryableFailures: 0 };
+  }
+
+  const result = await alertAllocatedMerchants(database, orderId, attemptId);
+  return { ...result, retryableFailures: failures.length };
 }
 
 export async function sendMerchantAlertTest(

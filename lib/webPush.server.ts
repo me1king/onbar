@@ -22,6 +22,7 @@ export async function sendWebPush(
     url: string;
     tag: string;
     orderId?: number;
+    type?: string;
     requireInteraction?: boolean;
     expiresAt?: string;
   },
