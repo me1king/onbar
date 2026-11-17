@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Users,
     Plus,
@@ -50,43 +49,28 @@ export default function AudiencesPage() {
     });
 
     const getReach = useCallback(async (rules: Record<string, unknown>) => {
-        if (!supabase) throw new Error('Supabase is not configured; audience reach is unavailable.');
-        const { data, error: reachError } = await supabase.rpc('count_matching_audience_members', {
-            p_spend_min: Number(rules.spend_min) || 0,
-            p_orders_min: Number(rules.orders_min) || 0,
-            p_last_order_days: Number(rules.last_order_days) || 0
+        const response = await fetch('/api/admin/marketing/audiences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'estimate', rules })
         });
-        if (reachError) throw reachError;
-        return Number(data);
+        const result = await response.json() as { reach?: number; error?: string };
+        if (!response.ok || typeof result.reach !== 'number') {
+            throw new Error(result.error || 'Unable to calculate audience reach.');
+        }
+        return result.reach;
     }, []);
 
     const refreshSegments = useCallback(async () => {
-        if (!supabase) {
-            setError('Supabase is not configured. Audience data is unavailable.');
-            setSegments([]);
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         setError(null);
         try {
-            const { data, error: segmentsError } = await supabase
-                .from('audience_segments')
-                .select('id, name, rules, created_at')
-                .order('created_at', { ascending: false });
-            if (segmentsError) throw segmentsError;
-
-            const results = await Promise.all((data || []).map(async segment => {
-                try {
-                    const rules = (segment.rules || {}) as Record<string, unknown>;
-                    const reach = await getReach(rules);
-                    return { ...segment, rules, estimated_reach: reach };
-                } catch (reachError) {
-                    console.error(`Audience reach unavailable for ${segment.name}:`, reachError);
-                    return { ...segment, rules: (segment.rules || {}) as Record<string, unknown>, estimated_reach: null };
-                }
-            }));
-            setSegments(results);
+            const response = await fetch('/api/admin/marketing/audiences', { cache: 'no-store' });
+            const result = await response.json() as { segments?: Segment[]; error?: string };
+            if (!response.ok || !Array.isArray(result.segments)) {
+                throw new Error(result.error || 'Unable to load audience segments.');
+            }
+            setSegments(result.segments);
         } catch (fetchError) {
             console.error('Audience segment fetch failed:', fetchError);
             setSegments([]);
@@ -94,7 +78,7 @@ export default function AudiencesPage() {
         } finally {
             setLoading(false);
         }
-    }, [getReach]);
+    }, []);
 
     useEffect(() => {
         void refreshSegments();
@@ -116,19 +100,28 @@ export default function AudiencesPage() {
     };
 
     const handleCreateSegment = async () => {
-        if (!supabase || !newSegment.name) return;
+        if (!newSegment.name.trim()) {
+            setError('Enter a segment name.');
+            return;
+        }
         setLoading(true);
         setError(null);
         try {
-            const { error: insertError } = await supabase.from('audience_segments').insert([{
+            const response = await fetch('/api/admin/marketing/audiences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                action: 'create',
                 name: newSegment.name,
                 rules: {
-                    spend_min: Number(newSegment.spend_min),
-                    orders_min: Number(newSegment.orders_min),
-                    last_order_days: Number(newSegment.last_order_days)
+                    spend_min: newSegment.spend_min,
+                    orders_min: newSegment.orders_min,
+                    last_order_days: newSegment.last_order_days
                 }
-            }]);
-            if (insertError) throw insertError;
+                })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Unable to save the audience segment.');
             setIsDefining(false);
             setNewSegment({ name: '', spend_min: '0', orders_min: '0', last_order_days: '90', reach: null });
             await refreshSegments();
@@ -145,10 +138,15 @@ export default function AudiencesPage() {
     );
 
     const handleDeleteSegment = async (id: string, name: string) => {
-        if (!supabase || !confirm(`Permanently expunge audience segment "${name}"?`)) return;
+        if (!confirm(`Permanently expunge audience segment "${name}"?`)) return;
         try {
-            const { error: deleteError } = await supabase.from('audience_segments').delete().eq('id', id);
-            if (deleteError) throw deleteError;
+            const response = await fetch('/api/admin/marketing/audiences', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Could not delete the audience segment.');
             setSegments(prev => prev.filter(s => s.id !== id));
         } catch (err) {
             console.error(err);

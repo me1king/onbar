@@ -86,6 +86,31 @@ The admin APIs use the server-side `SUPABASE_SERVICE_ROLE_KEY`. Keep that key
 server-only; the recovery migration denies direct browser access to its finance
 tables.
 
+The Owner/Admin growth calendar uses `/api/admin/growth-calendar` for queue
+reads and writes and requires the `can_manage_marketing` permission; it does not
+depend on browser access to `publishing_queue` or `content_master`.
+
+The Owner/Admin audience builder uses `/api/admin/marketing/audiences` for
+segment reads, reach estimates, creation, and deletion. It requires the
+`can_manage_marketing` permission, the server-side service-role key, and the
+audience and CRM schema from `FINAL_ESTABLISHMENT_SQL.sql` and
+`CRM_CONSENT_MESSAGING_MIGRATION.sql`.
+
+The Tactical Camera currently publishes Instagram posts only. Connect an
+Instagram professional account in Social Accounts and apply
+`FOOD_ADDONS_MIGRATION.sql` to provide the public `onlinebar-assets` image
+bucket used for uploaded photos. Other social channels remain unavailable until
+their publishing integrations are configured.
+
+## Private document vault
+
+Run `ADMIN_VAULT_MIGRATION.sql` in the Supabase SQL Editor before using the
+Owner/Admin Ledger Audit vault. It creates the private `admin_vault` table and
+`admin-vault` storage bucket, disables direct browser access, and sets a 25 MB
+file limit. The vault API requires an admin session with
+`can_view_sensitive_data` and the server-side `SUPABASE_SERVICE_ROLE_KEY`.
+Uploads use short-lived signed URLs; downloads use expiring signed links.
+
 ## Consent-based live customer journeys
 
 After applying `FINAL_ESTABLISHMENT_SQL.sql` and

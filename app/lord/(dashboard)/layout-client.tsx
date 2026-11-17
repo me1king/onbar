@@ -269,7 +269,7 @@ export default function AdminLayoutClient({
     { group: 'FINANCE', items: [
       { name: 'Finance Vault', href: '/lord/finance', icon: DollarSign, permission: 'can_view_revenue' },
       { name: 'Payout Requests', href: '/lord/payouts', icon: CreditCard, permission: 'can_view_revenue' },
-      { name: 'Ledger Audit', href: '/lord/vault', icon: Lock, permission: 'can_view_revenue' },
+      { name: 'Ledger Audit', href: '/lord/vault', icon: Lock, permission: 'can_view_sensitive_data' },
     ]},
     { group: 'INTELLIGENCE', items: [
       { name: 'Bar Analytics', href: '/lord/analytics', icon: Activity, permission: 'can_view_revenue' },

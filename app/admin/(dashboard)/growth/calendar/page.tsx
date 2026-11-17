@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import {
     Calendar as CalendarIcon,
     ChevronLeft,
@@ -79,53 +78,26 @@ export default function GrowthCalendar() {
     });
 
     const fetchCalendar = React.useCallback(async () => {
-        if (!supabase) {
-            setError('Supabase is not configured. Scheduled content is unavailable.');
-            setMissions([]);
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         setError(null);
         try {
-            const { data: queueRows, error: queryError } = await supabase
-                .from('publishing_queue')
-                .select('*')
-                .order('scheduled_at', { ascending: true });
-
-            if (queryError) throw queryError;
-            const rows = queueRows || [];
-            const masterIds = [...new Set(rows
-                .map(item => item.master_id)
-                .filter((id): id is string => typeof id === 'string' && id.length > 0))];
-            const contentById = new Map<string, { title: string | null; base_description: string | null }>();
-
-            if (masterIds.length > 0) {
-                const { data: contentRows, error: contentError } = await supabase
-                    .from('content_master')
-                    .select('id, title, base_description')
-                    .in('id', masterIds);
-                if (contentError) throw contentError;
-                for (const content of contentRows || []) {
-                    contentById.set(String(content.id), content);
-                }
-            }
-
-            const formatted: ScheduledMission[] = rows
-                .filter(item => item.scheduled_at && Number.isFinite(new Date(item.scheduled_at).getTime()))
+            const response = await fetch('/api/admin/growth-calendar', { cache: 'no-store' });
+            const result = await response.json() as {
+                missions?: Array<Omit<ScheduledMission, 'day' | 'time'>>;
+                error?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Unable to load the publishing queue.');
+            if (!Array.isArray(result.missions)) throw new Error('Publishing queue response is incomplete.');
+            const formatted: ScheduledMission[] = result.missions
+                .filter(item => Number.isFinite(new Date(item.scheduledAt).getTime()))
                 .map(item => {
-                    const scheduledAt = new Date(item.scheduled_at);
-                    const content = contentById.get(String(item.master_id));
+                    const scheduledAt = new Date(item.scheduledAt);
                     return {
-                        id: String(item.id),
-                        title: content?.title || item.title || 'Untitled schedule',
+                        ...item,
                         time: scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                         day: scheduledAt.getDate(),
-                        scheduledAt: scheduledAt.toISOString(),
-                        type: (item.platform || 'other').toLowerCase() as ScheduledMission['type'],
-                        status: (item.status || 'SCHEDULED') as ScheduledMission['status'],
-                        caption: content?.base_description || undefined,
-                        image_url: item.image_url || undefined
+                        type: item.type.toLowerCase() as ScheduledMission['type'],
+                        status: item.status as ScheduledMission['status']
                     };
                 });
             setMissions(formatted);
@@ -139,22 +111,13 @@ export default function GrowthCalendar() {
     }, []);
 
     React.useEffect(() => {
-        fetchCalendar();
-
-        if (supabase) {
-            const channel = supabase.channel('publishing_queue_realtime')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'publishing_queue' }, fetchCalendar)
-                .subscribe();
-            return () => { if (supabase) supabase.removeChannel(channel); };
-        }
+        void fetchCalendar();
+        const interval = setInterval(() => { void fetchCalendar(); }, 30_000);
+        return () => clearInterval(interval);
     }, [fetchCalendar]);
 
     const handleCreateMission = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!supabase) {
-            setError('Supabase is not configured. The schedule was not saved.');
-            return;
-        }
         if (!builderForm.title.trim()) {
             setError('Enter a title before scheduling.');
             return;
@@ -171,25 +134,18 @@ export default function GrowthCalendar() {
         setError(null);
         setNotice(null);
         try {
-            const { data: master, error: masterError } = await supabase
-                .from('content_master')
-                .insert([{
-                    title: builderForm.title.trim(),
-                    base_description: builderForm.caption.trim() || null,
-                    status: 'SCHEDULED'
-                }])
-                .select('id')
-                .single();
-            if (masterError) throw masterError;
-
-            const { error: queueError } = await supabase.from('publishing_queue').insert([{
-                master_id: master.id,
-                title: builderForm.title.trim(),
-                platform: builderForm.type.toUpperCase(),
-                scheduled_at: scheduledDate.toISOString(),
-                status: 'SCHEDULED'
-            }]);
-            if (queueError) throw queueError;
+            const response = await fetch('/api/admin/growth-calendar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: builderForm.title,
+                    caption: builderForm.caption,
+                    platform: builderForm.type,
+                    scheduledAt: scheduledDate.toISOString()
+                })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Unable to save the schedule.');
 
             await fetchCalendar();
             setIsBuilderOpen(false);
@@ -288,7 +244,7 @@ export default function GrowthCalendar() {
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1 col-span-2 md:col-span-1">
                     <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Queue Source</p>
                     <p className="text-xl font-black text-slate-600 uppercase tracking-tight flex items-center gap-1 mt-1">
-                        {supabase ? 'Supabase' : 'Unavailable'}
+                        Protected API
                     </p>
                 </Card>
             </div>

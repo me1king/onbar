@@ -35,23 +35,38 @@ export default function DocumentVault() {
     const [documents, setDocuments] = React.useState<Document[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [uploading, setUploading] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
+    const [notice, setNotice] = React.useState<string | null>(null);
     const [metrics, setMetrics] = React.useState({ total_files: 0, total_size_mb: 0 });
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const filteredDocuments = React.useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        return query
+            ? documents.filter(doc => doc.name.toLowerCase().includes(query) || doc.id.toLowerCase().includes(query))
+            : documents;
+    }, [documents, searchQuery]);
+    const storageUsed = metrics.total_size_mb >= 1024
+        ? `${(metrics.total_size_mb / 1024).toFixed(2)} GB`
+        : `${metrics.total_size_mb.toFixed(1)} MB`;
 
     const fetchDocs = React.useCallback(async () => {
-        if (!supabase) return;
         setLoading(true);
+        setError(null);
         try {
-            const [docsRes, metricsRes] = await Promise.all([
-                supabase.from('admin_vault').select('*').order('created_at', { ascending: false }),
-                supabase.from('vault_metrics').select('*').single()
-            ]);
-
-            if (docsRes.error) throw docsRes.error;
-            setDocuments(docsRes.data || []);
-            if (metricsRes.data) setMetrics(metricsRes.data);
+            const response = await fetch('/api/admin/vault', { cache: 'no-store' });
+            const result = await response.json() as {
+                documents?: Document[];
+                metrics?: { total_files: number; total_size_mb: number };
+                error?: string;
+            };
+            if (!response.ok) throw new Error(result.error || 'Unable to load vault documents.');
+            if (!Array.isArray(result.documents) || !result.metrics) throw new Error('Vault response is incomplete.');
+            setDocuments(result.documents);
+            setMetrics(result.metrics);
         } catch (err: unknown) {
-            console.error("Vault Sync Failure:", (err as Error).message || err);
+            const message = err instanceof Error ? err.message : 'Unable to load vault documents.';
+            setError(message);
+            console.error('Vault sync failure:', err);
         } finally {
             setLoading(false);
         }
@@ -62,58 +77,96 @@ export default function DocumentVault() {
     }, [fetchDocs]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.[0] || !supabase) return;
+        const file = e.target.files?.[0];
+        if (!file) return;
         setUploading(true);
+        setError(null);
+        setNotice(null);
         try {
-            const file = e.target.files[0];
-            const BUCKET = 'admin-vault';
-            const path = `docs/${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
-
-            const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file);
+            const contentType = file.type || 'application/octet-stream';
+            const createResponse = await fetch('/api/admin/vault', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'create-upload',
+                    name: file.name,
+                    type: 'Contract',
+                    contentType,
+                    sizeBytes: file.size
+                })
+            });
+            const createResult = await createResponse.json() as { path?: string; token?: string; error?: string };
+            if (!createResponse.ok || !createResult.path || !createResult.token) {
+                throw new Error(createResult.error || 'Could not prepare secure upload.');
+            }
+            if (!supabase) throw new Error('Browser storage is not configured.');
+            const { error: uploadError } = await supabase.storage
+                .from('admin-vault')
+                .uploadToSignedUrl(createResult.path, createResult.token, file, { contentType });
             if (uploadError) throw uploadError;
 
-            await supabase.from('admin_vault').insert([{
-                name: file.name,
-                type: 'Contract', // Default type
-                size: (file.size / 1024 / 1024).toFixed(1) + ' MB',
-                authorized_by: 'Admin Hub',
-                storage_path: path
-            }]);
+            const completeResponse = await fetch('/api/admin/vault', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'complete-upload',
+                    path: createResult.path,
+                    name: file.name,
+                    type: 'Contract',
+                    contentType,
+                    sizeBytes: file.size
+                })
+            });
+            const completeResult = await completeResponse.json() as { error?: string };
+            if (!completeResponse.ok) throw new Error(completeResult.error || 'Could not finish saving the document.');
 
-            fetchDocs();
-        } catch (err) {
-            console.error(err);
+            setNotice('Document uploaded securely.');
+            await fetchDocs();
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Document upload failed.';
+            setError(message);
+            console.error('Vault upload failure:', err);
         } finally {
+            if (fileInputRef.current) fileInputRef.current.value = '';
             setUploading(false);
         }
     };
 
-    const deleteDoc = async (id: string, path?: string) => {
-        if (!supabase || !confirm("Delete this document?")) return;
+    const deleteDoc = async (id: string) => {
+        if (!confirm('Delete this document?')) return;
+        setError(null);
+        setNotice(null);
         try {
-            if (path) {
-                await supabase.storage.from('admin-vault').remove([path]);
-            }
-            const { error } = await supabase.from('admin_vault').delete().eq('id', id);
-            if (error) throw error;
-            setDocuments(prev => prev.filter(d => d.id !== id));
-        } catch (err) {
-            console.error(err);
+            const response = await fetch('/api/admin/vault', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Unable to delete this document.');
+            setNotice('Document deleted.');
+            await fetchDocs();
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Document deletion failed.';
+            setError(message);
+            console.error('Vault deletion failure:', err);
         }
     };
 
-    const downloadDoc = async (path?: string, name?: string) => {
-        if (!supabase || !path) return;
+    const downloadDoc = async (id: string) => {
+        setError(null);
         try {
-            const { data, error } = await supabase.storage.from('admin-vault').download(path);
-            if (error) throw error;
-            const url = window.URL.createObjectURL(data);
+            const response = await fetch(`/api/admin/vault?download=${encodeURIComponent(id)}`, { cache: 'no-store' });
+            const result = await response.json() as { url?: string; error?: string };
+            if (!response.ok || !result.url) throw new Error(result.error || 'Unable to prepare a secure download.');
             const a = document.createElement('a');
-            a.href = url;
-            a.download = name || 'document';
+            a.href = result.url;
+            a.rel = 'noopener noreferrer';
             a.click();
-        } catch (err) {
-            console.error(err);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Document download failed.';
+            setError(message);
+            console.error('Vault download failure:', err);
         }
     };
 
@@ -133,7 +186,7 @@ export default function DocumentVault() {
                         <RefreshCcw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} /> Sync Vault
                     </Button>
                     <div className="relative">
-                        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+                        <input type="file" ref={fileInputRef} accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleFileUpload} />
                         <Button
                             onClick={() => fileInputRef.current?.click()}
                             disabled={uploading}
@@ -148,9 +201,9 @@ export default function DocumentVault() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[
-                    { label: 'Storage Used', val: `${(metrics.total_size_mb / 1024).toFixed(2)} GB`, icon: Folder, color: 'indigo' },
+                    { label: 'Storage Used', val: storageUsed, icon: Folder, color: 'indigo' },
                     { label: 'Total Files', val: metrics.total_files.toLocaleString(), icon: FileText, color: 'primary' },
-                    { label: 'Security Level', val: 'Verified', icon: ShieldCheck, color: 'emerald' },
+                    { label: 'Security Level', val: 'Private', icon: ShieldCheck, color: 'emerald' },
                 ].map((item) => (
                     <Card key={item.label} className="p-8 rounded-[3rem] border border-border bg-card shadow-sm flex flex-col justify-between group hover:shadow-xl transition-all relative overflow-hidden">
                         <div className="relative z-10">
@@ -168,6 +221,15 @@ export default function DocumentVault() {
                     </Card>
                 ))}
             </div>
+
+            {(error || notice) && (
+                <div role={error ? 'alert' : 'status'} className={cn(
+                    'rounded-2xl border px-5 py-4 text-sm font-bold',
+                    error ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                )}>
+                    {error || notice}
+                </div>
+            )}
 
             <div className="bg-card rounded-[3.5rem] border border-border shadow-sm overflow-hidden text-left">
                 <div className="p-10 border-b border-border flex flex-col lg:flex-row lg:justify-between lg:items-center gap-6">
@@ -194,7 +256,7 @@ export default function DocumentVault() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                            {documents.map(doc => (
+                            {filteredDocuments.map(doc => (
                                 <tr key={doc.id} className="hover:bg-primary/5 transition-all group">
                                     <td className="px-10 py-8">
                                         <div className="flex items-center gap-4">
@@ -226,7 +288,7 @@ export default function DocumentVault() {
                                                 variant="ghost"
                                                 size="icon"
                                                 className="h-10 w-10 rounded-xl hover:bg-white hover:text-primary transition-all shadow-sm"
-                                                onClick={() => downloadDoc(doc.storage_path, doc.name)}
+                                                onClick={() => downloadDoc(doc.id)}
                                             >
                                                 <Download className="h-4 w-4" />
                                             </Button>
@@ -234,7 +296,7 @@ export default function DocumentVault() {
                                                 variant="ghost"
                                                 size="icon"
                                                 className="h-10 w-10 rounded-xl hover:bg-white hover:text-rose-50 transition-all shadow-sm"
-                                                onClick={() => deleteDoc(doc.id, doc.storage_path)}
+                                                onClick={() => deleteDoc(doc.id)}
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
@@ -245,6 +307,13 @@ export default function DocumentVault() {
                                     </td>
                                 </tr>
                             ))}
+                            {!filteredDocuments.length && (
+                                <tr>
+                                    <td colSpan={5} className="px-10 py-16 text-center text-sm font-bold text-muted-foreground">
+                                        {loading ? 'Loading vault documents…' : error ? 'Vault data could not be loaded.' : searchQuery ? 'No documents match your search.' : 'Vault is empty. Securely upload a document to get started.'}
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

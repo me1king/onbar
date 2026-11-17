@@ -36,21 +36,17 @@ export default function TacticalCameraStudio() {
     const [detectedProduct, setDetectedProduct] = React.useState<ProductNode | null>(null);
     const [products, setProducts] = React.useState<ProductNode[]>([]);
     const [error, setError] = React.useState<string | null>(null);
+    const [notice, setNotice] = React.useState<string | null>(null);
     const [catalogLoading, setCatalogLoading] = React.useState(true);
     const [caption, setCaption] = React.useState('');
     const [hashtags, setHashtags] = React.useState('#OnlineBar #NairobiDispatch #Mixology #CellarVault');
     const [generatingAI, setGeneratingAI] = React.useState(false);
-
-    const [platforms, setPlatforms] = React.useState<Record<string, boolean>>({
-        INSTAGRAM: true,
-        FACEBOOK: true,
-        WHATSAPP: true,
-        YOUTUBE: false,
-    });
-
+    const [selectedImagePath, setSelectedImagePath] = React.useState<string | null>(null);
+    const [uploadingImage, setUploadingImage] = React.useState(false);
     const [publishing, setPublishing] = React.useState(false);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const publishCaption = `${caption.trim()}${hashtags.trim() ? `\n\n${hashtags.trim()}` : ''}`;
 
     React.useEffect(() => {
         async function fetchProducts() {
@@ -77,20 +73,66 @@ export default function TacticalCameraStudio() {
         fetchProducts();
     }, []);
 
-    const handleImageSelect = (imageUrl: string) => {
-        setSelectedImage(imageUrl);
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        e.target.value = '';
+        setError(null);
+        setNotice(null);
+        setUploadingImage(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetch('/api/admin/social/media', { method: 'POST', body: formData });
+            const result = await response.json() as { imageUrl?: string; path?: string; error?: string };
+            if (!response.ok || !result.imageUrl || !result.path) {
+                throw new Error(result.error || 'Could not upload this image for Instagram.');
+            }
+
+            const previousPath = selectedImagePath;
+            setSelectedImage(result.imageUrl);
+            setSelectedImagePath(result.path);
+            setNotice('Photo uploaded and ready to publish.');
+
+            if (previousPath) {
+                const cleanupResponse = await fetch('/api/admin/social/media', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: previousPath })
+                });
+                if (!cleanupResponse.ok) {
+                    const cleanupResult = await cleanupResponse.json() as { error?: string };
+                    throw new Error(cleanupResult.error || 'The new image is ready, but the previous upload could not be removed.');
+                }
+            }
+        } catch (uploadError) {
+            console.error('Social image upload failed:', uploadError);
+            setError(uploadError instanceof Error ? uploadError.message : 'Social image upload failed.');
+        } finally {
+            setUploadingImage(false);
+        }
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                if (event.target?.result) {
-                    handleImageSelect(event.target.result as string);
-                }
-            };
-            reader.readAsDataURL(file);
+    const clearSelectedImage = async () => {
+        const path = selectedImagePath;
+        setSelectedImage(null);
+        setSelectedImagePath(null);
+        setNotice(null);
+        setError(null);
+        if (!path) return;
+
+        try {
+            const response = await fetch('/api/admin/social/media', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+            const result = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(result.error || 'Could not remove the uploaded image.');
+        } catch (cleanupError) {
+            console.error('Social image cleanup failed:', cleanupError);
+            setError(cleanupError instanceof Error ? cleanupError.message : 'Could not remove the uploaded image.');
         }
     };
 
@@ -122,36 +164,42 @@ export default function TacticalCameraStudio() {
         }
     };
 
-    const togglePlatform = (p: string) => {
-        setPlatforms(prev => ({ ...prev, [p]: !prev[p] }));
-    };
-
     const handlePublishProtocol = async () => {
-        const activePlatforms = Object.keys(platforms).filter(k => platforms[k]);
-        if (activePlatforms.length === 0) {
-            alert('Please select at least one deployment platform.');
+        const mediaUrl = selectedImage || detectedProduct?.image_url;
+        if (!publishCaption) {
+            setError('Enter or generate a caption before publishing.');
+            return;
+        }
+        if (publishCaption.length > 2200) {
+            setError('Instagram captions, including hashtags, must be 2,200 characters or fewer.');
+            return;
+        }
+        if (!mediaUrl) {
+            setError('Upload a photo or select a product with a public image before publishing.');
             return;
         }
 
         setPublishing(true);
         setError(null);
+        setNotice(null);
 
         try {
             const res = await fetch('/api/admin/social/publish', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    mediaUrl: selectedImage || detectedProduct?.image_url,
-                    caption: `${caption}\n\n${hashtags}`,
+                    mediaUrl,
+                    caption: publishCaption,
                     productId: detectedProduct?.id,
-                    platforms: activePlatforms
+                    platforms: ['INSTAGRAM']
                 })
             });
 
-            const data = await res.json();
+            const data = await res.json() as { success?: boolean; account?: string; error?: string };
             if (!res.ok || !data.success) {
                 throw new Error(data.error || 'Publish failed');
             }
+            setNotice(`Published to Instagram${data.account ? ` as @${data.account}` : ''}.`);
         } catch (err: unknown) {
             console.error('Social publishing error:', err);
             setError(err instanceof Error ? err.message : 'Social publishing failed.');
@@ -167,6 +215,11 @@ export default function TacticalCameraStudio() {
                     {error}
                 </div>
             )}
+            {notice && (
+                <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-700">
+                    {notice}
+                </div>
+            )}
             {/* Header Banner */}
             <div className="p-8 rounded-[3rem] bg-white border border-slate-200/80 text-foreground shadow-md relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="relative z-10 space-y-2">
@@ -176,13 +229,13 @@ export default function TacticalCameraStudio() {
                     </div>
                     <h2 className="text-3xl font-black uppercase tracking-tighter text-foreground">Publish Protocol Studio</h2>
                     <p className="text-xs font-medium text-slate-500 max-w-xl">
-                        Upload a photo and manually select a catalog product. AI copy and social publishing require configured provider integrations.
+                        Upload a public-ready photo, select a catalog product, and publish to Instagram after connecting a professional account.
                     </p>
                 </div>
 
                 <div className="relative z-10 flex items-center gap-3">
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-slate-50 text-slate-600 border border-slate-200">
-                        Draft mode
+                        Instagram only
                     </span>
                 </div>
             </div>
@@ -202,23 +255,31 @@ export default function TacticalCameraStudio() {
                                 </div>
                             </div>
 
-                            <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileUpload} />
+                            <input type="file" ref={fileInputRef} accept="image/jpeg,image/png,image/webp,image/avif" className="hidden" onChange={handleFileUpload} />
                             <Button
                                 onClick={() => fileInputRef.current?.click()}
+                                disabled={uploadingImage}
                                 variant="outline"
                                 className="rounded-xl h-10 px-4 border-slate-200 bg-slate-50 text-foreground font-black uppercase text-[9px] tracking-widest hover:bg-slate-100"
                             >
-                                <Upload size={14} className="mr-2" /> Upload Photo
+                                {uploadingImage ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Upload size={14} className="mr-2" />}
+                                {uploadingImage ? 'Uploading...' : 'Upload Photo'}
                             </Button>
                         </div>
 
                         {/* Viewfinder Box */}
                         <div className="relative rounded-[2.5rem] bg-slate-50 border-2 border-dashed border-slate-200 aspect-square overflow-hidden flex flex-col items-center justify-center p-6 text-center group">
-                            {selectedImage ? (
+                            {uploadingImage ? (
+                                <div className="space-y-3 text-primary">
+                                    <Loader2 size={28} className="mx-auto animate-spin" />
+                                    <p className="text-xs font-black uppercase">Preparing a public Instagram image...</p>
+                                </div>
+                            ) : selectedImage ? (
                                 <div className="relative w-full h-full rounded-2xl overflow-hidden">
-                                    <Image src={selectedImage} alt="Captured Bottle" fill className="object-cover" />
+                                    <Image src={selectedImage} alt="Captured Bottle" fill unoptimized className="object-cover" />
                                     <button
-                                        onClick={() => setSelectedImage(null)}
+                                        onClick={() => void clearSelectedImage()}
+                                        aria-label="Remove uploaded photo"
                                         className="absolute top-3 right-3 h-8 w-8 rounded-full bg-slate-900/60 text-white flex items-center justify-center hover:bg-slate-900"
                                     >
                                         <X size={16} />
@@ -297,9 +358,16 @@ export default function TacticalCameraStudio() {
                                 <Textarea
                                     value={caption}
                                     onChange={e => setCaption(e.target.value)}
+                                    maxLength={2200}
                                     placeholder="Enter a caption or generate one using the selected catalog product..."
                                     className="min-h-[120px] rounded-2xl bg-slate-50 border-slate-200 text-xs font-medium text-foreground leading-relaxed p-4"
                                 />
+                                <p className={cn(
+                                    'text-right text-[10px] font-bold tabular-nums',
+                                    publishCaption.length > 2200 ? 'text-rose-600' : 'text-slate-400'
+                                )}>
+                                    {publishCaption.length.toLocaleString()} / 2,200 characters (including hashtags)
+                                </p>
                             </div>
 
                             <div className="space-y-2">
@@ -307,6 +375,7 @@ export default function TacticalCameraStudio() {
                                 <Input
                                     value={hashtags}
                                     onChange={e => setHashtags(e.target.value)}
+                                    maxLength={500}
                                     className="h-12 rounded-xl bg-amber-50 border-amber-200 text-xs font-mono font-black text-primary p-4"
                                 />
                             </div>
@@ -314,26 +383,31 @@ export default function TacticalCameraStudio() {
 
                         {/* Platform Target Node Selector */}
                         <div className="space-y-3 pt-2">
-                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Target Social Nodes</label>
+                            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Publishing channel</label>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 {[
-                                    { id: 'INSTAGRAM', label: 'Instagram', icon: Instagram },
-                                    { id: 'FACEBOOK', label: 'Facebook', icon: Facebook },
-                                    { id: 'WHATSAPP', label: 'WhatsApp', icon: MessageCircle },
-                                    { id: 'YOUTUBE', label: 'YouTube Shorts', icon: Youtube }
+                                    { id: 'INSTAGRAM', label: 'Instagram', icon: Instagram, available: true },
+                                    { id: 'FACEBOOK', label: 'Facebook', icon: Facebook, available: false },
+                                    { id: 'WHATSAPP', label: 'WhatsApp', icon: MessageCircle, available: false },
+                                    { id: 'YOUTUBE', label: 'YouTube Shorts', icon: Youtube, available: false }
                                 ].map(p => {
-                                    const active = platforms[p.id];
                                     return (
                                         <button
                                             key={p.id}
-                                            onClick={() => togglePlatform(p.id)}
+                                            type="button"
+                                            disabled={!p.available}
+                                            aria-pressed={p.available}
+                                            title={p.available ? 'Instagram publishing is available' : 'This channel is not configured yet'}
                                             className={cn(
                                                 "p-4 rounded-2xl border text-center flex flex-col items-center justify-center gap-2 transition-all",
-                                                active ? "bg-primary text-white border-primary shadow-md" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                                                p.available
+                                                    ? "bg-primary text-white border-primary shadow-md"
+                                                    : "bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed"
                                             )}
                                         >
                                             <p.icon size={20} />
                                             <span className="text-[10px] font-black uppercase tracking-wider">{p.label}</span>
+                                            {!p.available && <span className="text-[8px] uppercase tracking-wider">Not configured</span>}
                                         </button>
                                     );
                                 })}
@@ -344,7 +418,7 @@ export default function TacticalCameraStudio() {
                         <div className="pt-4 border-t border-slate-100">
                             <Button
                                 onClick={handlePublishProtocol}
-                                disabled={publishing}
+                                disabled={publishing || uploadingImage || !caption.trim() || publishCaption.length > 2200}
                                 className="w-full h-16 rounded-2xl bg-primary text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-primary/20 hover:scale-105 transition-all"
                             >
                                 {publishing ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Zap size={18} className="mr-2 fill-current" />}
