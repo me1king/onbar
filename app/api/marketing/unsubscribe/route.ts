@@ -39,6 +39,19 @@ export async function POST(request: Request) {
         console.error('[NewsletterUnsubscribe] Could not update newsletter subscription:', newsletterError);
         return NextResponse.json({ error: 'Could not update this newsletter preference. Please try again.' }, { status: 500 });
     }
+    const { error: recoveryError } = await database
+        .from('checkout_recovery_sessions')
+        .update({
+            status: 'opted_out',
+            recovery_token_hash: null,
+            recovery_token_expires_at: null,
+            updated_at: new Date().toISOString()
+        })
+        .eq('customer_email', email)
+        .in('status', ['active', 'abandoned', 'sending', 'sent', 'failed']);
+    if (recoveryError) {
+        console.error('[NewsletterUnsubscribe] Could not suppress pending checkout recovery reminders:', recoveryError);
+    }
     const { error: waitlistError } = await database
         .from('market_waitlist')
         .update({

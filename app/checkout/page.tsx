@@ -84,7 +84,7 @@ declare global {
 
 
 function CheckoutContent() {
-  const { cart, clearCart, removeFromCart } = useCart();
+  const { cart, clearCart, removeFromCart, replaceCart } = useCart();
   const { settings, loading: storeSettingsLoading } = useSettings();
   const onlinePaymentProvider = settings.payment_config.online_provider;
 
@@ -95,6 +95,8 @@ function CheckoutContent() {
   const [emailMarketingConsentEmail, setEmailMarketingConsentEmail] = useState<string | null>(null);
   const [emailMarketingConsentBusy, setEmailMarketingConsentBusy] = useState(false);
   const [emailMarketingConsentError, setEmailMarketingConsentError] = useState('');
+  const [checkoutRecoveryNotice, setCheckoutRecoveryNotice] = useState<string | null>(null);
+  const [pendingRecoveryCart, setPendingRecoveryCart] = useState<{ cart: unknown; sessionId: string } | null>(null);
   const [showCustomerErrors, setShowCustomerErrors] = useState(false);
   const customerNameInputRef = useRef<HTMLInputElement>(null);
   const customerPhoneInputRef = useRef<HTMLInputElement>(null);
@@ -347,6 +349,7 @@ function CheckoutContent() {
 
   const searchParams = useSearchParams();
   const [referralCode, setReferralCode] = useState<string | null>(null);
+  const handledRecoveryToken = useRef<string | null>(null);
 
   // Clear status when switching payment methods
   useEffect(() => {
@@ -365,6 +368,43 @@ function CheckoutContent() {
 
     setReferralCode(urlRef || sessionRef || cookieRef);
   }, [searchParams]);
+
+  useEffect(() => {
+    const token = searchParams?.get('recover');
+    if (!token || handledRecoveryToken.current === token) return;
+    handledRecoveryToken.current = token;
+
+    const restoreCart = async () => {
+      try {
+        const response = await fetch(`/api/checkout/abandonment/recover?token=${encodeURIComponent(token)}`, {
+          cache: 'no-store'
+        });
+        const result = await response.json() as { cart?: unknown; recoverySessionId?: string; error?: string };
+        if (!response.ok || !result.cart || !result.recoverySessionId) {
+          throw new Error(result.error || 'This saved cart could not be restored.');
+        }
+        if (cart.length > 0) {
+          setPendingRecoveryCart({ cart: result.cart, sessionId: result.recoverySessionId });
+          setCheckoutRecoveryNotice('Your current cart is unchanged. Choose whether to replace it with the saved checkout.');
+        } else if (!replaceCart(result.cart)) {
+          throw new Error('The saved cart could not be restored safely.');
+        } else {
+          localStorage.setItem('ob_recovery_session_id', result.recoverySessionId);
+          setPendingRecoveryCart(null);
+          setCheckoutRecoveryNotice('Your saved cart is back. Please review current prices and availability before ordering.');
+        }
+      } catch (error) {
+        console.error('[CheckoutRecovery] Could not restore the saved cart:', error);
+        setCheckoutRecoveryNotice(error instanceof Error ? error.message : 'This saved cart could not be restored.');
+      } finally {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('recover');
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      }
+    };
+
+    void restoreCart();
+  }, [cart.length, replaceCart, searchParams]);
 
   // 0. Load Profile & Loyalty Points
   useEffect(() => {
@@ -628,6 +668,54 @@ function CheckoutContent() {
     return () => clearTimeout(timer);
   }, [customerName, customerPhone, customerEmail, user?.email, cart, total, loyaltyPoints, pointsDiscount, pointsPerKsh, usePoints]);
 
+  useEffect(() => {
+    const email = customerEmail.trim().toLowerCase();
+    if (!emailMarketingConsent
+      || emailMarketingConsentBusy
+      || !emailMarketingConsentEmail
+      || emailMarketingConsentEmail !== email
+      || cart.length === 0
+      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const sessionId = localStorage.getItem('ob_session_id');
+        if (!sessionId) return;
+        const response = await fetch('/api/checkout/abandonment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000),
+          body: JSON.stringify({
+            sessionId,
+            customerName,
+            customerEmail: email,
+            cartItems: cart
+          })
+        });
+        const result = await response.json() as { error?: string; saved?: boolean; reason?: string };
+        if (!response.ok) throw new Error(result.error || 'The consented recovery cart could not be saved.');
+        if (active && result.saved === false) {
+          setCheckoutRecoveryNotice(result.reason === 'unavailable'
+            ? 'A cart item is no longer available, so this checkout will not receive a recovery reminder.'
+            : 'Email consent could not be confirmed, so this checkout will not receive a marketing reminder.');
+        }
+      } catch (error) {
+        console.error('[CheckoutRecovery] Could not save the consented checkout:', error);
+        if (active) {
+          setCheckoutRecoveryNotice(error instanceof Error
+            ? `${error.message} Your order is unaffected.`
+            : 'The recovery cart could not be saved. Your order is unaffected.');
+        }
+      }
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [cart, customerEmail, customerName, emailMarketingConsent, emailMarketingConsentBusy, emailMarketingConsentEmail]);
+
   // 1.5 Realtime "Magic" Checkout Listener
   useEffect(() => {
     if (!supabase || !placedOrderId) return;
@@ -824,7 +912,8 @@ function CheckoutContent() {
               isGift,
               giftMessage: giftMessage.trim() || null,
               giftRecipient: giftRecipient.trim() || null,
-              giftOccasion: giftOccasion.trim() || null
+              giftOccasion: giftOccasion.trim() || null,
+              recoverySessionId: localStorage.getItem('ob_recovery_session_id')
           })
       }), 16000, 'The order service did not respond within 15 seconds. Your order may still be processing; check Orders before retrying to avoid a duplicate.');
       const orderResult = await orderResponse.json() as {
@@ -852,6 +941,7 @@ function CheckoutContent() {
       }
       const orderId = orderResult.orderId;
       submittedOrderId = orderId;
+      localStorage.removeItem('ob_recovery_session_id');
       const authoritativeTotal = orderResult.total;
       const newsletterStatus = emailMarketingConsent ? 'joined' : null;
       setPlacedOrderId(orderId);
@@ -1041,7 +1131,7 @@ function CheckoutContent() {
     }
   };
 
-  if (cart.length === 0 && checkoutStatus.type !== "success") {
+  if (cart.length === 0 && checkoutStatus.type !== "success" && !pendingRecoveryCart) {
     return (
       <div className="container mx-auto px-4 py-24 text-center">
         <h1 className="text-4xl font-black uppercase tracking-tighter">Your Cart is Empty</h1>
@@ -1057,6 +1147,29 @@ function CheckoutContent() {
     <div className="container mx-auto px-4 py-12 max-w-7xl text-left min-h-screen">
       <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
       <DeliveryPushPreferences />
+      {pendingRecoveryCart && (
+        <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-medium text-amber-950">
+            A saved checkout is available. Replacing your current cart will discard its current items.
+          </p>
+          <Button
+            type="button"
+            className="shrink-0 rounded-xl"
+            onClick={() => {
+              if (!replaceCart(pendingRecoveryCart.cart)) {
+                setCheckoutRecoveryNotice('The saved cart could not be restored safely.');
+                setPendingRecoveryCart(null);
+                return;
+              }
+              localStorage.setItem('ob_recovery_session_id', pendingRecoveryCart.sessionId);
+              setPendingRecoveryCart(null);
+              setCheckoutRecoveryNotice('Your saved cart is back. Please review current prices and availability before ordering.');
+            }}
+          >
+            Replace cart with saved checkout
+          </Button>
+        </div>
+      )}
       {showQuickDetails && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm">
           <section
@@ -1233,6 +1346,7 @@ function CheckoutContent() {
                       {emailMarketingConsentBusy && <span className="mt-1 block font-semibold">Saving your preference…</span>}
                       {emailMarketingConsent && !emailMarketingConsentBusy && <span className="mt-1 block font-semibold text-emerald-700">Saved for {emailMarketingConsentEmail}. Uncheck to remove this address from promotional emails.</span>}
                       {emailMarketingConsentError && <span role="alert" className="mt-1 block font-semibold text-rose-700">{emailMarketingConsentError}</span>}
+                      {checkoutRecoveryNotice && <span role="status" className="mt-1 block font-semibold text-amber-700">{checkoutRecoveryNotice}</span>}
                     </span>
                   </label>
                 </div>

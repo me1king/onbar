@@ -259,6 +259,7 @@ export default function AdminLayoutClient({
       { name: 'Smart Autopilot', href: '/lord/growth/autopilot', icon: Bot, permission: 'can_manage_marketing' },
       { name: 'Social Nodes', href: '/lord/growth/accounts', icon: Globe, permission: 'can_manage_marketing' },
       { name: 'Marketing Hub', href: '/lord/marketing', icon: TrendingUp, permission: 'can_manage_marketing' },
+      { name: 'Abandoned Checkouts', href: '/lord/marketing/abandoned-checkouts', icon: ShoppingCart, permission: 'can_manage_marketing' },
       { name: 'Leads & Acquisition', href: '/lord/leads', icon: Users, permission: 'can_manage_marketing' },
       { name: 'AI Ad Agency', href: '/lord/marketing/ai-agency', icon: Target, permission: 'can_manage_marketing' },
       { name: 'Affiliates', href: '/lord/affiliates', icon: Users, permission: 'can_manage_affiliates' },

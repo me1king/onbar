@@ -17,6 +17,24 @@ available under **Patrons → Email Command Center**. Marketing sends stay limit
 to consented lists. Inbound email parsing requires a separate inbound provider
 and is not included in this outbound setup.
 
+## Abandoned checkout email recovery
+
+After applying `FINAL_ESTABLISHMENT_SQL.sql`, `CRM_CONSENT_MESSAGING_MIGRATION.sql`,
+and `CHECKOUT_EMAIL_MARKETING_OPTIN_MIGRATION.sql`, apply
+`ABANDONED_CHECKOUT_EMAIL_RECOVERY_MIGRATION.sql`. Checkout recovery records are
+created only when the customer explicitly opts in to marketing email. The
+Marketing → Abandoned Checkouts screen makes records eligible after 60 minutes
+of inactivity and provides **Preview & edit → Send** for one email reminder.
+The send endpoint rechecks consent, recent orders, and product availability,
+adds the existing marketing unsubscribe link, and uses an expiring recovery
+link to restore the saved cart. Recovered order attribution is recorded when
+that restored checkout is placed.
+
+This is an admin-triggered queue, not a scheduled campaign. Configure and run a
+trusted scheduler before enabling automatic sends; no cron job is created by
+this migration. Visitors without marketing consent remain outside the
+recoverable email queue.
+
 ## Multi-level member referrals
 
 After applying `LOYALTY_POINTS_MIGRATION.sql`, run
@@ -81,6 +99,22 @@ customers who decline or revoke analytics consent are not included.
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Existing sessions default to no
 analytics consent and therefore stay hidden unless the visitor opts in again.
+
+## Storefront traffic and conversion analytics
+
+After applying `FINAL_ESTABLISHMENT_SQL.sql` and
+`LIVE_CUSTOMER_JOURNEY_MIGRATION.sql`, apply
+`STOREFRONT_ANALYTICS_MIGRATION.sql`. The owner Analytics → Traffic & Conversion
+report then shows consented visitors and sessions, page views, engaged time,
+source/medium and UTM campaign performance, page activity, devices, and the
+cart-to-paid-order funnel. Session attribution includes only allow-listed UTM
+values and the referring hostname; query strings and contact details are not
+stored. Sessions expire after 30 minutes of inactivity.
+
+These are consented-traffic estimates, not total site visitors. Use UTM tags on
+ad links to identify campaigns. Ad spend is not imported, so attributed revenue
+is not ad ROI or profit. The migration grants report access only to
+`service_role`; the dashboard API also checks the admin revenue permission.
 
 ## Merchant order alerts
 

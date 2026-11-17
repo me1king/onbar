@@ -284,8 +284,8 @@ export default function AdminDashboard() {
                           <span className="px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-amber-100 text-amber-800">LOW STOCK</span>
                           <p className="text-xs font-black uppercase text-amber-950">{product.name}</p>
                           <p className="text-[9px] text-amber-800 font-bold uppercase">{product.stock} units remaining</p>
-                          <Link href="/lord/forge">
-                              <Button className="w-full h-8 rounded-xl bg-amber-500 text-white font-black uppercase text-[8px] mt-2">Manage Stock</Button>
+                          <Link href={`/lord/upload?productId=${product.id}${product.category?.toLowerCase() === 'extras' ? '&category=extras' : ''}`}>
+                              <Button className="mt-2 h-8 w-full rounded-xl bg-amber-500 font-black text-white uppercase text-[8px]">Manage Stock</Button>
                           </Link>
                       </div>
                   ))}
