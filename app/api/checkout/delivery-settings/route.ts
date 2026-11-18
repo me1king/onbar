@@ -12,15 +12,23 @@ export async function GET() {
     return NextResponse.json({ error: 'Delivery settings are not configured.' }, { status: 503 });
   }
 
-  const { data, error } = await database.from('settings')
-    .select('key,value')
-    .eq('is_published', true)
-    .in('key', [...settingKeys])
-    .abortSignal(AbortSignal.timeout(8_000));
-
-  if (error) {
-    console.error('[CheckoutDeliverySettings] Could not load delivery settings:', error);
-    return NextResponse.json({ error: 'Delivery settings could not be loaded. Please retry.' }, { status: 503 });
+  let data;
+  try {
+    const result = await database.from('settings')
+      .select('key,value')
+      .eq('is_published', true)
+      .in('key', [...settingKeys])
+      .abortSignal(AbortSignal.timeout(8_000));
+    if (result.error) {
+      console.error('[CheckoutDeliverySettings] Could not load delivery settings:', result.error);
+      return NextResponse.json({ error: 'Delivery settings could not be loaded. Please retry.' }, { status: 503 });
+    }
+    data = result.data;
+  } catch (error) {
+    console.error('[CheckoutDeliverySettings] Delivery settings query failed:', error);
+    return NextResponse.json({
+      error: 'The delivery settings service returned an invalid response. Please contact support and try again later.'
+    }, { status: 503 });
   }
 
   const settings = new Map((data || []).map(setting => [setting.key, setting.value]));

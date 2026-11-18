@@ -63,6 +63,21 @@ function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: stri
   });
 }
 
+async function readJsonResponse<T>(response: Response, serviceName: string): Promise<T> {
+  const body = await response.text();
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    const isPaymentRequired = response.status === 402 || /^payment required\b/i.test(body.trim());
+    const nextStep = serviceName === 'Order service'
+      ? ' Check Orders before retrying to avoid a duplicate.'
+      : ' Please contact support or try Cash on Delivery.';
+    throw new Error(isPaymentRequired
+      ? `${serviceName} is unavailable because the server returned Payment Required (HTTP ${response.status}).${nextStep}`
+      : `${serviceName} returned an invalid response (HTTP ${response.status}).${nextStep}`);
+  }
+}
+
 declare global {
   interface Window {
     fbq?: (action: string, eventName: string, params?: Record<string, unknown>) => void;
@@ -319,7 +334,7 @@ function CheckoutContent() {
           cache: 'no-store',
           signal: controller.signal
         });
-        const result: unknown = await response.json();
+        const result: unknown = await readJsonResponse(response, 'Delivery settings');
         const payload = typeof result === 'object' && result !== null
           ? result as Record<string, unknown>
           : {};
@@ -929,7 +944,7 @@ function CheckoutContent() {
               recoverySessionId: localStorage.getItem('ob_recovery_session_id')
           })
       }), 16000, 'The order service did not respond within 15 seconds. Your order may still be processing; check Orders before retrying to avoid a duplicate.');
-      const orderResult = await orderResponse.json() as {
+      const orderResult = await readJsonResponse<{
           error?: string;
           code?: string;
           stockIssue?: {
@@ -945,7 +960,7 @@ function CheckoutContent() {
           currency?: string;
           provider?: 'Paystack' | 'PayHero' | 'Daraja' | 'COD';
           paymentStarted?: boolean;
-      };
+      }>(orderResponse, 'Order service');
       if (!orderResponse.ok || !orderResult.orderId || typeof orderResult.total !== 'number') {
           if (orderResult.code === 'STOCK_UNAVAILABLE' && orderResult.stockIssue) {
             setUnavailableItem(orderResult.stockIssue);
@@ -998,7 +1013,10 @@ function CheckoutContent() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ reference: response.reference })
                         });
-                        const verificationResult = await verification.json() as { error?: string };
+                        const verificationResult = await readJsonResponse<{ error?: string }>(
+                            verification,
+                            'Payment verification service'
+                        );
                         if (!verification.ok) {
                             throw new Error(verificationResult.error || 'Server-side payment verification failed.');
                         }

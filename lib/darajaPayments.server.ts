@@ -156,6 +156,23 @@ function baseUrl(environment: DarajaEnvironment) {
     : 'https://sandbox.safaricom.co.ke';
 }
 
+async function readSafaricomResponse<T>(response: Response, action: string): Promise<T> {
+  const body = await response.text();
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    const paymentRequired = response.status === 402 || /^payment required\b/i.test(body.trim());
+    console.error('[Daraja] Safaricom returned a non-JSON response:', {
+      action,
+      status: response.status,
+      contentType: response.headers.get('content-type')
+    });
+    throw new Error(paymentRequired
+      ? `Safaricom returned Payment Required (HTTP ${response.status}) while ${action}. Verify Daraja account access and credentials.`
+      : `Safaricom returned an unreadable response while ${action} (HTTP ${response.status}).`);
+  }
+}
+
 async function getAccessToken(credentials: DarajaCredentials) {
   const auth = Buffer.from(`${credentials.consumerKey}:${credentials.consumerSecret}`).toString('base64');
   const response = await fetch(`${baseUrl(credentials.environment)}/oauth/v1/generate?grant_type=client_credentials`, {
@@ -163,7 +180,7 @@ async function getAccessToken(credentials: DarajaCredentials) {
     cache: 'no-store',
     signal: AbortSignal.timeout(15000)
   });
-  const result = await response.json() as { access_token?: string };
+  const result = await readSafaricomResponse<{ access_token?: string }>(response, 'authorizing M-Pesa credentials');
   if (!response.ok || typeof result.access_token !== 'string' || !result.access_token) {
     throw new Error('Safaricom could not authorize these Daraja credentials.');
   }
@@ -230,12 +247,12 @@ export async function initializeDarajaStkPush(input: {
     cache: 'no-store',
     signal: AbortSignal.timeout(15000)
   });
-  const result = await response.json() as {
+  const result = await readSafaricomResponse<{
     ResponseCode?: string;
     ResponseDescription?: string;
     MerchantRequestID?: string;
     CheckoutRequestID?: string;
-  };
+  }>(response, 'starting the M-Pesa prompt');
   if (!response.ok || result.ResponseCode !== '0'
       || !result.MerchantRequestID || !result.CheckoutRequestID) {
     throw new Error(`Safaricom could not start the M-Pesa prompt: ${result.ResponseDescription || response.statusText}`);
@@ -263,12 +280,12 @@ export async function verifyDarajaStkPayment(database: SupabaseClient, checkoutR
     cache: 'no-store',
     signal: AbortSignal.timeout(15000)
   });
-  const result = await response.json() as {
+  const result = await readSafaricomResponse<{
     ResponseCode?: string;
     ResultCode?: string | number;
     ResultDesc?: string;
     CheckoutRequestID?: string;
-  };
+  }>(response, 'verifying the M-Pesa transaction');
   if (!response.ok || result.ResponseCode !== '0'
       || result.CheckoutRequestID !== checkoutRequestId
       || result.ResultCode === undefined) {

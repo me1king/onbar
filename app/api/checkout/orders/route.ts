@@ -1102,6 +1102,12 @@ export async function POST(request: Request) {
         stockIssue: error.stockIssue
       }, { status: 409 });
     }
+    if (error instanceof SyntaxError && /unexpected token|not valid JSON/i.test(error.message)) {
+      console.error('[CheckoutOrder] A checkout dependency returned a non-JSON response:', error);
+      return NextResponse.json({
+        error: 'A required checkout service returned an invalid response. Check your Orders before retrying to avoid a duplicate, or contact support.'
+      }, { status: 503 });
+    }
     if (error instanceof Error) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
