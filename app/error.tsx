@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { RefreshCcw, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
+import { reportClientRuntimeError } from '@/lib/posthogClient';
 
 export default function GlobalError({
   error,
@@ -14,6 +15,7 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error('[ONLINE_BAR] Application page failed to render:', error);
+    reportClientRuntimeError(error);
   }, [error]);
 
   return (

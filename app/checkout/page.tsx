@@ -119,6 +119,7 @@ function CheckoutContent() {
   const quickCustomerNameInputRef = useRef<HTMLInputElement>(null);
   const quickCustomerPhoneInputRef = useRef<HTMLInputElement>(null);
   const quickCustomerEmailInputRef = useRef<HTMLInputElement>(null);
+  const quickDetailsDialogRef = useRef<HTMLElement>(null);
   const quickDetailsPromptHandled = useRef(false);
   const [showQuickDetails, setShowQuickDetails] = useState(false);
   const deliveryZoneSelectRef = useRef<HTMLSelectElement>(null);
@@ -282,6 +283,45 @@ function CheckoutContent() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [customerEmail, customerName, customerPhone, paymentMethod, showQuickDetails]);
+
+  useEffect(() => {
+    if (!showQuickDetails) return;
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setShowQuickDetails(false);
+        window.setTimeout(() => customerNameInputRef.current?.focus(), 0);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = quickDetailsDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable?.length) {
+        event.preventDefault();
+        quickDetailsDialogRef.current?.focus();
+        return;
+      }
+      if (!quickDetailsDialogRef.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        focusable[0].focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => document.removeEventListener('keydown', handleDialogKeyDown);
+  }, [showQuickDetails]);
 
   useEffect(() => {
     async function checkLockdown() {
@@ -1207,13 +1247,16 @@ function CheckoutContent() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="quick-checkout-details-title"
+            aria-describedby="quick-checkout-details-description"
+            ref={quickDetailsDialogRef}
+            tabIndex={-1}
             className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
           >
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Quick checkout</p>
             <h2 id="quick-checkout-details-title" className="mt-2 text-2xl font-black tracking-tight text-slate-950">
               A few details before your order
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
+            <p id="quick-checkout-details-description" className="mt-2 text-sm leading-6 text-slate-500">
               Add your contact details so we can confirm your order and coordinate delivery. You can review your delivery location and payment next.
             </p>
             <form
@@ -1246,10 +1289,11 @@ function CheckoutContent() {
                   value={customerName}
                   onChange={event => setCustomerName(event.target.value)}
                   aria-invalid={showCustomerErrors && !customerName.trim()}
+                  aria-describedby={showCustomerErrors && !customerName.trim() ? 'quick-checkout-name-error' : undefined}
                   placeholder="Your name"
                   className="h-12 rounded-xl"
                 />
-                {showCustomerErrors && !customerName.trim() && <p role="alert" className="text-xs text-rose-600">Enter your full name.</p>}
+                {showCustomerErrors && !customerName.trim() && <p id="quick-checkout-name-error" role="alert" className="text-xs text-rose-600">Enter your full name.</p>}
               </div>
               <div className="space-y-2">
                 <label htmlFor="quick-checkout-phone" className="text-xs font-bold text-slate-700">Phone number *</label>
@@ -1262,10 +1306,11 @@ function CheckoutContent() {
                   value={customerPhone}
                   onChange={event => setCustomerPhone(event.target.value)}
                   aria-invalid={showCustomerErrors && !customerPhone.trim()}
+                  aria-describedby={showCustomerErrors && !customerPhone.trim() ? 'quick-checkout-phone-error' : undefined}
                   placeholder="07XXXXXXXX"
                   className="h-12 rounded-xl"
                 />
-                {showCustomerErrors && !customerPhone.trim() && <p role="alert" className="text-xs text-rose-600">Enter a phone number we can reach.</p>}
+                {showCustomerErrors && !customerPhone.trim() && <p id="quick-checkout-phone-error" role="alert" className="text-xs text-rose-600">Enter a phone number we can reach.</p>}
               </div>
               <div className="space-y-2">
                 <label htmlFor="quick-checkout-email" className="text-xs font-bold text-slate-700">
@@ -1280,15 +1325,24 @@ function CheckoutContent() {
                   value={customerEmail}
                   onChange={event => setCustomerEmail(event.target.value)}
                   aria-invalid={showCustomerErrors && paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())}
+                  aria-describedby={showCustomerErrors && paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? 'quick-checkout-email-error' : undefined}
                   placeholder="you@example.com"
                   className="h-12 rounded-xl"
                 />
                 {showCustomerErrors && paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && (
-                  <p role="alert" className="text-xs text-rose-600">Enter a valid email address for online payment.</p>
+                  <p id="quick-checkout-email-error" role="alert" className="text-xs text-rose-600">Enter a valid email address for online payment.</p>
                 )}
               </div>
               <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-                <Button type="button" variant="outline" onClick={() => setShowQuickDetails(false)} className="h-12 rounded-xl sm:flex-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowQuickDetails(false);
+                    window.setTimeout(() => customerNameInputRef.current?.focus(), 0);
+                  }}
+                  className="h-12 rounded-xl sm:flex-1"
+                >
                   I&apos;ll fill this in below
                 </Button>
                 <Button type="submit" className="h-12 rounded-xl font-bold sm:flex-1">

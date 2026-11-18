@@ -24,15 +24,26 @@ export interface ReconciliationRow {
   amount: number;
 }
 
+export interface PaymentReviewCase {
+  orderId: number;
+  provider: string;
+  status: string;
+  amountKsh: number;
+  createdAt: string;
+  reason: string;
+}
+
 export interface AdminFinanceData {
   ledger: FinancialLedgerEntry[];
   inventory: InventoryFinanceRow[];
   taxEntries: TaxLedgerEntry[];
   reconciliation: ReconciliationRow[];
+  paymentReview: PaymentReviewCase[];
   errors: {
     ledger: string | null;
     inventory: string | null;
     tax: string | null;
     reconciliation: string | null;
+    paymentReview: string | null;
   };
 }

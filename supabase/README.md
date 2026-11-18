@@ -408,6 +408,15 @@ fall back to direct status writes if those functions are missing: apply the
 migration rather than bypassing the state machine. Payment callbacks remain
 the authority for online payment confirmation.
 
+The customer `/track` page shows the latest recorded order-status events from
+this same migration. The Admin finance page also includes a read-only payment
+review queue; it requires `FINAL_ESTABLISHMENT_SQL.sql` and
+`DISPATCH_MIGRATION.sql` for orders and verified payment confirmations.
+`PAYHERO_DRINK_ORDERS_MIGRATION.sql` and `DARAJA_CHECKOUT_MIGRATION.sql` extend
+the supported payment providers when those gateways are enabled. The queue
+flags stale online checkouts and payment/order mismatches for manual review; it
+does not mark payments paid, issue refunds, or replace provider reconciliation.
+
 After merchant operations and dispatch are installed, apply
 `ORDER_DISPATCH_AUTOMATION_MIGRATION.sql` to create the service-role-only
 durable rider-dispatch queue. The database enqueues an order when a merchant

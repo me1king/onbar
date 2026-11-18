@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { ShieldAlert, RefreshCcw } from 'lucide-react';
+import { reportClientRuntimeError } from '@/lib/posthogClient';
 
 export default function GlobalError({
   error,
@@ -10,6 +12,11 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    console.error('[ONLINE_BAR] Root application render failed:', error);
+    reportClientRuntimeError(error);
+  }, [error]);
+
   return (
     <html>
       <body className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center antialiased font-sans">

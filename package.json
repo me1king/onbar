@@ -11,6 +11,7 @@
     "build": "npm run build:next && cross-env NODE_OPTIONS=--max-old-space-size=3072 opennextjs-cloudflare build --skipNextBuild",
     "start": "next start",
     "lint": "eslint .",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "worker:merchant-alerts": "node workers/vendor-order-alerts.mjs"
   },
   "dependencies": {
