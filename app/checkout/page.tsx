@@ -119,6 +119,7 @@ function CheckoutContent() {
   const [freeDeliveryOver, setFreeDeliveryOver] = useState(3000);
   const [deliveryAreasLoaded, setDeliveryAreasLoaded] = useState(false);
   const [deliveryAreasError, setDeliveryAreasError] = useState<string | null>(null);
+  const [deliveryAreasRetryToken, setDeliveryAreasRetryToken] = useState(0);
   const [couponCode, setCouponCode] = useState("");
   const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
@@ -303,42 +304,54 @@ function CheckoutContent() {
 
   useEffect(() => {
     let active = true;
+    let timedOut = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 10_000);
+
     async function loadFreeDeliveryAreas() {
-      if (!supabase) {
-        setDeliveryAreasError('Delivery zones could not be checked because the store is not connected.');
-        setDeliveryAreasLoaded(true);
-        return;
-      }
+      setDeliveryAreasLoaded(false);
+      setDeliveryAreasError(null);
       try {
-        const [{ data, error }, { data: pricingData, error: pricingError }] = await withTimeout(
-          Promise.all([
-            supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle(),
-            supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle()
-          ]),
-          12000,
-          'Delivery zone settings timed out. Refresh checkout and try again.'
-        );
-        if (!active) return;
-        if (error || pricingError) {
-          console.error('Delivery zone lookup failed:', error || pricingError);
-          setDeliveryAreasError('Delivery zones are temporarily unavailable. Please try again before placing your order.');
-        } else {
-          setFreeDeliveryAreas(parseDeliveryAreas(data?.value ?? []));
-          setFreeDeliveryOver(parseDeliveryPricing(pricingData?.value).free_delivery_over);
+        const response = await fetch('/api/checkout/delivery-settings', {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        const result: unknown = await response.json();
+        const payload = typeof result === 'object' && result !== null
+          ? result as Record<string, unknown>
+          : {};
+        if (!response.ok) {
+          throw new Error(typeof payload.error === 'string'
+            ? payload.error
+            : 'Delivery zones are temporarily unavailable. Please try again.');
         }
+
+        if (!active) return;
+        setFreeDeliveryAreas(parseDeliveryAreas(payload.areas));
+        setFreeDeliveryOver(parseDeliveryPricing(payload.pricing).free_delivery_over);
       } catch (error) {
         if (!active) return;
         console.error('Delivery zone lookup failed:', error);
-        setDeliveryAreasError(error instanceof Error
-          ? error.message
-          : 'Delivery zones are temporarily unavailable. Please try again before placing your order.');
+        setDeliveryAreasError(timedOut
+          ? 'Delivery zone settings took too long to load. Check your connection and retry.'
+          : error instanceof Error
+            ? error.message
+            : 'Delivery zones are temporarily unavailable. Please try again.');
       } finally {
+        window.clearTimeout(timeoutId);
         if (active) setDeliveryAreasLoaded(true);
       }
     }
     loadFreeDeliveryAreas();
-    return () => { active = false; };
-  }, []);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [deliveryAreasRetryToken]);
 
   useEffect(() => {
     if (!deliveryAreasLoaded || coords.lat == null || coords.lng == null) return;
@@ -1466,7 +1479,8 @@ function CheckoutContent() {
                         </Button>
                     </div>
                 </div>
-                <p role="status" className="relative z-10 text-sm font-semibold">
+                <div className="relative z-10 space-y-2">
+                <p role={deliveryAreasError ? 'alert' : 'status'} className="text-sm font-semibold">
                     {deliveryAreasError
                         ? deliveryAreasError
                         : !deliveryAreasLoaded || storeSettingsLoading
@@ -1489,6 +1503,18 @@ function CheckoutContent() {
                                                 ? `Free delivery applied for orders of ${formatPrice(freeDeliveryOver)} or more.`
                                                 : `${selectedZone.name}: ${zoneFee === 0 ? 'free delivery' : `${formatPrice(zoneFee)} delivery fee`}${freeDeliveryOver > 0 ? ` · free over ${formatPrice(freeDeliveryOver)}` : ''}.`}
                 </p>
+                {deliveryAreasError && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setDeliveryAreasRetryToken(token => token + 1)}
+                        disabled={!deliveryAreasLoaded || isPlacingOrder}
+                        className="h-10 rounded-xl text-xs font-bold"
+                    >
+                        Retry delivery settings
+                    </Button>
+                )}
+                </div>
                 {checkoutStatus.type === 'error' && checkoutNeedsDeliveryLocation && (
                     <p role="alert" className="relative z-10 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
                         {checkoutStatus.message}
