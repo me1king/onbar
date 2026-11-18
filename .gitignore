@@ -18,6 +18,7 @@ local.properties
 node_modules/
 .next/
 .next-dev/
+.open-next/
 out/
 .env*.local
 .vercel

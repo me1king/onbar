@@ -3,9 +3,14 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
 const nextConfig = (phase: string): NextConfig => ({
   distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next',
+  output: process.env.CLOUDFLARE_WORKER_BUILD === '1' ? 'standalone' : undefined,
   outputFileTracingRoot: process.cwd(),
   deploymentId: process.env.RENDER_GIT_COMMIT || process.env.VERCEL_DEPLOYMENT_ID || undefined,
   poweredByHeader: false,
+  experimental: {
+    cpus: 2,
+    webpackMemoryOptimizations: true,
+  },
   async headers() {
     return [
       {
@@ -35,7 +40,7 @@ const nextConfig = (phase: string): NextConfig => ({
     ];
   },
   images: {
-    unoptimized: process.env.NODE_ENV === 'development', // Prevent timeouts during dev
+    unoptimized: process.env.NODE_ENV === 'development' || process.env.CLOUDFLARE_WORKER_BUILD === '1',
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
       {

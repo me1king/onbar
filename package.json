@@ -7,13 +7,15 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "cross-env NEXT_TURBO_DISABLE=1 next build",
+    "build:next": "cross-env NODE_OPTIONS=--max-old-space-size=3072 CLOUDFLARE_WORKER_BUILD=1 next build --webpack",
+    "build": "npm run build:next && cross-env NODE_OPTIONS=--max-old-space-size=3072 opennextjs-cloudflare build --skipNextBuild",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "worker:merchant-alerts": "node workers/vendor-order-alerts.mjs"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^12.0.0",
+    "@opennextjs/cloudflare": "^1.20.0",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
@@ -34,7 +36,7 @@
     "jspdf-autotable": "^5.0.8",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.26.0",
-    "next": "^15.5.28",
+    "next": "^16.4.6",
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "posthog-js": "^1.438.10",
@@ -67,14 +69,18 @@
     "baseline-browser-mapping": "^2.10.32",
     "cross-env": "^10.1.0",
     "eslint": "^9.39.1",
-    "eslint-config-next": "15.5.25",
+    "eslint-config-next": "^16.4.6",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "^4.164.0"
   },
   "allowScripts": {
     "core-js@3.49.0": true,
     "msgpackr-extract@3.0.4": true,
     "sharp@0.33.5": true,
-    "unrs-resolver@1.11.1": true
+    "unrs-resolver@1.11.1": true,
+    "esbuild@0.25.4": true,
+    "esbuild@0.28.2": true,
+    "workerd@1.20261117.1": true
   }
 }
