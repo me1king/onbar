@@ -69,6 +69,7 @@ export default function BiteCommandCenter() {
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [imageFile, setImageFile] = React.useState<File | null>(null);
+    const [uploadingImageId, setUploadingImageId] = React.useState<string | null>(null);
     const [addons, setAddons] = React.useState<FoodAddon[]>([]);
     const [isAddonManagerOpen, setIsAddonManagerOpen] = React.useState(false);
     const [addonDraft, setAddonDraft] = React.useState<{ id?: string; name: string; price: string }>({ name: '', price: '' });
@@ -209,6 +210,40 @@ export default function BiteCommandCenter() {
             setBites(currentBites => currentBites.map(b => b.id === id ? updatedProduct : b));
         } catch (error) {
             alert(error instanceof Error ? error.message : 'Unable to update product status.');
+        }
+    };
+
+    const handleProductImageUpload = async (product: BiteProduct, file: File) => {
+        if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) {
+            setError('Choose a JPEG, PNG, WebP, or AVIF image.');
+            return;
+        }
+        if (file.size === 0 || file.size > 8 * 1024 * 1024) {
+            setError('Choose an image smaller than 8 MB.');
+            return;
+        }
+
+        const productId = String(product.id);
+        setUploadingImageId(productId);
+        setError(null);
+        try {
+            const form = new FormData();
+            form.set('file', file);
+            form.set('product_id', productId);
+            const response = await fetch('/api/admin/food-image', { method: 'POST', body: form });
+            const result = await response.json() as { product?: BiteProduct; error?: string };
+            if (!response.ok || !result.product) {
+                throw new Error(result.error || 'Food photo could not be saved.');
+            }
+            const updatedProduct = result.product;
+            setBites(current => current.map(item => (
+                String(item.id) === productId ? updatedProduct : item
+            )));
+        } catch (uploadError) {
+            console.error('[BiteCommand] Could not save product photo:', uploadError);
+            setError(uploadError instanceof Error ? uploadError.message : 'Food photo could not be saved.');
+        } finally {
+            setUploadingImageId(null);
         }
     };
 
@@ -547,6 +582,29 @@ export default function BiteCommandCenter() {
                                 ) : (
                                     <div className="flex h-full items-center justify-center text-sm text-slate-400">No product image</div>
                                 )}
+                                <label className={cn(
+                                    "absolute bottom-3 left-3 right-3 flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-white/95 px-3 text-xs font-bold text-slate-700 shadow-md transition-colors hover:text-primary",
+                                    uploadingImageId !== null && "cursor-wait opacity-70"
+                                )}>
+                                    {uploadingImageId === String(bite.id)
+                                        ? <Loader2 size={15} className="animate-spin" />
+                                        : <ImagePlus size={15} />}
+                                    {uploadingImageId === String(bite.id)
+                                        ? 'Uploading photo…'
+                                        : bite.image_url ? 'Change photo' : 'Add photo'}
+                                    <input
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp,image/avif"
+                                        className="sr-only"
+                                        aria-label={`${bite.image_url ? 'Change' : 'Add'} photo for ${bite.name}`}
+                                        disabled={uploadingImageId !== null}
+                                        onChange={event => {
+                                            const file = event.currentTarget.files?.[0];
+                                            event.currentTarget.value = '';
+                                            if (file) void handleProductImageUpload(bite, file);
+                                        }}
+                                    />
+                                </label>
                                 <div className={cn(
                                     "absolute top-4 right-4 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg",
                                     bite.status === 'Live' ? "bg-emerald-500 text-white" : "bg-slate-500 text-white"
