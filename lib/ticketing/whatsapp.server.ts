@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { decryptTicketCredential, encryptTicketCredential } from '@/lib/ticketing/credentials.server';
 import { getPublicBaseUrl } from '@/lib/utils';
 import { normalizeTicketPhoneNumber } from '@/lib/ticketing/phone';
+import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
 type Database = SupabaseClient;
 
@@ -15,8 +16,7 @@ export function encryptTicketWalletToken(token: string) {
 }
 
 export async function sendTicketWalletWhatsApp(database: Database, orderId: string): Promise<'sent' | 'already_sent' | 'busy' | 'skipped'> {
-  const token = process.env.WHATSAPP_TOKEN?.trim();
-  const phoneId = process.env.WHATSAPP_PHONE_ID?.trim();
+  const { token, phoneId } = getWhatsAppCredentials();
   const templateName = process.env.WHATSAPP_TICKET_TEMPLATE_NAME?.trim();
   const templateLanguage = process.env.WHATSAPP_TICKET_TEMPLATE_LANGUAGE?.trim() || 'en';
   if (!token || !phoneId || !templateName) {

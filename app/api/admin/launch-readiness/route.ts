@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,7 @@ function getConfigurationChecks() {
     {
       id: 'whatsapp-env',
       label: 'WhatsApp credentials',
-      ready: configured(['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID']),
+      ready: getWhatsAppCredentials().configured,
       detail: 'Configured credentials do not prove secure webhook or message delivery.',
       blocker: true
     },

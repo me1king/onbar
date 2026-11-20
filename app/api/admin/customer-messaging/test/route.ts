@@ -9,6 +9,7 @@ import {
   type CustomerNotificationStatus
 } from '@/lib/customerMessaging';
 import { renderCustomerOrderEmail, renderCustomerOrderEmailText } from '@/lib/customerOrderEmail';
+import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,8 +113,7 @@ export async function POST(request: Request) {
     }
 
     if (channel === 'whatsapp') {
-      const token = process.env.WHATSAPP_TOKEN?.trim();
-      const phoneId = process.env.WHATSAPP_PHONE_ID?.trim();
+      const { token, phoneId } = getWhatsAppCredentials();
       if (!token || !phoneId) {
         return NextResponse.json({ error: 'WhatsApp is not configured (WHATSAPP_TOKEN and WHATSAPP_PHONE_ID are required).' }, { status: 503 });
       }

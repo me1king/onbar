@@ -14,6 +14,7 @@ import { getPublicBaseUrl } from '@/lib/utils';
 import { getTransactionalEmailConfig, sendTransactionalEmail, withTransactionalEmailSenderName } from '@/lib/jmsurfMail.server';
 import { getCustomerOrderEmailDesign, renderCustomerOrderEmail, renderCustomerOrderEmailText } from '@/lib/customerOrderEmail';
 import { isWebPushConfigured, sendWebPush } from '@/lib/webPush.server';
+import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
 type NotificationBody = { orderId?: unknown; status?: unknown; retryChannel?: unknown; forceResend?: unknown };
 
@@ -134,8 +135,7 @@ async function sendEmail(
 }
 
 async function sendWhatsApp(phone: string, message: string) {
-  const token = process.env.WHATSAPP_TOKEN?.trim();
-  const phoneId = process.env.WHATSAPP_PHONE_ID?.trim();
+  const { token, phoneId } = getWhatsAppCredentials();
   if (!token || !phoneId) throw new Error('WhatsApp is not configured (WHATSAPP_TOKEN and WHATSAPP_PHONE_ID are required).');
   const recipient = toInternationalPhone(phone);
   if (!/^\d{8,15}$/.test(recipient)) throw new Error('Customer phone number is not valid for WhatsApp.');

@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission } from '@/lib/adminAccess.server';
 import { getTransactionalEmailConfig } from '@/lib/jmsurfMail.server';
 import { isWebPushConfigured } from '@/lib/webPush.server';
+import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 import {
   CUSTOMER_NOTIFICATION_CHANNELS,
   CUSTOMER_NOTIFICATION_STATUSES,
@@ -447,7 +448,7 @@ export async function GET() {
     const providerReadiness = {
       email: getTransactionalEmailConfig().configured,
       sms: Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim()),
-      whatsapp: Boolean(process.env.WHATSAPP_TOKEN?.trim() && process.env.WHATSAPP_PHONE_ID?.trim()),
+      whatsapp: getWhatsAppCredentials().configured,
       push: isWebPushConfigured()
     };
     const notificationConfig = normalizeCustomerNotificationConfig(messagingSettingsResult.data?.value);
