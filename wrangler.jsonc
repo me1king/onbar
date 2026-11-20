@@ -4,6 +4,10 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-18",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "routes": [
+    { "pattern": "onlinebar.co.ke", "custom_domain": true },
+    { "pattern": "www.onlinebar.co.ke", "custom_domain": true }
+  ],
   "keep_vars": true,
   "assets": {
     "directory": ".open-next/assets",
