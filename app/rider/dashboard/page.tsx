@@ -30,6 +30,8 @@ import { supabase } from '@/lib/supabaseClient';
 import dynamic from 'next/dynamic';
 import MerchantConnectionsPanel from '@/components/rider/MerchantConnectionsPanel';
 import RiderTerminalProfile from '@/components/rider/RiderTerminalProfile';
+import OrderAlertToneSettings from '@/components/alerts/OrderAlertToneSettings';
+import { useOrderAlertTone } from '@/hooks/useOrderAlertTone';
 
 const RiderDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
     ssr: false,
@@ -106,6 +108,8 @@ function RiderDashboardContent() {
     const supportRiderId = searchParams?.get('supportRiderId');
 
     const [phone, setPhone] = useState('');
+    const orderTone = useOrderAlertTone(`rider-${phone.replace(/\D/g, '') || 'default'}`);
+    const playOrderTone = orderTone.play;
     const [pin, setPin] = useState('');
     const [sessionToken, setSessionToken] = useState('');
     const [gpsMessage, setGpsMessage] = useState<string | null>(null);
@@ -140,6 +144,28 @@ function RiderDashboardContent() {
     const [issueMessage, setIssueMessage] = useState<string | null>(null);
     const seenOffers = useRef<Set<number>>(new Set());
     const offerTimerRunning = useRef(false);
+    const offerAlertTimerRef = useRef<number | null>(null);
+    const offerAlertStartedAtRef = useRef(0);
+
+    const startOfferAlertRing = useCallback(() => {
+        if (offerAlertTimerRef.current !== null) return;
+        offerAlertStartedAtRef.current = Date.now();
+        playOrderTone();
+        offerAlertTimerRef.current = window.setInterval(() => {
+            playOrderTone(Date.now() - offerAlertStartedAtRef.current >= 10_000);
+        }, 2_500);
+    }, [playOrderTone]);
+
+    const stopOfferAlertRing = useCallback(() => {
+        if (offerAlertTimerRef.current !== null) window.clearInterval(offerAlertTimerRef.current);
+        offerAlertTimerRef.current = null;
+        offerAlertStartedAtRef.current = 0;
+    }, []);
+
+    useEffect(() => () => stopOfferAlertRing(), [stopOfferAlertRing]);
+    useEffect(() => {
+        if (!isIdentified) stopOfferAlertRing();
+    }, [isIdentified, stopOfferAlertRing]);
 
     // Online Bar Pro States
     const [isOnline, setIsOnline] = useState(false);
@@ -193,6 +219,7 @@ function RiderDashboardContent() {
 
             // AUTO-SELECT ACTIVE MISSION
             const currentMissions = missionData.missions || [];
+            if (currentMissions.some(mission => mission.rider_offer_status === 'pending')) startOfferAlertRing();
             for (const mission of currentMissions) {
                 if (mission.rider_offer_status === 'pending') seenOffers.current.add(mission.id);
             }
@@ -235,7 +262,7 @@ function RiderDashboardContent() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [startOfferAlertRing]);
 
     const continueWithOnlineBarAccount = useCallback(async () => {
         setLoading(true);
@@ -569,6 +596,7 @@ function RiderDashboardContent() {
                 if (!response.ok) throw new Error(result.error || 'Rider missions could not be refreshed.');
                 if (!active) return;
                 const refreshedMissions = result.missions || [];
+                const hasPendingOffer = refreshedMissions.some(mission => mission.rider_offer_status === 'pending');
                 const newOffers = refreshedMissions.filter(mission =>
                     mission.rider_offer_status === 'pending' && !seenOffers.current.has(mission.id)
                 );
@@ -576,6 +604,7 @@ function RiderDashboardContent() {
                     if (mission.rider_offer_status === 'pending') seenOffers.current.add(mission.id);
                 }
                 if (newOffers.length > 0) {
+                    startOfferAlertRing();
                     if ('vibrate' in navigator) navigator.vibrate([300, 120, 300, 120, 600]);
                     setPushMessage(`New delivery offer${newOffers.length > 1 ? 's' : ''}: ${newOffers.map(item => `#${item.id}`).join(', ')}`);
                     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -586,6 +615,7 @@ function RiderDashboardContent() {
                         });
                     }
                 }
+                if (!hasPendingOffer) stopOfferAlertRing();
                 setMissions(refreshedMissions);
                 setActiveMission(current => {
                     const activeStatuses = ['Dispatched', 'Picked Up', 'Out for Delivery'];
@@ -608,7 +638,7 @@ function RiderDashboardContent() {
             active = false;
             window.clearInterval(timer);
         };
-    }, [isIdentified, sessionToken]);
+    }, [isIdentified, sessionToken, startOfferAlertRing, stopOfferAlertRing]);
 
     useEffect(() => {
         const mission = activeMission;
@@ -1418,12 +1448,14 @@ function RiderDashboardContent() {
                         {accentSaveMessage && <p role="status" className="mt-2 text-[11px] text-white/50">{accentSaveMessage}</p>}
                     </section>
 
+                    <OrderAlertToneSettings controller={orderTone} dark />
+
                     <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
                         <div className="flex items-center justify-between gap-3">
                             <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/70"><Bell className="h-4 w-4" /> Offer alerts</h2>
                             {pushEnabled && <span className="text-[10px] font-bold uppercase" style={{ color: accentColor }}>Enabled</span>}
                         </div>
-                        <p className="mt-2 text-xs leading-relaxed text-white/45">Push notification, vibration, and foreground alert for new assignments.</p>
+                        <p className="mt-2 text-xs leading-relaxed text-white/45">Push and vibration for new assignments, with your selected sound while this terminal is open.</p>
                         {pushMessage && <p role="status" className="mt-2 text-[11px] text-white/55">{pushMessage}</p>}
                         {!pushEnabled && <Button type="button" onClick={() => void enableMissionAlerts()} disabled={pushBusy} className="mt-4 h-10 w-full rounded-lg text-xs font-black uppercase" style={{ backgroundColor: accentColor, color: '#08100c' }}>
                             {pushBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />} Enable push alerts

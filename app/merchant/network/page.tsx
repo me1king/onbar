@@ -47,6 +47,8 @@ import {
 import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
 import { supabase } from '@/lib/supabaseClient';
 import MerchantAlertsPanel from '@/components/merchant/MerchantAlertsPanel';
+import OrderAlertToneSettings from '@/components/alerts/OrderAlertToneSettings';
+import { useOrderAlertTone } from '@/hooks/useOrderAlertTone';
 
 type PartnerEvent = { event_type: string; details: Record<string, unknown> | null; created_at: string };
 type PartnerDocument = { id: string; type: string; name: string; uploadedAt: string; expiresAt: string | null };
@@ -1528,6 +1530,9 @@ export default function OnBarPartnerNetworkPage() {
   const [performanceError, setPerformanceError] = useState('');
   const [performanceDays, setPerformanceDays] = useState<7 | 30>(7);
   const [selectedId, setSelectedId] = useState('');
+  const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
+  const orderTone = useOrderAlertTone(selected ? `merchant-${selected.application.id}` : 'merchant-default');
+  const { play: playOrderTone, toggle: toggleOrderTone } = orderTone;
   const [section, setSection] = useState<Section>('sales');
   const [merchantAccentColor, setMerchantAccentColor] = useState(MERCHANT_ACCENT_PRESETS[0]);
   const [appearanceMessage, setAppearanceMessage] = useState('');
@@ -1567,35 +1572,33 @@ export default function OnBarPartnerNetworkPage() {
   const [riderPhone, setRiderPhone] = useState('');
   const [ridersLoading, setRidersLoading] = useState(false);
   const [riderActionId, setRiderActionId] = useState('');
-  const [orderSoundEnabled, setOrderSoundEnabled] = useState(false);
-  const [orderSoundVolume, setOrderSoundVolume] = useState(0.65);
+  const orderSoundEnabled = orderTone.enabled;
   const [newOrderAlert, setNewOrderAlert] = useState(false);
-  const orderAudioContextRef = useRef<AudioContext | null>(null);
   const knownOrderIdsRef = useRef(new Map<string, Set<string>>());
   const newOrderAlertTimerRef = useRef<number | null>(null);
-  const orderSoundEnabledRef = useRef(false);
-  const orderSoundVolumeRef = useRef(0.65);
+  const newOrderAlertStartedAtRef = useRef(0);
 
-  const playOrderChime = useCallback((force = false) => {
-    const audio = orderAudioContextRef.current;
-    const volume = orderSoundVolumeRef.current;
-    if ((!orderSoundEnabledRef.current && !force) || !audio || audio.state !== 'running' || volume <= 0) return;
-    const now = audio.currentTime;
-    [880, 1174, 880].forEach((frequency, index) => {
-      const start = now + index * 0.18;
-      const oscillator = audio.createOscillator();
-      const gain = audio.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(frequency, start);
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.002, volume * 0.16), start + 0.025);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
-      oscillator.connect(gain);
-      gain.connect(audio.destination);
-      oscillator.start(start);
-      oscillator.stop(start + 0.16);
-    });
+  const playOrderChime = useCallback((urgent = false) => {
+    playOrderTone(urgent);
+  }, [playOrderTone]);
+  const toggleOrderSound = useCallback(async () => {
+    try {
+      await toggleOrderTone();
+    } catch (soundError) {
+      setError(soundError instanceof Error ? soundError.message : 'Sound alerts could not be enabled.');
+    }
+  }, [toggleOrderTone]);
+
+  const stopNewOrderAlert = useCallback(() => {
+    if (newOrderAlertTimerRef.current !== null) window.clearInterval(newOrderAlertTimerRef.current);
+    newOrderAlertTimerRef.current = null;
+    newOrderAlertStartedAtRef.current = 0;
+    setNewOrderAlert(false);
   }, []);
+
+  useEffect(() => {
+    stopNewOrderAlert();
+  }, [selected?.application.id, stopNewOrderAlert]);
 
   const registerOrderSnapshot = useCallback((feed: string, orderIds: string[]) => {
     let knownIds = knownOrderIdsRef.current.get(feed);
@@ -1610,36 +1613,18 @@ export default function OnBarPartnerNetworkPage() {
     if (newIds.length === 0) return;
 
     setNewOrderAlert(true);
-    if (newOrderAlertTimerRef.current !== null) window.clearTimeout(newOrderAlertTimerRef.current);
-    newOrderAlertTimerRef.current = window.setTimeout(() => setNewOrderAlert(false), 15_000);
+    if (newOrderAlertTimerRef.current !== null) window.clearInterval(newOrderAlertTimerRef.current);
+    newOrderAlertStartedAtRef.current = Date.now();
     playOrderChime();
+    newOrderAlertTimerRef.current = window.setInterval(() => {
+      playOrderChime(Date.now() - newOrderAlertStartedAtRef.current >= 10_000);
+    }, 2_500);
   }, [playOrderChime]);
 
-  const toggleOrderSound = async () => {
-    if (orderSoundEnabled) {
-      orderSoundEnabledRef.current = false;
-      setOrderSoundEnabled(false);
-      return;
-    }
-    try {
-      if (!('AudioContext' in window)) throw new Error('This browser does not support in-terminal sound alerts.');
-      const audio = orderAudioContextRef.current || new AudioContext();
-      orderAudioContextRef.current = audio;
-      await audio.resume();
-      orderSoundEnabledRef.current = true;
-      setOrderSoundEnabled(true);
-      playOrderChime(true);
-    } catch (soundError) {
-      setError(soundError instanceof Error ? soundError.message : 'Sound alerts could not be enabled.');
-    }
-  };
-
   useEffect(() => () => {
-    if (newOrderAlertTimerRef.current !== null) window.clearTimeout(newOrderAlertTimerRef.current);
-    void orderAudioContextRef.current?.close();
+    if (newOrderAlertTimerRef.current !== null) window.clearInterval(newOrderAlertTimerRef.current);
   }, []);
 
-  const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
   const canOperate = selected?.application.status === 'approved';
   const isFoodMerchant = Boolean(selected && (
     ['kitchen', 'restaurant', 'food_vendor'].includes(selected.application.business_type)
@@ -2045,6 +2030,7 @@ export default function OnBarPartnerNetworkPage() {
 
   const performMerchantAction = async (body: Record<string, unknown>, successMessage: string) => {
     const saved = await apiAction(body, successMessage);
+    if (saved && body.orderId) stopNewOrderAlert();
     if (saved && body.operation === 'set_stock_count') {
       const productId = Number(body.productId);
       setStockCountDraft(current => {
@@ -2098,7 +2084,10 @@ export default function OnBarPartnerNetworkPage() {
       orderId,
       eventType
     }, `Order #${orderId}: ${fulfillmentLabels[eventType] || eventType.replaceAll('_', ' ')}.`);
-    if (saved) await loadFoodOrders(true);
+    if (saved) {
+      stopNewOrderAlert();
+      await loadFoodOrders(true);
+    }
   };
 
   const productOptions = useMemo(() => {
@@ -2563,9 +2552,9 @@ export default function OnBarPartnerNetworkPage() {
             <div className="flex gap-2">
               <Button type="button" onClick={() => {
                 setSection(isFoodMerchant ? 'food-live' : isLiquorMerchant ? 'liquor-live' : 'orders');
-                setNewOrderAlert(false);
+                stopNewOrderAlert();
               }} className="rounded-lg">View orders</Button>
-              <Button type="button" variant="outline" onClick={() => setNewOrderAlert(false)} className="rounded-lg">Dismiss</Button>
+              <Button type="button" variant="outline" onClick={stopNewOrderAlert} className="rounded-lg">Dismiss</Button>
             </div>
           </div>
         )}
@@ -2599,24 +2588,7 @@ export default function OnBarPartnerNetworkPage() {
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
               </label>
             </article>
-            <article className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div><h3 className="flex items-center gap-2 font-black text-slate-900">{orderSoundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />} New-order sound</h3>
-                <p className="mt-1 max-w-2xl text-sm text-slate-500">A browser chime plays when a new order appears during refresh. It cannot override device mute or play reliably when the browser is suspended.</p></div>
-              <div className="flex flex-wrap items-center gap-3">
-                {orderSoundEnabled && <label className="flex items-center gap-2 text-xs font-bold text-slate-600">Volume
-                  <input type="range" min="0" max="1" step="0.05" value={orderSoundVolume} aria-label="New order sound volume"
-                    onChange={event => {
-                      const volume = Number(event.target.value);
-                      orderSoundVolumeRef.current = volume;
-                      setOrderSoundVolume(volume);
-                    }} className="w-28 accent-primary" />
-                </label>}
-                <Button type="button" variant={orderSoundEnabled ? 'outline' : 'default'} aria-pressed={orderSoundEnabled}
-                  onClick={() => void toggleOrderSound()} className="rounded-xl">
-                  {orderSoundEnabled ? 'Turn sound off' : 'Enable and test sound'}
-                </Button>
-              </div>
-            </article>
+            <OrderAlertToneSettings controller={orderTone} />
             <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">Order sound is an optional browser convenience. Keep push, SMS, or voice alerts configured in Order Alerts for background and locked-screen notifications.</p>
           </section>
         )}

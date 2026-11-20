@@ -50,7 +50,9 @@ type OrderFlow = {
   riderName: string | null;
   riderPhone: string | null;
   retryableCustomerChannels: string[];
+  failedCustomerChannels: string[];
   retryableMerchantAlerts: number;
+  events: FlowEvent[];
   stages: {
     order: FlowStage;
     payment: FlowStage;
@@ -69,6 +71,18 @@ type FlowEvent = {
   detail: string;
   status: string;
   occurredAt: string;
+  channel?: string;
+  notificationStatus?: string;
+};
+type DiagnosticLink = { href: string; label: string; external?: boolean };
+type DiagnosticPanel = {
+  title: string;
+  summary: string;
+  details: string[];
+  links?: DiagnosticLink[];
+  orderId?: number;
+  events?: FlowEvent[];
+  channels?: string[];
 };
 type RiderCandidate = {
   riderPhone: string;
@@ -94,15 +108,19 @@ type FlowData = {
   };
   orders: OrderFlow[];
   timeline: FlowEvent[];
-  workers: Array<{ key: string; status: string; lastSeenAt: string | null }>;
+  workers: Array<{ key: string; status: string; lastSeenAt: string | null; diagnostic: string; requirements: string[] }>;
   providers: Record<string, boolean>;
+  providerDiagnostics: Record<string, { diagnostic: string; requirements: string[] }>;
   internalNotificationBridge: boolean;
+  internalNotificationBridgeDiagnostic: string;
+  internalNotificationBridgeRequirements: string[];
   permissions: { manageOrders: boolean; manageCommunications: boolean };
   notificationRules: {
     enabledStatuses: number;
     totalStatuses: number;
     enabledChannels: string[];
     available: boolean;
+    diagnostic: string;
   };
   warnings: string[];
 };
@@ -140,6 +158,8 @@ export default function OperationsCommandCenter() {
   const [loading, setLoading] = React.useState(true);
   const [actionBusy, setActionBusy] = React.useState<string | null>(null);
   const [actionNotice, setActionNotice] = React.useState<{ orderId: number; message: string; error: boolean } | null>(null);
+  const [diagnosticPanel, setDiagnosticPanel] = React.useState<DiagnosticPanel | null>(null);
+  const [confirmRetryChannel, setConfirmRetryChannel] = React.useState<string | null>(null);
   const [reassignOrder, setReassignOrder] = React.useState<OrderFlow | null>(null);
   const [riderCandidates, setRiderCandidates] = React.useState<RiderCandidate[]>([]);
   const [replacementRiderPhone, setReplacementRiderPhone] = React.useState('');
@@ -250,13 +270,14 @@ export default function OperationsCommandCenter() {
       const result = await response.json() as {
         error?: string;
         skipped?: string[];
-        results?: Array<{ status?: string; error?: string }>;
+        results?: Array<{ status?: string; error?: string; channel?: string }>;
       };
-      if (!response.ok) throw new Error(result.error || 'Customer notification could not be retried.');
+      const failedResult = result.results?.find(item => item.status === 'failed' || item.status === 'skipped');
+      if (!response.ok) throw new Error(failedResult?.error || result.error || 'Customer notification could not be retried.');
       const failed = result.results?.some(item => item.status === 'failed' || item.status === 'skipped');
       setActionNotice({
         orderId: order.id,
-        message: result.skipped?.join(', ')
+        message: result.skipped?.join(', ') || failedResult?.error
           || (failed ? 'Retry returned a failed or skipped channel; check notification settings and consent.' : `${channel} retry completed.`),
         error: Boolean(result.skipped?.length || failed)
       });
@@ -271,6 +292,76 @@ export default function OperationsCommandCenter() {
     } finally {
       setActionBusy(null);
     }
+  };
+
+  const openSystemDiagnostic = (
+    title: string,
+    summary: string,
+    details: string[],
+    links: DiagnosticLink[] = []
+  ) => {
+    setConfirmRetryChannel(null);
+    setDiagnosticPanel({ title, summary, details, links });
+  };
+
+  const openOrderDiagnostic = (order: OrderFlow, stageLabel?: string) => {
+    const stageKey = stageLabel?.toLowerCase();
+    const stageNames: Record<string, string[]> = {
+      order: ['order'],
+      payment: ['payment'],
+      merchant: ['merchant'],
+      dispatch: ['dispatch'],
+      delivery: ['delivery'],
+      'customer notice': ['customer_notification'],
+      'merchant alert': ['merchant_notification']
+    };
+    const stageKeys: Record<string, keyof OrderFlow['stages']> = {
+      order: 'order',
+      payment: 'payment',
+      merchant: 'merchant',
+      dispatch: 'dispatch',
+      delivery: 'delivery',
+      'customer notice': 'notifications',
+      'merchant alert': 'merchantNotifications'
+    };
+    const events = order.events.filter(event => !stageKey || stageNames[stageKey]?.includes(event.stage));
+    const failedEvents = events.filter(event => event.stage === 'customer_notification' && event.status === 'failed');
+    const channels = [...new Set(failedEvents.map(event => event.channel).filter((channel): channel is string => Boolean(channel)))];
+    const stage = stageKey ? stageKeys[stageKey] : undefined;
+    setConfirmRetryChannel(null);
+    setDiagnosticPanel({
+      title: stageLabel ? `Order #${order.id} · ${stageLabel} diagnosis` : `Order #${order.id} · diagnosis`,
+      summary: stageLabel
+        ? `${stageLabel}: ${stage ? order.stages[stage].label : order.status}. Current order status: ${order.status}.`
+        : `Current status: ${order.status}. Review the recorded events and delivery errors below.`,
+      details: events.length ? [] : ['No event-level diagnosis was recorded for this stage. Open the order record to review its current data.'],
+      links: [
+        { href: `/lord/orders?orderId=${order.id}`, label: 'Open order record' },
+        { href: '/lord/communications/automation', label: 'Open messaging and delivery history' }
+      ],
+      orderId: order.id,
+      events,
+      channels
+    });
+  };
+
+  const openMetricDiagnostic = (label: string, value: number) => {
+    const allEvents = flow?.orders.flatMap(order => order.events) || [];
+    const relevantEvents = label.toLowerCase().includes('customer notice')
+      ? allEvents.filter(event => event.stage === 'customer_notification' && (label.includes('failed') ? event.status === 'failed' : event.status === 'success'))
+      : label.toLowerCase().includes('merchant alert')
+        ? allEvents.filter(event => event.stage === 'merchant_notification' && (label.includes('failed') ? event.status === 'failed' : event.status === 'success'))
+        : label.toLowerCase().includes('dispatch')
+          ? allEvents.filter(event => event.stage === 'dispatch' && (label.includes('review') ? event.status === 'failed' : event.status === 'success'))
+          : allEvents;
+    setConfirmRetryChannel(null);
+    setDiagnosticPanel({
+      title: `${label} · diagnosis`,
+      summary: `${value} recorded in the latest order flow. Select an event below for its recorded reason and order details.`,
+      details: relevantEvents.length ? [] : ['No matching order events are available in the latest 20 orders.'],
+      links: [{ href: '/lord/communications/automation', label: 'Open messaging and delivery history' }],
+      events: relevantEvents
+    });
   };
 
   const openRiderReassignment = async (order: OrderFlow) => {
@@ -350,6 +441,11 @@ export default function OperationsCommandCenter() {
     { label: 'Active deliveries', value: metrics.activeDeliveries, Icon: Truck },
     { label: 'Carts waiting', value: metrics.cartsWithItems, Icon: ClipboardList }
   ];
+  const diagnosticOrder = diagnosticPanel?.orderId
+    ? flow?.orders.find(order => order.id === diagnosticPanel.orderId)
+    : undefined;
+  const diagnosticFailedNotices = (diagnosticPanel?.events || [])
+    .filter(event => event.stage === 'customer_notification' && event.status === 'failed');
 
   return (
     <main className="min-h-screen min-w-0 bg-slate-50 p-3 text-left sm:p-8">
@@ -403,14 +499,42 @@ export default function OperationsCommandCenter() {
                 <div role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-xs font-black uppercase tracking-wide text-amber-800">Flow data needs setup</p>
                   <ul className="mt-2 space-y-1 text-xs text-amber-800">
-                    {flow.warnings.map(warning => <li key={warning}>• {warning}</li>)}
+                    {flow.warnings.map(warning => (
+                      <li key={warning}>
+                        <button
+                          type="button"
+                          onClick={() => openSystemDiagnostic(
+                            'Order-flow data warning',
+                            warning,
+                            ['The required migration or permission is not available to the operations query. Confirm it is installed in the same Supabase project used by this deployment.'],
+                            [{ href: '/lord/settings?tab=integrations', label: 'Open connection diagnostics' }]
+                          )}
+                          className="text-left underline decoration-amber-500/50 underline-offset-2 hover:text-amber-950"
+                        >
+                          {warning}
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {flow.workers.map(worker => (
-                  <div key={worker.key} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                  <button
+                    key={worker.key}
+                    type="button"
+                    onClick={() => openSystemDiagnostic(
+                      worker.key === 'order-dispatch' ? 'Auto-dispatch worker diagnosis' : 'Merchant alert worker diagnosis',
+                      worker.diagnostic,
+                      worker.requirements,
+                      [
+                        { href: '/lord/settings?tab=integrations', label: 'Open connection diagnostics' },
+                        { href: 'https://vercel.com/gimee1/onbar/settings/environment-variables', label: 'Open Vercel environment variables', external: true }
+                      ]
+                    )}
+                    className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] font-black uppercase tracking-wide text-slate-700">
                         {worker.key === 'order-dispatch' ? 'Auto-dispatch worker' : 'Merchant alert worker'}
@@ -420,10 +544,28 @@ export default function OperationsCommandCenter() {
                     <p className="mt-1 text-[10px] text-slate-500">
                       {worker.lastSeenAt ? `Heartbeat ${new Date(worker.lastSeenAt).toLocaleTimeString()}` : 'No heartbeat recorded'}
                     </p>
-                  </div>
+                    <span className="mt-2 block text-[9px] font-black uppercase tracking-wide text-primary">Tap to diagnose</span>
+                  </button>
                 ))}
                 {Object.entries(flow.providers).map(([provider, configured]) => (
-                  <div key={provider} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                  <button
+                    key={provider}
+                    type="button"
+                    onClick={() => {
+                      const diagnostic = flow.providerDiagnostics[provider];
+                      openSystemDiagnostic(
+                        `${provider} notification diagnosis`,
+                        diagnostic?.diagnostic || 'Provider readiness details are unavailable.',
+                        diagnostic?.requirements || [],
+                        [
+                          { href: '/lord/communications/automation', label: 'Open messaging center' },
+                          { href: '/lord/settings?tab=integrations', label: 'Open connection diagnostics' },
+                          ...(!configured ? [{ href: 'https://vercel.com/gimee1/onbar/settings/environment-variables', label: 'Open Vercel environment variables', external: true }] : [])
+                        ]
+                      );
+                    }}
+                    className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] font-black uppercase tracking-wide text-slate-700">{provider} notifications</p>
                       <span className={cn('rounded-full border px-2 py-1 text-[9px] font-black uppercase', flowStatusStyle(configured ? 'configured' : 'unavailable'))}>
@@ -431,9 +573,19 @@ export default function OperationsCommandCenter() {
                       </span>
                     </div>
                     <p className="mt-1 text-[10px] text-slate-500">Readiness only; delivery results are shown below.</p>
-                  </div>
+                    <span className="mt-2 block text-[9px] font-black uppercase tracking-wide text-primary">Tap to diagnose</span>
+                  </button>
                 ))}
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <button
+                  type="button"
+                  onClick={() => openSystemDiagnostic(
+                    'Internal notification bridge diagnosis',
+                    flow.internalNotificationBridgeDiagnostic,
+                    flow.internalNotificationBridgeRequirements,
+                    [{ href: '/lord/settings?tab=integrations', label: 'Open connection diagnostics' }]
+                  )}
+                  className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[10px] font-black uppercase tracking-wide text-slate-700">Internal notification bridge</p>
                     <span className={cn('rounded-full border px-2 py-1 text-[9px] font-black uppercase', flowStatusStyle(flow.internalNotificationBridge ? 'configured' : 'unavailable'))}>
@@ -441,8 +593,18 @@ export default function OperationsCommandCenter() {
                     </span>
                   </div>
                   <p className="mt-1 text-[10px] text-slate-500">Required for checkout and delivery updates to trigger customer messages.</p>
-                </div>
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                  <span className="mt-2 block text-[9px] font-black uppercase tracking-wide text-primary">Tap to diagnose</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openSystemDiagnostic(
+                    'Notification rules diagnosis',
+                    flow.notificationRules.diagnostic,
+                    flow.notificationRules.available ? [] : ['Check the customer_messaging settings record and database permissions.'],
+                    [{ href: '/lord/communications/automation', label: 'Open notification rules' }]
+                  )}
+                  className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[10px] font-black uppercase tracking-wide text-slate-700">Notification rules</p>
                     <span className={cn('rounded-full border px-2 py-1 text-[9px] font-black uppercase', flowStatusStyle(
@@ -458,7 +620,8 @@ export default function OperationsCommandCenter() {
                       ? `Channels in rules: ${flow.notificationRules.enabledChannels.join(', ')}`
                       : 'No enabled notification channels'}
                   </p>
-                </div>
+                  <span className="mt-2 block text-[9px] font-black uppercase tracking-wide text-primary">Tap to diagnose</span>
+                </button>
               </div>
 
               <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-5">
@@ -473,10 +636,16 @@ export default function OperationsCommandCenter() {
                   { label: 'Merchant alerts sent', value: flow.summary.merchantNotificationsSent },
                   { label: 'Merchant alerts failed', value: flow.summary.merchantNotificationsFailed }
                 ].map(item => (
-                  <div key={item.label} className="rounded-xl border border-slate-100 p-3">
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => openMetricDiagnostic(item.label, item.value)}
+                    className="rounded-xl border border-slate-100 p-3 text-left transition hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
                     <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">{item.label}</p>
                     <p className="mt-1 text-2xl font-black text-slate-900">{item.value}</p>
-                  </div>
+                    <span className="mt-1 block text-[9px] font-black uppercase tracking-wide text-primary">Tap to inspect</span>
+                  </button>
                 ))}
               </div>
 
@@ -547,6 +716,9 @@ export default function OperationsCommandCenter() {
                               Current · {currentStage}
                             </span>
                             <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black uppercase text-slate-600">{order.status}</span>
+                            <Button type="button" size="sm" variant="outline" onClick={() => openOrderDiagnostic(order)} className="min-h-9">
+                              Diagnose
+                            </Button>
                           </div>
                         </div>
                         <div aria-hidden="true" className="mb-3 hidden overflow-x-auto sm:block">
@@ -582,12 +754,18 @@ export default function OperationsCommandCenter() {
                         </div>
                         <div className="grid grid-cols-2 gap-2 md:grid-cols-4 2xl:grid-cols-7">
                           {stages.map(([label, stage]) => (
-                            <div key={label} className="min-w-0">
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={() => openOrderDiagnostic(order, label)}
+                              className="min-w-0 rounded-lg p-1 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            >
                               <p className="text-[8px] font-black uppercase tracking-wide text-slate-400">{label}</p>
                               <span className={cn('mt-1 inline-flex max-w-full rounded-full border px-2 py-1 text-[9px] font-bold capitalize', flowStatusStyle(stage.status))}>
                                 <span className="truncate">{stage.label}</span>
                               </span>
-                            </div>
+                              <span className="mt-1 block text-[8px] font-bold uppercase text-primary">Details / actions</span>
+                            </button>
                           ))}
                         </div>
                         {hasRecoveryActions && (
@@ -681,11 +859,22 @@ export default function OperationsCommandCenter() {
                 <div>
                   <h3 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-700">Latest order & notification events</h3>
                   <div className="max-h-[460px] space-y-2 overflow-y-auto pr-1">
-                    {flow.timeline.slice(0, 18).map((event, eventIndex) => (
-                      <Link
+                    {flow.timeline.slice(0, 18).map((event, eventIndex) => {
+                      const eventOrder = flow.orders.find(order => order.id === event.orderId);
+                      const stageLabel: Record<string, string> = {
+                        order: 'Order',
+                        payment: 'Payment',
+                        merchant: 'Merchant',
+                        dispatch: 'Dispatch',
+                        delivery: 'Delivery',
+                        customer_notification: 'Customer notice',
+                        merchant_notification: 'Merchant alert'
+                      };
+                      return <button
                         key={event.id}
-                        href={`/lord/orders?orderId=${event.orderId}`}
-                        className="animate-in fade-in slide-in-from-right-2 duration-500 motion-reduce:animate-none flex gap-3 rounded-xl border border-slate-100 p-3 transition hover:border-primary/30 hover:bg-primary/[0.03]"
+                        type="button"
+                        onClick={() => eventOrder && openOrderDiagnostic(eventOrder, stageLabel[event.stage])}
+                        className="animate-in fade-in slide-in-from-right-2 duration-500 motion-reduce:animate-none flex w-full gap-3 rounded-xl border border-slate-100 p-3 text-left transition hover:border-primary/30 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         style={{ animationDelay: `${eventIndex * 35}ms` }}
                       >
                         <span className={cn('mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full', {
@@ -699,8 +888,8 @@ export default function OperationsCommandCenter() {
                           <span className="mt-0.5 block truncate text-[10px] text-slate-500">Order #{event.orderId} · {event.detail}</span>
                           <time className="mt-1 block text-[9px] text-slate-400">{new Date(event.occurredAt).toLocaleString()}</time>
                         </span>
-                      </Link>
-                    ))}
+                      </button>;
+                    })}
                     {!flow.timeline.length && <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No order or notification events have been recorded.</p>}
                   </div>
                 </div>
@@ -771,6 +960,172 @@ export default function OperationsCommandCenter() {
           </Link>
         ))}
       </section>
+
+      {diagnosticPanel && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4"
+          onClick={() => setDiagnosticPanel(null)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="operations-diagnostic-title"
+            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-6"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary">Operations diagnosis</p>
+                <h2 id="operations-diagnostic-title" className="mt-1 text-xl font-black text-slate-950">{diagnosticPanel.title}</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{diagnosticPanel.summary}</p>
+              </div>
+              <Button type="button" variant="outline" className="min-h-10 shrink-0" onClick={() => setDiagnosticPanel(null)}>
+                Close
+              </Button>
+            </div>
+
+            {diagnosticPanel.details.length > 0 && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-xs font-black uppercase tracking-wide text-amber-900">What to check</p>
+                <ul className="mt-2 space-y-2 text-sm leading-5 text-amber-950">
+                  {diagnosticPanel.details.map(detail => <li key={detail}>• {detail}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {diagnosticPanel.events && (
+              <div className="mt-5 space-y-2">
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">Recorded events and exact errors</h3>
+                {diagnosticPanel.events.length ? diagnosticPanel.events.map(event => (
+                  <article key={event.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-black text-slate-900">{event.title}</p>
+                      <span className={cn('rounded-full border px-2 py-1 text-[9px] font-black uppercase', flowStatusStyle(event.status))}>{event.status}</span>
+                    </div>
+                    <p className="mt-2 break-words text-sm leading-5 text-slate-700">{event.detail}</p>
+                    <p className="mt-1 text-[10px] text-slate-400">{new Date(event.occurredAt).toLocaleString()}</p>
+                    {event.notificationStatus && (
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                        Message template status: {event.notificationStatus}{event.channel ? ` · channel: ${event.channel}` : ''}
+                      </p>
+                    )}
+                  </article>
+                )) : <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">No matching event record was found for this item.</p>}
+              </div>
+            )}
+
+            {diagnosticOrder && diagnosticPanel.channels && diagnosticPanel.channels.length > 0 && (
+              <section className="mt-5 rounded-xl border border-rose-200 bg-rose-50/60 p-4">
+                <h3 className="text-xs font-black uppercase tracking-widest text-rose-900">Resend options</h3>
+                <p className="mt-1 text-xs leading-5 text-rose-800">
+                  Choose a channel to resend the order’s current status. The server will re-check notification rules, provider setup, and customer consent before sending.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {diagnosticPanel.channels.map(channel => {
+                    const isCurrentFailure = diagnosticOrder.retryableCustomerChannels.includes(channel);
+                    const failedStatuses = [...new Set(diagnosticFailedNotices
+                      .filter(event => event.channel === channel)
+                      .map(event => event.notificationStatus)
+                      .filter((status): status is string => Boolean(status)))];
+                    return (
+                      <div key={channel} className="w-full rounded-lg border border-rose-200 bg-white p-3">
+                        <p className="text-xs font-bold text-slate-800">
+                          {isCurrentFailure ? `Failed ${diagnosticOrder.status} message` : `Earlier failure: ${failedStatuses.join(', ') || 'status not recorded'}`}
+                        </p>
+                        {!isCurrentFailure && (
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            The order is now {diagnosticOrder.status}. Resending will send the current status template, not an outdated message.
+                          </p>
+                        )}
+                        {flow?.permissions.manageOrders || flow?.permissions.manageCommunications ? (
+                          confirmRetryChannel === channel ? (
+                            <div className="mt-3 rounded-lg bg-rose-50 p-3">
+                              <p className="text-xs font-semibold leading-5 text-rose-900">
+                                Confirm resend of “{diagnosticOrder.status}” via {channel}? Consent and channel settings are checked again before delivery.
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={Boolean(actionBusy)}
+                                  onClick={() => void retryCustomerNotice(diagnosticOrder, channel)}
+                                >
+                                  {actionBusy === `customer:${diagnosticOrder.id}:${channel}` ? 'Sending…' : `Confirm resend via ${channel}`}
+                                </Button>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setConfirmRetryChannel(null)}>
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={Boolean(actionBusy)}
+                              onClick={() => setConfirmRetryChannel(channel)}
+                              className="mt-3 min-h-10"
+                            >
+                              Resend via {channel}
+                            </Button>
+                          )
+                        ) : <p className="mt-2 text-xs text-slate-500">Your account does not have permission to resend notifications.</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {diagnosticOrder && diagnosticOrder.retryableMerchantAlerts > 0 && flow?.permissions.manageOrders && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Boolean(actionBusy)}
+                onClick={() => void sendAdminAction(diagnosticOrder, 'retry_merchant_alerts', 'Merchant alert retry')}
+                className="mt-4 min-h-10"
+              >
+                {actionBusy === `retry_merchant_alerts:${diagnosticOrder.id}`
+                  ? 'Retrying merchant alerts…'
+                  : `Retry ${diagnosticOrder.retryableMerchantAlerts} failed merchant alert${diagnosticOrder.retryableMerchantAlerts === 1 ? '' : 's'}`}
+              </Button>
+            )}
+
+            {diagnosticOrder && actionNotice?.orderId === diagnosticOrder.id && (
+              <p role={actionNotice.error ? 'alert' : 'status'} className={cn(
+                'mt-4 rounded-lg border p-3 text-sm font-semibold',
+                actionNotice.error ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              )}>
+                {actionNotice.message}
+              </p>
+            )}
+
+            {diagnosticPanel.links && diagnosticPanel.links.length > 0 && (
+              <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                {diagnosticPanel.links.map(link => link.external ? (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 px-3 text-xs font-bold text-primary hover:bg-slate-50"
+                  >
+                    {link.label} <ArrowRight className="ml-2 h-3 w-3" />
+                  </a>
+                ) : (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 px-3 text-xs font-bold text-primary hover:bg-slate-50"
+                  >
+                    {link.label} <ArrowRight className="ml-2 h-3 w-3" />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       {reassignOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">

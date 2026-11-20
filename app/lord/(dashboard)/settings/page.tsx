@@ -200,6 +200,11 @@ export default function AdminSettingsPage() {
     const [promotionSyncMessage, setPromotionSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const [activeTab, setActiveTab] = useState<TabId>('identity');
+    useEffect(() => {
+        if (new URLSearchParams(window.location.search).get('tab') === 'integrations') {
+            setActiveTab('integrations');
+        }
+    }, []);
 
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [faviconFile, setFaviconFile] = useState<File | null>(null);

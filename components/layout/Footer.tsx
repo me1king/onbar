@@ -25,6 +25,9 @@ import { useSettings, type StoreSettings } from "@/lib/useSettings";
 import { cn } from "@/lib/utils";
 import { phoneCallHref, socialProfileHref, type SocialPlatform } from "@/lib/contactLinks";
 
+type FooterLink = { href: string; label: string; color?: "primary" | "rider" };
+type FooterSection = { title: string; links: FooterLink[] };
+
 export default function Footer({ initialSettings }: { initialSettings?: StoreSettings }) {
   const { settings: hookSettings, loading } = useSettings();
   const settings = initialSettings || hookSettings;
@@ -62,7 +65,7 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
     }
   };
 
-  const footerSections = [
+  const footerSections: FooterSection[] = [
     {
       title: "Shop",
       links: [
@@ -103,18 +106,18 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
     {
       title: "Partners",
       links: [
-        { href: "/affiliate/register", label: "Become an Affiliate" },
-        { href: "/merchant/onboarding", label: "Become a Merchant" },
-        { href: "/rider/onboarding", label: "Become a Runner" },
+        { href: "/affiliate/register", label: "Become an Affiliate", color: "primary" },
+        { href: "/merchant/onboarding", label: "Become a Merchant", color: "primary" },
+        { href: "/rider/onboarding", label: "Become a Runner", color: "rider" },
       ],
     },
     {
       title: "Legal",
       links: [
-        { href: "/privacy", label: "Privacy Policy" },
-        { href: "/terms", label: "Terms & Conditions" },
-        { href: "/cookies", label: "Cookie Policy" },
-        { href: "/accessibility", label: "Accessibility" },
+        { href: "/privacy", label: "Privacy Policy", color: "primary" },
+        { href: "/terms", label: "Terms & Conditions", color: "primary" },
+        { href: "/cookies", label: "Cookie Policy", color: "primary" },
+        { href: "/accessibility", label: "Accessibility", color: "primary" },
       ],
     },
   ];
@@ -250,9 +253,15 @@ export default function Footer({ initialSettings }: { initialSettings?: StoreSet
                     <li key={link.label}>
                       <Link
                         href={link.href}
-                        className={link.href === "/merchant/onboarding"
-                          ? "inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-all duration-300 font-bold uppercase tracking-widest"
-                          : "text-xs text-muted-foreground hover:text-primary transition-all duration-300 inline-block font-bold uppercase tracking-widest"}
+                        className={cn(
+                          "text-xs transition-all duration-300 font-bold uppercase tracking-widest hover:opacity-75",
+                          link.color === "rider"
+                            ? "text-[#137A4A] inline-block"
+                            : link.color === "primary"
+                              ? "text-[#8A4D00] inline-block"
+                              : "text-muted-foreground hover:text-primary inline-block",
+                          link.href === "/merchant/onboarding" && "inline-flex items-center gap-2"
+                        )}
                       >
                         {link.label}
                       </Link>
