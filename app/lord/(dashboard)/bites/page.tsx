@@ -66,6 +66,8 @@ export default function BiteCommandCenter() {
     const [timeline, setTimeline] = React.useState<OrderTimelineItem[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
+    const [merchantNotificationMessage, setMerchantNotificationMessage] = React.useState<{ type: 'success' | 'warning'; text: string } | null>(null);
+    const [notificationRetryProductId, setNotificationRetryProductId] = React.useState<number | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [imageFile, setImageFile] = React.useState<File | null>(null);
@@ -306,9 +308,22 @@ export default function BiteCommandCenter() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ product: payload })
             });
-            const result = await response.json() as { product?: BiteProduct; error?: string };
+            const result = await response.json() as {
+                product?: BiteProduct;
+                error?: string;
+                merchantNotificationCount?: number | null;
+                merchantNotificationWarning?: string | null;
+            };
             if (!response.ok || !result.product) throw new Error(result.error || 'Food item could not be saved.');
             setBites([result.product, ...bites]);
+            const productId = Number(result.product.id);
+            setNotificationRetryProductId(result.merchantNotificationWarning && Number.isSafeInteger(productId) ? productId : null);
+            setMerchantNotificationMessage({
+                type: result.merchantNotificationWarning ? 'warning' : 'success',
+                text: result.merchantNotificationWarning
+                    ? `Food item saved. ${result.merchantNotificationWarning}`
+                    : `${result.merchantNotificationCount || 0} compatible approved merchants notified to review price and stock.`
+            });
             setIsAddModalOpen(false);
             setNewFood({
                 name: '',
@@ -337,6 +352,30 @@ export default function BiteCommandCenter() {
             alert(insertError instanceof Error ? insertError.message : 'Unable to add food item because the request failed. Please try again.');
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const retryMerchantNotifications = async () => {
+        if (!notificationRetryProductId) return;
+        try {
+            const response = await fetch('/api/admin/bites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'notify_merchants', id: notificationRetryProductId })
+            });
+            const result = await response.json() as { merchantNotificationCount?: number; error?: string };
+            if (!response.ok) throw new Error(result.error || 'Merchant notifications could not be retried.');
+            setNotificationRetryProductId(null);
+            setMerchantNotificationMessage({
+                type: 'success',
+                text: `${result.merchantNotificationCount || 0} compatible approved merchants notified.`
+            });
+        } catch (retryError) {
+            console.error('[BiteCommand] Could not retry merchant notifications:', retryError);
+            setMerchantNotificationMessage({
+                type: 'warning',
+                text: retryError instanceof Error ? retryError.message : 'Merchant notifications could not be retried.'
+            });
         }
     };
 
@@ -510,6 +549,12 @@ export default function BiteCommandCenter() {
                 </div>
 
                 {error && <p role="alert" className="mx-6 rounded-xl bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</p>}
+                {merchantNotificationMessage && <div role={merchantNotificationMessage.type === 'warning' ? 'alert' : 'status'} className={`mx-6 flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 text-sm font-medium ${merchantNotificationMessage.type === 'warning' ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'}`}>
+                    <span>{merchantNotificationMessage.text}</span>
+                    {notificationRetryProductId && <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void retryMerchantNotifications()} className="border-amber-300 bg-white text-amber-950">
+                        Retry merchant notifications
+                    </Button>}
+                </div>}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="tablist" aria-label="Menu section">
                     <button
                         type="button"

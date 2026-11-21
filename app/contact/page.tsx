@@ -21,7 +21,7 @@ import {
   Shield,
   ArrowLeft
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSettings } from "@/lib/useSettings";
 import { phoneCallHref } from "@/lib/contactLinks";
 
@@ -40,6 +40,18 @@ export default function Contact() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submission, setSubmission] = useState<{ ticketId: string; emailSent: boolean; emailWarning?: string } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const orderId = new URLSearchParams(window.location.search).get("orderId");
+    if (!orderId || !/^[1-9]\d{0,14}$/.test(orderId)) return;
+
+    setFormData((current) => ({
+      ...current,
+      subject: `Order #${orderId} - tracking or delivery help`,
+      category: contactTopics[0],
+      message: `I'm contacting you about order #${orderId}. Please help me with: `
+    }));
+  }, []);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>

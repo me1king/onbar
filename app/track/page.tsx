@@ -670,6 +670,18 @@ function TrackingContent() {
                     </div>
                   </div>
                 )}
+
+                <div className="mt-8 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm leading-6 text-slate-600">
+                    Missing an update or need help with this order? Contact support and include order #{order.id}.
+                  </p>
+                  <Link
+                    href={`/contact?orderId=${order.id}`}
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    Report an order issue
+                  </Link>
+                </div>
               </div>
             </div>
 

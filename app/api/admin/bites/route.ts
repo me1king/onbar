@@ -27,7 +27,7 @@ async function authorize() {
   if (!database) {
     return { response: NextResponse.json({ error: 'Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server.' }, { status: 503 }) };
   }
-  return { database };
+  return { database, actor: session.email || session.role };
 }
 
 export async function GET() {
@@ -92,7 +92,22 @@ export async function POST(request: Request) {
     console.error('[AdminBites] Could not create food product:', error);
     return NextResponse.json({ error: `Food product could not be saved: ${error.message}` }, { status: 500 });
   }
-  return NextResponse.json({ product: data }, { status: 201 });
+  const { data: notificationCount, error: notificationError } = await access.database.rpc(
+    'notify_approved_merchants_of_new_product',
+    { p_product_id: Number(data.id), p_actor: access.actor }
+  );
+  if (notificationError) {
+    console.error('[AdminBites] Product was saved, but merchant catalog notifications failed:', notificationError);
+  }
+  return NextResponse.json({
+    product: data,
+    merchantNotificationCount: notificationError ? null : notificationCount,
+    merchantNotificationWarning: notificationError
+      ? /notify_approved_merchants_of_new_product|schema cache/i.test(notificationError.message)
+        ? 'Apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql, then retry merchant notifications.'
+        : 'The product was saved, but merchant notifications could not be sent.'
+      : null
+  }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
@@ -102,7 +117,7 @@ export async function PATCH(request: Request) {
   const access = await authorize();
   if ('response' in access) return access.response;
 
-  let body: { id?: unknown; status?: unknown };
+  let body: { id?: unknown; status?: unknown; action?: unknown };
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -110,6 +125,24 @@ export async function PATCH(request: Request) {
   }
 
   const id = Number(body.id);
+  if (body.action === 'notify_merchants') {
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return NextResponse.json({ error: 'A valid food product ID is required.' }, { status: 400 });
+    }
+    const { data: merchantNotificationCount, error: notificationError } = await access.database.rpc(
+      'notify_approved_merchants_of_new_product',
+      { p_product_id: id, p_actor: access.actor }
+    );
+    if (notificationError) {
+      console.error('[AdminBites] Could not retry merchant catalog notifications:', notificationError);
+      return NextResponse.json({
+        error: /notify_approved_merchants_of_new_product|schema cache/i.test(notificationError.message)
+          ? 'Apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql, then retry merchant notifications.'
+          : 'Merchant notifications could not be sent.'
+      }, { status: 503 });
+    }
+    return NextResponse.json({ merchantNotificationCount });
+  }
   if (!Number.isSafeInteger(id) || id < 1 || !['Live', 'Draft'].includes(String(body.status))) {
     return NextResponse.json({ error: 'A valid product ID and status are required.' }, { status: 400 });
   }
@@ -126,7 +159,23 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: `Food product could not be updated: ${error.message}` }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: 'Food product not found.' }, { status: 404 });
-  return NextResponse.json({ product: data });
+  let merchantNotificationCount: number | null = null;
+  let merchantNotificationWarning: string | null = null;
+  if (status === 'Live') {
+    const { data: count, error: notificationError } = await access.database.rpc(
+      'notify_approved_merchants_of_new_product',
+      { p_product_id: id, p_actor: access.actor }
+    );
+    if (notificationError) {
+      console.error('[AdminBites] Product was published, but merchant catalog notifications failed:', notificationError);
+      merchantNotificationWarning = /notify_approved_merchants_of_new_product|schema cache/i.test(notificationError.message)
+        ? 'Apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql, then retry merchant notifications.'
+        : 'The product was published, but merchant notifications could not be sent.';
+    } else {
+      merchantNotificationCount = count;
+    }
+  }
+  return NextResponse.json({ product: data, merchantNotificationCount, merchantNotificationWarning });
 }
 
 export async function DELETE(request: Request) {

@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { getSupabaseServerKey } from '@/lib/supabaseServerConfig';
 
 export const dynamic = 'force-dynamic';
 
 type ProductPayload = Record<string, unknown>;
-type AuthorizedDatabase = { database: SupabaseClient } | { response: NextResponse };
+type AuthorizedDatabase = { database: SupabaseClient; actor: string } | { response: NextResponse };
 type ProductSalesRow = {
     quantity: number | null;
     products: { id: number; name: string } | Array<{ id: number; name: string }> | null;
@@ -28,7 +29,8 @@ async function getAuthorizedDatabase(): Promise<AuthorizedDatabase> {
     }
 
     return {
-        database: createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
+        database: createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } }),
+        actor: session.email || session.role
     };
 }
 
@@ -131,6 +133,27 @@ export async function GET(request: Request) {
         topSeller,
         salesReportAvailable
     });
+}
+
+async function notifyMerchantsOfProduct(
+    database: SupabaseClient,
+    productId: number,
+    actor: string
+): Promise<{ count: number | null; warning: string | null }> {
+    const { data, error } = await database.rpc('notify_approved_merchants_of_new_product', {
+        p_product_id: productId,
+        p_actor: actor
+    });
+    if (error) {
+        console.error('[ProductAdmin] Product was saved, but merchant catalog notifications failed:', error);
+        return {
+            count: null,
+            warning: /notify_approved_merchants_of_new_product|schema cache/i.test(error.message)
+                ? 'Apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql, then retry merchant notifications.'
+                : 'The product was saved, but merchant notifications could not be sent. Retry from the product editor.'
+        };
+    }
+    return { count: typeof data === 'number' ? data : 0, warning: null };
 }
 
 async function saveProduct(database: SupabaseClient, id: number | null, product: ProductPayload) {
@@ -263,7 +286,12 @@ export async function POST(request: Request) {
     try {
         await synchronizeSingleVariantStock(access.database, null, body.product);
         const result = await saveProduct(access.database, null, body.product);
-        return NextResponse.json(result, { status: 201 });
+        const notifications = await notifyMerchantsOfProduct(access.database, result.id, access.actor);
+        return NextResponse.json({
+            ...result,
+            merchantNotificationCount: notifications.count,
+            merchantNotificationWarning: notifications.warning
+        }, { status: 201 });
     } catch (error) {
         console.error('[ProductAdmin] Could not create product:', error);
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Product could not be created.' }, { status: 500 });
@@ -274,11 +302,24 @@ export async function PATCH(request: Request) {
     const access = await getAuthorizedDatabase();
     if ('response' in access) return access.response;
 
-    let body: { id?: unknown; product?: unknown };
+    let body: { id?: unknown; product?: unknown; action?: unknown };
     try {
         body = await request.json() as typeof body;
     } catch {
         return NextResponse.json({ error: 'A valid product payload is required.' }, { status: 400 });
+    }
+    if (body.action === 'notify_merchants') {
+        if (!isSameOriginRequest(request)) {
+            return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+        }
+        if (!Number.isSafeInteger(body.id) || Number(body.id) < 1) {
+            return NextResponse.json({ error: 'A valid product ID is required.' }, { status: 400 });
+        }
+        const notifications = await notifyMerchantsOfProduct(access.database, Number(body.id), access.actor);
+        if (notifications.warning) {
+            return NextResponse.json({ error: notifications.warning }, { status: 503 });
+        }
+        return NextResponse.json({ merchantNotificationCount: notifications.count });
     }
     if (!Number.isSafeInteger(body.id) || Number(body.id) < 1 || !isProductPayload(body.product)) {
         return NextResponse.json({ error: 'A valid product ID and payload are required.' }, { status: 400 });
@@ -289,7 +330,12 @@ export async function PATCH(request: Request) {
     try {
         await synchronizeSingleVariantStock(access.database, Number(body.id), body.product);
         const result = await saveProduct(access.database, Number(body.id), body.product);
-        return NextResponse.json(result);
+        const notifications = await notifyMerchantsOfProduct(access.database, result.id, access.actor);
+        return NextResponse.json({
+            ...result,
+            merchantNotificationCount: notifications.count,
+            merchantNotificationWarning: notifications.warning
+        });
     } catch (error) {
         console.error('[ProductAdmin] Could not update product:', error);
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Product could not be updated.' }, { status: 500 });

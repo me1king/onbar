@@ -149,12 +149,13 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     { data: events, error: eventsError },
     { data: batches, error: batchesError },
     { data: fulfillment, error: fulfillmentError },
-    { data: incidents, error: incidentsError }
+    { data: incidents, error: incidentsError },
+    { data: catalogNotifications, error: catalogNotificationsError }
   ] = await Promise.all([
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected', 'stock_confirmed', 'payment_statement_requested'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected', 'stock_confirmed', 'payment_statement_requested', 'new_product_available', 'catalog_update_acknowledged'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
@@ -172,9 +173,15 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
       .select('id, incident_code, order_id, batch_id, category, description, status, severity, resolution_note, created_at')
       .eq('application_id', applicationId)
       .order('created_at', { ascending: false })
-      .limit(200)
+      .limit(200),
+    database.from('merchant_catalog_update_notifications')
+      .select('id, product_id, product_name, category, listed_price, created_at')
+      .eq('application_id', applicationId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(100)
   ]);
-  const queryError = eventsError || batchesError || fulfillmentError || incidentsError;
+  const queryError = eventsError || batchesError || fulfillmentError || incidentsError || catalogNotificationsError;
   if (queryError) throw queryError;
 
   const batchRows = [...(batches || [])];
@@ -359,7 +366,8 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     events: events || [],
     batches: batchData,
     orders: orderData,
-    incidents: incidents || []
+    incidents: incidents || [],
+    catalogNotifications: catalogNotifications || []
   };
 }
 
@@ -422,7 +430,9 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error('[MerchantNetwork] Could not load partner workspace:', error);
-    const message = error instanceof Error && /alcohol_onboarding|excise_stamp_confirmed/i.test(error.message)
+    const message = error instanceof Error && /merchant_catalog_update_notifications/i.test(error.message)
+      ? 'New product notifications are not installed yet. Run supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql.'
+      : error instanceof Error && /alcohol_onboarding|excise_stamp_confirmed/i.test(error.message)
       ? 'Alcohol retailer workspace is not installed. Run supabase/MERCHANT_LIQUOR_ONBOARDING_MIGRATION.sql after merchant operations.'
       : error instanceof Error && /merchant_|does not exist|schema cache/i.test(error.message)
         ? 'Merchant operations data is unavailable. Confirm supabase/MERCHANT_OPERATIONS_MIGRATION.sql and supabase/DISPATCH_MIGRATION.sql are installed.'
@@ -456,6 +466,27 @@ export async function POST(request: Request) {
   if (!application) return NextResponse.json({ error: 'That business is not linked to your verified account.' }, { status: 404 });
   if (application.status !== 'approved') {
     return NextResponse.json({ error: 'Only currently approved partners can make operational updates.' }, { status: 403 });
+  }
+
+  if (body.operation === 'acknowledge_catalog_update') {
+    if (!isUuid(body.notificationId)) {
+      return NextResponse.json({ error: 'Choose a valid catalog update notification.' }, { status: 400 });
+    }
+    const { data, error } = await context.database.rpc('acknowledge_merchant_catalog_update', {
+      p_application_id: application.id,
+      p_notification_id: body.notificationId,
+      p_actor: context.actor
+    });
+    if (error) {
+      console.error('[MerchantNetwork] Could not acknowledge catalog update:', error);
+      return NextResponse.json({
+        error: /acknowledge_merchant_catalog_update|schema cache/i.test(error.message)
+          ? 'New product notifications are not installed yet. Run supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql.'
+          : 'This catalog update could not be acknowledged.'
+      }, { status: 503 });
+    }
+    if (data !== true) return NextResponse.json({ error: 'This catalog update is no longer waiting for action.' }, { status: 409 });
+    return NextResponse.json({ acknowledged: true });
   }
 
   if (body.operation === 'request_product_photo') {

@@ -106,6 +106,7 @@ function CheckoutContent() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [emailMarketingConsent, setEmailMarketingConsent] = useState(false);
   const [emailMarketingConsentEmail, setEmailMarketingConsentEmail] = useState<string | null>(null);
   const [emailMarketingConsentBusy, setEmailMarketingConsentBusy] = useState(false);
@@ -848,6 +849,14 @@ function CheckoutContent() {
   };
 
   const handlePlaceOrder = async () => {
+    if (!ageConfirmed) {
+      setCheckoutStatus({
+        type: "error",
+        message: "Confirm that you are at least 18 years old before placing your order."
+      });
+      document.getElementById('checkout-age-confirmation')?.focus();
+      return;
+    }
     if (isSystemLockdown) {
         setCheckoutStatus({
             type: "error",
@@ -958,6 +967,7 @@ function CheckoutContent() {
               customerName,
               customerPhone,
               customerEmail: customerEmail.trim() || null,
+              ageConfirmed,
               paymentMethod: paymentMethod === 'M-Pesa'
                 ? onlinePaymentProvider === 'payhero'
                   ? 'PayHero'
@@ -1893,6 +1903,24 @@ function CheckoutContent() {
                       </div>
                   </div>
               )}
+
+              <label htmlFor="checkout-age-confirmation" className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left text-xs leading-5 text-slate-700">
+                <input
+                  id="checkout-age-confirmation"
+                  type="checkbox"
+                  checked={ageConfirmed}
+                  onChange={event => setAgeConfirmed(event.target.checked)}
+                  aria-required="true"
+                  aria-describedby="checkout-age-note"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span>
+                  I confirm that I am at least 18 years old.
+                  <span id="checkout-age-note" className="mt-1 block text-slate-500">
+                    This is a self-confirmation, not identity or age verification.
+                  </span>
+                </span>
+              </label>
 
               <Button
                 size="lg"

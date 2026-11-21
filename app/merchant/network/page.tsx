@@ -111,6 +111,45 @@ type MerchantPaymentOrder = {
     size: string | null;
   }>;
 };
+type MerchantSettlementSummary = {
+  policy: {
+    version: number;
+    merchant_share_bps: number;
+    minimum_payout_kes: number;
+    enabled: boolean;
+  } | null;
+  destination: {
+    id: string;
+    method: string;
+    masked_account: string;
+    verification_status: 'pending' | 'verified' | 'rejected';
+    review_note: string | null;
+  } | null;
+  balances: {
+    ledger_total_kes: number;
+    available_kes: number;
+    pending_kes: number;
+    paid_kes: number;
+  };
+  entries: Array<{
+    id: number;
+    entry_type: 'sale' | 'adjustment';
+    order_id: number | null;
+    amount_kes: number;
+    description: string;
+    created_at: string;
+  }>;
+  settlements: Array<{
+    id: string;
+    amount_kes: number;
+    status: string;
+    provider_reference: string | null;
+    mpesa_receipt: string | null;
+    failure_message: string | null;
+    created_at: string;
+    updated_at: string;
+  }>;
+};
 type SellerSalesOrder = {
   id: number;
   customerName: string;
@@ -209,6 +248,14 @@ type PartnerApplication = {
   batches: PartnerBatch[];
   orders: PartnerOrder[];
   incidents: PartnerIncident[];
+  catalogNotifications: Array<{
+    id: string;
+    product_id: number;
+    product_name: string;
+    category: string | null;
+    listed_price: number;
+    created_at: string;
+  }>;
 };
 
 type MerchantPerformanceWindow = {
@@ -324,7 +371,9 @@ const statusLabels: Record<string, string> = {
   expired: 'Compliance expired',
   offer_price_updated: 'Price request submitted',
   offer_price_approved: 'Catalog price request approved',
-  offer_price_rejected: 'Catalog price request rejected'
+  offer_price_rejected: 'Catalog price request rejected',
+  new_product_available: 'New catalog product available',
+  catalog_update_acknowledged: 'Catalog product reviewed'
 };
 const documentLabels: Record<string, string> = {
   business_registration: 'Business registration',
@@ -434,8 +483,68 @@ function latestFulfillment(events: FulfillmentEvent[]): string {
   return [...events].sort((left, right) => new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime())[0]?.event_type || '';
 }
 
+function MerchantCatalogUpdateBanner({
+  application,
+  notifications,
+  canOperate,
+  working,
+  onAction,
+  onOpenStock
+}: {
+  application: PartnerApplication['application'];
+  notifications: PartnerApplication['catalogNotifications'];
+  canOperate: boolean;
+  working: boolean;
+  onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
+  onOpenStock: (productId?: number) => void;
+}) {
+  if (!notifications.length) return null;
+  const acknowledge = async (notificationId: string, productId: number, open: boolean) => {
+    const saved = await onAction({
+      operation: 'acknowledge_catalog_update',
+      applicationId: application.id,
+      notificationId
+    }, open ? 'Catalog update opened. Set the stock and submit a price proposal for review.' : 'Catalog update dismissed.');
+    if (saved && open) onOpenStock(productId);
+  };
+
+  return <section aria-label="New catalog product notifications" className="space-y-3 rounded-2xl border border-sky-300/30 bg-sky-400/10 p-4">
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <h3 className="font-black text-sky-100">New products to review</h3>
+        <p className="mt-1 text-xs text-sky-100/70">{notifications.length} new catalog item{notifications.length === 1 ? '' : 's'} added by OnBar. Review whether you want to carry them.</p>
+      </div>
+      <span className="rounded-full bg-sky-300 px-2.5 py-1 text-xs font-black text-sky-950">{notifications.length}</span>
+    </div>
+    <div className="grid gap-2 md:grid-cols-2">
+      {notifications.map(notification => <article key={notification.id} className="rounded-xl border border-sky-100/10 bg-black/20 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="font-bold text-white">{notification.product_name}</p>
+            <p className="mt-1 text-xs text-sky-100/70">{notification.category || 'Catalog item'} · listed KSh {Number(notification.listed_price).toLocaleString('en-KE')}</p>
+          </div>
+          <time className="text-[10px] text-sky-100/60">{dateTime(notification.created_at)}</time>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" disabled={!canOperate || working}
+            onClick={() => void acknowledge(notification.id, notification.product_id, true)}
+            className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-zinc-950 disabled:opacity-50">
+            Update price & stock
+          </button>
+          <button type="button" disabled={!canOperate || working}
+            onClick={() => void acknowledge(notification.id, notification.product_id, false)}
+            className="rounded-lg border border-white/20 px-3 py-2 text-xs font-bold text-zinc-200 disabled:opacity-50">
+            Dismiss
+          </button>
+        </div>
+      </article>)}
+    </div>
+  </section>;
+}
+
 function MerchantPaymentsPanel({
   application,
+  accessToken,
   orders,
   requests,
   canOperate,
@@ -443,12 +552,78 @@ function MerchantPaymentsPanel({
   onRequestStatement
 }: {
   application: PartnerApplication['application'];
+  accessToken: string;
   orders: MerchantPaymentOrder[];
   requests: PartnerEvent[];
   canOperate: boolean;
   working: boolean;
   onRequestStatement: (orderIds: number[]) => Promise<boolean>;
 }) {
+  const [settlementSummary, setSettlementSummary] = useState<MerchantSettlementSummary | null>(null);
+  const [settlementLoading, setSettlementLoading] = useState(true);
+  const [settlementBusy, setSettlementBusy] = useState(false);
+  const [settlementError, setSettlementError] = useState('');
+  const [settlementMessage, setSettlementMessage] = useState('');
+  const [payoutPhone, setPayoutPhone] = useState('');
+  const currency = (amount: number) => `KSh ${Number(amount || 0).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
+  const loadSettlements = useCallback(async () => {
+    if (!accessToken) {
+      setSettlementLoading(false);
+      setSettlementError('Sign in again to view merchant settlement records.');
+      return;
+    }
+    setSettlementLoading(true);
+    setSettlementError('');
+    try {
+      const response = await fetch(`/api/merchant/settlements?applicationId=${encodeURIComponent(application.id)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: 'no-store'
+      });
+      const result = await response.json() as { summary?: MerchantSettlementSummary; error?: string };
+      if (!response.ok || !result.summary) throw new Error(result.error || 'Merchant settlement records could not be loaded.');
+      setSettlementSummary(result.summary);
+    } catch (error) {
+      setSettlementError(error instanceof Error ? error.message : 'Merchant settlement records could not be loaded.');
+    } finally {
+      setSettlementLoading(false);
+    }
+  }, [accessToken, application.id]);
+
+  useEffect(() => {
+    void loadSettlements();
+  }, [loadSettlements]);
+
+  const submitSettlementAction = async (action: 'submit_destination' | 'request_payout') => {
+    setSettlementBusy(true);
+    setSettlementError('');
+    setSettlementMessage('');
+    try {
+      const response = await fetch('/api/merchant/settlements', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action,
+          applicationId: application.id,
+          ...(action === 'submit_destination' ? { phone: payoutPhone } : {})
+        })
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'The settlement action could not be completed.');
+      setSettlementMessage(action === 'submit_destination'
+        ? 'Payout number submitted. It must be verified by OnBar Finance before it can be used.'
+        : 'Payout request submitted for OnBar Finance review. No transfer has been sent yet.');
+      if (action === 'submit_destination') setPayoutPhone('');
+      await loadSettlements();
+    } catch (error) {
+      setSettlementError(error instanceof Error ? error.message : 'The settlement action could not be completed.');
+    } finally {
+      setSettlementBusy(false);
+    }
+  };
+
   const deliveredOrders = orders
     .filter(order => ['delivered', 'completed'].includes(order.status.toLowerCase())
       || latestFulfillment(order.fulfillment) === 'delivered')
@@ -491,8 +666,123 @@ function MerchantPaymentsPanel({
 
   return (
     <div className="space-y-5">
+      <section className="space-y-4 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="flex items-center gap-2 font-black text-white"><CreditCard size={17} /> Merchant settlement</h3>
+            <p className="mt-1 text-xs leading-5 text-zinc-400">Payables include verified paid-and-delivered order items and finance adjustments. Requests are reviewed before any M-Pesa transfer.</p>
+          </div>
+          <button type="button" onClick={() => void loadSettlements()} disabled={settlementLoading}
+            className="inline-flex min-h-9 items-center rounded-lg border border-white/15 px-3 text-xs font-bold text-zinc-200 disabled:opacity-50">
+            <RefreshCw size={13} className={`mr-2 ${settlementLoading ? 'animate-spin' : ''}`} />Refresh
+          </button>
+        </div>
+        {settlementError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs leading-5 text-rose-200">{settlementError}</p>}
+        {settlementMessage && <p role="status" className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-200">{settlementMessage}</p>}
+        {settlementLoading && !settlementSummary && <p role="status" className="text-sm text-zinc-400">Loading settlement summary…</p>}
+        {settlementSummary && <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ['Available', settlementSummary.balances.available_kes],
+              ['Under review / processing', settlementSummary.balances.pending_kes],
+              ['Paid', settlementSummary.balances.paid_kes],
+              ['Ledger total', settlementSummary.balances.ledger_total_kes]
+            ].map(([label, amount]) => <article key={String(label)} className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="text-lg font-black text-white">{currency(Number(amount))}</p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">{label}</p>
+            </article>)}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-white/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-zinc-300">Settlement terms</p>
+                  <p className="mt-1 text-sm text-zinc-100">{settlementSummary.policy?.enabled
+                    ? `${(settlementSummary.policy.merchant_share_bps / 100).toFixed(2)}% seller share · KSh ${Number(settlementSummary.policy.minimum_payout_kes).toLocaleString('en-KE')} minimum`
+                    : 'Not configured by OnBar Finance'}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${settlementSummary.policy?.enabled ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-200'}`}>
+                  {settlementSummary.policy?.enabled ? `Terms v${settlementSummary.policy.version}` : 'Unavailable'}
+                </span>
+              </div>
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wide text-zinc-300">Payout destination</p>
+                    <p className="mt-1 text-sm text-zinc-100">{settlementSummary.destination?.masked_account || 'No M-Pesa number submitted'}</p>
+                  </div>
+                  {settlementSummary.destination && <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${
+                    settlementSummary.destination.verification_status === 'verified'
+                      ? 'bg-emerald-400/10 text-emerald-300'
+                      : settlementSummary.destination.verification_status === 'pending'
+                        ? 'bg-amber-400/10 text-amber-200'
+                        : 'bg-rose-400/10 text-rose-300'
+                  }`}>{settlementSummary.destination.verification_status}</span>}
+                </div>
+                {settlementSummary.destination?.review_note && <p className="mt-2 text-xs text-rose-200">Finance note: {settlementSummary.destination.review_note}</p>}
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-white/10 p-4">
+              <form onSubmit={event => {
+                event.preventDefault();
+                void submitSettlementAction('submit_destination');
+              }} className="space-y-2">
+                <label htmlFor={`payout-phone-${application.id}`} className="text-xs font-black uppercase tracking-wide text-zinc-300">Submit or replace M-Pesa number</label>
+                <div className="flex flex-wrap gap-2">
+                  <Input id={`payout-phone-${application.id}`} type="tel" inputMode="tel" autoComplete="tel" maxLength={40}
+                    value={payoutPhone} onChange={event => setPayoutPhone(event.target.value)} placeholder="07xx xxx xxx or +254…" required
+                    className="min-w-[180px] flex-1 border-white/10 bg-black/20 text-white placeholder:text-zinc-500" />
+                  <button type="submit" disabled={!canOperate || working || settlementBusy}
+                    className="rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-zinc-950 disabled:opacity-50">
+                    {settlementBusy ? 'Saving…' : 'Submit number'}
+                  </button>
+                </div>
+                <p className="text-[11px] leading-5 text-zinc-500">The number is encrypted in storage and shown masked. Replacing it resets verification.</p>
+              </form>
+              <button type="button" disabled={!canOperate || working || settlementBusy
+                || !settlementSummary.policy?.enabled
+                || settlementSummary.destination?.verification_status !== 'verified'
+                || Number(settlementSummary.balances.available_kes) < Number(settlementSummary.policy?.minimum_payout_kes)}
+                onClick={() => void submitSettlementAction('request_payout')}
+                className="w-full rounded-lg border border-emerald-400/40 bg-emerald-400/10 px-4 py-3 text-xs font-black uppercase text-emerald-200 disabled:cursor-not-allowed disabled:opacity-40">
+                {settlementBusy ? 'Processing…' : 'Request available payout'}
+              </button>
+              {!canOperate && <p className="text-xs text-amber-200">Settlement actions are available to approved merchant accounts.</p>}
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-white/10 p-4">
+              <h4 className="text-xs font-black uppercase tracking-wide text-zinc-300">Recent payable ledger entries</h4>
+              <div className="mt-3 space-y-2">
+                {settlementSummary.entries.slice(0, 8).map(entry => <div key={entry.id} className="flex flex-wrap justify-between gap-2 border-b border-white/5 pb-2 text-xs">
+                  <span className="text-zinc-300">{entry.description}</span>
+                  <strong className={Number(entry.amount_kes) < 0 ? 'text-rose-300' : 'text-emerald-300'}>{currency(Number(entry.amount_kes))}</strong>
+                </div>)}
+                {!settlementSummary.entries.length && <p className="text-xs text-zinc-500">No verified payable entries have been posted yet.</p>}
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/10 p-4">
+              <h4 className="text-xs font-black uppercase tracking-wide text-zinc-300">Payout request history</h4>
+              <div className="mt-3 space-y-2">
+                {settlementSummary.settlements.map(settlement => <div key={settlement.id} className="border-b border-white/5 pb-2 text-xs">
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <strong className="text-zinc-100">{currency(Number(settlement.amount_kes))}</strong>
+                    <span className="font-bold uppercase text-amber-200">{settlement.status}</span>
+                  </div>
+                  <p className="mt-1 text-zinc-500">{dateTime(settlement.created_at)}{settlement.mpesa_receipt ? ` · Receipt ${settlement.mpesa_receipt}` : ''}</p>
+                  {settlement.failure_message && <p className="mt-1 text-rose-200">{settlement.failure_message}</p>}
+                </div>)}
+                {!settlementSummary.settlements.length && <p className="text-xs text-zinc-500">No payout requests have been made.</p>}
+              </div>
+            </div>
+          </div>
+        </>}
+      </section>
       <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100">
-        Payments are not yet connected to a verified merchant payout ledger or M-Pesa disbursement. The delivered item values below are taken from this merchant&apos;s order records; they are not earnings, a balance owed, or a payout promise.
+        Delivered item values below are an order-record export, not an earnings or payout calculation. The separate settlement ledger above includes only finance-configured shares on verified paid-and-delivered merchant-traced items, plus audited adjustments.
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <article className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4">
@@ -897,6 +1187,7 @@ function FoodMerchantTerminal({
   section,
   application,
   overview,
+  accessToken,
   canOperate,
   working,
   performance,
@@ -916,6 +1207,7 @@ function FoodMerchantTerminal({
   section: Section;
   application: PartnerApplication['application'];
   overview: PartnerApplication;
+  accessToken: string;
   canOperate: boolean;
   working: boolean;
   performance: MerchantPerformance | null;
@@ -1079,6 +1371,14 @@ function FoodMerchantTerminal({
       }
     }
     return shell('Menu', 'Products linked to your approved OnBar menu, with traceable stock and the current proposed price. You can update the proposed price and stock; OnBar reviews price changes before customer display.', <>
+      <MerchantCatalogUpdateBanner
+        application={application}
+        notifications={overview.catalogNotifications}
+        canOperate={canOperate}
+        working={working}
+        onAction={onAction}
+        onOpenStock={onOpenStock}
+      />
       {products.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {products.map(product => {
           const stock = batchTotals.get(product.product_id) || 0;
@@ -1184,6 +1484,7 @@ function FoodMerchantTerminal({
       {foodOrdersLoading && <p role="status" className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-400">Loading delivered order records…</p>}
       <MerchantPaymentsPanel
         application={application}
+        accessToken={accessToken}
         orders={paymentOrders}
         requests={overview.events}
         canOperate={canOperate}
@@ -1239,6 +1540,7 @@ function AlcoholMerchantTerminal({
   section,
   application,
   overview,
+  accessToken,
   canOperate,
   working,
   performance,
@@ -1253,6 +1555,7 @@ function AlcoholMerchantTerminal({
   section: Section;
   application: PartnerApplication['application'];
   overview: PartnerApplication;
+  accessToken: string;
   canOperate: boolean;
   working: boolean;
   performance: MerchantPerformance | null;
@@ -1351,6 +1654,14 @@ function AlcoholMerchantTerminal({
   if (section === 'liquor-catalog') {
     return panel('Catalog and stock', 'Approved catalogue items and actual received batch records. Excise-stamp status is an applicant attestation, not an authenticity scan.',
       <>
+        <MerchantCatalogUpdateBanner
+          application={application}
+          notifications={overview.catalogNotifications}
+          canOperate={canOperate}
+          working={working}
+          onAction={onAction}
+          onOpenStock={onOpenStock}
+        />
         <button
           type="button"
           onClick={() => onOpenStock(getOutOfStockProducts(overview.application, overview.batches)[0]?.productId)}
@@ -1448,6 +1759,7 @@ function AlcoholMerchantTerminal({
     return panel('Payments and settlement', 'Delivered order records and finance statement requests. Recorded item values are not a payout or balance.',
       <MerchantPaymentsPanel
         application={application}
+        accessToken={accessToken}
         orders={paymentOrders}
         requests={overview.events}
         canOperate={canOperate}
@@ -2563,7 +2875,9 @@ export default function OnBarPartnerNetworkPage() {
           {(isFoodMerchant ? foodSections : isLiquorMerchant ? liquorSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
             const Icon = item.icon;
             const isOrderTab = ['food-live', 'liquor-live', 'orders'].includes(item.id);
-            return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}{isOrderTab && pendingOrderCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">{pendingOrderCount}</span>}</button>;
+            const catalogUpdateTab = item.id === 'food-menu' || item.id === 'liquor-catalog';
+            const catalogUpdateCount = catalogUpdateTab ? overview.catalogNotifications.length : 0;
+            return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}{catalogUpdateCount > 0 && <span aria-label={`${catalogUpdateCount} new products`} className="rounded-full bg-sky-500 px-2 py-0.5 text-[10px] font-black text-white">{catalogUpdateCount}</span>}{isOrderTab && pendingOrderCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">{pendingOrderCount}</span>}</button>;
           })}
           <button type="button" disabled={loading} onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl disabled:opacity-50 ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
         </nav>}
@@ -2608,6 +2922,7 @@ export default function OnBarPartnerNetworkPage() {
             section={section}
             application={application}
             overview={overview}
+            accessToken={accessToken}
             canOperate={canOperate}
             working={working}
             performance={performance}
@@ -2631,6 +2946,7 @@ export default function OnBarPartnerNetworkPage() {
             section={section}
             application={application}
             overview={overview}
+            accessToken={accessToken}
             canOperate={canOperate}
             working={working}
             performance={performance}

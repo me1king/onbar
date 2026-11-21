@@ -204,7 +204,8 @@ function UploadContent() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formSession, setFormSession] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
+  const [notificationRetryProductId, setNotificationRetryProductId] = useState<number | null>(null);
   const [isVisionScanning, setIsVisionScanning] = useState(false);
   const [imageAudits, setImageAudits] = useState<Record<string, ImageAuditResult>>({});
   const visibleProducts = useMemo(
@@ -615,7 +616,12 @@ function UploadContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(editingId ? { id: editingId, product: currentPayload } : { product: currentPayload })
       });
-      const saveResult = await saveResponse.json() as { id?: number; error?: string };
+      const saveResult = await saveResponse.json() as {
+          id?: number;
+          error?: string;
+          merchantNotificationCount?: number | null;
+          merchantNotificationWarning?: string | null;
+      };
       if (!saveResponse.ok || typeof saveResult.id !== 'number') {
           throw new Error(saveResult.error || 'Product could not be saved.');
       }
@@ -623,13 +629,18 @@ function UploadContent() {
       productSaved = true;
 
       await logAuditAction(email || 'admin', editingId ? 'UPDATE_PRODUCT' : 'CREATE_PRODUCT', { id: savedId, name: productData.name });
-      setMessage({ type: 'success', text: editingId ? `Product #${savedId} Refined & Saved!` : `Product #${savedId} Ingested to Cellar Hub!` });
-      setTimeout(() => setMessage(null), 4000);
+      setNotificationRetryProductId(saveResult.merchantNotificationWarning ? savedId : null);
+      setMessage({
+          type: saveResult.merchantNotificationWarning ? 'warning' : 'success',
+          text: saveResult.merchantNotificationWarning
+              ? `Product #${savedId} saved. ${saveResult.merchantNotificationWarning}`
+              : editingId
+                  ? `Product #${savedId} saved. ${saveResult.merchantNotificationCount || 0} new merchant update notifications sent.`
+                  : `Product #${savedId} created. ${saveResult.merchantNotificationCount || 0} compatible approved merchants notified to review price and stock.`
+      });
+      if (!saveResult.merchantNotificationWarning) setTimeout(() => setMessage(null), 4000);
       cancelEditing();
       fetchProducts();
-      fetchProducts();
-      setMessage({ type: 'success', text: 'Grid Node Synchronized!' });
-      setTimeout(() => setMessage(null), 3000);
     } catch (err: unknown) {
         const error = err as Error;
         if (!productSaved && uploadedPaths.length > 0) {
@@ -661,6 +672,27 @@ function UploadContent() {
         setMessage({ type: 'error', text: error.message });
     } finally {
         setIsSubmitting(false);
+    }
+  };
+
+  const retryMerchantNotifications = async () => {
+    if (!notificationRetryProductId) return;
+    try {
+      const response = await fetch('/api/admin/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'notify_merchants', id: notificationRetryProductId })
+      });
+      const result = await response.json() as { merchantNotificationCount?: number; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Merchant notifications could not be retried.');
+      setNotificationRetryProductId(null);
+      setMessage({
+        type: 'success',
+        text: `Product #${notificationRetryProductId}: ${result.merchantNotificationCount || 0} compatible approved merchants notified.`
+      });
+      setTimeout(() => setMessage(null), 4000);
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Merchant notifications could not be retried.' });
     }
   };
 
@@ -723,10 +755,15 @@ function UploadContent() {
             {message && (
                 <div className={cn(
                     "relative z-10 flex items-center gap-3 rounded-2xl border p-4 animate-in fade-in slide-in-from-top-2",
-                    message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-rose-50 border-rose-100 text-rose-600"
+                    message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                        : message.type === 'warning' ? "bg-amber-50 border-amber-200 text-amber-900"
+                            : "bg-rose-50 border-rose-100 text-rose-600"
                 )}>
                     <Layers className="h-5 w-5" />
                     <p className="text-xs font-black uppercase tracking-widest">{message.text}</p>
+                    {notificationRetryProductId && <Button type="button" variant="outline" onClick={() => void retryMerchantNotifications()} className="shrink-0 rounded-xl border-amber-300 bg-white text-amber-950">
+                        Retry merchant notifications
+                    </Button>}
                 </div>
             )}
 

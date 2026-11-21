@@ -32,6 +32,7 @@ type CheckoutBody = {
   customerName: string;
   customerPhone: string;
   customerEmail: string | null;
+  ageConfirmed: boolean;
   paymentMethod: 'Paystack' | 'PayHero' | 'Daraja' | 'COD';
   sessionId: string;
   recoverySessionId: string | null;
@@ -149,6 +150,7 @@ function readBody(value: unknown): CheckoutBody | null {
     customerName,
     customerPhone,
     customerEmail,
+    ageConfirmed,
     paymentMethod,
     sessionId,
     recoverySessionId,
@@ -198,6 +200,7 @@ function readBody(value: unknown): CheckoutBody | null {
     || typeof customerPhone !== 'string' || !customerPhone.trim() || customerPhone.length > 40
     || (customerEmail !== null && typeof customerEmail !== 'string')
     || (typeof customerEmail === 'string' && customerEmail.length > 254)
+    || typeof ageConfirmed !== 'boolean'
     || (paymentMethod !== 'Paystack' && paymentMethod !== 'PayHero' && paymentMethod !== 'Daraja' && paymentMethod !== 'COD')
     || typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 160
     || (recoverySessionId !== undefined && recoverySessionId !== null
@@ -248,6 +251,7 @@ function readBody(value: unknown): CheckoutBody | null {
     customerName: customerName.trim(),
     customerPhone: customerPhone.trim(),
     customerEmail: typeof customerEmail === 'string' ? customerEmail.trim() || null : null,
+    ageConfirmed,
     paymentMethod,
     sessionId: sessionId.trim(),
     recoverySessionId: typeof recoverySessionId === 'string' ? recoverySessionId : null,
@@ -292,6 +296,9 @@ export async function POST(request: Request) {
   const body = readBody(rawBody);
   if (!body) {
     return NextResponse.json({ error: 'Checkout details are incomplete or invalid.' }, { status: 400 });
+  }
+  if (!body.ageConfirmed) {
+    return NextResponse.json({ error: 'Confirm that you are at least 18 years old before placing an order.' }, { status: 400 });
   }
 
   try {

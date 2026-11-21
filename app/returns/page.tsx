@@ -1,5 +1,6 @@
 "use strict";
 import React from "react";
+import Link from "next/link";
 
 export default function ReturnsAndExchangesPage() {
   const lastUpdated = "August 2026";
@@ -10,22 +11,21 @@ export default function ReturnsAndExchangesPage() {
         
         {/* Header Section */}
         <div className="border-b pb-6 mb-8">
-          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">Returns & Exchanges Policy</h1>
+          <h1 className="text-3xl font-extrabold text-foreground tracking-tight">Order changes, returns & refunds</h1>
           <p className="text-sm text-slate-400 mt-2">Last Updated: {lastUpdated}</p>
           <p className="text-slate-600 mt-4 leading-relaxed font-medium">
-            Thank you for shopping at <strong>Online Bar</strong>. To maintain our commitment to offering highly competitive local pricing, rapid dispatch turnarounds, and authentic beverages, we operate under a strict policy regarding order modifications.
+            If there is a problem with an order or payment, contact our support team with your order number as soon as possible. We will check the order and explain the available next steps.
           </p>
         </div>
 
-        {/* Core Policy Highlight */}
-        <div className="p-6 bg-rose-50 border border-rose-200 rounded-xl mb-8 text-left">
-          <h2 className="text-sm font-bold text-rose-900 uppercase tracking-wider mb-2">⚠️ Final Sale Agreement</h2>
-          <p className="text-rose-900 font-bold bg-white border border-rose-100 p-4 rounded-lg italic text-base">
-            &quot;All transactions processed on Online Bar are absolute and final. We do not offer cash refunds, store credit refunds, or exchanges under any circumstances once an order has been completed and dispatched. Goods once sold cannot be returned.&quot;
+        <div className="mb-8 rounded-xl border border-primary/20 bg-primary/5 p-6 text-left">
+          <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-foreground">Need help with an order?</h2>
+          <p className="text-sm leading-relaxed text-slate-600">
+            Send a support request with your order number, the issue, and the best way to reach you. A request is not a cancellation or refund confirmation; wait for the team to confirm the order status and any resolution.
           </p>
-          <p className="text-rose-800 text-xs mt-3 leading-relaxed font-medium">
-            By confirming your M-Pesa or alternative payment checkout sequence, you formally acknowledge and agree that you have checked your selection and quantities thoroughly. Must be 18+.
-          </p>
+          <Link href="/contact" className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-primary px-5 py-3 text-sm font-bold text-white hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+            Contact support
+          </Link>
         </div>
 
         {/* Policy Body Layout */}
@@ -33,41 +33,31 @@ export default function ReturnsAndExchangesPage() {
           
           {/* Section 1 */}
           <section>
-            <h2 className="text-lg font-bold text-foreground mb-3 uppercase tracking-tight">1. Why We Enforce a No-Return Policy</h2>
+            <h2 className="text-lg font-bold text-foreground mb-3 uppercase tracking-tight">1. Before placing an order</h2>
             <p className="font-medium text-slate-500">
-              Beverage logistics demand immense care to ensure absolute quality and authenticity. By enforcing a strict final-sale policy, we guarantee that every single bottle arriving at a patron&apos;s doorstep is 100% genuine and untouched. Additionally, this allows us to avoid the operational overhead of reverse shipping, passing those savings on to you in the form of lower local prices.
+              Review product details, quantities, delivery location, and the order total before payment. Checkout requires an 18+ self-confirmation; it is not identity or age verification.
             </p>
           </section>
 
           {/* Section 2 */}
           <section>
-            <h2 className="text-lg font-bold text-foreground mb-3 uppercase tracking-tight">2. How to Ensure the Perfect Choice</h2>
+            <h2 className="text-lg font-bold text-foreground mb-3 uppercase tracking-tight">2. Report an order or payment problem</h2>
             <p className="mb-3 font-medium text-slate-500">
-              We highly recommend taking the following preventative steps before finalizing your cart checkout:
-            </p>
-            <ul className="list-disc pl-5 space-y-2 font-medium text-slate-500">
-              <li>Verify the brand and volume of your selection.</li>
-              <li>Check the quantities in your bag.</li>
-              <li>Review the specific product description panels for flavor profiles and notes.</li>
-            </ul>
-          </section>
-
-          {/* Section 3 */}
-          <section>
-            <h2 className="text-lg font-bold text-foreground mb-3 uppercase tracking-tight">3. Exceptions for Order Errors</h2>
-            <p className="font-medium text-slate-500">
-              We stand firmly behind our fulfillment workflows. The absolute only exception to this policy is if an error was explicitly made by the Online Bar dispatch center.
-            </p>
-            <p className="mt-2 font-medium text-slate-500">
-              If we inadvertently dispatch the completely wrong beverage variant compared to what is explicitly listed on your digital invoice.ce receipt, please flag it with our team within <strong>24 hours</strong> of delivery. The product must remain completely sealed, unused, and in its original packaging to qualify for a corrective replacement.
+              Contact support promptly about an incorrect, missing, or damaged item, a delivery issue, or a payment that appears to have failed or been duplicated. Include your order number, a short description, and any relevant payment reference. Do not send passwords or full card details.
             </p>
           </section>
 
-          {/* Section 4 */}
           <section>
-            <h2 className="text-lg font-bold text-foreground mb-3 uppercase tracking-tight">4. Order Cancellation</h2>
+            <h2 className="text-lg font-bold text-foreground mb-3 uppercase tracking-tight">3. Review and resolution</h2>
             <p className="font-medium text-slate-500">
-              Our automated backend hands over dispatch data to delivery riders almost immediately after payment verification. Because of this high-speed setup, orders cannot be cancelled, adjusted, or reassigned once payment confirmation is finalized.
+              Support will review the order and confirm the outcome for your case. A refund or exchange is not automatic. If a refund is approved, support will confirm the method and timing; payment-provider processing can take additional time.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold text-foreground mb-3 uppercase tracking-tight">4. Request cancellation</h2>
+            <p className="font-medium text-slate-500">
+              Contact support immediately if you need to cancel. A cancellation may not be possible after the order has been prepared or handed to a rider. Do not assume it is cancelled until support confirms.
             </p>
           </section>
 

@@ -293,3 +293,71 @@ export async function verifyDarajaStkPayment(database: SupabaseClient, checkoutR
   }
   return { paid: String(result.ResultCode) === '0', description: result.ResultDesc || '' };
 }
+
+export async function initializeDarajaB2cPayout(input: {
+  database: SupabaseClient;
+  amountKsh: number;
+  phone: string;
+  callbackUrl: string;
+  reference: string;
+}) {
+  if (process.env.DARAJA_B2C_ENABLED?.trim().toLowerCase() !== 'true') {
+    throw new Error('M-Pesa business payouts are disabled. Configure and enable Daraja B2C after sandbox verification.');
+  }
+  const initiatorName = process.env.DARAJA_B2C_INITIATOR_NAME?.trim();
+  const securityCredential = process.env.DARAJA_B2C_SECURITY_CREDENTIAL?.trim();
+  const configuredMaximum = Number(process.env.DARAJA_B2C_MAX_AMOUNT_KES?.trim() || 250000);
+  if (!initiatorName || initiatorName.length > 100 || !securityCredential
+      || securityCredential.length > 2048 || !Number.isSafeInteger(configuredMaximum)
+      || configuredMaximum < 1 || configuredMaximum > 250000) {
+    throw new Error('Daraja B2C is not configured. Set its initiator, security credential and an allowed transaction limit.');
+  }
+  if (!Number.isSafeInteger(input.amountKsh) || input.amountKsh < 1 || input.amountKsh > configuredMaximum) {
+    throw new Error('The requested payout is outside the configured M-Pesa transaction limit.');
+  }
+  if (!/^254[17]\d{8}$/.test(input.phone)) {
+    throw new Error('The verified M-Pesa destination is invalid.');
+  }
+  const callbackUrl = new URL(input.callbackUrl);
+  if (callbackUrl.protocol !== 'https:' || input.reference.length < 1 || input.reference.length > 100) {
+    throw new Error('A public HTTPS payout callback and valid reference are required.');
+  }
+
+  const credentials = await getDarajaCredentials(input.database);
+  const accessToken = await getAccessToken(credentials);
+  const response = await fetch(`${baseUrl(credentials.environment)}/mpesa/b2c/v1/paymentrequest`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      InitiatorName: initiatorName,
+      SecurityCredential: securityCredential,
+      CommandID: 'BusinessPayment',
+      Amount: input.amountKsh,
+      PartyA: credentials.shortcode,
+      PartyB: input.phone,
+      Remarks: 'OnBar merchant settlement',
+      QueueTimeOutURL: input.callbackUrl,
+      ResultURL: input.callbackUrl,
+      Occasion: input.reference
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15000)
+  });
+  const result = await readSafaricomResponse<{
+    ResponseCode?: string;
+    ResponseDescription?: string;
+    ConversationID?: string;
+    OriginatorConversationID?: string;
+  }>(response, 'submitting a merchant M-Pesa payout');
+  if (!response.ok || result.ResponseCode !== '0'
+      || !result.ConversationID || !result.OriginatorConversationID) {
+    throw new Error(`Safaricom did not accept the merchant payout: ${result.ResponseDescription || response.statusText}`);
+  }
+  return {
+    conversationId: result.ConversationID,
+    originatorConversationId: result.OriginatorConversationID
+  };
+}

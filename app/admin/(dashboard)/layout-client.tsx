@@ -220,6 +220,7 @@ export default function AdminLayoutClient({
     { group: 'FINANCE', items: [
       { name: 'Finance Vault', href: '/lord/finance', icon: DollarSign, permission: 'can_view_revenue' },
       { name: 'Payout Requests', href: '/lord/payouts', icon: CreditCard, permission: 'can_view_revenue' },
+      { name: 'Merchant Settlements', href: '/lord/merchant-settlements', icon: Store, permission: 'can_execute_payouts' },
       { name: 'Ledger Audit', href: '/lord/vault', icon: Lock, permission: 'can_view_sensitive_data' },
     ]},
     { group: 'INTELLIGENCE', items: [
