@@ -32,6 +32,7 @@ import MerchantConnectionsPanel from '@/components/rider/MerchantConnectionsPane
 import RiderTerminalProfile from '@/components/rider/RiderTerminalProfile';
 import OrderAlertToneSettings from '@/components/alerts/OrderAlertToneSettings';
 import { useOrderAlertTone } from '@/hooks/useOrderAlertTone';
+import { ensurePushServiceWorkerReady } from '@/lib/pushServiceWorker';
 
 const RiderDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
     ssr: false,
@@ -694,7 +695,7 @@ function RiderDashboardContent() {
                 throw new Error(config.error || 'Push mission alerts are not configured on the server.');
             }
 
-            const registration = await navigator.serviceWorker.register('/sw.js');
+            const registration = await ensurePushServiceWorkerReady();
             const subscription = await registration.pushManager.getSubscription()
                 || await registration.pushManager.subscribe({
                     userVisibleOnly: true,

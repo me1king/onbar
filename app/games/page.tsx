@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Gamepad2, RotateCcw, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import GameSection from '@/components/games/GameSection';
 
 const games = {
   never: {
@@ -88,6 +89,23 @@ const games = {
       'Share two true things and one made-up story about a pet.',
       'Share two true things and one made-up story about a memorable party.'
     ]
+  },
+  truthDare: {
+    name: 'Truth or Dare',
+    description: 'Choose a question, try a light challenge, or pass.',
+    howToPlay: 'On your turn, answer a truth or try a dare. Anyone may pass; a prompt is never permission to touch or pressure someone.',
+    prompts: [
+      'Truth: What harmless thing always makes you laugh?',
+      'Dare: Do a ten-second dance move, or pass.',
+      'Truth: What is a skill you wish you had?',
+      'Dare: Give each person a genuine compliment, or pass.',
+      'Truth: What is a small adventure you would like to try?',
+      'Dare: Do your best impression of a fictional character, or pass.',
+      'Truth: What song can you always sing along to?',
+      'Dare: Make up a short team cheer, or pass.',
+      'Truth: What is your favorite way to spend a free afternoon?',
+      'Dare: Tell a joke or a funny story, or pass.'
+    ]
   }
 } as const;
 
@@ -131,6 +149,12 @@ export default function GameNightPage() {
           <p className="mt-3 text-sm leading-6 text-slate-500">
             These games are for adults 18+. If anyone chooses to drink, keep it optional and within personal limits. Take breaks, drink water, eat, stop whenever you want, and never drink and drive.
           </p>
+          <Link
+            href="/games/manage"
+            className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 font-bold text-slate-950 hover:bg-amber-400"
+          >
+            <Gamepad2 aria-hidden="true" className="h-4 w-4" /> Manage game night
+          </Link>
         </header>
 
         {!confirmed ? (
@@ -165,7 +189,7 @@ export default function GameNightPage() {
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Choose your game</p>
-                  <h2 id="choose-game" className="mt-1 text-2xl font-black">Five ways to get the night going</h2>
+                  <h2 id="choose-game" className="mt-1 text-2xl font-black">Pick a prompt game</h2>
                 </div>
                 <button
                   type="button"
@@ -222,6 +246,17 @@ export default function GameNightPage() {
             </section>
           </>
         )}
+
+        <section className="mt-14 border-t border-slate-200 pt-10" aria-labelledby="classic-games">
+          <div className="mb-5">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">More ways to play</p>
+            <h2 id="classic-games" className="mt-1 text-2xl font-black">Do or Drink, Hot Seat &amp; Spin the Bottle Live</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              The classic party games are back, with optional alcohol-free play and a chance to pass.
+            </p>
+          </div>
+          <GameSection />
+        </section>
 
         <p className="mt-6 text-center text-xs leading-5 text-slate-500">
           Alcohol-free play is always welcome. 18+ only for alcohol. Please drink responsibly and arrange a safe ride.

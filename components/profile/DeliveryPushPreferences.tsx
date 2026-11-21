@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Bell, BellOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { ensurePushServiceWorkerReady } from '@/lib/pushServiceWorker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
@@ -119,7 +120,7 @@ export default function DeliveryPushPreferences() {
         : await Notification.requestPermission();
       if (permission !== 'granted') throw new Error('Notification permission was not granted.');
 
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      const registration = await ensurePushServiceWorkerReady();
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: decodeVapidKey(config.publicKey)

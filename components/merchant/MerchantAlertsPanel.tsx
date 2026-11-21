@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { BellRing, CheckCircle2, Loader2, RefreshCw, ShieldAlert, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ensurePushServiceWorkerReady } from '@/lib/pushServiceWorker';
 
 type Channel = 'push' | 'sms' | 'voice';
 type Contact = {
@@ -304,7 +305,7 @@ export default function MerchantAlertsPanel({
         : await Notification.requestPermission();
       setNotificationPermission(permission);
       if (permission !== 'granted') throw new Error('Allow notifications in your browser settings, then register this device again.');
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      const registration = await ensurePushServiceWorkerReady();
       setServiceWorkerReady(true);
       let subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
