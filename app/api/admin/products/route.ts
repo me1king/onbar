@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
+import { getSupabaseServerKey } from '@/lib/supabaseServerConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ async function getAuthorizedDatabase(): Promise<AuthorizedDatabase> {
     }
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const key = getSupabaseServerKey();
     if (!url || !key) {
         return { response: NextResponse.json({ error: 'Product database access is not configured on the server.' }, { status: 500 }) };
     }

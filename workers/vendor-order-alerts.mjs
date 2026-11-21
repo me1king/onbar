@@ -4,7 +4,8 @@ import { Worker } from 'bullmq';
 
 const queueName = 'merchant-order-alerts';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  || process.env.SUPABASE_SECRET_KEY?.trim();
 const redisUrl = process.env.REDIS_URL?.trim();
 const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
 const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();

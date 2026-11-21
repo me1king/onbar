@@ -81,7 +81,8 @@ export async function GET() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const publicSupabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim()
     || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+    || process.env.SUPABASE_SECRET_KEY?.trim();
   const resendKey = process.env.RESEND_API_KEY?.trim();
   const paystackKey = process.env.PAYSTACK_SECRET_KEY?.trim();
   const { token: whatsappToken, phoneId: whatsappPhoneId } = getWhatsAppCredentials();
