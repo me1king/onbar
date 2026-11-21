@@ -11,6 +11,7 @@ const staticRoutes = [
   '/shop',
   '/delivery',
   '/build-the-night',
+  '/games',
   '/concierge',
   '/guides/how-much-alcohol-for-a-party',
   '/about',
