@@ -113,7 +113,7 @@ export default function GameNightPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#15110f] px-4 py-10 text-[#fff8ed] sm:py-16">
+    <main className="min-h-screen bg-white px-4 py-10 text-slate-950 sm:py-16">
       <div className="mx-auto max-w-5xl">
         <Link href="/" className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-primary hover:underline">
           <ArrowLeft className="h-4 w-4" /> Online Bar
@@ -125,23 +125,23 @@ export default function GameNightPage() {
             <p className="text-xs font-black uppercase tracking-[0.25em]">Game night · 18+</p>
           </div>
           <h1 className="mt-4 text-4xl font-black leading-tight tracking-tight sm:text-6xl">Bring the games. Keep it easy.</h1>
-          <p className="mt-4 text-base leading-7 text-white/70 sm:text-lg">
+          <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg">
             Pick a party game, draw an original prompt, and play your way. Drinking is never required; stories, water, or a pass are always valid.
           </p>
-          <p className="mt-3 text-sm leading-6 text-white/55">
-            These games are for adults 18+. If anyone chooses to drink, keep it to optional small sips—never shots or chugging. Take breaks, have water and food, stop whenever you want, and never drink and drive.
+          <p className="mt-3 text-sm leading-6 text-slate-500">
+            These games are for adults 18+. If anyone chooses to drink, keep it optional and within personal limits. Take breaks, drink water, eat, stop whenever you want, and never drink and drive.
           </p>
         </header>
 
         {!confirmed ? (
-          <section className="mt-9 rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+          <section className="mt-9 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <h2 className="text-xl font-black">Make it a good night for everyone</h2>
-            <ul className="mt-4 space-y-2 text-sm leading-6 text-white/70">
+            <ul className="mt-4 space-y-2 text-sm leading-6 text-slate-600">
               <li>Everyone chooses to play; no one owes a drink, story, or explanation.</li>
               <li>Any player can skip, pause, or stop at any time.</li>
               <li>Keep a safe ride home planned before the night starts.</li>
             </ul>
-            <label className="mt-6 flex items-start gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm font-semibold leading-6">
+            <label className="mt-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6">
               <input
                 type="checkbox"
                 checked={confirmed}
@@ -174,7 +174,7 @@ export default function GameNightPage() {
                     setDrawnPrompt(null);
                     setRemainingPrompts([]);
                   }}
-                  className="inline-flex items-center gap-2 text-xs font-semibold text-white/55 hover:text-white"
+                  className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-950"
                 >
                   <RotateCcw className="h-3.5 w-3.5" /> Start over
                 </button>
@@ -189,26 +189,26 @@ export default function GameNightPage() {
                     className={`rounded-2xl border p-4 text-left transition-colors ${
                       selectedGame === gameId
                         ? 'border-primary bg-primary/15'
-                        : 'border-white/10 bg-white/5 hover:bg-white/10'
+                        : 'border-slate-200 bg-white hover:bg-amber-50'
                     }`}
                   >
                     <span className="block font-black">{games[gameId].name}</span>
-                    <span className="mt-1 block text-xs leading-5 text-white/60">{games[gameId].description}</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600">{games[gameId].description}</span>
                   </button>
                 ))}
                 <Link
                   href="/card-games"
-                  className="rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10"
+                  className="rounded-2xl border border-slate-200 bg-white p-4 transition-colors hover:bg-amber-50"
                 >
                   <span className="block font-black">Date-night Cards</span>
-                  <span className="mt-1 block text-xs leading-5 text-white/60">A separate two-player prompt game.</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-600">A separate two-player prompt game.</span>
                 </Link>
               </div>
             </section>
 
-            <section className="mt-6 rounded-3xl border border-white/10 bg-[#211b17] p-6 shadow-2xl sm:p-10" aria-live="polite">
+            <section className="mt-6 rounded-3xl border border-amber-200 bg-[#fff8ec] p-6 shadow-lg sm:p-10" aria-live="polite">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">{games[selectedGame].name}</p>
-              <p className="mt-2 text-sm leading-6 text-white/60">{games[selectedGame].howToPlay}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{games[selectedGame].howToPlay}</p>
               <div className="flex min-h-48 items-center justify-center text-center">
                 <p className="max-w-3xl py-8 text-2xl font-bold leading-relaxed sm:text-3xl">
                   {drawnPrompt || 'Draw a prompt when everyone is ready.'}
@@ -223,7 +223,7 @@ export default function GameNightPage() {
           </>
         )}
 
-        <p className="mt-6 text-center text-xs leading-5 text-white/40">
+        <p className="mt-6 text-center text-xs leading-5 text-slate-500">
           Alcohol-free play is always welcome. 18+ only for alcohol. Please drink responsibly and arrange a safe ride.
         </p>
       </div>
