@@ -8,9 +8,10 @@ migrations in Supabase after their prerequisites:
 
 - `MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql` requires
   `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It adds
-  compatible products to approved merchant offers, refreshes existing offer
-  details when product photos or catalog fields change, and creates a pending
-  merchant review notification. Apply or re-apply it before using **Notify
+  compatible products to approved merchant offers, including legacy
+  `image_gallery` photos, refreshes existing offer details when catalog fields
+  change, and creates a pending merchant review notification. Apply or re-apply
+  it before using **Notify
   merchants**, **Send photo products**, or **Publish all beverages** in Beverage
   Vault to sync existing products.
 - `MERCHANT_CATALOG_PRICE_REVIEW_MIGRATION.sql` requires

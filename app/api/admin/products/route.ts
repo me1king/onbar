@@ -162,7 +162,7 @@ async function notifyMerchantsOfProduct(
 
 const merchantCatalogProductFields = [
     'name', 'brand', 'category', 'sub_category', 'description', 'sku',
-    'price', 'size_label', 'sizes', 'image', 'image_url', 'images',
+    'price', 'size_label', 'sizes', 'image', 'image_url', 'images', 'image_gallery',
     'variant_prices', 'beverage_specs', 'is_bite', 'is_snack', 'is_souvenir',
     'hide_product', 'status'
 ];
@@ -342,10 +342,11 @@ export async function PATCH(request: Request) {
             status: string | null;
             image_url: unknown;
             images: unknown;
+            image_gallery: unknown;
         }> = [];
         for (let offset = 0; ; offset += 500) {
             const { data, error } = await access.database.from('products')
-                .select('id, category, sub_category, is_bite, is_snack, is_souvenir, hide_product, status, image_url, images')
+                .select('id, category, sub_category, is_bite, is_snack, is_souvenir, hide_product, status, image_url, images, image_gallery')
                 .order('id', { ascending: true })
                 .range(offset, offset + 499);
             if (error) {
@@ -361,7 +362,7 @@ export async function PATCH(request: Request) {
             product.hide_product !== true
             && !['draft', 'hidden', 'inactive', 'archived', 'deleted'].includes((product.status || 'live').toLowerCase())
             && isBeverageInventoryProduct(product)
-            && (body.withPhotosOnly !== true || getProductImageUrls(product.image_url, product.images).length > 0)
+            && (body.withPhotosOnly !== true || getProductImageUrls(product.image_url, product.images, product.image_gallery).length > 0)
         );
         let merchantProductListingsUpdated = 0;
         for (const [index, product] of eligibleProducts.entries()) {

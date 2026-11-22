@@ -146,7 +146,8 @@ BEGIN
               'listed_price', GREATEST(COALESCE(product_row.price, 0), 0),
               'sizes', COALESCE(to_jsonb(product_row)->'sizes', '[]'::JSONB),
               'image_url', to_jsonb(product_row)->'image_url',
-              'images', COALESCE(to_jsonb(product_row)->'images', '[]'::JSONB),
+              'images', COALESCE(to_jsonb(product_row)->'images', '[]'::JSONB)
+                || COALESCE(to_jsonb(product_row)->'image_gallery', '[]'::JSONB),
               'variant_prices', COALESCE(to_jsonb(product_row)->'variant_prices', '{}'::JSONB)
             )
           ELSE existing.offer
@@ -172,7 +173,8 @@ BEGIN
         'margin_percent', 0,
         'sizes', COALESCE(to_jsonb(product_row)->'sizes', '[]'::JSONB),
         'image_url', to_jsonb(product_row)->'image_url',
-        'images', COALESCE(to_jsonb(product_row)->'images', '[]'::JSONB),
+        'images', COALESCE(to_jsonb(product_row)->'images', '[]'::JSONB)
+          || COALESCE(to_jsonb(product_row)->'image_gallery', '[]'::JSONB),
         'variant_prices', COALESCE(to_jsonb(product_row)->'variant_prices', '{}'::JSONB)
       ));
     END IF;

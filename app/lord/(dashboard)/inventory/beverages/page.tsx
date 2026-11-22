@@ -49,6 +49,7 @@ interface BeverageNode {
     image_url?: string;
     image?: string;
     images?: unknown;
+    image_gallery?: unknown;
     status?: string | null;
     hide_product?: boolean | null;
 }
@@ -380,7 +381,7 @@ export default function BeverageCommandAdmin() {
     };
 
     const filteredBeverages = beverages.filter(b => {
-        const images = getProductImageUrls(b.image_url || b.image, b.images);
+        const images = getProductImageUrls(b.image_url || b.image, b.images, b.image_gallery);
         if (photosOnly && images.length === 0) return false;
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
@@ -391,7 +392,7 @@ export default function BeverageCommandAdmin() {
         && !['draft', 'hidden', 'inactive', 'archived', 'deleted'].includes((beverage.status || 'live').toLowerCase())
     );
     const beveragePhotoCount = publishableBeverages.filter(beverage =>
-        getProductImageUrls(beverage.image_url || beverage.image, beverage.images).length > 0
+        getProductImageUrls(beverage.image_url || beverage.image, beverage.images, beverage.image_gallery).length > 0
     ).length;
     const listingChecks = [
         Boolean(form.name.trim()),
@@ -535,7 +536,7 @@ export default function BeverageCommandAdmin() {
                 ) : (
                     <div className="divide-y divide-slate-50">
                         {filteredBeverages.map(bev => {
-                            const images = getProductImageUrls(bev.image_url || bev.image, bev.images);
+                            const images = getProductImageUrls(bev.image_url || bev.image, bev.images, bev.image_gallery);
                             const isLive = bev.is_available_now !== false && Number(bev.stock) > 0;
 
                             return (

@@ -216,7 +216,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     traceRows
   ] = await Promise.all([
     productIds.length
-      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price, image_url, images, sizes, variant_prices, beverage_specs').in('id', productIds)
+      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price, image_url, images, image_gallery, sizes, variant_prices, beverage_specs').in('id', productIds)
       : Promise.resolve({ data: [], error: null }),
     getPagedBatchRows(batchIds, (ids, from, to) => database.from('merchant_inventory_movements')
         .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
@@ -339,7 +339,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
         const product = productRows.find(row => Number(row.id) === Number(offer.product_id));
         const sellingPrice = Number(offer.price || 0);
         const listedPrice = Number(product?.price || 0);
-        const images = getProductImageUrls(product?.image_url, product?.images);
+        const images = getProductImageUrls(product?.image_url, product?.images, product?.image_gallery);
         return {
           ...offer,
           category: product?.category || null,
@@ -378,7 +378,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
       const product = productRows.find(row => Number(row.id) === Number(notification.product_id));
       return {
         ...notification,
-        images: getProductImageUrls(product?.image_url, product?.images)
+        images: getProductImageUrls(product?.image_url, product?.images, product?.image_gallery)
       };
     })
   };
@@ -517,7 +517,7 @@ export async function POST(request: Request) {
 
     const { data: product, error: productError } = await context.database
       .from('products')
-      .select('category, sub_category, is_bite, is_snack, is_souvenir, image_url, images')
+      .select('category, sub_category, is_bite, is_snack, is_souvenir, image_url, images, image_gallery')
       .eq('id', productId)
       .maybeSingle();
     if (productError) {
@@ -527,7 +527,7 @@ export async function POST(request: Request) {
     if (!product || !isAllowedMerchantProduct(application, product)) {
       return NextResponse.json({ error: 'This product is not available to your merchant category.' }, { status: 403 });
     }
-    if (getProductImageUrls(product.image_url, product.images).length > 0) {
+    if (getProductImageUrls(product.image_url, product.images, product.image_gallery).length > 0) {
       return NextResponse.json({ error: 'This product already has a catalog photo. Contact OnBar if it needs replacing.' }, { status: 409 });
     }
 

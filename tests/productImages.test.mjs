@@ -18,3 +18,10 @@ test('uses gallery images when the primary image is missing', () => {
   assert.deepEqual(getProductImageUrls(null, ['https://img.test/one.jpg']), ['https://img.test/one.jpg']);
   assert.deepEqual(getProductImageUrls(null, null), []);
 });
+
+test('includes legacy image_gallery photos when finding product images', () => {
+  assert.deepEqual(
+    getProductImageUrls(null, [], ['https://img.test/legacy.jpg']),
+    ['https://img.test/legacy.jpg']
+  );
+});
