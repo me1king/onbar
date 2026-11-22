@@ -147,11 +147,12 @@ async function notifyMerchantsOfProduct(
     });
     if (error) {
         console.error('[ProductAdmin] Product was saved, but merchant catalog notifications failed:', error);
+        const catalogSetupUnavailable = /notify_approved_merchants_of_new_product|merchant_catalog_update_notifications|merchant_application_events|schema cache|does not exist|permission denied/i.test(error.message);
         return {
             count: null,
-            warning: /notify_approved_merchants_of_new_product|schema cache/i.test(error.message)
-                ? 'Apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql, then retry merchant notifications.'
-                : 'The product was saved, but merchant notifications could not be sent. Retry from the product editor.'
+            warning: catalogSetupUnavailable
+                ? 'The product was saved, but Supabase merchant catalog sync is not installed or lacks access. Apply or re-apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql and its prerequisites, then retry.'
+                : `The product was saved, but Supabase rejected merchant catalog sync (database code ${error.code || 'unknown'}). Check the server log for the full error, then retry.`
         };
     }
     return { count: typeof data === 'number' ? data : 0, warning: null };
