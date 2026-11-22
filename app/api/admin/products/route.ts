@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { verifySessionCookie } from '@/lib/adminAuth';
+import { isBeverageInventoryProduct } from '@/lib/productDepartment';
 import { getSupabaseServerKey } from '@/lib/supabaseServerConfig';
 
 export const dynamic = 'force-dynamic';
@@ -307,6 +308,58 @@ export async function PATCH(request: Request) {
         body = await request.json() as typeof body;
     } catch {
         return NextResponse.json({ error: 'A valid product payload is required.' }, { status: 400 });
+    }
+    if (body.action === 'notify_all_merchants') {
+        if (!isSameOriginRequest(request)) {
+            return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+        }
+
+        const catalogProducts: Array<{
+            id: number;
+            category: string | null;
+            sub_category: string | null;
+            is_bite: boolean | null;
+            is_snack: boolean | null;
+            is_souvenir: boolean | null;
+            hide_product: boolean | null;
+            status: string | null;
+        }> = [];
+        for (let offset = 0; ; offset += 500) {
+            const { data, error } = await access.database.from('products')
+                .select('id, category, sub_category, is_bite, is_snack, is_souvenir, hide_product, status')
+                .order('id', { ascending: true })
+                .range(offset, offset + 499);
+            if (error) {
+                console.error('[ProductAdmin] Could not load catalog products for merchant publication:', error);
+                return NextResponse.json({ error: 'Beverage products could not be loaded for merchant publication.' }, { status: 503 });
+            }
+            const page = (data || []) as typeof catalogProducts;
+            catalogProducts.push(...page);
+            if (page.length < 500) break;
+        }
+
+        const eligibleProducts = catalogProducts.filter(product =>
+            product.hide_product !== true
+            && !['draft', 'hidden', 'inactive', 'archived', 'deleted'].includes((product.status || 'live').toLowerCase())
+            && isBeverageInventoryProduct(product)
+        );
+        let merchantProductListingsUpdated = 0;
+        for (const [index, product] of eligibleProducts.entries()) {
+            const result = await notifyMerchantsOfProduct(access.database, product.id, access.actor);
+            if (result.warning) {
+                return NextResponse.json({
+                    error: result.warning,
+                    processedProductCount: index,
+                    merchantProductListingsUpdated
+                }, { status: 503 });
+            }
+            merchantProductListingsUpdated += result.count || 0;
+        }
+
+        return NextResponse.json({
+            productCount: eligibleProducts.length,
+            merchantProductListingsUpdated
+        });
     }
     if (body.action === 'notify_merchants') {
         if (!isSameOriginRequest(request)) {

@@ -15,6 +15,7 @@ import {
     CheckCircle2,
     Sparkles,
     PackageCheck,
+    BellRing,
     Image as ImageIcon,
     Upload,
     Snowflake as ChilledIcon
@@ -61,6 +62,7 @@ export default function BeverageCommandAdmin() {
     const [imagePreview, setImagePreview] = React.useState<string | null>(null);
     const [stockDrafts, setStockDrafts] = React.useState<Record<string, string>>({});
     const [notifyingProductId, setNotifyingProductId] = React.useState<string | null>(null);
+    const [notifyingAllMerchants, setNotifyingAllMerchants] = React.useState(false);
 
     // Form state
     const [form, setForm] = React.useState({
@@ -285,6 +287,41 @@ export default function BeverageCommandAdmin() {
         }
     };
 
+    const publishAllBeveragesToMerchants = async () => {
+        if (!supabase || notifyingAllMerchants || !window.confirm(
+            'Publish all active beverage catalog products to compatible approved merchants? This will make them available for merchants to review and submit price requests.'
+        )) return;
+        setNotifyingAllMerchants(true);
+        setFormFeedback(null);
+        try {
+            const response = await fetch('/api/admin/products', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'notify_all_merchants' })
+            });
+            const result = await response.json() as {
+                error?: string;
+                productCount?: number;
+                merchantProductListingsUpdated?: number;
+                processedProductCount?: number;
+            };
+            if (!response.ok) {
+                const partialProgress = Number(result.processedProductCount || 0);
+                const partialListings = Number(result.merchantProductListingsUpdated || 0);
+                throw new Error(result.error || `Publication stopped after ${partialProgress} products and ${partialListings} merchant-product listings.`);
+            }
+            const listingCount = Number(result.merchantProductListingsUpdated || 0);
+            setFormFeedback(listingCount > 0
+                ? { type: 'success', text: `Published ${Number(result.productCount || 0)} active beverage products. ${listingCount} eligible merchant-product listings are now available for stock updates and price requests.` }
+                : { type: 'error', text: `No merchant-product listings were updated across ${Number(result.productCount || 0)} active beverage products. Confirm the catalog notification migration is applied and that compatible merchants are approved.` });
+        } catch (error) {
+            console.error('Could not publish beverage catalog to merchants:', error);
+            setFormFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Beverage catalog could not be published to merchants.' });
+        } finally {
+            setNotifyingAllMerchants(false);
+        }
+    };
+
     const updateStock = async (beverage: BeverageNode) => {
         if (!supabase) return;
         const nextStock = Number(stockDrafts[String(beverage.id)]);
@@ -405,6 +442,24 @@ export default function BeverageCommandAdmin() {
                     <p className="text-xl font-black text-emerald-600 uppercase italic mt-1">{beverages.filter(beverage => beverage.is_available_now !== false && Number(beverage.stock) > 0).length}</p>
                 </Card>
             </div>
+
+            <section className="flex flex-col gap-3 rounded-2xl border border-cyan-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 className="font-black text-slate-900">Merchant catalog publication</h2>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Sync active beverage products, including existing listings, to compatible approved merchants so they can review stock and request prices.</p>
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void publishAllBeveragesToMerchants()}
+                    disabled={notifyingAllMerchants || loading || beverages.length === 0}
+                    className="shrink-0 rounded-xl border-cyan-200 bg-cyan-50 font-black text-cyan-900"
+                >
+                    {notifyingAllMerchants
+                        ? <><Loader2 size={15} className="mr-2 animate-spin" /> Publishing catalog…</>
+                        : <><BellRing size={15} className="mr-2" /> Publish all to merchants</>}
+                </Button>
+            </section>
 
             {/* SEARCH & INVENTORY TABLE */}
             <Card className="rounded-[3rem] bg-white border border-slate-100 shadow-sm overflow-hidden">
