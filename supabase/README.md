@@ -8,10 +8,11 @@ migrations in Supabase after their prerequisites:
 
 - `MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql` requires
   `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It adds
-  compatible newly added products to approved merchant offers and creates the
+  compatible products to approved merchant offers, refreshes existing offer
+  details when product photos or catalog fields change, and creates a pending
   merchant review notification. Apply or re-apply it before using **Notify
-  merchants** on one product or **Publish all to merchants** in Beverage Vault
-  to sync existing products.
+  merchants**, **Send photo products**, or **Publish all beverages** in Beverage
+  Vault to sync existing products.
 - `MERCHANT_CATALOG_PRICE_REVIEW_MIGRATION.sql` requires
   `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It
   enables merchant price requests and Admin approval or rejection. Approval
@@ -31,13 +32,13 @@ The reply, ticket-history, and digest preference features remain unavailable
 until their corresponding migrations are applied.
 
 If a merchant cannot see a newly added catalog product, apply or re-apply
-`MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql`, then use **Notify
-merchants** on that beverage in the Admin inventory page. The admin editor
-reports how many approved merchant accounts were notified and shows a retry
-error if publication fails. Beverage classification includes alcohol, liquor,
-spirits, beer, wine, cider, and the other drink categories; retrying publication
-also restores a missing offer even if that merchant already has a notification
-record.
+`MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql`, then use **Send photo
+products** or **Publish all beverages** in Beverage Vault. The admin page reports
+the number of catalog products and eligible merchant-product listings processed.
+Re-applying the migration also fixes the JSONB/text-array type mismatch in older
+versions of the catalog function. Beverage classification includes alcohol,
+liquor, spirits, beer, wine, cider, and the other drink categories; retrying
+publication restores missing offers and refreshes existing product details.
 
 Submitting a merchant ticket sends a confirmation to the verified sign-in email
 when a transactional sender is configured. Ticket creation is preserved if

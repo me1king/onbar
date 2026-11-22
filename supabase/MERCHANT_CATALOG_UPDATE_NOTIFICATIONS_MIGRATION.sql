@@ -117,7 +117,10 @@ BEGIN
     ON CONFLICT (application_id, product_id) DO UPDATE
       SET product_name = EXCLUDED.product_name,
           category = EXCLUDED.category,
-          listed_price = EXCLUDED.listed_price
+          listed_price = EXCLUDED.listed_price,
+          status = 'pending',
+          acknowledged_at = NULL,
+          acknowledged_by = NULL
     RETURNING id INTO notification_id;
 
     offers := CASE
@@ -125,11 +128,34 @@ BEGIN
         THEN merchant_row.offered_goods_pricing
       ELSE '[]'::JSONB
     END;
-    IF NOT EXISTS (
+    IF EXISTS (
       SELECT 1
       FROM jsonb_array_elements(offers) AS existing(offer)
       WHERE existing.offer->>'product_id' = product_row.id::TEXT
     ) THEN
+      SELECT jsonb_agg(
+        CASE
+          WHEN existing.offer->>'product_id' = product_row.id::TEXT THEN
+            existing.offer || jsonb_build_object(
+              'product_name', product_row.name,
+              'category', product_row.category,
+              'sub_category', product_row.sub_category,
+              'is_bite', COALESCE(product_row.is_bite, false),
+              'is_snack', COALESCE(product_row.is_snack, false),
+              'is_souvenir', COALESCE(product_row.is_souvenir, false),
+              'listed_price', GREATEST(COALESCE(product_row.price, 0), 0),
+              'sizes', COALESCE(to_jsonb(product_row)->'sizes', '[]'::JSONB),
+              'image_url', to_jsonb(product_row)->'image_url',
+              'images', COALESCE(to_jsonb(product_row)->'images', '[]'::JSONB),
+              'variant_prices', COALESCE(to_jsonb(product_row)->'variant_prices', '{}'::JSONB)
+            )
+          ELSE existing.offer
+        END
+        ORDER BY existing.ordinality
+      )
+      INTO offers
+      FROM jsonb_array_elements(offers) WITH ORDINALITY AS existing(offer, ordinality);
+    ELSE
       offers := offers || jsonb_build_array(jsonb_build_object(
         'product_id', product_row.id,
         'product_name', product_row.name,
@@ -146,21 +172,23 @@ BEGIN
         'margin_percent', 0,
         'sizes', COALESCE(to_jsonb(product_row)->'sizes', '[]'::JSONB),
         'image_url', to_jsonb(product_row)->'image_url',
+        'images', COALESCE(to_jsonb(product_row)->'images', '[]'::JSONB),
         'variant_prices', COALESCE(to_jsonb(product_row)->'variant_prices', '{}'::JSONB)
       ));
-      UPDATE public.merchant_applications
-      SET offered_goods_pricing = offers,
-          offered_goods = CASE
-            WHEN jsonb_typeof(merchant_row.offered_goods) = 'array'
-                 AND merchant_row.offered_goods @> jsonb_build_array(product_row.name)
-              THEN merchant_row.offered_goods
-            WHEN jsonb_typeof(merchant_row.offered_goods) = 'array'
-              THEN merchant_row.offered_goods || jsonb_build_array(product_row.name)
-            ELSE jsonb_build_array(product_row.name)
-          END,
-          updated_at = now()
-      WHERE id = merchant_row.id;
     END IF;
+
+    UPDATE public.merchant_applications
+    SET offered_goods_pricing = offers,
+        offered_goods = CASE
+          WHEN jsonb_typeof(merchant_row.offered_goods) = 'array'
+               AND merchant_row.offered_goods @> jsonb_build_array(product_row.name)
+            THEN merchant_row.offered_goods
+          WHEN jsonb_typeof(merchant_row.offered_goods) = 'array'
+            THEN merchant_row.offered_goods || jsonb_build_array(product_row.name)
+          ELSE jsonb_build_array(product_row.name)
+        END,
+        updated_at = now()
+    WHERE id = merchant_row.id;
 
     INSERT INTO public.merchant_application_events (
       application_id, event_type, actor, details

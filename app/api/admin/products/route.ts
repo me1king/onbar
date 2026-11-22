@@ -160,6 +160,17 @@ async function notifyMerchantsOfProduct(
     return { count: typeof data === 'number' ? data : 0, warning: null };
 }
 
+const merchantCatalogProductFields = [
+    'name', 'brand', 'category', 'sub_category', 'description', 'sku',
+    'price', 'size_label', 'sizes', 'image', 'image_url', 'images',
+    'variant_prices', 'beverage_specs', 'is_bite', 'is_snack', 'is_souvenir',
+    'hide_product', 'status'
+];
+
+function hasMerchantCatalogChanges(product: ProductPayload) {
+    return merchantCatalogProductFields.some(field => Object.prototype.hasOwnProperty.call(product, field));
+}
+
 async function saveProduct(database: SupabaseClient, id: number | null, product: ProductPayload) {
     const payload = { ...product };
     let variantPricesStoredInSpecs = false;
@@ -392,7 +403,9 @@ export async function PATCH(request: Request) {
     try {
         await synchronizeSingleVariantStock(access.database, Number(body.id), body.product);
         const result = await saveProduct(access.database, Number(body.id), body.product);
-        const notifications = await notifyMerchantsOfProduct(access.database, result.id, access.actor);
+        const notifications = hasMerchantCatalogChanges(body.product)
+            ? await notifyMerchantsOfProduct(access.database, result.id, access.actor)
+            : { count: null, warning: null };
         return NextResponse.json({
             ...result,
             merchantNotificationCount: notifications.count,
