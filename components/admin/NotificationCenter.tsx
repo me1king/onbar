@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { Bell, X, ShieldAlert, Package, Truck, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -21,26 +20,40 @@ export default function NotificationCenter({
     isOpen,
     setIsOpen,
     pendingSubmissions = 0,
-    pendingMarketSubmissions = 0
+    pendingMarketSubmissions = 0,
+    onMerchantUnreadCountChange
 }: {
     isOpen: boolean;
     setIsOpen: (open: boolean) => void;
     pendingSubmissions?: number;
     pendingMarketSubmissions?: number;
+    onMerchantUnreadCountChange?: (count: number) => void;
 }) {
     const [notifications, setNotifications] = React.useState<Notification[]>([]);
+    const [merchantNotifications, setMerchantNotifications] = React.useState<Notification[]>([]);
+    const [feedError, setFeedError] = React.useState('');
 
     const fetchNotifications = React.useCallback(async () => {
-        if (!supabase) return;
         try {
-            const response = await fetch('/api/admin/audit-logs', { cache: 'no-store' });
-            if (!response.ok) throw new Error('Audit notifications are not available to this admin role.');
-            const result = await response.json() as {
-                logs?: Array<{ id: string; action: string; staff_email: string | null; created_at: string }>;
-            };
+            const [auditResponse, merchantResponse] = await Promise.all([
+                fetch('/api/admin/audit-logs', { cache: 'no-store' }).catch(error => {
+                    console.error('Audit notification request failed:', error);
+                    return null;
+                }),
+                fetch('/api/admin/merchant-support?notifications=true', { cache: 'no-store' }).catch(error => {
+                    console.error('Merchant notification request failed:', error);
+                    return null;
+                })
+            ]);
+            const errors: string[] = [];
+            let auditNotifications: Notification[] = [];
+            let nextMerchantNotifications: Notification[] = [];
 
-            if (result.logs) {
-                setNotifications(result.logs.slice(0, 10).map(log => ({
+            if (auditResponse?.ok) {
+                const result = await auditResponse.json() as {
+                logs?: Array<{ id: string; action: string; staff_email: string | null; created_at: string }>;
+                };
+                auditNotifications = (result.logs || []).slice(0, 10).map(log => ({
                     id: String(log.id),
                     type: log.action.includes('CRITICAL') ? 'critical' : log.action.includes('UPDATE') ? 'info' : 'info',
                     label: log.action.replace(/_/g, ' '),
@@ -48,16 +61,50 @@ export default function NotificationCenter({
                     time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     url: '/lord/audit',
                     isRead: true
-                })));
+                }));
+            } else if (auditResponse) {
+                errors.push('Audit activity is not available to this admin role.');
             }
+            if (merchantResponse?.ok) {
+                const result = await merchantResponse.json() as {
+                    notifications?: Array<{ id: string; label: string; meta: string; created_at: string; url: string }>;
+                };
+                nextMerchantNotifications = (result.notifications || []).map(notification => ({
+                    id: notification.id,
+                    type: 'warning',
+                    label: notification.label,
+                    meta: notification.meta,
+                    time: new Date(notification.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    url: notification.url,
+                    isRead: false
+                }));
+            } else {
+                errors.push('Merchant message notifications could not be loaded.');
+            }
+            setNotifications(auditNotifications);
+            setMerchantNotifications(nextMerchantNotifications);
+            setFeedError(errors.join(' '));
         } catch (err) {
-            console.error("Alert Node Failure:", err);
+            console.error('Admin notification feed failed:', err);
+            setFeedError('Notifications could not be refreshed.');
         }
     }, []);
 
     React.useEffect(() => {
-        if (isOpen) fetchNotifications();
+        void fetchNotifications();
+        const timer = window.setInterval(() => {
+            if (document.visibilityState === 'visible') void fetchNotifications();
+        }, 15_000);
+        return () => window.clearInterval(timer);
+    }, [fetchNotifications]);
+
+    React.useEffect(() => {
+        if (isOpen) void fetchNotifications();
     }, [isOpen, fetchNotifications]);
+
+    React.useEffect(() => {
+        onMerchantUnreadCountChange?.(merchantNotifications.length);
+    }, [merchantNotifications.length, onMerchantUnreadCountChange]);
 
     const markAllRead = () => {
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
@@ -83,7 +130,7 @@ export default function NotificationCenter({
             isRead: false
         }] : [])
     ];
-    const visibleNotifications = [...liveNotifications, ...notifications];
+    const visibleNotifications = [...liveNotifications, ...merchantNotifications, ...notifications];
     const unreadCount = visibleNotifications.filter(n => !n.isRead).length;
 
     if (!isOpen) return null;
@@ -112,6 +159,7 @@ export default function NotificationCenter({
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-3 no-scrollbar">
+                    {feedError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">{feedError}</p>}
                     {visibleNotifications.length === 0 ? (
                         <div className="py-20 text-center opacity-30">
                             <CheckCircle2 className="h-10 w-10 mx-auto mb-4" />

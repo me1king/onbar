@@ -211,6 +211,45 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.notify_approved_merchants_of_products(
+  p_product_ids BIGINT[],
+  p_actor TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  product_id BIGINT;
+  product_count INTEGER := 0;
+  merchant_product_listings_updated INTEGER := 0;
+  product_listing_count INTEGER;
+BEGIN
+  IF p_product_ids IS NULL
+     OR cardinality(p_product_ids) > 5000
+     OR array_position(p_product_ids, NULL) IS NOT NULL
+     OR p_actor IS NULL OR char_length(trim(p_actor)) NOT BETWEEN 1 AND 200 THEN
+    RAISE EXCEPTION 'A valid catalog product batch and admin identity are required.';
+  END IF;
+
+  FOR product_id IN
+    SELECT DISTINCT selected.id
+    FROM unnest(p_product_ids) AS selected(id)
+    ORDER BY selected.id
+  LOOP
+    product_listing_count := public.notify_approved_merchants_of_new_product(product_id, p_actor);
+    product_count := product_count + 1;
+    merchant_product_listings_updated := merchant_product_listings_updated + product_listing_count;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'product_count', product_count,
+    'merchant_product_listings_updated', merchant_product_listings_updated
+  );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.acknowledge_merchant_catalog_update(
   p_application_id UUID,
   p_notification_id UUID,
@@ -256,8 +295,10 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.notify_approved_merchants_of_new_product(BIGINT, TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.notify_approved_merchants_of_products(BIGINT[], TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.acknowledge_merchant_catalog_update(UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.notify_approved_merchants_of_new_product(BIGINT, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.notify_approved_merchants_of_products(BIGINT[], TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION public.acknowledge_merchant_catalog_update(UUID, UUID, TEXT) TO service_role;
 
 NOTIFY pgrst, 'reload schema';

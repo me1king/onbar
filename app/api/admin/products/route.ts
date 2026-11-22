@@ -353,22 +353,47 @@ export async function PATCH(request: Request) {
             !['archived', 'deleted'].includes((product.status || 'live').toLowerCase())
             && isBeverageInventoryProduct(product)
         );
-        let merchantProductListingsUpdated = 0;
-        for (const [index, product] of eligibleProducts.entries()) {
-            const result = await notifyMerchantsOfProduct(access.database, product.id, access.actor);
-            if (result.warning) {
-                return NextResponse.json({
-                    error: result.warning,
-                    processedProductCount: index,
-                    merchantProductListingsUpdated
-                }, { status: 503 });
+        if (eligibleProducts.length === 0) {
+            return NextResponse.json({ productCount: 0, merchantProductListingsUpdated: 0 });
+        }
+
+        const { data: syncResult, error: syncError } = await access.database.rpc(
+            'notify_approved_merchants_of_products',
+            {
+                p_product_ids: eligibleProducts.map(product => product.id),
+                p_actor: access.actor
             }
-            merchantProductListingsUpdated += result.count || 0;
+        );
+        if (syncError) {
+            console.error('[ProductAdmin] Could not sync the full beverage catalog to merchants:', syncError);
+            const migrationUnavailable = syncError.code === '42804'
+                || /notify_approved_merchants_of_products|notify_approved_merchants_of_new_product|schema cache|does not exist|permission denied/i.test(syncError.message);
+            return NextResponse.json({
+                error: migrationUnavailable
+                    ? 'Merchant catalog sync is missing or out of date. Re-apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql, then retry.'
+                    : `Merchant catalog sync failed (database code ${syncError.code || 'unknown'}). No merchant offers were updated. Check the server log and retry.`,
+                processedProductCount: 0,
+                merchantProductListingsUpdated: 0
+            }, { status: 503 });
+        }
+
+        const result = syncResult && typeof syncResult === 'object' && !Array.isArray(syncResult)
+            ? syncResult as { product_count?: unknown; merchant_product_listings_updated?: unknown }
+            : null;
+        if (!result
+            || typeof result.product_count !== 'number'
+            || !Number.isSafeInteger(result.product_count)
+            || result.product_count !== eligibleProducts.length
+            || typeof result.merchant_product_listings_updated !== 'number'
+            || !Number.isSafeInteger(result.merchant_product_listings_updated)
+            || result.merchant_product_listings_updated < 0) {
+            console.error('[ProductAdmin] Catalog sync returned an invalid result:', syncResult);
+            return NextResponse.json({ error: 'Supabase returned an invalid catalog sync result. No success was reported; check the server log.' }, { status: 503 });
         }
 
         return NextResponse.json({
-            productCount: eligibleProducts.length,
-            merchantProductListingsUpdated
+            productCount: result.product_count,
+            merchantProductListingsUpdated: result.merchant_product_listings_updated
         });
     }
     if (body.action === 'notify_merchants') {

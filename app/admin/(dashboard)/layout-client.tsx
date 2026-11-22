@@ -87,6 +87,7 @@ export default function AdminLayoutClient({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [unreadMerchantMessages, setUnreadMerchantMessages] = useState(0);
 
   useEffect(() => {
       const syncSidebarForViewport = () => {
@@ -277,7 +278,11 @@ export default function AdminLayoutClient({
 
           <GlobalCommandPalette isOpen={isSearchOpen} setIsOpen={setIsSearchOpen} pages={searchablePages} />
           <LiveActivitySidebar isOpen={isActivityOpen} setIsOpen={setIsActivityOpen} />
-          <NotificationCenter isOpen={isNotificationsOpen} setIsOpen={setIsNotificationsOpen} />
+          <NotificationCenter
+            isOpen={isNotificationsOpen}
+            setIsOpen={setIsNotificationsOpen}
+            onMerchantUnreadCountChange={setUnreadMerchantMessages}
+          />
 
           {/* Mobile Header */}
           <div className="lg:hidden flex items-center justify-between px-4 py-4 bg-background border-b border-border sticky top-0 z-50 shadow-sm">
@@ -424,7 +429,7 @@ export default function AdminLayoutClient({
 
                           <Button onClick={() => setIsNotificationsOpen(true)} variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/5 relative">
                               <Bell className="h-4 w-4" />
-                              <span className="absolute top-2.5 right-2.5 h-1.5 w-1.5 bg-primary rounded-full border-2 border-background"></span>
+                              {unreadMerchantMessages > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full border-2 border-background bg-rose-600 px-1 text-[8px] font-black leading-3 text-white">{unreadMerchantMessages}</span>}
                           </Button>
                       </div>
 

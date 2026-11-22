@@ -12,8 +12,10 @@ migrations in Supabase after their prerequisites:
   `image_gallery` photos, refreshes existing offer details when catalog fields
   change, and creates a pending merchant review notification. Hidden and draft
   products can be sent for merchant price review without making them visible to
-  customers. Apply or re-apply it before using **Send all products to merchants**
-  in Beverage Vault to sync the full beverage catalog.
+  customers. The bulk action runs as one atomic database operation, so a failed
+  product does not leave a partial catalog sync. Apply or re-apply it before
+  using **Send all products to merchants** in Beverage Vault to sync the full
+  beverage catalog.
 - `MERCHANT_CATALOG_PRICE_REVIEW_MIGRATION.sql` requires
   `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It
   enables merchant price requests and Admin approval or rejection. Approval
@@ -25,7 +27,8 @@ migrations in Supabase after their prerequisites:
 - `MERCHANT_SUPPORT_HISTORY_MIGRATION.sql` requires
   `MERCHANT_OPERATIONS_MIGRATION.sql` and the existing `support_tickets` table
   from `OPERATIONAL_FEATURES_MIGRATION.sql` or the equivalent core-schema
-  script.
+  script. Its private merchant/admin conversation table matches the installed
+  support-ticket ID type, including UUID and numeric schemas.
 - `MERCHANT_WEEKLY_DIGEST_MIGRATION.sql` requires
   `MERCHANT_OPERATIONS_MIGRATION.sql`.
 
@@ -42,10 +45,12 @@ versions of the catalog function. Beverage classification includes alcohol,
 liquor, spirits, beer, wine, cider, and the other drink categories; retrying
 publication restores missing offers and refreshes existing product details.
 
-Submitting a merchant ticket sends a confirmation to the verified sign-in email
-when a transactional sender is configured. Ticket creation is preserved if
-email delivery fails, and the workspace reports that warning; replies remain
-available in the authenticated ticket history.
+Merchant support tickets and follow-up messages notify the configured admin
+contact by email. Admin replies notify the merchant and appear in the same
+conversation; the merchant workspace refreshes the thread every 15 seconds.
+Messages remain saved if an email alert fails, and the sender sees a warning.
+The alert recipient uses `ADMIN_EMAIL` or the published contact email; a
+transactional email sender must also be configured.
 
 The weekly email summary is opt-in and runs on Mondays after 09:00
 Africa/Nairobi when the persistent `merchant-alerts` worker is running. It
