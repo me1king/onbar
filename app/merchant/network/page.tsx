@@ -2600,7 +2600,7 @@ export default function OnBarPartnerNetworkPage() {
       });
       const payload = await response.json() as { error?: string; warning?: string };
       if (!response.ok) throw new Error(payload.error || 'Your update could not be saved.');
-      const refreshedApplications = await loadWorkspace(accessToken);
+      const refreshedApplications = await loadWorkspace(accessToken, true);
       if (body.operation === 'set_stock_count') {
         const productId = Number(body.productId);
         const expectedQuantity = Number(body.quantity);
