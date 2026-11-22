@@ -28,6 +28,7 @@ import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 import { isBeverageInventoryProduct } from '@/lib/productDepartment';
+import { getProductImageUrls } from '@/lib/productImages';
 import Image from 'next/image';
 
 interface BeverageNode {
@@ -47,6 +48,9 @@ interface BeverageNode {
     is_souvenir?: boolean;
     image_url?: string;
     image?: string;
+    images?: unknown;
+    status?: string | null;
+    hide_product?: boolean | null;
 }
 
 export default function BeverageCommandAdmin() {
@@ -55,6 +59,7 @@ export default function BeverageCommandAdmin() {
     const [loading, setLoading] = React.useState(true);
     const [loadError, setLoadError] = React.useState<string | null>(null);
     const [searchQuery, setSearchQuery] = React.useState('');
+    const [photosOnly, setPhotosOnly] = React.useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
     const [formFeedback, setFormFeedback] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -287,9 +292,11 @@ export default function BeverageCommandAdmin() {
         }
     };
 
-    const publishAllBeveragesToMerchants = async () => {
+    const publishAllBeveragesToMerchants = async (withPhotosOnly = false) => {
         if (!supabase || notifyingAllMerchants || !window.confirm(
-            'Publish all active beverage catalog products to compatible approved merchants? This will make them available for merchants to review and submit price requests.'
+            withPhotosOnly
+                ? 'Send every active beverage product with photos to compatible approved merchants so they can identify products and submit price requests?'
+                : 'Publish all active beverage catalog products to compatible approved merchants? This will make them available for merchants to review and submit price requests.'
         )) return;
         setNotifyingAllMerchants(true);
         setFormFeedback(null);
@@ -297,7 +304,7 @@ export default function BeverageCommandAdmin() {
             const response = await fetch('/api/admin/products', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'notify_all_merchants' })
+                body: JSON.stringify({ action: 'notify_all_merchants', withPhotosOnly })
             });
             const result = await response.json() as {
                 error?: string;
@@ -312,8 +319,8 @@ export default function BeverageCommandAdmin() {
             }
             const listingCount = Number(result.merchantProductListingsUpdated || 0);
             setFormFeedback(listingCount > 0
-                ? { type: 'success', text: `Published ${Number(result.productCount || 0)} active beverage products. ${listingCount} eligible merchant-product listings are now available for stock updates and price requests.` }
-                : { type: 'error', text: `No merchant-product listings were updated across ${Number(result.productCount || 0)} active beverage products. Confirm the catalog notification migration is applied and that compatible merchants are approved.` });
+                ? { type: 'success', text: `Published ${Number(result.productCount || 0)} active ${withPhotosOnly ? 'photo-backed ' : ''}beverage products. ${listingCount} eligible merchant-product listings are now available for stock updates and price requests.` }
+                : { type: 'error', text: `No merchant-product listings were updated across ${Number(result.productCount || 0)} active ${withPhotosOnly ? 'photo-backed ' : ''}beverage products. Confirm the catalog notification migration is applied and that compatible merchants are approved.` });
         } catch (error) {
             console.error('Could not publish beverage catalog to merchants:', error);
             setFormFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Beverage catalog could not be published to merchants.' });
@@ -373,10 +380,19 @@ export default function BeverageCommandAdmin() {
     };
 
     const filteredBeverages = beverages.filter(b => {
+        const images = getProductImageUrls(b.image_url || b.image, b.images);
+        if (photosOnly && images.length === 0) return false;
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
         return (b.name || '').toLowerCase().includes(q) || (b.category || '').toLowerCase().includes(q) || (b.brand || '').toLowerCase().includes(q);
     });
+    const publishableBeverages = beverages.filter(beverage =>
+        beverage.hide_product !== true
+        && !['draft', 'hidden', 'inactive', 'archived', 'deleted'].includes((beverage.status || 'live').toLowerCase())
+    );
+    const beveragePhotoCount = publishableBeverages.filter(beverage =>
+        getProductImageUrls(beverage.image_url || beverage.image, beverage.images).length > 0
+    ).length;
     const listingChecks = [
         Boolean(form.name.trim()),
         Number.isFinite(Number(form.price)) && Number(form.price) > 0,
@@ -424,7 +440,7 @@ export default function BeverageCommandAdmin() {
             )}
 
             {/* METRICS HUD */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
                 <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
                     <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Beverage Nodes</p>
                     <p className="text-3xl font-black text-foreground">{beverages.length}</p>
@@ -441,24 +457,41 @@ export default function BeverageCommandAdmin() {
                     <p className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Available Now</p>
                     <p className="text-xl font-black text-emerald-600 uppercase italic mt-1">{beverages.filter(beverage => beverage.is_available_now !== false && Number(beverage.stock) > 0).length}</p>
                 </Card>
+                <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
+                    <p className="text-[9px] font-black uppercase text-violet-600 tracking-widest">Active photo products</p>
+                    <p className="text-3xl font-black text-violet-600">{beveragePhotoCount}</p>
+                </Card>
             </div>
 
             <section className="flex flex-col gap-3 rounded-2xl border border-cyan-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 className="font-black text-slate-900">Merchant catalog publication</h2>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">Sync active beverage products, including existing listings, to compatible approved merchants so they can review stock and request prices.</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Send {beveragePhotoCount} photo-backed products or the full active beverage catalog to compatible approved merchants. Merchants can identify each product, update stock, and submit prices for review.</p>
                 </div>
-                <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void publishAllBeveragesToMerchants()}
-                    disabled={notifyingAllMerchants || loading || beverages.length === 0}
-                    className="shrink-0 rounded-xl border-cyan-200 bg-cyan-50 font-black text-cyan-900"
-                >
-                    {notifyingAllMerchants
-                        ? <><Loader2 size={15} className="mr-2 animate-spin" /> Publishing catalog…</>
-                        : <><BellRing size={15} className="mr-2" /> Publish all to merchants</>}
-                </Button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void publishAllBeveragesToMerchants(true)}
+                        disabled={notifyingAllMerchants || loading || beveragePhotoCount === 0}
+                        className="rounded-xl border-violet-200 bg-violet-50 font-black text-violet-900"
+                    >
+                        {notifyingAllMerchants
+                            ? <><Loader2 size={15} className="mr-2 animate-spin" /> Publishing…</>
+                            : <><ImageIcon size={15} className="mr-2" /> Send photo products</>}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void publishAllBeveragesToMerchants()}
+                        disabled={notifyingAllMerchants || loading || publishableBeverages.length === 0}
+                        className="rounded-xl border-cyan-200 bg-cyan-50 font-black text-cyan-900"
+                    >
+                        {notifyingAllMerchants
+                            ? <><Loader2 size={15} className="mr-2 animate-spin" /> Publishing…</>
+                            : <><BellRing size={15} className="mr-2" /> Publish all beverages</>}
+                    </Button>
+                </div>
             </section>
 
             {/* SEARCH & INVENTORY TABLE */}
@@ -469,14 +502,26 @@ export default function BeverageCommandAdmin() {
                         <Coffee className="h-6 w-6 text-primary" />
                         <h3 className="text-lg font-black uppercase text-foreground">Active Beverage Inventory</h3>
                     </div>
-                    <div className="relative w-full sm:w-72">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                        <Input
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            placeholder="Search beverages..."
-                            className="h-10 pl-10 rounded-xl bg-slate-50 border-none text-xs font-bold"
-                        />
+                    <div className="flex w-full gap-2 sm:w-auto">
+                        <div className="relative min-w-0 flex-1 sm:w-72">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Input
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                placeholder="Search beverages..."
+                                className="h-10 pl-10 rounded-xl bg-slate-50 border-none text-xs font-bold"
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            aria-pressed={photosOnly}
+                            onClick={() => setPhotosOnly(current => !current)}
+                            className={cn("h-10 shrink-0 rounded-xl px-3 text-xs font-bold", photosOnly && "border-violet-300 bg-violet-50 text-violet-800")}
+                        >
+                            <ImageIcon size={14} className="mr-1.5" />
+                            {photosOnly ? 'All products' : 'Photos only'}
+                        </Button>
                     </div>
                 </div>
 
@@ -490,17 +535,27 @@ export default function BeverageCommandAdmin() {
                 ) : (
                     <div className="divide-y divide-slate-50">
                         {filteredBeverages.map(bev => {
-                            const img = bev.image_url || bev.image || '';
+                            const images = getProductImageUrls(bev.image_url || bev.image, bev.images);
                             const isLive = bev.is_available_now !== false && Number(bev.stock) > 0;
 
                             return (
                                 <div key={bev.id} className="group flex flex-col items-stretch gap-4 p-6 transition-all hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between sm:p-8">
                                     <div className="flex min-w-0 items-center gap-4 sm:gap-6">
-                                        <div className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-100 relative overflow-hidden flex items-center justify-center shrink-0">
-                                            {img ? (
-                                                <Image src={normalizeImage(img)} alt={bev.name} fill className="object-contain p-2" />
-                                            ) : (
-                                                <Snowflake size={22} className="text-cyan-500" />
+                                        <div className={cn(
+                                            "grid h-20 w-24 shrink-0 gap-1 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-1",
+                                            images.length > 1 ? "grid-cols-2" : "grid-cols-1"
+                                        )} role="group" aria-label={`${bev.name} product photos`}>
+                                            {images.length ? images.slice(0, 4).map((image, index) => (
+                                                <div key={`${image}-${index}`} className="relative min-h-0 overflow-hidden rounded-lg bg-white">
+                                                    <Image src={normalizeImage(image)} alt={`${bev.name} photo ${index + 1}`} fill className="object-contain p-1" />
+                                                    {index === 3 && images.length > 4 && (
+                                                        <span className="absolute inset-0 flex items-center justify-center bg-slate-950/65 text-xs font-black text-white">+{images.length - 4}</span>
+                                                    )}
+                                                </div>
+                                            )) : (
+                                                <div className="flex items-center justify-center">
+                                                    <Snowflake size={22} className="text-cyan-500" />
+                                                </div>
                                             )}
                                         </div>
                                         <div className="space-y-1 text-left">
@@ -516,6 +571,7 @@ export default function BeverageCommandAdmin() {
                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                                 {bev.brand || 'BAR OS'} &bull; {bev.category} &bull; Size: <span className="text-foreground font-black">{bev.size_label || '500ml'}</span> &bull; Stock: <span className="text-foreground font-black">{bev.stock ?? 50} units</span>
                                             </p>
+                                            <p className="text-[10px] font-bold text-slate-500">Product #{bev.id} &bull; {images.length ? `${images.length} photo${images.length === 1 ? '' : 's'}` : 'No product photo'}</p>
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap items-center justify-start gap-3 sm:justify-end">

@@ -262,6 +262,7 @@ type PartnerApplication = {
     category: string | null;
     listed_price: number;
     created_at: string;
+    images: string[];
   }>;
 };
 
@@ -537,12 +538,13 @@ function MerchantCatalogUpdateBanner({
     <div className="flex items-center justify-between gap-3">
       <div>
         <h3 className="font-black text-sky-100">New products to review</h3>
-        <p className="mt-1 text-xs text-sky-100/70">{notifications.length} new catalog item{notifications.length === 1 ? '' : 's'} added by OnBar. Review whether you want to carry them.</p>
+        <p className="mt-1 text-xs text-sky-100/70">{notifications.length} new catalog item{notifications.length === 1 ? '' : 's'} added by OnBar. Check each photo, then choose whether to carry it and submit a price request.</p>
       </div>
       <span className="rounded-full bg-sky-300 px-2.5 py-1 text-xs font-black text-sky-950">{notifications.length}</span>
     </div>
     <div className="grid gap-2 md:grid-cols-2">
       {notifications.map(notification => <article key={notification.id} className="rounded-xl border border-sky-100/10 bg-black/20 p-4">
+        <MerchantProductPhotoGallery productName={notification.product_name} images={notification.images} />
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <p className="font-bold text-white">{notification.product_name}</p>

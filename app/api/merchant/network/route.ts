@@ -204,7 +204,11 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   const offeredProductIds = applicationOffers
     .map(offer => Number(offer.product_id))
     .filter(Number.isSafeInteger);
-  const productIds = [...new Set([...batchRows.map(batch => batch.product_id), ...offeredProductIds])];
+  const productIds = [...new Set([
+    ...batchRows.map(batch => batch.product_id),
+    ...offeredProductIds,
+    ...(catalogNotifications || []).map(notification => Number(notification.product_id))
+  ])];
   const [
     { data: products, error: productsError },
     movementRows,
@@ -370,7 +374,13 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     batches: batchData,
     orders: orderData,
     incidents: incidents || [],
-    catalogNotifications: catalogNotifications || []
+    catalogNotifications: (catalogNotifications || []).map(notification => {
+      const product = productRows.find(row => Number(row.id) === Number(notification.product_id));
+      return {
+        ...notification,
+        images: getProductImageUrls(product?.image_url, product?.images)
+      };
+    })
   };
 }
 

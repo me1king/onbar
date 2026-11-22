@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { isBeverageInventoryProduct } from '@/lib/productDepartment';
+import { getProductImageUrls } from '@/lib/productImages';
 import { getSupabaseServerKey } from '@/lib/supabaseServerConfig';
 
 export const dynamic = 'force-dynamic';
@@ -305,7 +306,7 @@ export async function PATCH(request: Request) {
     const access = await getAuthorizedDatabase();
     if ('response' in access) return access.response;
 
-    let body: { id?: unknown; product?: unknown; action?: unknown };
+    let body: { id?: unknown; product?: unknown; action?: unknown; withPhotosOnly?: unknown };
     try {
         body = await request.json() as typeof body;
     } catch {
@@ -314,6 +315,9 @@ export async function PATCH(request: Request) {
     if (body.action === 'notify_all_merchants') {
         if (!isSameOriginRequest(request)) {
             return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
+        }
+        if (body.withPhotosOnly !== undefined && typeof body.withPhotosOnly !== 'boolean') {
+            return NextResponse.json({ error: 'The photo filter must be a boolean.' }, { status: 400 });
         }
 
         const catalogProducts: Array<{
@@ -325,10 +329,12 @@ export async function PATCH(request: Request) {
             is_souvenir: boolean | null;
             hide_product: boolean | null;
             status: string | null;
+            image_url: unknown;
+            images: unknown;
         }> = [];
         for (let offset = 0; ; offset += 500) {
             const { data, error } = await access.database.from('products')
-                .select('id, category, sub_category, is_bite, is_snack, is_souvenir, hide_product, status')
+                .select('id, category, sub_category, is_bite, is_snack, is_souvenir, hide_product, status, image_url, images')
                 .order('id', { ascending: true })
                 .range(offset, offset + 499);
             if (error) {
@@ -344,6 +350,7 @@ export async function PATCH(request: Request) {
             product.hide_product !== true
             && !['draft', 'hidden', 'inactive', 'archived', 'deleted'].includes((product.status || 'live').toLowerCase())
             && isBeverageInventoryProduct(product)
+            && (body.withPhotosOnly !== true || getProductImageUrls(product.image_url, product.images).length > 0)
         );
         let merchantProductListingsUpdated = 0;
         for (const [index, product] of eligibleProducts.entries()) {
