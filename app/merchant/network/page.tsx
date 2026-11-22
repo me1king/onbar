@@ -224,6 +224,7 @@ type PartnerApplication = {
       margin_percent: number | null;
       sizes: string[];
       image_url: string | null;
+      images: string[];
       variant_prices: Record<string, number>;
       pending_price?: number | null;
       pending_base_price?: number | null;
@@ -1237,6 +1238,32 @@ function MerchantActionChecklist({
   </section>;
 }
 
+function MerchantProductPhotoGallery({
+  productName,
+  images
+}: {
+  productName: string;
+  images: string[];
+}) {
+  if (!images.length) return null;
+  return <div
+    role="group"
+    aria-label={`${productName} product photos`}
+    className={`mb-4 grid gap-2 ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}
+  >
+    {images.map((image, index) => <div key={`${image}-${index}`} className="relative aspect-[4/3] overflow-hidden rounded-xl bg-white/5">
+      <Image
+        src={image}
+        alt={`${productName} photo ${index + 1}`}
+        fill
+        sizes="(max-width: 768px) 90vw, 360px"
+        unoptimized
+        className="object-contain p-3"
+      />
+    </div>)}
+  </div>;
+}
+
 function FoodMerchantTerminal({
   section,
   application,
@@ -1493,6 +1520,7 @@ function FoodMerchantTerminal({
         {products.map(product => {
           const stock = batchTotals.get(product.product_id) || 0;
           return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+            <MerchantProductPhotoGallery productName={product.product_name} images={product.images} />
             <div className="flex items-start justify-between gap-3">
               <div><p className="font-black text-white">{product.product_name}</p><p className="mt-1 text-xs text-zinc-500">Catalog price {currency(product.listed_price)}</p></div>
               <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stock > 0 ? 'bg-emerald-400/10 text-emerald-300' : 'bg-rose-400/10 text-rose-300'}`}>{stock > 0 ? 'In stock' : 'Out of stock'}</span>
@@ -1855,6 +1883,7 @@ function AlcoholMerchantTerminal({
           const batches = overview.batches.filter(batch => batch.product_id === product.product_id);
           const available = batches.reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0);
           return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
+            <MerchantProductPhotoGallery productName={product.product_name} images={product.images} />
             <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-white">{product.product_name}</h3><p className="mt-1 text-xs text-zinc-400">{details?.size || 'Size not recorded'} · {details?.abv === undefined ? 'ABV not recorded' : `${details.abv}% ABV`}</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${details?.exciseStampConfirmed ? 'bg-amber-400/10 text-amber-200' : 'bg-rose-400/10 text-rose-200'}`}>{details?.exciseStampConfirmed ? 'Stamp attested' : 'Stamp not confirmed'}</span></div>
             <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p><p className={`mt-2 text-xs font-black uppercase ${available > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{available > 0 ? 'In stock · available for new orders' : 'Out of stock · unavailable for new orders'}</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.listed_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Live catalog base price</p>{product.pending_price != null && <p className="mt-2 text-xs font-bold text-amber-700">Requested {product.pending_variant ? `${product.pending_variant} ` : ''}price: KSh {Number(product.pending_price).toLocaleString('en-KE')} · waiting for OnBar</p>}</div></div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -2060,7 +2089,7 @@ export default function OnBarPartnerNetworkPage() {
   const [inventoryCategory, setInventoryCategory] = useState('all');
   const [enlargedProductPhoto, setEnlargedProductPhoto] = useState<{ name: string; imageUrl: string } | null>(null);
   const [photoRequestPending, setPhotoRequestPending] = useState<Set<number>>(() => new Set());
-  const [unavailableInventoryPhotos, setUnavailableInventoryPhotos] = useState<Set<number>>(() => new Set());
+  const [unavailableInventoryPhotos, setUnavailableInventoryPhotos] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -2628,6 +2657,7 @@ export default function OnBarPartnerNetworkPage() {
         sku: null,
         category: offer.category,
         imageUrl: offer.image_url,
+        imageUrls: offer.images,
         offer
       }));
   }, [isFoodMerchant, isLiquorMerchant, selected]);
@@ -3572,6 +3602,8 @@ export default function OnBarPartnerNetworkPage() {
               </section>
               <div className="grid gap-4 lg:grid-cols-2">
                 {filteredInventoryProducts.map(product => {
+                  const availablePhotos = product.imageUrls
+                    .filter(image => !unavailableInventoryPhotos.has(`${product.id}:${image}`));
                   const currentAvailable = overview.batches
                     .filter(batch => batch.product_id === product.id)
                     .reduce((total, batch) => total + batch.available_quantity, 0);
@@ -3600,24 +3632,26 @@ export default function OnBarPartnerNetworkPage() {
                         <span className={`absolute left-3 top-3 z-10 rounded-full px-3 py-1 text-[10px] font-black uppercase ${stockStatus.className}`}>
                           {stockStatus.label}
                         </span>
-                        {product.imageUrl && !unavailableInventoryPhotos.has(product.id) ? (
-                          <button
-                            type="button"
-                            onClick={() => setEnlargedProductPhoto({ name: product.name, imageUrl: product.imageUrl || '' })}
-                            aria-label={`Tap to enlarge ${product.name} photo`}
-                            className="absolute inset-0 flex items-center justify-center"
-                          >
-                            <Image
-                              src={product.imageUrl}
-                              alt={product.name}
-                              fill
-                              sizes="(max-width: 1024px) 90vw, 560px"
-                              unoptimized
-                              className="object-contain p-8 transition-transform duration-300 hover:scale-105"
-                              onError={() => setUnavailableInventoryPhotos(current => new Set(current).add(product.id))}
-                            />
-                            <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-white">Tap to enlarge</span>
-                          </button>
+                        {availablePhotos.length > 0 ? (
+                          <div className={`absolute inset-0 grid ${availablePhotos.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-1 p-1`}>
+                            {availablePhotos.map((imageUrl, index) => <button
+                              key={`${imageUrl}-${index}`}
+                              type="button"
+                              onClick={() => setEnlargedProductPhoto({ name: `${product.name} · photo ${index + 1}`, imageUrl })}
+                              aria-label={`Tap to enlarge ${product.name} photo ${index + 1}`}
+                              className="relative min-h-0 overflow-hidden rounded-lg"
+                            >
+                              <Image
+                                src={imageUrl}
+                                alt={`${product.name} photo ${index + 1}`}
+                                fill
+                                sizes="(max-width: 1024px) 45vw, 280px"
+                                unoptimized
+                                className="object-contain p-3 transition-transform duration-300 hover:scale-105"
+                                onError={() => setUnavailableInventoryPhotos(current => new Set(current).add(`${product.id}:${imageUrl}`))}
+                              />
+                            </button>)}
+                          </div>
                         ) : (
                           <div className="flex flex-col items-center gap-2 px-4 text-center">
                             <ImageIcon size={34} aria-hidden="true" className="text-slate-400" />

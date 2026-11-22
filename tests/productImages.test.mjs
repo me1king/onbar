@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { getProductImageUrls } from '../lib/productImages.ts';
+
+test('returns the primary and gallery photos once, in display order', () => {
+  assert.deepEqual(
+    getProductImageUrls(' https://img.test/front.jpg ', [
+      'https://img.test/front.jpg',
+      'https://img.test/back.jpg',
+      '',
+      null
+    ]),
+    ['https://img.test/front.jpg', 'https://img.test/back.jpg']
+  );
+});
+
+test('uses gallery images when the primary image is missing', () => {
+  assert.deepEqual(getProductImageUrls(null, ['https://img.test/one.jpg']), ['https://img.test/one.jpg']);
+  assert.deepEqual(getProductImageUrls(null, null), []);
+});
