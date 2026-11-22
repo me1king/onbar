@@ -33,6 +33,7 @@ import RiderTerminalProfile from '@/components/rider/RiderTerminalProfile';
 import OrderAlertToneSettings from '@/components/alerts/OrderAlertToneSettings';
 import { useOrderAlertTone } from '@/hooks/useOrderAlertTone';
 import { ensurePushServiceWorkerReady } from '@/lib/pushServiceWorker';
+import GuidedPanelTour, { type GuidedPanelTourStep } from '@/components/onboarding/GuidedPanelTour';
 
 const RiderDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
     ssr: false,
@@ -76,6 +77,28 @@ interface BatteryManagerLike {
 
 const RIDER_ACCENT_DEFAULT = '#39D98A';
 const RIDER_ACCENT_PRESETS = ['#39D98A', '#21C8A8', '#4E9BFF', '#A78BFA', '#FF8A4C', '#F05D6C'];
+const riderTourSteps: GuidedPanelTourStep[] = [
+    {
+        selector: '[data-tour="rider-online"]',
+        title: 'Choose when you are available',
+        description: 'Go online only when you are ready to receive delivery offers. You can go offline whenever you need a break.'
+    },
+    {
+        selector: '[data-tour="rider-map"]',
+        title: 'Share your live location',
+        description: 'Allow location access while online so dispatch can find you and customers can follow an active delivery.'
+    },
+    {
+        selector: '[data-tour="rider-mission"]',
+        title: 'Review and complete missions',
+        description: 'New offers appear here with an expiry timer. Check the pickup and delivery details before accepting, then update the delivery progress as you go.'
+    },
+    {
+        selector: '[data-tour="rider-alerts"]',
+        title: 'Turn on offer alerts',
+        description: 'Enable push alerts to hear about new assignments when the terminal is not in the foreground. Your selected sound works while the terminal is open.'
+    }
+];
 
 function isCashOrder(method: string) {
     return ['cash', 'cash on delivery', 'cod'].includes(method.trim().toLowerCase());
@@ -1182,7 +1205,7 @@ function RiderDashboardContent() {
                             <span className={`h-2 w-2 rounded-full ${isOnline ? 'animate-pulse bg-emerald-500' : 'bg-slate-300'}`} />
                             {isOnline ? 'Online' : 'Offline'}
                         </span>
-                        {!supportPreview && <Button onClick={handleToggleOnline} disabled={loading} className="h-10 rounded-lg px-4 text-xs font-black uppercase" style={{ backgroundColor: isOnline ? '#202725' : accentColor, color: isOnline ? 'white' : '#08100c' }}>
+                        {!supportPreview && <Button data-tour="rider-online" onClick={handleToggleOnline} disabled={loading} className="h-10 rounded-lg px-4 text-xs font-black uppercase" style={{ backgroundColor: isOnline ? '#202725' : accentColor, color: isOnline ? 'white' : '#08100c' }}>
                             {isOnline ? 'Go offline' : 'Go online'}
                         </Button>}
                         {!supportPreview && <button aria-label="Log out" onClick={handleLogout} className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:text-rose-600">
@@ -1196,7 +1219,7 @@ function RiderDashboardContent() {
             <RiderTerminalProfile token={sessionToken} riderName={riderName} phone={phone} isOnline={isOnline} supportPreview={supportPreview}>
             <div className="mx-auto grid max-w-7xl gap-5 p-4 sm:p-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.85fr)]">
                 <section className="space-y-5">
-                    <div className="relative h-[288px] overflow-hidden rounded-2xl border border-white/10 bg-[#101614] sm:h-[340px]">
+                    <div data-tour="rider-map" className="relative h-[288px] overflow-hidden rounded-2xl border border-white/10 bg-[#101614] sm:h-[340px]">
                         {riderPosition ? (
                             <RiderDeliveryMap rider={riderPosition} destination={deliveryDestination} />
                         ) : (
@@ -1211,7 +1234,7 @@ function RiderDashboardContent() {
                         </div>
                     </div>
 
-                    <section className="rounded-2xl border bg-[#101614] p-4 sm:p-6" style={{ borderColor: `${accentColor}66` }}>
+                    <section data-tour="rider-mission" className="rounded-2xl border bg-[#101614] p-4 sm:p-6" style={{ borderColor: `${accentColor}66` }}>
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: accentColor }}>
@@ -1451,7 +1474,7 @@ function RiderDashboardContent() {
 
                     <OrderAlertToneSettings controller={orderTone} dark />
 
-                    <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
+                    <section data-tour="rider-alerts" className="rounded-2xl border border-white/10 bg-[#101614] p-5">
                         <div className="flex items-center justify-between gap-3">
                             <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/70"><Bell className="h-4 w-4" /> Offer alerts</h2>
                             {pushEnabled && <span className="text-[10px] font-bold uppercase" style={{ color: accentColor }}>Enabled</span>}
@@ -1481,6 +1504,12 @@ function RiderDashboardContent() {
             </div>
             </RiderTerminalProfile>
             </div>
+            {!supportPreview && <GuidedPanelTour
+                key={`rider:${phone.replace(/\D/g, '')}`}
+                tourKey={`rider:${phone.replace(/\D/g, '')}`}
+                title="Rider terminal"
+                steps={riderTourSteps}
+            />}
         </main>
     );
 }

@@ -55,6 +55,7 @@ import MerchantReviewInbox from '@/components/merchant/MerchantReviewInbox';
 import MerchantSupportPanel from '@/components/merchant/MerchantSupportPanel';
 import MerchantInventoryCsv, { type StockChange } from '@/components/merchant/MerchantInventoryCsv';
 import MerchantWeeklyDigestSettings from '@/components/merchant/MerchantWeeklyDigestSettings';
+import GuidedPanelTour, { type GuidedPanelTourStep } from '@/components/onboarding/GuidedPanelTour';
 
 type PartnerEvent = { event_type: string; details: Record<string, unknown> | null; created_at: string };
 type PartnerDocument = { id: string; type: string; name: string; uploadedAt: string; expiresAt: string | null };
@@ -2180,6 +2181,55 @@ export default function OnBarPartnerNetworkPage() {
   const isLiquorMerchant = Boolean(selected
     && selected.application.business_type === 'bar'
     && selected.application.vendor_type === 'retailer');
+  const merchantHoursSection = isFoodMerchant ? 'food-business' : 'business';
+  const merchantTourSteps = useMemo<GuidedPanelTourStep[]>(() => [
+    {
+      selector: '[data-tour="merchant-navigation"]',
+      title: 'Find your way around',
+      description: 'These tabs take you to orders, stock, products, hours, payments, and support. You can reopen this tour any time.'
+    },
+    {
+      selector: '[data-tour="merchant-inventory-tab"]',
+      title: 'Keep stock accurate',
+      description: 'Update quantities when stock changes. Alcohol stock may require lot, expiry, supplier, and excise-stamp details.'
+    },
+    ...(isFoodMerchant || isLiquorMerchant ? [{
+      selector: '[data-tour="merchant-catalog-tab"]',
+      title: 'Manage your product list',
+      description: 'Review OnBar catalog products here, add your proposed prices, and watch for OnBar approval before a price takes effect.'
+    }] : []),
+    {
+      selector: '[data-tour="merchant-orders-tab"]',
+      title: 'Handle incoming orders',
+      description: 'Open this tab to review new orders and update each order as you prepare it for rider pickup or collection.'
+    },
+    {
+      selector: '[data-tour="merchant-hours-form"]',
+      title: 'Set your operating hours',
+      description: 'Choose which days you trade and enter opening and closing times in Nairobi time. Overnight hours are supported.',
+      before: () => setSection(merchantHoursSection)
+    },
+    {
+      selector: '[data-tour="merchant-hours-schedule"]',
+      title: 'Set hours for each day',
+      description: 'Turn each day on or off, then set its opening and closing times. Leave a day switched off when you are closed.'
+    },
+    {
+      selector: '[data-tour="merchant-availability-toggle"]',
+      title: 'Go online or pause orders',
+      description: 'Turn this on only when you can accept new orders. You can pause temporarily without changing your weekly schedule.'
+    },
+    {
+      selector: '[data-tour="merchant-hours-save"]',
+      title: 'Save your schedule',
+      description: 'Your hours and availability are saved only after you press this button. Dispatch uses the saved schedule for new orders.'
+    },
+    {
+      selector: '[data-tour="merchant-support-tab"]',
+      title: 'Contact the OnBar team',
+      description: 'Open Support to message the admin/founder and follow replies in your merchant workspace.'
+    }
+  ], [isFoodMerchant, isLiquorMerchant, merchantHoursSection]);
 
   useEffect(() => {
     if (isFoodMerchant && !foodSections.some(item => item.id === section)) setSection('sales');
@@ -3107,13 +3157,19 @@ export default function OnBarPartnerNetworkPage() {
           </div>
         )}
 
-        {overview && <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
+        {overview && <nav data-tour="merchant-navigation" className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
           {(isFoodMerchant ? foodSections : isLiquorMerchant ? liquorSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
             const Icon = item.icon;
             const isOrderTab = ['food-live', 'liquor-live', 'orders'].includes(item.id);
             const catalogUpdateTab = item.id === 'food-menu' || item.id === 'liquor-catalog';
             const catalogUpdateCount = catalogUpdateTab ? overview.catalogNotifications.length : 0;
-            return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}{catalogUpdateCount > 0 && <span aria-label={`${catalogUpdateCount} new products`} className="rounded-full bg-sky-500 px-2 py-0.5 text-[10px] font-black text-white">{catalogUpdateCount}</span>}{isOrderTab && pendingOrderCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">{pendingOrderCount}</span>}</button>;
+            const isHoursTab = item.id === 'business' || item.id === 'food-business';
+            const tourTarget = item.id === 'inventory' ? 'merchant-inventory-tab'
+              : catalogUpdateTab ? 'merchant-catalog-tab'
+                : isOrderTab ? 'merchant-orders-tab'
+                  : isHoursTab ? 'merchant-hours-tab'
+                    : item.id === 'support' ? 'merchant-support-tab' : undefined;
+            return <button key={item.id} type="button" data-tour={tourTarget} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}{catalogUpdateCount > 0 && <span aria-label={`${catalogUpdateCount} new products`} className="rounded-full bg-sky-500 px-2 py-0.5 text-[10px] font-black text-white">{catalogUpdateCount}</span>}{isOrderTab && pendingOrderCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">{pendingOrderCount}</span>}</button>;
           })}
           <button type="button" disabled={loading} onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl disabled:opacity-50 ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
         </nav>}
@@ -3963,7 +4019,7 @@ export default function OnBarPartnerNetworkPage() {
         {!loading && overview && ['business', 'food-business'].includes(section) && (
           <section className="space-y-5">
             <div><h2 className="text-xl font-black text-slate-900">Business profile</h2><p className="mt-1 text-sm text-slate-500">Application and contact details submitted to OnBar.</p></div>
-            <form onSubmit={submitAvailability} className="rounded-2xl bg-white p-6 shadow-sm">
+            <form data-tour="merchant-hours-form" onSubmit={submitAvailability} className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h3 className="flex items-center gap-2 font-black text-slate-900"><Clock3 size={18} /> Order availability & operating hours</h3>
@@ -3976,6 +4032,7 @@ export default function OnBarPartnerNetworkPage() {
               {!canOperate && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Availability controls unlock after OnBar approves this business.</p>}
               <label className={`mt-5 flex items-start gap-3 rounded-xl border p-4 ${canOperate ? 'cursor-pointer border-slate-200' : 'border-slate-100 opacity-60'}`}>
                 <input
+                  data-tour="merchant-availability-toggle"
                   type="checkbox"
                   checked={acceptingOrdersDraft}
                   disabled={!canOperate || working}
@@ -3990,7 +4047,7 @@ export default function OnBarPartnerNetworkPage() {
               <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {merchantWeekdays.map(day => {
                   const hours = scheduleDraft[day];
-                  return <div key={day} className="grid gap-3 rounded-xl border border-slate-200 p-3">
+                  return <div key={day} data-tour={day === 'monday' ? 'merchant-hours-schedule' : undefined} className="grid gap-3 rounded-xl border border-slate-200 p-3">
                     <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
                       <input
                         type="checkbox"
@@ -4040,7 +4097,7 @@ export default function OnBarPartnerNetworkPage() {
               {merchantWeekdays.some(day => scheduleDraft[day].enabled && scheduleDraft[day].open === scheduleDraft[day].close) && <p role="alert" className="mt-3 text-sm font-semibold text-rose-700">For an open day, opening and closing times must be different.</p>}
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs leading-5 text-slate-500">Going offline prevents new allocations; orders already assigned to you remain visible and still need fulfillment updates.</p>
-                <Button type="submit" disabled={!canOperate || working || merchantWeekdays.some(day => scheduleDraft[day].enabled && scheduleDraft[day].open === scheduleDraft[day].close)} className="h-11 rounded-xl font-black uppercase">
+                <Button data-tour="merchant-hours-save" type="submit" disabled={!canOperate || working || merchantWeekdays.some(day => scheduleDraft[day].enabled && scheduleDraft[day].open === scheduleDraft[day].close)} className="h-11 rounded-xl font-black uppercase">
                   {working && <Loader2 size={16} className="mr-2 animate-spin" />} Save availability
                 </Button>
               </div>
@@ -4102,6 +4159,12 @@ export default function OnBarPartnerNetworkPage() {
           <Link href="/" className="font-bold text-primary hover:underline"><CheckCircle2 size={14} className="mr-1 inline" /> Return to OnBar</Link>
         </footer>
       </div>
+      {!loading && overview && selected && canOperate && <GuidedPanelTour
+        key={selected.application.id}
+        tourKey={`merchant:${selected.application.id}`}
+        title="Merchant workspace"
+        steps={merchantTourSteps}
+      />}
     </main>
   );
 }
