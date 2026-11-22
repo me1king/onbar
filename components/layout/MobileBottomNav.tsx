@@ -7,12 +7,8 @@ import {
     Home,
     Search,
     Gamepad2,
-    Cookie,
     User,
-    Flame,
-    Wine,
-    Gift,
-    Utensils
+    Flame
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
@@ -20,12 +16,8 @@ import { useCart } from '@/context/CartContext';
 const NAV_ITEMS = [
     { label: 'Home', icon: Home, href: '/' },
     { label: 'Shop', icon: Search, href: '/shop' },
-    { label: 'Drinks', icon: Wine, href: '/beverages' },
-    { label: 'Food', icon: Utensils, href: '/bites' },
-    { label: 'Souvenirs', icon: Gift, href: '/souvenirs' },
     { label: 'Build Night', icon: Flame, href: '/build-the-night' },
     { label: 'Game Night', icon: Gamepad2, href: '/games' },
-    { label: 'Munchies', icon: Cookie, href: '/shop/snacks' },
     { label: 'My Bar', icon: User, href: '/profile' }
 ];
 

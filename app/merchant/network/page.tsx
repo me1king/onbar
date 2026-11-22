@@ -2227,7 +2227,7 @@ export default function OnBarPartnerNetworkPage() {
     {
       selector: '[data-tour="merchant-support-tab"]',
       title: 'Contact the OnBar team',
-      description: 'Open Support to message the admin/founder and follow replies in your merchant workspace.'
+      description: 'Request anything you need from the admin team—catalog changes, pricing, orders, payments, account help, or something else. Send it in Support and follow the reply there.'
     }
   ], [isFoodMerchant, isLiquorMerchant, merchantHoursSection]);
 
@@ -3155,6 +3155,23 @@ export default function OnBarPartnerNetworkPage() {
               <Button type="button" variant="outline" onClick={stopNewOrderAlert} className="rounded-lg">Dismiss</Button>
             </div>
           </div>
+        )}
+
+        {overview && section !== 'support' && (
+          <aside className={`mb-5 flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 ${isFoodMerchant || isLiquorMerchant ? 'border-amber-400/30 bg-[#1a1b1e] text-white' : 'border-primary/20 bg-white text-slate-900'}`}>
+            <div className="flex items-start gap-3">
+              <MessageSquare size={20} aria-hidden="true" className={`mt-0.5 shrink-0 ${isFoodMerchant || isLiquorMerchant ? 'text-amber-400' : 'text-primary'}`} />
+              <div>
+                <h2 className="font-black">Need anything from the OnBar admin?</h2>
+                <p className={`mt-1 text-sm leading-6 ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-300' : 'text-slate-600'}`}>
+                  Request catalog or pricing changes, product help, order or payment support, account updates, or anything else. Send a message in Support and follow replies in your ticket.
+                </p>
+              </div>
+            </div>
+            <Button type="button" onClick={() => setSection('support')} className="shrink-0 rounded-xl font-black">
+              <MessageSquare size={16} className="mr-2" aria-hidden="true" /> Message admin
+            </Button>
+          </aside>
         )}
 
         {overview && <nav data-tour="merchant-navigation" className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">

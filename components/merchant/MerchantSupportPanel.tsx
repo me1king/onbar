@@ -158,7 +158,7 @@ export default function MerchantSupportPanel({
     <header>
       <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-400">{applicationName}</p>
       <h2 className="mt-2 text-2xl font-black text-white">Merchant support</h2>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">Message the OnBar team directly. The founder is notified immediately, and replies stay in this conversation.</p>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">Need anything from the OnBar admin team? Request catalog or pricing changes, product help, order or payment support, account updates, or anything else. Send it here and follow the replies in your ticket history.</p>
     </header>
     {supportEmailConfigured && <a
       href={supportEmailHref}
