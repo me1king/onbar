@@ -60,6 +60,7 @@ export default function BeverageCommandAdmin() {
     const [imageFile, setImageFile] = React.useState<File | null>(null);
     const [imagePreview, setImagePreview] = React.useState<string | null>(null);
     const [stockDrafts, setStockDrafts] = React.useState<Record<string, string>>({});
+    const [notifyingProductId, setNotifyingProductId] = React.useState<string | null>(null);
 
     // Form state
     const [form, setForm] = React.useState({
@@ -182,13 +183,22 @@ export default function BeverageCommandAdmin() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ product: payload })
             });
-            const result = await response.json() as { error?: string; id?: number };
+            const result = await response.json() as {
+                error?: string;
+                id?: number;
+                merchantNotificationCount?: number | null;
+                merchantNotificationWarning?: string | null;
+            };
             if (!response.ok || !result.id) throw new Error(result.error || 'The beverage could not be saved.');
 
             await logAuditAction(email, 'CREATE_BEVERAGE', { name: form.name });
             uploadedImagePath = null;
             setIsAddModalOpen(false);
-            setFormFeedback({ type: 'success', text: `${form.name.trim()} is now in your beverage inventory.` });
+            setFormFeedback(result.merchantNotificationWarning
+                ? { type: 'error', text: `Product saved, but merchants were not notified. ${result.merchantNotificationWarning}` }
+                : result.merchantNotificationCount
+                    ? { type: 'success', text: `${form.name.trim()} is live in inventory. ${result.merchantNotificationCount} approved merchant account(s) were notified.` }
+                    : { type: 'error', text: `Product saved, but no approved merchants were notified. Check the merchant category or retry after applying the merchant catalog notification migration.` });
             setImageFile(null);
             setForm({
                 name: '',
@@ -248,6 +258,30 @@ export default function BeverageCommandAdmin() {
         } catch (error) {
             console.error('Could not update beverage availability:', error);
             setFormFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Availability could not be changed.' });
+        }
+    };
+
+    const notifyMerchants = async (beverage: BeverageNode) => {
+        if (!supabase) return;
+        setNotifyingProductId(String(beverage.id));
+        setFormFeedback(null);
+        try {
+            const response = await fetch('/api/admin/products', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: Number(beverage.id), action: 'notify_merchants' })
+            });
+            const result = await response.json() as { error?: string; merchantNotificationCount?: number | null };
+            if (!response.ok) throw new Error(result.error || 'Merchants could not be notified.');
+            const count = Number(result.merchantNotificationCount || 0);
+            setFormFeedback(count > 0
+                ? { type: 'success', text: `${count} approved merchant account(s) notified about ${beverage.name}. They can now review it in the Partner Workspace.` }
+                : { type: 'error', text: `No new notifications were created for ${beverage.name}. It may already be listed, or no approved merchant matches this product category.` });
+        } catch (error) {
+            console.error('Could not notify merchants about beverage:', error);
+            setFormFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Merchants could not be notified.' });
+        } finally {
+            setNotifyingProductId(null);
         }
     };
 
@@ -453,6 +487,15 @@ export default function BeverageCommandAdmin() {
                                             disabled={!isLive && Number(bev.stock || 0) < 1}
                                         >
                                             {isLive ? 'Deactivate' : 'Activate'}
+                                        </Button>
+                                        <Button
+                                            onClick={() => void notifyMerchants(bev)}
+                                            variant="outline"
+                                            className="h-10 rounded-xl px-3 text-[8px] font-black uppercase tracking-widest"
+                                            disabled={notifyingProductId !== null}
+                                        >
+                                            {notifyingProductId === String(bev.id) ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                                            Notify merchants
                                         </Button>
                                         <Button onClick={() => handleDelete(bev.id)} variant="ghost" size="icon" className="h-10 w-10 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl">
                                             <Trash2 size={16} />

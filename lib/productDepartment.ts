@@ -6,11 +6,10 @@ export interface DepartmentProduct {
   is_souvenir?: boolean | null;
 }
 
-const beverageCategoryPattern = /\b(beverages?|drinks?|alcohol|wine|beer|whiskey|whisky|vodka|gin|rum|tequila|brandy|cognac|champagne|liqueur|spirit)\b/i;
+const beverageCategoryPattern = /\b(beverages?|drinks?|alcohol(?:ic)?|liquors?|wines?|beers?|ciders?|ales?|lagers?|stouts?|hard seltzers?|whisk(?:e)?y|vodka|gin|rum|tequila|brandy|cognac|champagne|liqueurs?|spirits?|soft drinks?|energy|water|mineral water|juices?|coffee|tea|mixers?|cocktail mixers?|soda|tonic)\b/i;
 const foodCategoryPattern = /\b(food|meal|meals|street|burger|burgers|wings|sides)\b/i;
 const snackCategoryPattern = /\b(snack|snacks|munch|munchies|crisps|chocolate|nuts)\b/i;
 const merchandiseCategoryPattern = /\b(souvenir|souvenirs|gift|gifts|merchandise|merch|apparel|clothing|extras?|accessor(?:y|ies)|glassware|tumblers?|flasks?|barware|opener|openers)\b/i;
-const beverageCategoryPatternAll = /\b(beverages?|drinks?|alcohol|wine|beer|whiskey|whisky|vodka|gin|rum|tequila|brandy|cognac|champagne|liqueur|spirit|soft drinks?|energy|water|mineral water|juices?|coffee|tea|mixers?|cocktail mixers?)\b/i;
 
 function hasBeverageCategory(product: DepartmentProduct) {
   return beverageCategoryPattern.test(`${product.category || ''} ${product.sub_category || ''}`);
@@ -27,7 +26,7 @@ export function isBeverageInventoryProduct(product: DepartmentProduct) {
   if (merchandiseCategoryPattern.test(category) || foodCategoryPattern.test(category) || snackCategoryPattern.test(category)) {
     return false;
   }
-  return beverageCategoryPatternAll.test(category);
+  return beverageCategoryPattern.test(category);
 }
 
 export function isMealProduct(product: DepartmentProduct) {

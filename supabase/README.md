@@ -1,5 +1,109 @@
 # Supabase migrations
 
+## Merchant partner workspace additions
+
+The merchant partner workspace includes review replies, support-ticket history,
+weekly email summaries, and CSV-based stock counts. Apply these additive
+migrations in Supabase after their prerequisites:
+
+- `MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql` requires
+  `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It adds
+  compatible newly added products to approved merchant offers and creates the
+  merchant review notification. Admins can use **Notify merchants** on an
+  existing beverage to retry publication after applying the migration.
+- `MERCHANT_REVIEW_REPLIES_MIGRATION.sql` requires
+  `SECURITY_HARDENING_MIGRATION.sql`, `VERIFIED_PRODUCT_REVIEWS_MIGRATION.sql`,
+  `MERCHANT_OPERATIONS_MIGRATION.sql`, and `DISPATCH_MIGRATION.sql`.
+- `MERCHANT_SUPPORT_HISTORY_MIGRATION.sql` requires
+  `MERCHANT_OPERATIONS_MIGRATION.sql` and the existing `support_tickets` table
+  from `OPERATIONAL_FEATURES_MIGRATION.sql` or the equivalent core-schema
+  script.
+- `MERCHANT_WEEKLY_DIGEST_MIGRATION.sql` requires
+  `MERCHANT_OPERATIONS_MIGRATION.sql`.
+
+The reply, ticket-history, and digest preference features remain unavailable
+until their corresponding migrations are applied.
+
+If a merchant cannot see a newly added catalog product, apply or re-apply
+`MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql`, then use **Notify
+merchants** on that beverage in the Admin inventory page. The admin editor
+reports how many approved merchant accounts were notified and shows a retry
+error if publication fails. Beverage classification includes alcohol, liquor,
+spirits, beer, wine, cider, and the other drink categories; retrying publication
+also restores a missing offer even if that merchant already has a notification
+record.
+
+Submitting a merchant ticket sends a confirmation to the verified sign-in email
+when a transactional sender is configured. Ticket creation is preserved if
+email delivery fails, and the workspace reports that warning; replies remain
+available in the authenticated ticket history.
+
+The weekly email summary is opt-in and runs on Mondays after 09:00
+Africa/Nairobi when the persistent `merchant-alerts` worker is running. It
+requires `INTERNAL_API_SECRET`, an HTTPS `INTERNAL_API_BASE_URL` or
+`NEXT_PUBLIC_BASE_URL`, and a configured transactional email sender. Paid
+payout totals appear only when the verified settlement ledger migration exists;
+tips are explicitly reported as unavailable because they are not recorded in
+that ledger. Delivered item values are order-record values, not seller earnings
+or a payout promise.
+
+## Merchant settlements and M-Pesa payouts
+
+The merchant settlement workflow is fail-closed and is not live merely because
+the UI or API is deployed. In Supabase, apply `MERCHANT_OPERATIONS_MIGRATION.sql`,
+`DISPATCH_MIGRATION.sql`, and `DARAJA_CHECKOUT_MIGRATION.sql` before
+`MERCHANT_SETTLEMENTS_MIGRATION.sql`. Confirm that all migrations completed
+successfully before configuring any merchant terms.
+
+The current ledger calculates a configured merchant-share percentage against
+traced, paid-and-delivered item value. Returned quantities reduce eligible
+quantities only when the return is recorded as a merchant inventory movement.
+It does not separately calculate tax, platform-fee, or cash-refund deductions.
+Finance must approve rules compatible with this calculation or extend the
+ledger before enabling real transfers; do not infer a merchant's earnings from
+order values.
+
+After finance approval, use **Lord → Merchant Settlements** to record the
+merchant share and minimum payout, verify the submitted M-Pesa destination
+through the approved out-of-band finance procedure, and reconcile eligible
+deliveries. A merchant can then request an available payout; Finance reviews
+the request before a provider transfer is attempted. Each attempt requires a
+verified current destination and is reconciled from the HTTPS
+`/api/mpesa/merchant-payouts/[token]` callback. Do not manually retry an
+uncertain provider result until it has been reconciled with Safaricom.
+
+Configure these server-side values in the deployment environment:
+
+- `MERCHANT_PAYOUT_DATA_ENCRYPTION_KEY`: base64-encoded 32-byte key used to
+  encrypt payout destination numbers.
+- `DARAJA_B2C_ENABLED=true`, `DARAJA_B2C_INITIATOR_NAME`,
+  `DARAJA_B2C_SECURITY_CREDENTIAL`, and `DARAJA_B2C_MAX_AMOUNT_KES` (an integer
+  from 1 to 250000).
+- Daraja checkout credentials and their selected environment through **Admin
+  Settings → Integrations**. `PAYMENT_CREDENTIAL_ENCRYPTION_KEY` must be
+  configured to store those credentials.
+- A public HTTPS application URL so Safaricom can reach the payout result and
+  timeout callbacks.
+
+Keep the payout feature disabled while configuring and testing Daraja sandbox
+credentials. Complete a full sandbox request, callback, failure, and
+reconciliation test before enabling production transfers. Never put provider
+secrets in client-side environment variables or source control.
+
+The CSV importer is stock-only. It previews rows, checks the merchant's current
+stock count, and submits each change through the existing authenticated,
+audited stock-ledger operation. Stock increases still require lot details and,
+for alcohol, the merchant's excise-stamp attestation. Price proposals in the
+legacy Partner Workspace still target the shared catalog price; they are not
+merchant-specific checkout prices. Do not enable CSV price imports until
+merchant-specific pricing is connected to browse, checkout, order allocation,
+and fulfillment.
+
+Liquor licence review remains manual; document upload and licence-number format
+checks do not independently verify a licence. Alcohol delivery still requires
+an in-person age/ID check at handoff. The current rider confirmation records an
+attestation and is not an independent age-verification provider.
+
 ## Email Command Center
 
 After the core schema plus `OPERATIONAL_FEATURES_MIGRATION.sql`,

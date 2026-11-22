@@ -406,6 +406,7 @@ async function processJob(job) {
 
 let dispatchPollRunning = false;
 let dispatchPollWarning = '';
+let weeklyDigestPollWarning = '';
 async function pollAutomaticDispatchJobs() {
   if (dispatchPollRunning || !dispatchAutomationConfigured) return;
   dispatchPollRunning = true;
@@ -482,6 +483,41 @@ async function pollAutomaticDispatchJobs() {
   }
 }
 
+async function pollMerchantWeeklyDigests() {
+  if (!dispatchAutomationConfigured) return;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Nairobi',
+    weekday: 'short',
+    hour: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(new Date());
+  const weekday = parts.find(part => part.type === 'weekday')?.value;
+  const hour = Number(parts.find(part => part.type === 'hour')?.value);
+  if (weekday !== 'Mon' || hour < 9) return;
+
+  try {
+    const url = new URL('/api/internal/merchant-weekly-digest', dispatchAutomationBaseUrl);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${internalApiSecret}`, 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(30_000)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `Weekly digest request failed (${response.status}).`);
+    weeklyDigestPollWarning = '';
+    if (result.sent || result.failed) {
+      console.log(`[MerchantWeeklyDigest] Sent ${result.sent || 0}; failed ${result.failed || 0}.`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Weekly digest polling failed.';
+    if (weeklyDigestPollWarning !== message) {
+      console.error('[MerchantWeeklyDigest] Weekly summary delivery is unavailable:', message);
+      weeklyDigestPollWarning = message;
+    }
+  }
+}
+
 const worker = new Worker(queueName, processJob, {
   connection,
   concurrency: 20,
@@ -510,6 +546,8 @@ if (!dispatchAutomationConfigured) {
 const heartbeatTimer = setInterval(() => void heartbeat(), 30_000);
 void pollAutomaticDispatchJobs();
 const dispatchPollTimer = setInterval(() => void pollAutomaticDispatchJobs(), 5_000);
+void pollMerchantWeeklyDigests();
+const weeklyDigestPollTimer = setInterval(() => void pollMerchantWeeklyDigests(), 15 * 60_000);
 worker.on('completed', job => console.log(`[MerchantOrderAlerts] Completed ${job.name} for order #${job.data.orderId}`));
 worker.on('failed', (job, error) => console.error(`[MerchantOrderAlerts] Failed ${job?.name || 'job'}:`, error.message));
 worker.on('error', error => console.error('[MerchantOrderAlerts] Worker error:', error.message));
@@ -519,6 +557,7 @@ async function shutdown(signal) {
   console.log(`[MerchantOrderAlerts] Shutting down on ${signal}.`);
   clearInterval(heartbeatTimer);
   clearInterval(dispatchPollTimer);
+  clearInterval(weeklyDigestPollTimer);
   await worker.close();
   process.exit(0);
 }

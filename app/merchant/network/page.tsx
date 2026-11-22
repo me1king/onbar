@@ -19,6 +19,7 @@ import {
   Loader2,
   LogOut,
   Megaphone,
+  MessageSquare,
   PackageCheck,
   Palette,
   Search,
@@ -49,6 +50,11 @@ import { supabase } from '@/lib/supabaseClient';
 import MerchantAlertsPanel from '@/components/merchant/MerchantAlertsPanel';
 import OrderAlertToneSettings from '@/components/alerts/OrderAlertToneSettings';
 import { useOrderAlertTone } from '@/hooks/useOrderAlertTone';
+import MerchantOrderTicket from '@/components/merchant/MerchantOrderTicket';
+import MerchantReviewInbox from '@/components/merchant/MerchantReviewInbox';
+import MerchantSupportPanel from '@/components/merchant/MerchantSupportPanel';
+import MerchantInventoryCsv, { type StockChange } from '@/components/merchant/MerchantInventoryCsv';
+import MerchantWeeklyDigestSettings from '@/components/merchant/MerchantWeeklyDigestSettings';
 
 type PartnerEvent = { event_type: string; details: Record<string, unknown> | null; created_at: string };
 type PartnerDocument = { id: string; type: string; name: string; uploadedAt: string; expiresAt: string | null };
@@ -310,7 +316,7 @@ type MerchantPerformance = {
 
 type Section = 'sales' | 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders' | 'settings'
   | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff'
-  | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours';
+  | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours' | 'support';
 
 function getOutOfStockProducts(application: PartnerApplication['application'], batches: PartnerBatch[]) {
   const today = new Date().toISOString().slice(0, 10);
@@ -426,7 +432,8 @@ const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'alerts', label: 'Order alerts', icon: BellRing },
   { id: 'incidents', label: 'Reports', icon: AlertTriangle },
   { id: 'business', label: 'Business profile', icon: Building2 },
-  { id: 'settings', label: 'Settings', icon: Palette }
+  { id: 'settings', label: 'Settings', icon: Palette },
+  { id: 'support', label: 'Support', icon: MessageSquare }
 ];
 const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'sales', label: 'Sales overview', icon: TrendingUp },
@@ -439,7 +446,8 @@ const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = 
   { id: 'food-reviews', label: 'Reviews', icon: Star },
   { id: 'food-business', label: 'Business profile', icon: Building2 },
   { id: 'food-staff', label: 'Staff & riders', icon: Users },
-  { id: 'settings', label: 'Settings', icon: Palette }
+  { id: 'settings', label: 'Settings', icon: Palette },
+  { id: 'support', label: 'Support', icon: MessageSquare }
 ];
 const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'sales', label: 'Sales overview', icon: TrendingUp },
@@ -455,7 +463,8 @@ const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> 
   { id: 'liquor-hours', label: 'Hours', icon: Clock3 },
   { id: 'riders', label: 'Staff & riders', icon: Users },
   { id: 'business', label: 'Business profile', icon: Building2 },
-  { id: 'settings', label: 'Settings', icon: Palette }
+  { id: 'settings', label: 'Settings', icon: Palette },
+  { id: 'support', label: 'Support', icon: MessageSquare }
 ];
 const weekdayLabels: Record<MerchantWeekday, string> = {
   monday: 'Monday',
@@ -470,6 +479,21 @@ const weekdayLabels: Record<MerchantWeekday, string> = {
 function dateTime(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleString();
+}
+
+function formatOrderNotes(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim().slice(0, 500) || null;
+  if (Array.isArray(value)) {
+    const notes = value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join(', ');
+    return notes.slice(0, 500) || null;
+  }
+  if (typeof value === 'object' && value !== null) {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => `${key}: ${typeof item === 'string' ? item : JSON.stringify(item)}`)
+      .join(', ')
+      .slice(0, 500) || null;
+  }
+  return null;
 }
 
 function statusClass(status: string): string {
@@ -671,6 +695,7 @@ function MerchantPaymentsPanel({
           <div>
             <h3 className="flex items-center gap-2 font-black text-white"><CreditCard size={17} /> Merchant settlement</h3>
             <p className="mt-1 text-xs leading-5 text-zinc-400">Payables include verified paid-and-delivered order items and finance adjustments. Requests are reviewed before any M-Pesa transfer.</p>
+            <p className="mt-2 max-w-3xl text-[11px] leading-5 text-amber-200">Current calculations apply the configured merchant share to traced item value. Fees, taxes, and cash refunds are not separately modeled; returned quantities reduce payables only when recorded in the stock ledger. Finance must confirm these rules before enabling real transfers.</p>
           </div>
           <button type="button" onClick={() => void loadSettlements()} disabled={settlementLoading}
             className="inline-flex min-h-9 items-center rounded-lg border border-white/15 px-3 text-xs font-bold text-zinc-200 disabled:opacity-50">
@@ -1183,6 +1208,35 @@ function MerchantSalesOverview({
   </section>;
 }
 
+type MerchantChecklistItem = {
+  label: string;
+  detail: string;
+  complete: boolean;
+  target: Section;
+};
+
+function MerchantActionChecklist({
+  items,
+  onNavigate
+}: {
+  items: MerchantChecklistItem[];
+  onNavigate: (section: Section) => void;
+}) {
+  return <section aria-labelledby="merchant-action-checklist" className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 text-zinc-100">
+    <h2 id="merchant-action-checklist" className="font-black text-white">Business action checklist</h2>
+    <p className="mt-1 text-xs text-zinc-400">Live checks from your application, inventory, order, and incident records.</p>
+    <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+      {items.map(item => <li key={item.label} className="flex items-start justify-between gap-3 rounded-xl bg-white/[0.03] p-3">
+        <div>
+          <p className={`text-sm font-bold ${item.complete ? 'text-emerald-300' : 'text-amber-200'}`}>{item.complete ? 'Done · ' : 'Action · '}{item.label}</p>
+          <p className="mt-1 text-xs leading-5 text-zinc-400">{item.detail}</p>
+        </div>
+        {!item.complete && <button type="button" onClick={() => onNavigate(item.target)} className="shrink-0 rounded-lg border border-white/15 px-3 py-2 text-[10px] font-black uppercase text-white">Open</button>}
+      </li>)}
+    </ul>
+  </section>;
+}
+
 function FoodMerchantTerminal({
   section,
   application,
@@ -1239,7 +1293,48 @@ function FoodMerchantTerminal({
   const foodReviewSection = section === 'food-reviews';
 
   if (section === 'sales') {
-    return <MerchantSalesOverview
+    const outOfStock = getOutOfStockProducts(overview.application, overview.batches);
+    const openOrdersCount = foodOrders.filter(order => !isClosedFoodOrder(order)).length;
+    const unresolvedIncidents = overview.incidents.filter(item => !['resolved', 'closed'].includes(item.status)).length;
+    return <>
+    <MerchantActionChecklist
+      onNavigate={onSectionChange}
+      items={[
+        {
+          label: 'Business approval',
+          detail: application.status === 'approved' ? 'Your merchant account is approved.' : `Application status: ${application.status.replaceAll('_', ' ')}.`,
+          complete: application.status === 'approved',
+          target: 'food-business'
+        },
+        {
+          label: 'Stock availability',
+          detail: outOfStock.length ? `${outOfStock.length} approved item${outOfStock.length === 1 ? '' : 's'} out of stock.` : 'All approved catalog items have available stock.',
+          complete: outOfStock.length === 0,
+          target: 'food-menu'
+        },
+        {
+          label: 'New catalog updates',
+          detail: overview.catalogNotifications.length ? `${overview.catalogNotifications.length} new catalog update${overview.catalogNotifications.length === 1 ? '' : 's'} to review.` : 'No new catalog update notifications.',
+          complete: overview.catalogNotifications.length === 0,
+          target: 'food-menu'
+        },
+        {
+          label: 'Order queue',
+          detail: openOrdersCount ? `${openOrdersCount} assigned order${openOrdersCount === 1 ? '' : 's'} still open.` : 'No assigned orders need action.',
+          complete: openOrdersCount === 0,
+          target: 'food-live'
+        },
+        {
+          label: 'Open incidents',
+          detail: unresolvedIncidents
+            ? `${unresolvedIncidents} unresolved incident(s).`
+            : 'No unresolved merchant incidents.',
+          complete: unresolvedIncidents === 0,
+          target: 'food-history'
+        }
+      ]}
+    />
+    <MerchantSalesOverview
       application={application}
       isFoodMerchant
       foodOrders={foodOrders}
@@ -1252,7 +1347,8 @@ function FoodMerchantTerminal({
       outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
       onGoToStock={onOpenStock}
       onGoToPayments={() => onSectionChange('food-payments')}
-    />;
+    />
+    </>;
   }
 
   const submitCampaign = async (event: FormEvent<HTMLFormElement>) => {
@@ -1299,6 +1395,20 @@ function FoodMerchantTerminal({
       <p className="text-xs text-zinc-400">Customer {order.customer_phone
         ? <a className="text-amber-300 underline" href={`tel:${order.customer_phone}`}>{order.customer_phone}</a>
         : 'phone number unavailable'}</p>
+    </div>
+    <div className="mt-3">
+      <MerchantOrderTicket
+        applicationName={application.trading_name || application.business_name}
+        orderId={order.id}
+        createdAt={order.created_at}
+        status={fulfillmentLabels[latest] || order.status}
+        items={order.items.map(item => ({
+          name: item.product_name,
+          quantity: item.quantity,
+          detail: item.size,
+          notes: formatOrderNotes(item.addons)
+        }))}
+      />
     </div>
     {allowActions && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
       {nextEvents.map(eventType => <button key={eventType} type="button" disabled={working} onClick={() => void onFoodFulfillment(order.id, eventType)}
@@ -1419,6 +1529,22 @@ function FoodMerchantTerminal({
         <div><h3 className="font-bold text-white">Stock and expiry tracking</h3><p className="mt-1 text-xs text-zinc-400">Add received batches, record lot numbers, and review expiry dates.</p></div>
         <button type="button" onClick={() => onOpenStock()} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Open inventory</button>
       </div>
+      <MerchantInventoryCsv
+        items={products.map(product => ({ id: product.product_id, name: product.product_name, currentQuantity: batchTotals.get(product.product_id) || 0 }))}
+        alcoholMerchant={false}
+        canOperate={canOperate}
+        onApply={(change: StockChange) => onAction({
+          operation: 'set_stock_count',
+          applicationId: application.id,
+          productId: change.product_id,
+          quantity: change.quantity,
+          expectedQuantity: change.expected_quantity,
+          lotCode: change.lot_code,
+          supplierName: change.supplier_name,
+          expiryAt: change.expiry_at,
+          exciseStampConfirmed: change.excise_stamp_confirmed
+        }, `${change.productName} stock count saved to the merchant inventory ledger.`)}
+      />
     </>);
   }
 
@@ -1517,7 +1643,7 @@ function FoodMerchantTerminal({
 
   if (foodReviewSection) {
     const window = performance?.windows[7];
-    return shell('Reviews & customer feedback', 'Only recorded OnBar scorecard data is shown. Individual review text and reply tools are not currently available.', <>
+    return shell('Reviews & customer feedback', 'Review and reply to verified customer feedback linked to your fulfilled orders.', <>
       {performanceLoading && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-6 text-sm text-zinc-400">Loading recorded scorecard…</div>}
       {performanceError && <div role="alert" className="rounded-2xl border border-rose-400/30 bg-rose-400/5 p-4 text-sm text-rose-200">{performanceError}</div>}
       {!performanceLoading && window && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1530,6 +1656,7 @@ function FoodMerchantTerminal({
       </div>}
       {!performanceLoading && !performanceError && !window && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-6 text-sm text-zinc-400">No recorded customer scorecard data is available yet.</div>}
       <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-4 text-xs leading-5 text-zinc-400">This is aggregate scorecard data, not a feed of individual customer reviews. No ratings are generated when none have been recorded.</div>
+      <MerchantReviewInbox applicationId={application.id} accessToken={accessToken} />
     </>);
   }
 
@@ -1593,7 +1720,46 @@ function AlcoholMerchantTerminal({
   </section>;
 
   if (section === 'sales') {
-    return <MerchantSalesOverview
+    const outOfStock = getOutOfStockProducts(overview.application, overview.batches);
+    const openOrdersCount = overview.orders.filter(order => !['delivered', 'cancelled', 'rejected'].includes(latestFulfillment(order.fulfillment))).length;
+    const unresolvedIncidents = overview.incidents.filter(item => !['resolved', 'closed'].includes(item.status)).length;
+    return <>
+    <MerchantActionChecklist
+      onNavigate={onSectionChange}
+      items={[
+        {
+          label: 'Business approval and licence review',
+          detail: application.status === 'approved' ? 'Your application is approved; alcohol licence checks are still subject to manual review.' : `Application status: ${application.status.replaceAll('_', ' ')}.`,
+          complete: application.status === 'approved',
+          target: 'liquor-compliance'
+        },
+        {
+          label: 'Stock availability',
+          detail: outOfStock.length ? `${outOfStock.length} approved item${outOfStock.length === 1 ? '' : 's'} out of stock.` : 'All approved catalog items have available stock.',
+          complete: outOfStock.length === 0,
+          target: 'liquor-catalog'
+        },
+        {
+          label: 'New catalog updates',
+          detail: overview.catalogNotifications.length ? `${overview.catalogNotifications.length} new catalog update${overview.catalogNotifications.length === 1 ? '' : 's'} to review.` : 'No new catalog update notifications.',
+          complete: overview.catalogNotifications.length === 0,
+          target: 'liquor-catalog'
+        },
+        {
+          label: 'Order queue',
+          detail: openOrdersCount ? `${openOrdersCount} assigned order${openOrdersCount === 1 ? '' : 's'} still open.` : 'No assigned orders need action.',
+          complete: openOrdersCount === 0,
+          target: 'liquor-live'
+        },
+        {
+          label: 'Open incidents',
+          detail: unresolvedIncidents ? `${unresolvedIncidents} unresolved incident(s).` : 'No unresolved merchant incidents.',
+          complete: unresolvedIncidents === 0,
+          target: 'liquor-history'
+        }
+      ]}
+    />
+    <MerchantSalesOverview
       application={application}
       isFoodMerchant={false}
       foodOrders={[]}
@@ -1606,7 +1772,8 @@ function AlcoholMerchantTerminal({
       outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
       onGoToStock={onOpenStock}
       onGoToPayments={() => onSectionChange('liquor-payments')}
-    />;
+    />
+    </>;
   }
 
   if (section === 'liquor-history') {
@@ -1628,6 +1795,7 @@ function AlcoholMerchantTerminal({
 
   if (section === 'liquor-live') {
     const orders = overview.orders.filter(order => !['delivered', 'cancelled', 'rejected'].includes(latestFulfillment(order.fulfillment)));
+    const minimumAge = application.alcohol_onboarding?.rules?.minimumAge ?? 18;
     return panel('Live orders', 'Orders linked to inventory batches assigned to this business. Age and ID must be checked at handoff; the terminal does not have a verified customer-age provider.',
       <>
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#1a1b1e] p-3">
@@ -1643,8 +1811,21 @@ function AlcoholMerchantTerminal({
           const nextEvents = fulfillmentNext[latest] || [];
           return <article key={order.id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase text-amber-400">Order #{order.id}</p><h3 className="mt-1 font-bold text-white">{order.customer_name || 'Customer'}</h3><p className="mt-1 text-xs text-zinc-400">{dateTime(order.created_at)} · {order.status}</p></div><span className="rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase text-amber-200">{fulfillmentLabels[latest] || 'Awaiting response'}</span></div>
-            <p className="mt-3 rounded-lg bg-amber-400/5 p-3 text-xs leading-5 text-amber-100">18+ ID check required at delivery. Confirm the recipient meets the configured minimum age and do not hand over if they appear intoxicated.</p>
+            <p className="mt-3 rounded-lg bg-amber-400/5 p-3 text-xs leading-5 text-amber-100">Check a valid photo ID at delivery and confirm the recipient is at least {minimumAge}. Do not leave alcohol unattended, hand it to an unverified third party, or complete the handover if the recipient appears intoxicated.</p>
             <div className="mt-3 space-y-2">{order.items.map((item, index) => <p key={`${item.product_name}-${index}`} className="text-sm text-zinc-200">{item.merchant_quantity} × {item.product_name}{item.size ? ` · ${item.size}` : ''}</p>)}</div>
+            <div className="mt-3">
+              <MerchantOrderTicket
+                applicationName={application.trading_name || application.business_name}
+                orderId={order.id}
+                createdAt={order.created_at}
+                status={fulfillmentLabels[latest] || order.status}
+                items={order.items.map(item => ({
+                  name: item.product_name,
+                  quantity: item.merchant_quantity,
+                  detail: item.size
+                }))}
+              />
+            </div>
             {section === 'liquor-live' && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">{nextEvents.map(eventType => <button key={eventType} type="button" disabled={working} onClick={() => void onAction({ operation: 'fulfillment', applicationId: application.id, orderId: order.id, eventType }, `Order #${order.id}: ${fulfillmentLabels[eventType]}.`)} className={`rounded-lg px-3 py-2 text-[10px] font-black uppercase disabled:opacity-50 ${['rejected', 'cancelled'].includes(eventType) ? 'border border-rose-400/40 text-rose-200' : 'bg-amber-400 text-zinc-950'}`}>{fulfillmentLabels[eventType]}</button>)}</div>}
           </article>;
         })}</div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No open traced orders for this shop.</div>}
@@ -1702,6 +1883,28 @@ function AlcoholMerchantTerminal({
             {batches.length > 0 && <div className="mt-3 space-y-2">{batches.map(batch => <p key={batch.id} className="rounded-lg bg-white/5 p-2 text-xs text-zinc-300">Lot {batch.lot_code} · {batch.available_quantity} units · {batch.on_hold ? 'ON HOLD' : batch.expiry_at ? `Expires ${batch.expiry_at}` : 'No expiry recorded'}</p>)}</div>}
           </article>;
         })}</div> : <p className="rounded-2xl bg-[#1a1b1e] p-6 text-sm text-zinc-400">No products were approved for this retailer.</p>}
+        <MerchantInventoryCsv
+          items={application.offered_goods_pricing.map(product => ({
+            id: product.product_id,
+            name: product.product_name,
+            currentQuantity: overview.batches
+              .filter(batch => batch.product_id === product.product_id)
+              .reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0)
+          }))}
+          alcoholMerchant
+          canOperate={canOperate}
+          onApply={(change: StockChange) => onAction({
+            operation: 'set_stock_count',
+            applicationId: application.id,
+            productId: change.product_id,
+            quantity: change.quantity,
+            expectedQuantity: change.expected_quantity,
+            lotCode: change.lot_code,
+            supplierName: change.supplier_name,
+            expiryAt: change.expiry_at,
+            exciseStampConfirmed: change.excise_stamp_confirmed
+          }, `${change.productName} stock count saved to the merchant inventory ledger.`)}
+        />
       </>);
   }
 
@@ -1774,7 +1977,7 @@ function AlcoholMerchantTerminal({
 
   if (section === 'liquor-reviews') {
     const window = performance?.windows[7];
-    return panel('Reviews and customer feedback', 'Only recorded OnBar scorecard metrics are shown. Individual review text is not currently connected.',
+    return panel('Reviews and customer feedback', 'Review and reply to verified customer feedback linked to your fulfilled orders.',
       <>
         {performanceLoading && <p className="rounded-xl bg-[#1a1b1e] p-5 text-sm text-zinc-400">Loading recorded scorecard…</p>}
         {performanceError && <p role="alert" className="rounded-xl bg-rose-400/10 p-4 text-sm text-rose-200">{performanceError}</p>}
@@ -1785,6 +1988,7 @@ function AlcoholMerchantTerminal({
           ['On time', window.onTimePercent === null ? 'Not recorded' : `${window.onTimePercent}%`]
         ].map(([label, value]) => <article key={label} className="rounded-xl border border-white/10 bg-[#1a1b1e] p-5"><p className="text-2xl font-black text-white">{value}</p><p className="mt-2 text-xs font-bold uppercase text-zinc-400">{label}</p></article>)}</div>}
         {!performanceLoading && !performanceError && !window && <p className="rounded-xl bg-[#1a1b1e] p-5 text-sm text-zinc-400">No recorded customer scorecard data is available yet.</p>}
+        <MerchantReviewInbox applicationId={application.id} accessToken={accessToken} />
       </>);
   }
 
@@ -2957,6 +3161,21 @@ export default function OnBarPartnerNetworkPage() {
             onAction={performMerchantAction}
             onSectionChange={setSection}
             onOpenStock={openInventoryForProduct}
+          />
+        )}
+
+        {!loading && selected && section === 'sales' && (
+          <MerchantWeeklyDigestSettings
+            applicationId={selected.application.id}
+            accessToken={accessToken}
+          />
+        )}
+
+        {!loading && overview && selected && section === 'support' && (
+          <MerchantSupportPanel
+            applicationId={selected.application.id}
+            applicationName={selected.application.trading_name || selected.application.business_name}
+            accessToken={accessToken}
           />
         )}
 

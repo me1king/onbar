@@ -80,9 +80,9 @@ BEGIN
     COALESCE(product_row.is_bite, false)
     OR COALESCE(product_row.is_snack, false)
     OR product_category ~ '(food|meal|street|burger|wings|sides|snack|munch|crisps|chocolate|nuts)'
-  ) AND product_category !~ '(wine|beer|whiskey|whisky|vodka|gin|rum|tequila|brandy|cognac|champagne|liqueur|spirit)';
+  ) AND product_category !~ '(alcohol|liquor|wine|beer|cider|ale|lager|stout|seltzer|whiskey|whisky|vodka|gin|rum|tequila|brandy|cognac|champagne|liqueur|spirits?)';
   product_is_beverage := (
-    product_category ~ '(beverage|drink|alcohol|wine|beer|whiskey|whisky|vodka|gin|rum|tequila|brandy|cognac|champagne|liqueur|spirit|soft drink|energy|water|juice|coffee|tea|mixer)'
+    product_category ~ '(beverage|drink|alcohol|liquor|wine|beer|cider|ale|lager|stout|seltzer|whiskey|whisky|vodka|gin|rum|tequila|brandy|cognac|champagne|liqueur|spirits?|soft drink|energy|water|juice|coffee|tea|mixer|soda|tonic)'
   ) AND NOT (
     COALESCE(product_row.is_bite, false)
     OR COALESCE(product_row.is_snack, false)
@@ -114,11 +114,11 @@ BEGIN
       merchant_row.id, product_row.id, product_row.name,
       product_row.category, GREATEST(COALESCE(product_row.price, 0), 0)
     )
-    ON CONFLICT (application_id, product_id) DO NOTHING
+    ON CONFLICT (application_id, product_id) DO UPDATE
+      SET product_name = EXCLUDED.product_name,
+          category = EXCLUDED.category,
+          listed_price = EXCLUDED.listed_price
     RETURNING id INTO notification_id;
-    IF notification_id IS NULL THEN
-      CONTINUE;
-    END IF;
 
     offers := CASE
       WHEN jsonb_typeof(merchant_row.offered_goods_pricing) = 'array'

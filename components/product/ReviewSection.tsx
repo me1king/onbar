@@ -17,6 +17,7 @@ interface Review {
   photo_urls?: string[];
   is_verified_owner?: boolean;
   admin_response?: string | null;
+  merchant_responses?: Array<{ merchant_name: string; response: string; updated_at: string }>;
   created_at: string;
 }
 
@@ -71,7 +72,34 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setReviews(data || []);
+      const savedReviews = data || [];
+      setReviews(savedReviews);
+      if (savedReviews.length) {
+        const { data: merchantResponses, error: responseError } = await supabase
+          .from('merchant_review_responses')
+          .select('review_id,merchant_name,response,updated_at')
+          .in('review_id', savedReviews.map(review => review.id))
+          .order('updated_at', { ascending: false });
+        if (responseError) {
+          console.error('Merchant responses could not be loaded:', responseError);
+          setMessage({ type: 'error', text: 'Customer reviews are shown, but merchant replies are temporarily unavailable.' });
+        } else {
+          const responsesByReview = new Map<number, Array<{ merchant_name: string; response: string; updated_at: string }>>();
+          for (const response of merchantResponses || []) {
+            const current = responsesByReview.get(Number(response.review_id)) || [];
+            current.push({
+              merchant_name: response.merchant_name,
+              response: response.response,
+              updated_at: response.updated_at
+            });
+            responsesByReview.set(Number(response.review_id), current);
+          }
+          setReviews(savedReviews.map(review => ({
+            ...review,
+            merchant_responses: responsesByReview.get(Number(review.id)) || []
+          })));
+        }
+      }
     } catch (err) {
       console.error('Error fetching reviews:', err);
       setMessage({ type: 'error', text: 'Purchase eligibility could not be verified. Please refresh and try again.' });
@@ -431,6 +459,13 @@ export default function ReviewSection({ productId, isLive = true }: { productId:
                         </div>
                     </div>
                 )}
+
+                {review.merchant_responses?.map((response, index) => (
+                  <div key={`${review.id}-merchant-response-${index}`} className="mt-4 rounded-2xl border-l-4 border-emerald-500 bg-emerald-50 p-5">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800 mb-2">{response.merchant_name} Response</p>
+                    <p className="text-sm font-medium leading-relaxed text-emerald-950">{response.response}</p>
+                  </div>
+                ))}
               </div>
             ))
           )}

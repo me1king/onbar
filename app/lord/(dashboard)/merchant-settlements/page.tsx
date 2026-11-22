@@ -194,6 +194,9 @@ export default function MerchantSettlementsPage() {
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             Configure documented seller-share terms, reconcile verified deliveries, review payout destinations and authorize each transfer.
           </p>
+          <p className="mt-2 max-w-3xl text-xs leading-5 text-amber-800">
+            This ledger currently applies a merchant share to traced delivered item values. It does not separately calculate tax, platform-fee, or cash-refund deductions; returned quantities are reduced only when recorded in the stock ledger. Do not enable transfers until Finance has approved rules that this calculation supports and completed a sandbox reconciliation.
+          </p>
         </div>
         <Button onClick={() => void refresh()} variant="outline" disabled={loading || Boolean(busy)} className="h-11 rounded-xl bg-white">
           <RefreshCcw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} /> Refresh
