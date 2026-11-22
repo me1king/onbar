@@ -151,8 +151,12 @@ BEGIN
       UPDATE public.merchant_applications
       SET offered_goods_pricing = offers,
           offered_goods = CASE
-            WHEN product_row.name = ANY(COALESCE(offered_goods, ARRAY[]::TEXT[])) THEN offered_goods
-            ELSE array_append(COALESCE(offered_goods, ARRAY[]::TEXT[]), product_row.name)
+            WHEN jsonb_typeof(merchant_row.offered_goods) = 'array'
+                 AND merchant_row.offered_goods @> jsonb_build_array(product_row.name)
+              THEN merchant_row.offered_goods
+            WHEN jsonb_typeof(merchant_row.offered_goods) = 'array'
+              THEN merchant_row.offered_goods || jsonb_build_array(product_row.name)
+            ELSE jsonb_build_array(product_row.name)
           END,
           updated_at = now()
       WHERE id = merchant_row.id;
