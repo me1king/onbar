@@ -10,10 +10,10 @@ migrations in Supabase after their prerequisites:
   `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It adds
   compatible products to approved merchant offers, including legacy
   `image_gallery` photos, refreshes existing offer details when catalog fields
-  change, and creates a pending merchant review notification. Apply or re-apply
-  it before using **Notify
-  merchants**, **Send photo products**, or **Publish all beverages** in Beverage
-  Vault to sync existing products.
+  change, and creates a pending merchant review notification. Hidden and draft
+  products can be sent for merchant price review without making them visible to
+  customers. Apply or re-apply it before using **Send all products to merchants**
+  in Beverage Vault to sync the full beverage catalog.
 - `MERCHANT_CATALOG_PRICE_REVIEW_MIGRATION.sql` requires
   `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It
   enables merchant price requests and Admin approval or rejection. Approval
@@ -32,10 +32,11 @@ migrations in Supabase after their prerequisites:
 The reply, ticket-history, and digest preference features remain unavailable
 until their corresponding migrations are applied.
 
-If a merchant cannot see a newly added catalog product, apply or re-apply
-`MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql`, then use **Send photo
-products** or **Publish all beverages** in Beverage Vault. The admin page reports
-the number of catalog products and eligible merchant-product listings processed.
+If a merchant cannot see a catalog product, apply or re-apply
+`MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql`, then use **Send all
+products to merchants** in Beverage Vault. The action sends catalog items
+regardless of customer-facing hidden/draft status, and reports the number of
+products and eligible merchant-product listings processed.
 Re-applying the migration also fixes the JSONB/text-array type mismatch in older
 versions of the catalog function. Beverage classification includes alcohol,
 liquor, spirits, beer, wine, cider, and the other drink categories; retrying

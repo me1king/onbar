@@ -69,10 +69,9 @@ BEGIN
   SELECT * INTO product_row
   FROM public.products
   WHERE id = p_product_id
-    AND COALESCE(hide_product, false) = false
-    AND lower(COALESCE(status, 'live')) NOT IN ('draft', 'hidden', 'inactive', 'archived', 'deleted');
+    AND lower(COALESCE(status, 'live')) NOT IN ('archived', 'deleted');
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Only an active customer catalog product can be published to merchants.';
+    RAISE EXCEPTION 'This catalog product is unavailable for merchant review.';
   END IF;
 
   product_category := lower(concat_ws(' ', product_row.category, product_row.sub_category));

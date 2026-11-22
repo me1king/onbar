@@ -293,11 +293,9 @@ export default function BeverageCommandAdmin() {
         }
     };
 
-    const publishAllBeveragesToMerchants = async (withPhotosOnly = false) => {
+    const publishAllBeveragesToMerchants = async () => {
         if (!supabase || notifyingAllMerchants || !window.confirm(
-            withPhotosOnly
-                ? 'Send every active beverage product with photos to compatible approved merchants so they can identify products and submit price requests?'
-                : 'Publish all active beverage catalog products to compatible approved merchants? This will make them available for merchants to review and submit price requests.'
+            'Send all non-archived beverage products, including hidden and draft catalog items, to compatible approved merchants for review and price proposals? This does not publish them to the customer storefront.'
         )) return;
         setNotifyingAllMerchants(true);
         setFormFeedback(null);
@@ -305,7 +303,7 @@ export default function BeverageCommandAdmin() {
             const response = await fetch('/api/admin/products', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'notify_all_merchants', withPhotosOnly })
+                body: JSON.stringify({ action: 'notify_all_merchants' })
             });
             const result = await response.json() as {
                 error?: string;
@@ -320,8 +318,8 @@ export default function BeverageCommandAdmin() {
             }
             const listingCount = Number(result.merchantProductListingsUpdated || 0);
             setFormFeedback(listingCount > 0
-                ? { type: 'success', text: `Published ${Number(result.productCount || 0)} active ${withPhotosOnly ? 'photo-backed ' : ''}beverage products. ${listingCount} eligible merchant-product listings are now available for stock updates and price requests.` }
-                : { type: 'error', text: `No merchant-product listings were updated across ${Number(result.productCount || 0)} active ${withPhotosOnly ? 'photo-backed ' : ''}beverage products. Confirm the catalog notification migration is applied and that compatible merchants are approved.` });
+                ? { type: 'success', text: `Sent ${Number(result.productCount || 0)} beverage catalog products to merchants. ${listingCount} compatible merchant-product listings are ready for review, stock updates, and price proposals. Products remain hidden from customers until you publish them.` }
+                : { type: 'error', text: `No merchant-product listings were updated across ${Number(result.productCount || 0)} beverage catalog products. Confirm the catalog notification migration is applied and that compatible merchants are approved.` });
         } catch (error) {
             console.error('Could not publish beverage catalog to merchants:', error);
             setFormFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Beverage catalog could not be published to merchants.' });
@@ -387,11 +385,10 @@ export default function BeverageCommandAdmin() {
         const q = searchQuery.toLowerCase();
         return (b.name || '').toLowerCase().includes(q) || (b.category || '').toLowerCase().includes(q) || (b.brand || '').toLowerCase().includes(q);
     });
-    const publishableBeverages = beverages.filter(beverage =>
-        beverage.hide_product !== true
-        && !['draft', 'hidden', 'inactive', 'archived', 'deleted'].includes((beverage.status || 'live').toLowerCase())
+    const merchantCatalogBeverages = beverages.filter(beverage =>
+        !['archived', 'deleted'].includes((beverage.status || 'live').toLowerCase())
     );
-    const beveragePhotoCount = publishableBeverages.filter(beverage =>
+    const beveragePhotoCount = beverages.filter(beverage =>
         getProductImageUrls(beverage.image_url || beverage.image, beverage.images, beverage.image_gallery).length > 0
     ).length;
     const listingChecks = [
@@ -459,7 +456,7 @@ export default function BeverageCommandAdmin() {
                     <p className="text-xl font-black text-emerald-600 uppercase italic mt-1">{beverages.filter(beverage => beverage.is_available_now !== false && Number(beverage.stock) > 0).length}</p>
                 </Card>
                 <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
-                    <p className="text-[9px] font-black uppercase text-violet-600 tracking-widest">Active photo products</p>
+                    <p className="text-[9px] font-black uppercase text-violet-600 tracking-widest">Products with photos</p>
                     <p className="text-3xl font-black text-violet-600">{beveragePhotoCount}</p>
                 </Card>
             </div>
@@ -467,30 +464,19 @@ export default function BeverageCommandAdmin() {
             <section className="flex flex-col gap-3 rounded-2xl border border-cyan-100 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 className="font-black text-slate-900">Merchant catalog publication</h2>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">Send {beveragePhotoCount} photo-backed products or the full active beverage catalog to compatible approved merchants. Merchants can identify each product, update stock, and submit prices for review.</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Send the full beverage product catalog—including hidden and draft products—to compatible approved merchants so they can review products and propose prices. This does not publish products to the customer storefront.</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                     <Button
                         type="button"
                         variant="outline"
-                        onClick={() => void publishAllBeveragesToMerchants(true)}
-                        disabled={notifyingAllMerchants || loading || beveragePhotoCount === 0}
-                        className="rounded-xl border-violet-200 bg-violet-50 font-black text-violet-900"
-                    >
-                        {notifyingAllMerchants
-                            ? <><Loader2 size={15} className="mr-2 animate-spin" /> Publishing…</>
-                            : <><ImageIcon size={15} className="mr-2" /> Send photo products</>}
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
                         onClick={() => void publishAllBeveragesToMerchants()}
-                        disabled={notifyingAllMerchants || loading || publishableBeverages.length === 0}
+                        disabled={notifyingAllMerchants || loading || merchantCatalogBeverages.length === 0}
                         className="rounded-xl border-cyan-200 bg-cyan-50 font-black text-cyan-900"
                     >
                         {notifyingAllMerchants
                             ? <><Loader2 size={15} className="mr-2 animate-spin" /> Publishing…</>
-                            : <><BellRing size={15} className="mr-2" /> Publish all beverages</>}
+                            : <><BellRing size={15} className="mr-2" /> Send all products to merchants</>}
                     </Button>
                 </div>
             </section>
