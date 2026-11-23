@@ -29,6 +29,7 @@ export default function MerchantStockOfferReview() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
+  const [pendingSort, setPendingSort] = useState<'newest' | 'oldest' | 'merchant' | 'product' | 'quantity' | 'price'>('newest');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -77,7 +78,16 @@ export default function MerchantStockOfferReview() {
     }
   }
 
-  const pendingOffers = offers.filter(offer => offer.status === 'pending_review');
+  const pendingOffers = offers
+    .filter(offer => offer.status === 'pending_review')
+    .sort((a, b) => {
+      if (pendingSort === 'merchant') return a.merchant.name.localeCompare(b.merchant.name) || a.product.name.localeCompare(b.product.name);
+      if (pendingSort === 'product') return a.product.name.localeCompare(b.product.name) || a.merchant.name.localeCompare(b.merchant.name);
+      if (pendingSort === 'quantity') return b.offered_quantity - a.offered_quantity;
+      if (pendingSort === 'price') return b.offered_merchant_price - a.offered_merchant_price;
+      const dateDifference = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return pendingSort === 'newest' ? -dateDifference : dateDifference;
+    });
   const recentlyReviewed = offers.filter(offer => offer.status !== 'pending_review');
 
   return (
@@ -86,11 +96,29 @@ export default function MerchantStockOfferReview() {
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Inventory control</p>
           <h2 className="mt-2 text-2xl font-black">Merchant stock offers</h2>
-          <p className="mt-2 max-w-3xl text-sm text-slate-500">Review the merchant’s actual-stock photo, offered payout price, and requested additional units. Approval adds units to existing stock and applies the new payout price.</p>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500">Review each merchant’s actual-stock photo, proposed payout price, and requested additional units. Approval adds units to existing stock and applies the new payout price.</p>
         </div>
-        <Button type="button" onClick={() => void load()} disabled={loading} variant="outline" className="gap-2">
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh offers
-        </Button>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">
+            Sort pending offers
+            <select
+              aria-label="Sort pending merchant stock offers"
+              value={pendingSort}
+              onChange={event => setPendingSort(event.target.value as typeof pendingSort)}
+              className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="merchant">Merchant name</option>
+              <option value="product">Product name</option>
+              <option value="quantity">Most units</option>
+              <option value="price">Highest payout</option>
+            </select>
+          </label>
+          <Button type="button" onClick={() => void load()} disabled={loading} variant="outline" className="gap-2">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh offers
+          </Button>
+        </div>
       </div>
 
       {error && <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>}

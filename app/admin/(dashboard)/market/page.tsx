@@ -30,6 +30,7 @@ interface ProductListing {
   description: string | null;
   status: 'draft' | 'pending_review' | 'published' | 'rejected' | 'archived';
   review_note: string | null;
+  created_at: string;
   attributes: Record<string, string>;
   delivery_information: string | null;
   return_policy: string | null;
@@ -97,6 +98,8 @@ interface MarketOrderRequest {
 export default function MarketOperationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [products, setProducts] = useState<ProductListing[]>([]);
+  const [productStatusFilter, setProductStatusFilter] = useState<'all' | ProductListing['status']>('all');
+  const [productSort, setProductSort] = useState<'newest' | 'oldest' | 'merchant' | 'product'>('newest');
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [offers, setOffers] = useState<MarketOffer[]>([]);
   const [orders, setOrders] = useState<MarketOrderRequest[]>([]);
@@ -331,6 +334,15 @@ export default function MarketOperationsPage() {
     }
   }
 
+  const visibleProducts = products
+    .filter((product) => productStatusFilter === 'all' || product.status === productStatusFilter)
+    .sort((a, b) => {
+      if (productSort === 'merchant') return a.merchant.name.localeCompare(b.merchant.name) || a.name.localeCompare(b.name);
+      if (productSort === 'product') return a.name.localeCompare(b.name) || a.merchant.name.localeCompare(b.merchant.name);
+      const dateDifference = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return productSort === 'newest' ? -dateDifference : dateDifference;
+    });
+
   return (
     <main className="p-4 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -406,20 +418,57 @@ export default function MarketOperationsPage() {
       </div>
 
       <section className="mt-12">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Catalog control</p>
-          <h2 className="mt-2 text-2xl font-black">All product listings</h2>
-          <p className="mt-2 text-sm text-slate-500">Review submissions, publish or decline products, and hide or restore any listing. Hidden products do not appear in the customer catalog.</p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Catalog control</p>
+            <h2 className="mt-2 text-2xl font-black">All product listings</h2>
+            <p className="mt-2 text-sm text-slate-500">Review merchant submissions, publish or decline products, and hide or restore any listing. Hidden products do not appear in the customer catalog.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <label className="grid gap-1 text-xs font-semibold text-slate-600">
+              Show
+              <select
+                aria-label="Filter merchant product listings by status"
+                value={productStatusFilter}
+                onChange={(event) => setProductStatusFilter(event.target.value as 'all' | ProductListing['status'])}
+                className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="all">All statuses</option>
+                <option value="pending_review">Needs review</option>
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="rejected">Rejected</option>
+                <option value="archived">Hidden</option>
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-semibold text-slate-600">
+              Sort by
+              <select
+                aria-label="Sort merchant product listings"
+                value={productSort}
+                onChange={(event) => setProductSort(event.target.value as typeof productSort)}
+                className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="merchant">Merchant name</option>
+                <option value="product">Product name</option>
+              </select>
+            </label>
+          </div>
         </div>
-        {!loading && products.length === 0 && (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">No marketplace listings yet.</div>
+        {!loading && visibleProducts.length === 0 && (
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
+            {products.length === 0 ? 'No marketplace listings yet.' : 'No product listings match this status.'}
+          </div>
         )}
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          {products.map((product) => (
+          {visibleProducts.map((product) => (
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" key={product.id}>
               {product.images[0] && <div className="relative mb-4 aspect-[4/3] w-full overflow-hidden rounded-xl">{product.images[0].mediaType === 'video' ? <video className="h-full w-full object-cover" src={product.images[0].url} controls aria-label={product.images[0].alt} /> : <Image className="object-cover" src={product.images[0].url} alt={product.images[0].alt} fill unoptimized sizes="(max-width: 800px) 100vw, 50vw" />}</div>}
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{product.merchant.name} · {product.category?.name || 'Uncategorized'} · {product.status.replace(/_/g, ' ')}</p>
               <h3 className="mt-2 text-lg font-bold text-slate-900">{product.name}</h3>
+              <p className="mt-1 text-xs text-slate-500">Submitted {new Date(product.created_at).toLocaleString('en-KE')}</p>
               {product.description && <p className="mt-2 text-sm text-slate-600">{product.description}</p>}
               {product.review_note && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Last admin note: {product.review_note}</p>}
               {product.variants[0] && <p className="mt-2 font-semibold text-slate-800">KSh {(product.variants[0].sale_price_minor ? product.variants[0].sale_price_minor / 100 : product.variants[0].price_minor / 100).toLocaleString('en-KE')}{product.variants[0].sale_price_minor && <span className="ml-2 text-sm text-slate-400 line-through">KSh {(product.variants[0].price_minor / 100).toLocaleString('en-KE')}</span>}</p>}
