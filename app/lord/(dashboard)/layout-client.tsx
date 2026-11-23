@@ -90,6 +90,7 @@ export default function AdminLayoutClient({
   const [pendingSubmissions, setPendingSubmissions] = useState<number | null>(null);
   const [pendingMarketSubmissions, setPendingMarketSubmissions] = useState<number | null>(null);
   const [unreadMerchantMessages, setUnreadMerchantMessages] = useState(0);
+  const [unreadCustomerMessages, setUnreadCustomerMessages] = useState(0);
 
   useEffect(() => {
       const syncSidebarForViewport = () => {
@@ -332,6 +333,7 @@ export default function AdminLayoutClient({
             pendingSubmissions={pendingSubmissions || 0}
             pendingMarketSubmissions={pendingMarketSubmissions || 0}
             onMerchantUnreadCountChange={setUnreadMerchantMessages}
+            onCustomerUnreadCountChange={setUnreadCustomerMessages}
           />
 
           {/* Mobile Header */}
@@ -362,9 +364,9 @@ export default function AdminLayoutClient({
                   onClick={() => setIsNotificationsOpen(true)}
                 >
                   <Bell className="h-5 w-5" />
-                  {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) + unreadMerchantMessages > 0 && (
+                  {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) + unreadMerchantMessages + unreadCustomerMessages > 0 && (
                     <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full border-2 border-background bg-rose-600 px-1 text-[8px] font-black leading-3 text-white">
-                      {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) + unreadMerchantMessages}
+                      {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) + unreadMerchantMessages + unreadCustomerMessages}
                     </span>
                   )}
                 </Button>
@@ -541,9 +543,9 @@ export default function AdminLayoutClient({
 
                           <Button onClick={() => setIsNotificationsOpen(true)} variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/5 relative">
                               <Bell className="h-4 w-4" />
-                              {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) + unreadMerchantMessages > 0 && (
+                              {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) + unreadMerchantMessages + unreadCustomerMessages > 0 && (
                                 <span className="absolute -right-1 -top-1 min-w-4 rounded-full border-2 border-background bg-rose-600 px-1 text-[8px] font-black leading-3 text-white">
-                                  {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) + unreadMerchantMessages}
+                                  {(pendingSubmissions || 0) + (pendingMarketSubmissions || 0) + unreadMerchantMessages + unreadCustomerMessages}
                                 </span>
                               )}
                           </Button>

@@ -26,6 +26,7 @@ import {
   X,
   RefreshCw,
   ShieldCheck,
+  Snowflake,
   Star,
   Store,
   TrendingUp,
@@ -2724,16 +2725,49 @@ export default function OnBarPartnerNetworkPage() {
       const currentAvailable = selected?.batches
         .filter(batch => batch.product_id === product.id)
         .reduce((total, batch) => total + batch.available_quantity, 0) ?? 0;
+      const searchableDepartment = [
+        product.name,
+        product.category,
+        product.offer.sub_category
+      ].filter((value): value is string => typeof value === 'string').join(' ').toLowerCase();
+      const matchesLiquorDepartment = (filter: string) => {
+        if (filter === 'all') return true;
+        if (filter === 'needs-attention') return currentAvailable <= 5;
+        if (filter === 'spirits') {
+          return /(spirit|whisk|whisky|vodka|gin|rum|brandy|tequila|cognac|liqueur|liqueur|amarula|konyagi|can[a-z]* gin|schnapps)/i.test(searchableDepartment);
+        }
+        if (filter === 'wine') {
+          return /(wine|chardonnay|cabernet|merlot|pinot|riesling|sauvignon|champagne|cask|vin)/i.test(searchableDepartment);
+        }
+        if (filter === 'beer') {
+          return /(beer|lager|stout|cider|ale|pilsner|malt|guinness|smirnoff ice|heineken|tusker|balozi|savanna|caribia)/i.test(searchableDepartment);
+        }
+        if (filter === 'soft-drinks') {
+          return /(soft|soda|cola|coca|coke|fanta|sprite|stoney|krest|pepsi|tonic|mixer|juice)/i.test(searchableDepartment);
+        }
+        if (filter === 'energy') {
+          return /(energy|red bull|monster|predator)/i.test(searchableDepartment);
+        }
+        if (filter === 'water') {
+          return /(water|dasani|keringet|mineral|aquamist)/i.test(searchableDepartment);
+        }
+        if (filter === 'mixers') {
+          return /(mixer|tonic|soda water|lime juice|cordial)/i.test(searchableDepartment);
+        }
+        return (product.category || '').trim() === filter;
+      };
       const matchesSearch = !query
         || product.name.toLowerCase().includes(query)
         || (product.category || '').toLowerCase().includes(query);
-      const matchesCategory = inventoryCategory === 'all'
-        || (inventoryCategory === 'needs-attention'
-          ? currentAvailable <= 5
-          : product.category?.trim() === inventoryCategory);
+      const matchesCategory = isLiquorMerchant
+        ? matchesLiquorDepartment(inventoryCategory)
+        : inventoryCategory === 'all'
+          || (inventoryCategory === 'needs-attention'
+            ? currentAvailable <= 5
+            : product.category?.trim() === inventoryCategory);
       return matchesSearch && matchesCategory;
     });
-  }, [inventoryCategory, inventorySearch, productOptions, selected?.batches]);
+  }, [inventoryCategory, inventorySearch, isLiquorMerchant, productOptions, selected?.batches]);
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3631,10 +3665,28 @@ export default function OnBarPartnerNetworkPage() {
                 </Button>
               </article>;
             })()}
-            <div>
-              <h2 className="text-xl font-black text-slate-900">Inventory and stock counts</h2>
-              <p className="mt-1 text-sm text-slate-600">Set the units available for new orders. Updates are saved to the same audited stock ledger used by OnBar Admin and dispatch.</p>
-            </div>
+            {isLiquorMerchant && (
+              <header className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
+                <div className="relative z-10 max-w-2xl">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-[9px] font-black uppercase tracking-[0.25em] text-amber-700">
+                    <Snowflake size={14} aria-hidden="true" /> Beverages
+                  </div>
+                  <h2 className="mt-4 text-3xl font-black uppercase leading-none tracking-tight text-slate-950 sm:text-5xl" style={{ fontStyle: 'italic' }}>
+                    Beverage <span className="text-amber-500">Command.</span>
+                  </h2>
+                  <p className="mt-3 max-w-xl text-sm font-medium italic leading-6 text-slate-500">
+                    Update chilled stock and submit selling prices for OnBar review. Matching the storefront presentation keeps every product easy to identify.
+                  </p>
+                </div>
+                <Snowflake aria-hidden="true" className="absolute -bottom-10 -right-10 h-64 w-64 rotate-12 text-slate-900/[0.04]" />
+              </header>
+            )}
+            {!isLiquorMerchant && (
+              <div>
+                <h2 className="text-xl font-black text-slate-900">Inventory and stock counts</h2>
+                <p className="mt-1 text-sm text-slate-600">Set the units available for new orders. Updates are saved to the same audited stock ledger used by OnBar Admin and dispatch.</p>
+              </div>
+            )}
             {canOperate && productOptions.length > 0 && (
               <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
                 Available stock excludes held or expired batches and stock already allocated to orders. Lowering a count cannot remove units reserved for a customer. Increasing stock requires the real lot code; alcohol stock also needs an excise-stamp attestation.
@@ -3655,9 +3707,19 @@ export default function OnBarPartnerNetworkPage() {
                 </label>
                 <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Filter stock products">
                   {[
-                    { id: 'all', label: 'All' },
+                    { id: 'all', label: isLiquorMerchant ? 'All drinks' : 'All' },
                     { id: 'needs-attention', label: 'Needs attention' },
-                    ...inventoryCategoryOptions.map(category => ({ id: category, label: category }))
+                    ...(isLiquorMerchant
+                      ? [
+                          { id: 'spirits', label: 'Spirits' },
+                          { id: 'wine', label: 'Wine' },
+                          { id: 'beer', label: 'Beer' },
+                          { id: 'soft-drinks', label: 'Soft drinks' },
+                          { id: 'energy', label: 'Energy' },
+                          { id: 'water', label: 'Water' },
+                          { id: 'mixers', label: 'Mixers' }
+                        ]
+                      : inventoryCategoryOptions.map(category => ({ id: category, label: category })))
                   ].map(filter => (
                     <button
                       key={filter.id}
@@ -3666,7 +3728,7 @@ export default function OnBarPartnerNetworkPage() {
                       onClick={() => setInventoryCategory(filter.id)}
                       className={`shrink-0 rounded-full border px-4 py-2 text-xs font-black transition-colors ${
                         inventoryCategory === filter.id
-                          ? 'border-amber-400 bg-amber-400 text-slate-950'
+                          ? 'border-amber-500 bg-amber-500 text-white shadow-md shadow-amber-500/20'
                           : 'border-slate-200 bg-white text-slate-700 hover:border-amber-300'
                       }`}
                     >
@@ -3701,20 +3763,23 @@ export default function OnBarPartnerNetworkPage() {
                     <article
                       key={product.id}
                       id={`merchant-stock-card-${product.id}`}
-                      className={`space-y-3 rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5 ${inventoryFocusProductId === product.id ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200'}`}
+                      className={`space-y-3 rounded-[2rem] border bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg sm:p-5 ${inventoryFocusProductId === product.id ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200/80'}`}
                     >
-                      <div className="relative flex h-48 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 via-slate-50 to-amber-50">
+                      <div className="relative flex h-44 items-center justify-center overflow-hidden rounded-[1.5rem] border border-slate-100 bg-gradient-to-br from-amber-50 via-white to-slate-50 sm:h-52">
                         <span className={`absolute left-3 top-3 z-10 rounded-full px-3 py-1 text-[10px] font-black uppercase ${stockStatus.className}`}>
                           {stockStatus.label}
                         </span>
+                        <span className="absolute right-3 top-3 z-10 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-black text-white shadow-md shadow-amber-500/20">
+                          KSh {Number(product.offer.listed_price || 0).toLocaleString('en-KE')}
+                        </span>
                         {availablePhotos.length > 0 ? (
-                          <div className={`absolute inset-0 grid ${availablePhotos.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-1 p-1`}>
+                          <div className="absolute inset-0 flex gap-1 overflow-x-auto p-1" aria-label={`${product.name} photos`}>
                             {availablePhotos.map((imageUrl, index) => <button
                               key={`${imageUrl}-${index}`}
                               type="button"
                               onClick={() => setEnlargedProductPhoto({ name: `${product.name} · photo ${index + 1}`, imageUrl })}
                               aria-label={`Tap to enlarge ${product.name} photo ${index + 1}`}
-                              className="relative min-h-0 overflow-hidden rounded-lg"
+                              className={`relative min-h-0 shrink-0 overflow-hidden rounded-lg ${availablePhotos.length === 1 ? 'w-full' : 'w-[58%] sm:w-[48%]'}`}
                             >
                               <Image
                                 src={imageUrl}
@@ -3722,7 +3787,7 @@ export default function OnBarPartnerNetworkPage() {
                                 fill
                                 sizes="(max-width: 1024px) 45vw, 280px"
                                 unoptimized
-                                className="object-contain p-3 transition-transform duration-300 hover:scale-105"
+                                className="object-contain p-2 transition-transform duration-300 hover:scale-105"
                                 onError={() => setUnavailableInventoryPhotos(current => new Set(current).add(`${product.id}:${imageUrl}`))}
                               />
                             </button>)}
@@ -3856,7 +3921,7 @@ export default function OnBarPartnerNetworkPage() {
                       <Button
                         type="submit"
                         disabled={working || stockDraftIsStale || !Number.isSafeInteger(targetQuantity) || targetQuantity === currentAvailable}
-                        className="h-10 rounded-xl font-bold"
+                        className="h-10 rounded-xl bg-amber-500 font-black text-slate-950 hover:bg-amber-400"
                       >
                         {working ? <Loader2 size={15} className="mr-2 animate-spin" /> : <PackageCheck size={15} className="mr-2" />}
                         Save stock count
@@ -3922,7 +3987,7 @@ export default function OnBarPartnerNetworkPage() {
                             type="submit"
                             variant="outline"
                             disabled={working || product.offer.pending_price != null || Number(offerPriceDraft[product.id] ?? currentPrice) === currentPrice}
-                            className="h-10 rounded-xl"
+                            className="h-10 rounded-xl border-amber-300 bg-amber-50 font-black text-amber-900 hover:bg-amber-100"
                           >
                             Request review
                           </Button>

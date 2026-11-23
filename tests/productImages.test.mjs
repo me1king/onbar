@@ -25,3 +25,17 @@ test('includes legacy image_gallery photos when finding product images', () => {
     ['https://img.test/legacy.jpg']
   );
 });
+
+test('supports object and JSON-encoded gallery entries', () => {
+  assert.deepEqual(
+    getProductImageUrls(
+      { url: 'https://img.test/front.jpg' },
+      [{ src: 'https://img.test/back.jpg' }, '["https://img.test/side.jpg"]']
+    ),
+    [
+      'https://img.test/front.jpg',
+      'https://img.test/back.jpg',
+      'https://img.test/side.jpg'
+    ]
+  );
+});

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getPublicBaseUrl } from '@/lib/utils';
+import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +41,30 @@ async function hashToken(token: string) {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character] || character);
+}
+
+async function getAdminEmail(database: ReturnType<typeof getDatabase>) {
+  if (!database) return '';
+  const configured = process.env.ADMIN_EMAIL?.trim();
+  if (configured) return configured;
+  const { data, error } = await database
+    .from('settings')
+    .select('value')
+    .eq('key', 'contact')
+    .eq('is_published', true)
+    .maybeSingle();
+  if (error) throw error;
+  return typeof data?.value?.email === 'string' ? data.value.email.trim() : '';
+}
+
 export async function POST(request: Request) {
   const database = getDatabase();
   if (!database) {
@@ -56,7 +82,18 @@ export async function POST(request: Request) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const message = typeof body.message === 'string' ? body.message.trim() : '';
   const token = typeof body.token === 'string' ? body.token : null;
-  const subject = body.subject === 'CORPORATE_INQUIRY' ? 'CORPORATE_INQUIRY' : 'In-App Support Ticket';
+  const allowedSubjects = new Set([
+    'CORPORATE_INQUIRY',
+    'Feature request',
+    'General inquiry',
+    'Product or wholesale question',
+    'Partnership or corporate inquiry',
+    'Something else',
+    'In-App Support Ticket'
+  ]);
+  const subject = typeof body.subject === 'string' && allowedSubjects.has(body.subject)
+    ? body.subject
+    : 'In-App Support Ticket';
   if (
     name.length < 1 || name.length > 120
     || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -72,7 +109,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Customer session is invalid.' }, { status: 401 });
   }
-  const { error } = await database.from('messages').insert({
+  const { data: savedMessage, error } = await database.from('messages').insert({
     name,
     email,
     user_id: customerId,
@@ -80,12 +117,48 @@ export async function POST(request: Request) {
     message,
     status: 'New',
     customer_token_hash: await hashToken(token)
-  });
+  }).select('id').single();
   if (error) {
     console.error('[CustomerSupport] Could not save support message:', error);
     return NextResponse.json({ error: `Could not save your message: ${error.message}` }, { status: 500 });
   }
-  return NextResponse.json({ success: true });
+  if (!savedMessage) {
+    return NextResponse.json({ error: 'Could not save your message.' }, { status: 500 });
+  }
+  let emailSent = false;
+  let emailWarning: string | undefined;
+  try {
+    const recipient = await getAdminEmail(database);
+    const emailConfig = getTransactionalEmailConfig();
+    if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+      emailWarning = 'Your message is in the admin inbox, but the admin email recipient is not configured.';
+    } else if (!emailConfig.configured) {
+      emailWarning = 'Your message is in the admin inbox, but email alerts are not configured yet.';
+    } else {
+      await sendTransactionalEmail({
+        from: emailConfig.from,
+        to: recipient,
+        replyTo: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : undefined,
+        subject: `New customer inquiry: ${subject}`,
+        html: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;padding:24px;color:#152238">
+          <p style="font-size:12px;font-weight:bold;letter-spacing:2px;color:#e79a00;text-transform:uppercase">Online Bar · Customer inquiry</p>
+          <h1 style="font-size:24px;margin:12px 0">${escapeHtml(subject)}</h1>
+          <p><b>Message:</b> #${savedMessage.id}</p>
+          <p><b>From:</b> ${escapeHtml(name)}${email ? ` &lt;${escapeHtml(email)}&gt;` : ''}</p>
+          <div style="white-space:pre-wrap;background:#f5f7fa;border-radius:12px;padding:16px;margin:20px 0">${escapeHtml(message)}</div>
+          <a href="${escapeHtml(getPublicBaseUrl())}/lord/messages" style="display:inline-block;background:#f5a000;color:#101827;text-decoration:none;font-weight:bold;padding:12px 18px;border-radius:10px">Open support inbox</a>
+        </div>`,
+        text: `Online Bar · Customer inquiry\nTopic: ${subject}\nMessage: #${savedMessage.id}\nFrom: ${name}${email ? ` <${email}>` : ''}\n\n${message}\n\nOpen support inbox: ${getPublicBaseUrl()}/lord/messages`,
+        idempotencyKey: `customer-support-${savedMessage.id}`
+      });
+      emailSent = true;
+    }
+  } catch (notificationError) {
+    console.error('[CustomerSupport] Message saved, but admin email alert failed:', notificationError);
+    emailWarning = 'Your message is in the admin inbox, but the email alert could not be sent.';
+  }
+
+  return NextResponse.json({ success: true, messageId: savedMessage.id, emailSent, emailWarning });
 }
 
 export async function GET(request: Request) {

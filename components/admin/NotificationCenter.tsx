@@ -21,21 +21,24 @@ export default function NotificationCenter({
     setIsOpen,
     pendingSubmissions = 0,
     pendingMarketSubmissions = 0,
-    onMerchantUnreadCountChange
+    onMerchantUnreadCountChange,
+    onCustomerUnreadCountChange
 }: {
     isOpen: boolean;
     setIsOpen: (open: boolean) => void;
     pendingSubmissions?: number;
     pendingMarketSubmissions?: number;
     onMerchantUnreadCountChange?: (count: number) => void;
+    onCustomerUnreadCountChange?: (count: number) => void;
 }) {
     const [notifications, setNotifications] = React.useState<Notification[]>([]);
     const [merchantNotifications, setMerchantNotifications] = React.useState<Notification[]>([]);
+    const [customerNotifications, setCustomerNotifications] = React.useState<Notification[]>([]);
     const [feedError, setFeedError] = React.useState('');
 
     const fetchNotifications = React.useCallback(async () => {
         try {
-            const [auditResponse, merchantResponse] = await Promise.all([
+            const [auditResponse, merchantResponse, customerResponse] = await Promise.all([
                 fetch('/api/admin/audit-logs', { cache: 'no-store' }).catch(error => {
                     console.error('Audit notification request failed:', error);
                     return null;
@@ -43,11 +46,16 @@ export default function NotificationCenter({
                 fetch('/api/admin/merchant-support?notifications=true', { cache: 'no-store' }).catch(error => {
                     console.error('Merchant notification request failed:', error);
                     return null;
+                }),
+                fetch('/api/admin/messages', { cache: 'no-store' }).catch(error => {
+                    console.error('Customer message notification request failed:', error);
+                    return null;
                 })
             ]);
             const errors: string[] = [];
             let auditNotifications: Notification[] = [];
             let nextMerchantNotifications: Notification[] = [];
+            let nextCustomerNotifications: Notification[] = [];
 
             if (auditResponse?.ok) {
                 const result = await auditResponse.json() as {
@@ -81,8 +89,28 @@ export default function NotificationCenter({
             } else {
                 errors.push('Merchant message notifications could not be loaded.');
             }
+            if (customerResponse?.ok) {
+                const result = await customerResponse.json() as {
+                    messages?: Array<{ id: number; name: string; subject: string; message: string; status: string; created_at: string }>;
+                };
+                nextCustomerNotifications = (result.messages || [])
+                    .filter(message => message.status === 'New')
+                    .slice(0, 50)
+                    .map(message => ({
+                        id: `customer-message-${message.id}`,
+                        type: 'warning',
+                        label: `Customer inquiry · ${message.name || 'Website visitor'}`,
+                        meta: `${message.subject}: ${message.message.slice(0, 180)}`,
+                        time: new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        url: '/lord/messages',
+                        isRead: false
+                    }));
+            } else if (customerResponse) {
+                errors.push('Customer message notifications could not be loaded.');
+            }
             setNotifications(auditNotifications);
             setMerchantNotifications(nextMerchantNotifications);
+            setCustomerNotifications(nextCustomerNotifications);
             setFeedError(errors.join(' '));
         } catch (err) {
             console.error('Admin notification feed failed:', err);
@@ -105,6 +133,10 @@ export default function NotificationCenter({
     React.useEffect(() => {
         onMerchantUnreadCountChange?.(merchantNotifications.length);
     }, [merchantNotifications.length, onMerchantUnreadCountChange]);
+
+    React.useEffect(() => {
+        onCustomerUnreadCountChange?.(customerNotifications.length);
+    }, [customerNotifications.length, onCustomerUnreadCountChange]);
 
     const markAllRead = () => {
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
@@ -130,7 +162,7 @@ export default function NotificationCenter({
             isRead: false
         }] : [])
     ];
-    const visibleNotifications = [...liveNotifications, ...merchantNotifications, ...notifications];
+    const visibleNotifications = [...liveNotifications, ...merchantNotifications, ...customerNotifications, ...notifications];
     const unreadCount = visibleNotifications.filter(n => !n.isRead).length;
 
     if (!isOpen) return null;

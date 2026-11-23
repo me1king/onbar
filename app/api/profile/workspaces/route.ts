@@ -55,7 +55,7 @@ export async function GET(request: Request) {
   });
   const { data: linkedApplications, error: linkedApplicationsError } = await database
     .from('merchant_applications')
-    .select('id, business_name, business_type, status, review_note, submitted_at, reviewed_at, offered_goods, offered_goods_pricing')
+    .select('id, business_name, business_type, status, review_note, submitted_at, reviewed_at')
     .eq('account_user_id', user.id)
     .order('submitted_at', { ascending: false })
     .limit(25);
@@ -71,7 +71,7 @@ export async function GET(request: Request) {
   let applications = linkedApplications || [];
   if (!applications.length && emailVerified && user.email) {
     const { data: legacyApplications, error: legacyApplicationsError } = await database.from('merchant_applications')
-      .select('id, business_name, business_type, status, review_note, submitted_at, reviewed_at, offered_goods, offered_goods_pricing')
+      .select('id, business_name, business_type, status, review_note, submitted_at, reviewed_at')
       .eq('email', user.email.toLowerCase())
       .order('submitted_at', { ascending: false })
       .limit(25);
@@ -160,20 +160,7 @@ export async function GET(request: Request) {
       status: application.status,
       reviewNote: application.review_note,
       submittedAt: application.submitted_at,
-      reviewedAt: application.reviewed_at,
-      offeredGoods: Array.isArray(application.offered_goods)
-        ? application.offered_goods.filter((good): good is string => typeof good === 'string')
-        : [],
-      offeredGoodsPricing: Array.isArray(application.offered_goods_pricing)
-        ? application.offered_goods_pricing.filter((offer): offer is { product_id: number; product_name: string; price: number; currency: string } =>
-          typeof offer === 'object'
-          && offer !== null
-          && typeof offer.product_id === 'number'
-          && typeof offer.product_name === 'string'
-          && typeof offer.price === 'number'
-          && typeof offer.currency === 'string'
-        )
-        : []
+      reviewedAt: application.reviewed_at
     })),
     marketApplications: (marketApplications || []).map(application => ({
       id: application.id,
