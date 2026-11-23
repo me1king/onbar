@@ -29,7 +29,7 @@ export default function MerchantStockOfferReview() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
-  const [pendingSort, setPendingSort] = useState<'newest' | 'oldest' | 'merchant' | 'product' | 'quantity' | 'price'>('newest');
+  const [pendingSort, setPendingSort] = useState<'newest' | 'oldest' | 'merchant' | 'product' | 'quantity' | 'price_high' | 'price_low'>('newest');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -84,7 +84,8 @@ export default function MerchantStockOfferReview() {
       if (pendingSort === 'merchant') return a.merchant.name.localeCompare(b.merchant.name) || a.product.name.localeCompare(b.product.name);
       if (pendingSort === 'product') return a.product.name.localeCompare(b.product.name) || a.merchant.name.localeCompare(b.merchant.name);
       if (pendingSort === 'quantity') return b.offered_quantity - a.offered_quantity;
-      if (pendingSort === 'price') return b.offered_merchant_price - a.offered_merchant_price;
+      if (pendingSort === 'price_high') return b.offered_merchant_price - a.offered_merchant_price;
+      if (pendingSort === 'price_low') return a.offered_merchant_price - b.offered_merchant_price;
       const dateDifference = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return pendingSort === 'newest' ? -dateDifference : dateDifference;
     });
@@ -112,7 +113,8 @@ export default function MerchantStockOfferReview() {
               <option value="merchant">Merchant name</option>
               <option value="product">Product name</option>
               <option value="quantity">Most units</option>
-              <option value="price">Highest payout</option>
+              <option value="price_high">Highest payout</option>
+              <option value="price_low">Lowest payout</option>
             </select>
           </label>
           <Button type="button" onClick={() => void load()} disabled={loading} variant="outline" className="gap-2">
