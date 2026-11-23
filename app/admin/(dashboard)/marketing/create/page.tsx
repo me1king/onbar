@@ -43,6 +43,7 @@ export default function CreateCampaign() {
         name: '',
         type: 'Product Launch',
         product_id: '',
+        image_url: '',
         status: 'Draft',
         scheduled_at: '',
         audience_id: 'all'
@@ -169,6 +170,11 @@ export default function CreateCampaign() {
         }
     };
 
+    const enteredImageUrl = campaign.image_url.trim();
+    const isPublicImageUrl = enteredImageUrl.startsWith('https://')
+        || (enteredImageUrl.startsWith('/') && !enteredImageUrl.startsWith('//'));
+    const campaignImageUrl = (isPublicImageUrl ? enteredImageUrl : '') || selectedProduct?.image_url || '';
+
     return (
         <div className="p-4 sm:p-8 space-y-8 sm:space-y-10 bg-background min-h-screen text-left pb-40">
             {/* Wizard Header */}
@@ -257,6 +263,17 @@ export default function CreateCampaign() {
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+                                <div className="space-y-2 sm:col-span-2">
+                                    <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Campaign Image Override (optional)</label>
+                                    <Input
+                                        maxLength={2000}
+                                        value={campaign.image_url}
+                                        onChange={e => setCampaign({ ...campaign, image_url: e.target.value })}
+                                        placeholder="https://... or /images/campaign.jpg"
+                                        className="h-12 rounded-2xl bg-secondary"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Paste a public HTTPS image URL or a site-relative image path. Leave blank to use the selected product photo.</p>
                                 </div>
                             </div>
 
@@ -387,13 +404,13 @@ export default function CreateCampaign() {
                                         <>
                                             {activePreview === 'instagram' && (
                                                 <InstagramPreview
-                                                    imageUrl={selectedProduct.image_url}
+                                                    imageUrl={campaignImageUrl}
                                                     caption={channels.instagram.caption}
                                                 />
                                             )}
                                             {activePreview === 'whatsapp' && (
                                                 <WhatsAppPreview
-                                                    imageUrl={selectedProduct.image_url}
+                                                    imageUrl={campaignImageUrl}
                                                     body={channels.whatsapp.body}
                                                 />
                                             )}
@@ -401,7 +418,7 @@ export default function CreateCampaign() {
                                                 <EmailPreview
                                                     productName={selectedProduct.name}
                                                     productPrice={selectedProduct.price}
-                                                    imageUrl={selectedProduct.image_url}
+                                                    imageUrl={campaignImageUrl}
                                                     subject={channels.email.subject}
                                                     body={channels.email.body}
                                                 />
@@ -522,7 +539,7 @@ export default function CreateCampaign() {
                                 <div className="space-y-6">
                                     <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                                         <div className="h-16 w-16 rounded-2xl bg-slate-50 p-2 overflow-hidden relative border border-slate-100 flex items-center justify-center">
-                                            {selectedProduct.image_url && <Image src={selectedProduct.image_url} fill className="object-contain" alt="" />}
+                                            {campaignImageUrl && <Image src={campaignImageUrl} fill unoptimized className="object-contain" alt="" />}
                                         </div>
                                         <div className="min-w-0">
                                             <p className="text-[9px] font-black text-primary uppercase leading-none mb-1">Target Viewport</p>

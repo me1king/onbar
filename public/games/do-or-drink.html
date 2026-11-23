@@ -79,10 +79,37 @@ team:{d:["Give a 20 second pitch for a ridiculous product the group names.","Do 
  t:["What is your best memory working here?","What is the weirdest job you ever had?","What would you do if you were CEO for a day?","What is one thing you would change about our workplace?","What skill do you want to learn this year?","Who taught you the most at work?","What is your favourite thing about this team?","What is your dream holiday?"],
  g:["Most likely to reply 'per my last email'","Most likely to be the next boss","Best at meetings that could have been emails","Vote: who deserves a day off?"]}};
 const FORF=["Do 5 squats.","Say something nice about the person on your left.","Tell the group a harmless secret.","Do your best animal impression.","Hold a plank for 15 seconds.","Dance for 10 seconds.","Sing the first line of any song.","Give the group a compliment each."];
-const WATER=["Water break! Everyone drink a glass of water or soda and grab a snack.","Hydration time 💧 Everyone takes water, then we carry on.","Snack check 🍟 Everyone eats something before the next round."];
+const WATER=["Water break! Pause for a glass of water and a snack.","Hydration time 💧 Take a water break, then carry on.","Snack check 🍟 Grab a snack and some water before the next round."];
 const requestedMode=new URLSearchParams(location.search).get("drinkMode");
 let S={scr:"setup",pl:["","",""],vibe:"house",rounds:3,cap:2,alc:requestedMode!=="none",soft:requestedMode==="soft",adult:false};
 let G=null;
+let gameBreakAd=null,gameBreakSuggestion=null,gameBreakAdError="";
+function renderBreakAd(){
+ const box=$("#breakAd");if(!box)return;box.replaceChildren();box.classList.add("hide");
+ if(gameBreakAdError){box.classList.remove("hide");box.textContent=gameBreakAdError;return}
+ const item=gameBreakAd||gameBreakSuggestion;if(!item)return;
+ box.classList.remove("hide");
+ const sponsored=document.createElement("span");sponsored.className="tag w";sponsored.textContent=gameBreakAd?"Sponsored":"Suggested";box.append(sponsored);
+ if(item.headline){const headline=document.createElement("strong");headline.textContent=item.headline;box.append(headline)}
+ if(item.showImage&&typeof item.imageUrl==="string"&&(item.imageUrl.startsWith("/")||/^https:\/\//i.test(item.imageUrl))){
+  const image=document.createElement("img");image.src=item.imageUrl;image.alt="";image.loading="lazy";image.style.cssText="display:block;width:100%;max-height:140px;object-fit:cover;border-radius:10px;margin:8px 0";box.append(image)
+ }
+ if(item.showProductName){const name=document.createElement("div");name.textContent=item.productName;box.append(name)}
+ if(item.message){const message=document.createElement("div");message.textContent=item.message;box.append(message)}
+ if(item.price!==null){const price=document.createElement("div");price.textContent=`KES ${Number(item.price).toLocaleString()}`;box.append(price)}
+ const link=document.createElement("a");link.href=`/product/${encodeURIComponent(item.productId)}`;link.textContent=item.ctaLabel;link.style.color="#6d28d9";link.style.fontWeight="700";box.append(link)
+}
+window.addEventListener("message",event=>{
+ if(event.source!==window.parent||event.data?.type!=="onlinebar:game-break-ad")return;
+ const validCard=item=>item&&Number.isSafeInteger(item.productId)&&typeof item.productName==="string"
+  &&(item.price===null||(typeof item.price==="number"&&Number.isFinite(item.price)&&item.price>=0))&&(item.imageUrl===null||typeof item.imageUrl==="string")
+  &&typeof item.headline==="string"&&typeof item.message==="string"&&typeof item.showImage==="boolean"
+  &&typeof item.showProductName==="boolean"&&typeof item.ctaLabel==="string";
+ gameBreakAd=validCard(event.data.ad)?event.data.ad:null;
+ gameBreakSuggestion=validCard(event.data.suggestion)?event.data.suggestion:null;
+ gameBreakAdError=typeof event.data.error==="string"?event.data.error:"";
+ renderBreakAd()
+});
 function esc(t){return String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function av(n,i){return `<div class="av" style="background:${COL[i%12]}">${esc((n||"?").trim().charAt(0).toUpperCase())}</div>`}
 function setup(){
@@ -104,7 +131,7 @@ function draw(k){if(!G.deck[k].length)G.deck[k]=shuf(P[S.vibe][k]);return G.deck
 function forf(){if(!G.fq.length)G.fq=shuf(FORF);return G.fq.pop()}
 async function next(){
  if(G.turn>=G.max)return end();
- if(S.alc&&G.turn>0&&G.turn%5===0&&!G.water){G.water=1;G.card={type:"w",text:G.wq.length?G.wq.pop():WATER[0]};G.cur=-1;G.res="";return play()}
+ if(G.turn>0&&G.turn%5===0&&!G.water){G.water=1;G.card={type:"w",text:G.wq.length?G.wq.pop():WATER[0]};G.cur=-1;G.res="";return play()}
  G.water=0;
  if(!G.q.length)G.q=shuf(G.p.map((_,i)=>i));
  const pick=G.q.pop();G.card=null;G.res="";clearInterval(G.ti);G.timer=0;
@@ -121,7 +148,7 @@ function play(spinning){
  const c=G.card,p=G.p[G.cur],rd=Math.min(S.rounds,Math.floor((G.turn-1)/G.p.length)+1);
  let main="";
  if(spinning||!c)main=`<h3 style="text-align:center">Who's next?</h3><div class="spin">${G.p.map((q,i)=>`<div class="sp">${av(q.n,i)}<div>${esc(q.n)}</div></div>`).join("")}</div>`;
- else if(c.type==="w")main=`<div class="card"><span class="tag w">Break</span><div class="txt" style="margin-top:14px">${esc(c.text)}</div></div><div class="two"><button class="btn g" style="grid-column:span 2" data-go="1">Done, keep playing</button></div>`;
+ else if(c.type==="w")main=`<div class="card"><span class="tag w">Water break</span><div class="txt" style="margin-top:14px">${esc(c.text)}</div><div id="breakAd" class="res hide" aria-live="polite"></div></div><div class="two"><button class="btn g" style="grid-column:span 2" data-go="1">Done, keep playing</button></div>`;
  else{const lab={d:"Dare",t:"Truth",g:"Group"}[c.type],cl=c.type==="d"?"":c.type==="t"?"t":"g";
   const everyone=c.type==="g"&&/^Everyone/.test(c.text),vote=c.type==="g"&&!everyone;
   main=`<div class="card"><span class="tag ${cl}">${lab}</span><div class="who">${c.type==="g"?"Everyone!":esc(p.n)}</div><div class="txt">${esc(c.text)}</div>
@@ -134,7 +161,8 @@ function play(spinning){
    <div class="two" style="margin-top:8px"><button class="btn s" data-pass="1">Pass (no drink)</button><button class="btn s" data-unsafe="1">Not comfortable</button></div>
    ${limit(p)?`<p class="hint" style="text-align:center">${esc(p.n)} reached the shot limit. Forfeits only now; passing is always okay. 💧</p>`:""}`}`}
  $("#app").innerHTML=`<div class="bar"><span>Round ${Math.min(rd,S.rounds)} of ${S.rounds}</span><span>Turn ${Math.min(G.turn,G.max)}/${G.max}</span><button class="chip" data-end="1" style="padding:6px 12px">End game</button></div>
- <div class="score">${G.p.map((q,i)=>`<div class="sc ${i===G.cur?"on":""}"><span>${esc(q.n)}</span><b>${S.alc?q.sips+(S.soft?" 🥤":" 🥃"):q.forf+" 🥤"} · ${q.done} ✅</b></div>`).join("")}</div><div class="stage">${main}</div>`}
+ <div class="score">${G.p.map((q,i)=>`<div class="sc ${i===G.cur?"on":""}"><span>${esc(q.n)}</span><b>${S.alc?q.sips+(S.soft?" 🥤":" 🥃"):q.forf+" 🥤"} · ${q.done} ✅</b></div>`).join("")}</div><div class="stage">${main}</div>`;
+ if(!spinning&&c?.type==="w")renderBreakAd()}
 function take(i,why){const p=G.p[i];if(S.alc&&!limit(p)){p.sips++;return `${esc(p.n)} takes ${S.soft?"a soft drink 🥤":"a shot 🥃"}${why||""}`}p.forf++;return `${esc(p.n)} does a forfeit: ${forf()}`}
 function end(){
  clearInterval(G.ti);S.scr="end";const a=G.p,mx=(f)=>a.slice().sort((x,y)=>f(y)-f(x))[0];

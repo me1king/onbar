@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { normalizePublicImageUrl } from '@/lib/marketingImageUrl';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,6 +123,10 @@ export async function POST(request: Request) {
   const audienceId = typeof campaign?.audience_id === 'string' ? campaign.audience_id : '';
   const scheduledAtValue = typeof campaign?.scheduled_at === 'string' ? campaign.scheduled_at.trim() : '';
   const scheduledAt = scheduledAtValue ? new Date(scheduledAtValue) : null;
+  const imageUrlResult = normalizePublicImageUrl(campaign?.image_url);
+  if (!imageUrlResult.valid) {
+    return NextResponse.json({ error: imageUrlResult.error }, { status: 400 });
+  }
   const instagram = asRecord(channels?.instagram);
   const whatsapp = asRecord(channels?.whatsapp);
   const email = asRecord(channels?.email);
@@ -189,16 +194,16 @@ export async function POST(request: Request) {
     {
       campaign_id: savedCampaign.id,
       channel: 'Instagram',
-      content: { active: instagram.active, caption: instagramCaption, generated: instagram.generated === true },
+      content: { active: instagram.active, caption: instagramCaption, generated: instagram.generated === true, image_url: imageUrlResult.imageUrl },
       is_active: instagram.active
     },
     {
       campaign_id: savedCampaign.id,
       channel: 'WhatsApp',
-      content: { active: whatsapp.active, body: whatsappBody, generated: whatsapp.generated === true },
+      content: { active: whatsapp.active, body: whatsappBody, generated: whatsapp.generated === true, image_url: imageUrlResult.imageUrl },
       is_active: whatsapp.active
     },
-    { campaign_id: savedCampaign.id, channel: 'Email', content: { active: email.active, subject: emailSubject, body: emailBody }, is_active: email.active }
+    { campaign_id: savedCampaign.id, channel: 'Email', content: { active: email.active, subject: emailSubject, body: emailBody, image_url: imageUrlResult.imageUrl }, is_active: email.active }
   ];
   const { error: channelError } = await access.database.from('campaign_channels').insert(channelRows);
   if (channelError) {

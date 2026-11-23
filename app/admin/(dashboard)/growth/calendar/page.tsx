@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface ScheduledMission {
     id: string;
@@ -74,7 +75,8 @@ export default function GrowthCalendar() {
         type: 'instagram' as ScheduledMission['type'],
         day: String(new Date().getDate()),
         time: new Date().toTimeString().slice(0, 5),
-        caption: ''
+        caption: '',
+        imageUrl: ''
     });
 
     const fetchCalendar = React.useCallback(async () => {
@@ -140,6 +142,7 @@ export default function GrowthCalendar() {
                 body: JSON.stringify({
                     title: builderForm.title,
                     caption: builderForm.caption,
+                    imageUrl: builderForm.imageUrl,
                     platform: builderForm.type,
                     scheduledAt: scheduledDate.toISOString()
                 })
@@ -192,8 +195,27 @@ export default function GrowthCalendar() {
                     </div>
                     <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Content Studio & Calendar</h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1">Review records saved to the internal publishing queue. Queue status does not confirm external delivery.</p>
+                    <p className="text-muted-foreground text-xs mt-2">Plan audience-specific email drafts and requested send times in the campaign builder. Saving a time does not create an automatic send.</p>
                 </div>
                 <div className="flex gap-4 items-center flex-wrap">
+                    <Link
+                        href="/admin/marketing/create"
+                        className="inline-flex h-12 items-center rounded-2xl border border-slate-200 bg-white px-5 text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50"
+                    >
+                        Plan email campaign
+                    </Link>
+                    <Link
+                        href="/admin/marketing/list"
+                        className="inline-flex h-12 items-center rounded-2xl border border-slate-200 bg-white px-5 text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50"
+                    >
+                        View campaign plans
+                    </Link>
+                    <Link
+                        href="/admin/marketing/game-break-ads"
+                        className="inline-flex h-12 items-center rounded-2xl border border-emerald-200 bg-emerald-50 px-5 text-[10px] font-black uppercase tracking-widest text-emerald-800 hover:bg-emerald-100"
+                    >
+                        Game break ads
+                    </Link>
                     <div className="flex p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
                         <button
                             onClick={() => setViewMode('month')}
@@ -432,7 +454,7 @@ export default function GrowthCalendar() {
 
                         {selectedMission.image_url && (
                             <div className="h-40 w-full rounded-2xl relative overflow-hidden bg-slate-900 shadow-md">
-                                <Image src={selectedMission.image_url} alt={selectedMission.title} fill className="object-cover" />
+                                <Image src={selectedMission.image_url} alt={selectedMission.title} fill unoptimized className="object-cover" />
                             </div>
                         )}
 
@@ -538,6 +560,25 @@ export default function GrowthCalendar() {
                                     className="rounded-xl bg-slate-50 border-none text-xs"
                                     rows={3}
                                 />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase text-slate-400">Marketing Image</label>
+                                <Input
+                                    type="text"
+                                    maxLength={2000}
+                                    value={builderForm.imageUrl}
+                                    onChange={e => setBuilderForm({ ...builderForm, imageUrl: e.target.value })}
+                                    placeholder="https://... or /images/campaign.jpg"
+                                    className="rounded-xl h-12 bg-slate-50 border-none"
+                                />
+                                <p className="text-xs text-slate-500">Use a public HTTPS image URL or a site-relative image path. This adds the image to the internal schedule; it does not publish automatically.</p>
+                                {(builderForm.imageUrl.startsWith('https://')
+                                    || (builderForm.imageUrl.startsWith('/') && !builderForm.imageUrl.startsWith('//'))) && (
+                                    <div className="relative mt-2 h-36 overflow-hidden rounded-xl border border-slate-200">
+                                        <Image src={builderForm.imageUrl} alt="Campaign image preview" fill unoptimized className="object-cover" />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="pt-4 flex justify-end gap-3">

@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface ScheduledMission {
     id: string;
@@ -192,8 +193,27 @@ export default function GrowthCalendar() {
                     </div>
                     <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Content Studio & Calendar</h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1">Review records saved to the internal publishing queue. Queue status does not confirm external delivery.</p>
+                    <p className="text-muted-foreground text-xs mt-2">Plan audience-specific email drafts and requested send times in the campaign builder. Saving a time does not create an automatic send.</p>
                 </div>
                 <div className="flex gap-4 items-center flex-wrap">
+                    <Link
+                        href="/lord/marketing/create"
+                        className="inline-flex h-12 items-center rounded-2xl border border-slate-200 bg-white px-5 text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50"
+                    >
+                        Plan email campaign
+                    </Link>
+                    <Link
+                        href="/lord/marketing/list"
+                        className="inline-flex h-12 items-center rounded-2xl border border-slate-200 bg-white px-5 text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50"
+                    >
+                        View campaign plans
+                    </Link>
+                    <Link
+                        href="/lord/marketing/game-break-ads"
+                        className="inline-flex h-12 items-center rounded-2xl border border-emerald-200 bg-emerald-50 px-5 text-[10px] font-black uppercase tracking-widest text-emerald-800 hover:bg-emerald-100"
+                    >
+                        Game break ads
+                    </Link>
                     <div className="flex p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
                         <button
                             onClick={() => setViewMode('month')}

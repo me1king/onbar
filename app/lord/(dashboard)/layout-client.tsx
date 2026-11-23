@@ -259,6 +259,7 @@ export default function AdminLayoutClient({
       { name: 'Tactical Camera', href: '/lord/growth/camera', icon: CameraIcon, permission: 'can_manage_marketing' },
       { name: 'Content Studio', href: '/lord/growth/content', icon: LayoutIcon, permission: 'can_manage_marketing' },
       { name: 'Tactical Calendar', href: '/lord/growth/calendar', icon: Calendar, permission: 'can_manage_marketing' },
+      { name: 'Game Break Ads', href: '/lord/marketing/game-break-ads', icon: GlassWater, permission: 'can_manage_marketing' },
       { name: 'Smart Autopilot', href: '/lord/growth/autopilot', icon: Bot, permission: 'can_manage_marketing' },
       { name: 'Social Nodes', href: '/lord/growth/accounts', icon: Globe, permission: 'can_manage_marketing' },
       { name: 'Marketing Hub', href: '/lord/marketing', icon: TrendingUp, permission: 'can_manage_marketing' },

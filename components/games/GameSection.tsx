@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { isPublishedGameBreakAd, type PublishedGameBreakAd } from '@/lib/gameBreakAd';
 
 type Game = {
   id: string;
@@ -50,6 +51,71 @@ export default function GameSection() {
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [started, setStarted] = useState(false);
+  const [gameBreakAd, setGameBreakAd] = useState<PublishedGameBreakAd | null>(null);
+  const [gameBreakSuggestion, setGameBreakSuggestion] = useState<PublishedGameBreakAd | null>(null);
+  const [gameBreakAdError, setGameBreakAdError] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (!started || !selectedGame || !['do-or-drink', 'hot-seat'].includes(selectedGame.id)) {
+      setGameBreakAd(null);
+      setGameBreakSuggestion(null);
+      setGameBreakAdError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setGameBreakAd(null);
+    setGameBreakSuggestion(null);
+    setGameBreakAdError(null);
+
+    void fetch(`/api/game-break-ad?game=${encodeURIComponent(selectedGame.id)}`, { signal: controller.signal })
+      .then(async response => {
+        const result = await response.json() as { ad?: unknown; suggestion?: unknown; error?: string };
+        if (!response.ok) throw new Error(result.error || 'The game break ad could not be loaded.');
+        if (result.ad !== null && result.ad !== undefined) {
+          if (!isPublishedGameBreakAd(result.ad)) throw new Error('The game break ad response is invalid.');
+          setGameBreakAd(result.ad);
+          setGameBreakSuggestion(null);
+          return;
+        }
+        if (result.suggestion === null || result.suggestion === undefined) {
+          setGameBreakAd(null);
+          setGameBreakSuggestion(null);
+          return;
+        }
+        if (!isPublishedGameBreakAd(result.suggestion)) throw new Error('The catalog suggestion response is invalid.');
+        setGameBreakAd(null);
+        setGameBreakSuggestion(result.suggestion);
+      })
+      .catch(error => {
+        if (controller.signal.aborted) return;
+        console.error('Game break ad could not be loaded:', error);
+        setGameBreakAd(null);
+        setGameBreakSuggestion(null);
+        setGameBreakAdError('The selected ad could not be loaded. Water is always available.');
+      });
+
+    return () => controller.abort();
+  }, [selectedGame, started]);
+
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage({
+      type: 'onlinebar:game-break-ad',
+      ad: gameBreakAd,
+      suggestion: gameBreakSuggestion,
+      error: gameBreakAdError
+    }, '*');
+  }, [gameBreakAd, gameBreakSuggestion, gameBreakAdError]);
+
+  function sendGameBreakAd() {
+    iframeRef.current?.contentWindow?.postMessage({
+      type: 'onlinebar:game-break-ad',
+      ad: gameBreakAd,
+      suggestion: gameBreakSuggestion,
+      error: gameBreakAdError
+    }, '*');
+  }
 
   function chooseGame(game: Game) {
     setSelectedGame(game);
@@ -113,11 +179,13 @@ export default function GameSection() {
             <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl">
               <iframe
                 key={selectedGame.id}
+                ref={iframeRef}
                 title={selectedGame.title}
                 src={selectedGame.src}
                 className="block h-[min(1000px,calc(100dvh-180px))] min-h-[720px] w-full border-0"
                 sandbox="allow-scripts"
                 referrerPolicy="no-referrer"
+                onLoad={sendGameBreakAd}
               />
             </div>
           )}

@@ -30,7 +30,7 @@ export default function InstagramPreview({ imageUrl, caption }: InstagramPreview
             {/* Main Visual */}
             <div className="aspect-square bg-slate-50 relative overflow-hidden flex items-center justify-center">
                 {imageUrl ? (
-                    <Image src={imageUrl} fill className="object-contain p-6" alt="Preview" />
+                    <Image src={imageUrl} fill unoptimized className="object-contain p-6" alt="Preview" />
                 ) : (
                     <div className="text-center space-y-3 opacity-20">
                         <User size={48} className="mx-auto" />

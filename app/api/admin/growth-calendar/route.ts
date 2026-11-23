@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
+import { normalizePublicImageUrl } from '@/lib/marketingImageUrl';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +95,10 @@ export async function POST(request: Request) {
   const platform = typeof body.platform === 'string' ? body.platform.trim().toUpperCase() : '';
   const scheduledAtValue = typeof body.scheduledAt === 'string' ? body.scheduledAt : '';
   const scheduledAt = scheduledAtValue ? new Date(scheduledAtValue) : null;
+  const imageUrlResult = normalizePublicImageUrl(body.imageUrl);
+  if (!imageUrlResult.valid) {
+    return NextResponse.json({ error: imageUrlResult.error }, { status: 400 });
+  }
 
   if (
     title.length < 2 || title.length > 200 ||
@@ -127,6 +132,7 @@ export async function POST(request: Request) {
       title,
       platform,
       scheduled_at: scheduledAt.toISOString(),
+      image_url: imageUrlResult.imageUrl,
       status: 'SCHEDULED'
     })
     .select('id')

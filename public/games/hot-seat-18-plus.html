@@ -41,9 +41,11 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 4px;
   <button onclick="refuse()">🍺 Refuse, take a drink</button>
   <button onclick="pass()" id="pbtn">🎟 Use pass</button>
   <button onclick="skipQ()">🔀 New question</button>
+  <button onclick="showWaterBreak(false)">💧 Water break</button>
  </div>
  <div class="mut" id="msg" style="margin-top:10px"></div>
 </div>
+<div id="waterBreak" class="card hide" aria-live="polite"><h2>Water break</h2><p>Pause the game for water and a snack. An optional sponsored pick may appear below.</p><div id="breakAd" class="mut hide"></div><div class="row"><button class="p" onclick="resumeWaterBreak()">Back to game</button></div></div>
 <div id="board" class="card hide"><h2>Scoreboard</h2><table id="tb"></table>
  <div class="row"><button onclick="reset()">Back to setup</button></div>
  <div class="mut" style="margin-top:8px">Pace yourselves, never drive after drinking, and nobody should feel pressured. Anyone can stop at any time.</div></div>
@@ -54,7 +56,32 @@ const Q={
 chill:["What’s the most embarrassing thing in your camera roll?","Who in this room would you swap lives with for a week?","What’s your most unpopular opinion?","What’s the worst date you’ve ever been on?","What’s a lie you told that got out of hand?","Which text do you regret sending most?","What’s your biggest red flag?","Who here would survive longest in a zombie movie?","What’s the pettiest reason you stopped talking to someone?","What’s your guilty-pleasure song?"],
 spicy:["Who in this room would you most likely kiss on a dare?","What’s the most daring thing you’ve done to impress someone?","Describe your worst ever kiss.","Have you ever sent a message to the wrong person? What was in it?","What’s your go-to flirting move?","What’s the longest you’ve gone with a crush without telling them?","Rate everyone here from 1 to 10 on how good a dancer they are.","Have you ever had a crush on a friend’s ex? Who?","What’s the most scandalous rumor you’ve heard about someone here?","What’s your best pick-up line, and has it ever worked?","What’s the first thing you notice about someone you’re attracted to?","Have you ever pretended to be busy to avoid a date?"],
 extra:["What’s the most adventurous place you’ve ever made out?","What’s the biggest turn-on in someone’s personality, and the biggest turn-off?","Have you ever had a situationship you kept secret? Tell us.","What’s the boldest message you’ve ever sent a crush?","Who in this room would you pick as a make-out partner, and why?","What’s the best compliment someone has given you on a date?","What’s one thing you’ve never told a partner but wish you had?","What’s your most embarrassing moment in a romantic situation?","Have you ever woken up somewhere you didn’t expect after a night out? (keep it PG-13)","Which of your exes would you let back in for one night, and why not?","What’s the flirtiest thing you’ve done with a stranger?","If you had to go on a date with someone here, who and where?"]};
-let players=[],level="spicy",deck=[],hot=0,cur="";
+let players=[],level="spicy",deck=[],hot=0,cur="",turns=0,pendingQuestion=false,gameBreakAd=null,gameBreakSuggestion=null,gameBreakAdError="";
+function renderBreakAd(){
+ const box=$("breakAd");if(!box)return;box.replaceChildren();box.classList.add("hide");
+ if(gameBreakAdError){box.classList.remove("hide");box.textContent=gameBreakAdError;return}
+ const item=gameBreakAd||gameBreakSuggestion;if(!item)return;
+ box.classList.remove("hide");
+ const sponsored=document.createElement("span");sponsored.className="chip";sponsored.textContent=gameBreakAd?"Sponsored":"Suggested";box.append(sponsored);
+ if(item.headline){const headline=document.createElement("strong");headline.textContent=item.headline;box.append(headline)}
+ if(item.showImage&&typeof item.imageUrl==="string"&&(item.imageUrl.startsWith("/")||/^https:\/\//i.test(item.imageUrl))){
+  const image=document.createElement("img");image.src=item.imageUrl;image.alt="";image.loading="lazy";image.style.cssText="display:block;width:100%;max-height:140px;object-fit:cover;border-radius:10px;margin:8px 0";box.append(image)
+ }
+ if(item.showProductName){const name=document.createElement("div");name.textContent=item.productName;box.append(name)}
+ if(item.message){const message=document.createElement("div");message.textContent=item.message;box.append(message)}
+ if(item.price!==null){const price=document.createElement("div");price.textContent=`KES ${Number(item.price).toLocaleString()}`;box.append(price)}
+ const link=document.createElement("a");link.href=`/product/${encodeURIComponent(item.productId)}`;link.textContent=item.ctaLabel;link.style.color="#e11d48";link.style.fontWeight="700";box.append(link)
+}
+window.addEventListener("message",event=>{
+ if(event.source!==window.parent||event.data?.type!=="onlinebar:game-break-ad")return;
+ const validCard=item=>item&&Number.isSafeInteger(item.productId)&&typeof item.productName==="string"
+  &&(item.price===null||(typeof item.price==="number"&&Number.isFinite(item.price)&&item.price>=0))&&(item.imageUrl===null||typeof item.imageUrl==="string")
+  &&typeof item.headline==="string"&&typeof item.message==="string"&&typeof item.showImage==="boolean"
+  &&typeof item.showProductName==="boolean"&&typeof item.ctaLabel==="string";
+ gameBreakAd=validCard(event.data.ad)?event.data.ad:null;
+ gameBreakSuggestion=validCard(event.data.suggestion)?event.data.suggestion:null;
+ gameBreakAdError=typeof event.data.error==="string"?event.data.error:"";renderBreakAd()
+});
 function gate(ok){if(ok){$("gate").classList.add("hide");$("setup").classList.remove("hide");rl()}else $("gmsg").textContent="Sorry, this one is for adults only. Try a clean party game instead!"}
 function addP(){const n=$("nm").value.trim();if(!n||players.length>=10)return;players.push({n,drinks:0,passes:1,ans:0});$("nm").value="";rl()}
 function rm(i){players.splice(i,1);rl()}
@@ -65,17 +92,19 @@ function rl(){
 const esc=t=>String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function build(){deck=shuffle((level==="mix"?[...Q.chill,...Q.spicy,...Q.extra]:[...Q[level]]).slice())}
-function start(){build();hot=0;$("setup").classList.add("hide");$("game").classList.remove("hide");$("board").classList.remove("hide");draw();ask()}
+function start(){build();hot=0;turns=0;$("setup").classList.add("hide");$("waterBreak").classList.add("hide");$("game").classList.remove("hide");$("board").classList.remove("hide");draw();ask()}
 function ask(){if(!deck.length)build();cur=deck.pop();draw()}
 function draw(){const p=players[hot];$("seat").textContent=p.n;$("q").textContent=cur;
  $("lvl").textContent=level==="mix"?"Mixed":{chill:"Chill",spicy:"Spicy",extra:"Extra spicy"}[level];
  $("pbtn").disabled=p.passes<1;$("pbtn").textContent=`🎟 Use pass (${p.passes})`;
  $("tb").innerHTML="<tr><th>Player</th><th>Answered</th><th>Drinks</th><th>Passes</th></tr>"+players.map((x,i)=>`<tr><td>${i===hot?"🔥 ":""}${esc(x.n)}</td><td>${x.ans}</td><td>${x.drinks}</td><td>${x.passes}</td></tr>`).join("")}
-function nextP(){hot=(hot+1)%players.length;ask()}
+function nextP(){hot=(hot+1)%players.length;turns++;if(turns%5===0){showWaterBreak(true);return}ask()}
+function showWaterBreak(nextQuestion){pendingQuestion=nextQuestion;$("game").classList.add("hide");$("waterBreak").classList.remove("hide");renderBreakAd()}
+function resumeWaterBreak(){$("waterBreak").classList.add("hide");$("game").classList.remove("hide");if(pendingQuestion){pendingQuestion=false;ask()}else draw()}
 function answered(){players[hot].ans++;$("msg").textContent=`${players[hot].n} answered. Next seat!`;nextP()}
 function refuse(){players[hot].drinks++;$("msg").textContent=`${players[hot].n} took a drink (water counts!). Next seat.`;nextP()}
 function pass(){const p=players[hot];if(p.passes<1)return;p.passes--;$("msg").textContent=`${p.n} used a free pass. No drink.`;nextP()}
 function skipQ(){$("msg").textContent="Question skipped.";ask()}
 function custom(){const t=$("cq").value.trim();if(!t)return;cur=t;$("cq").value="";draw()}
-function reset(){$("game").classList.add("hide");$("board").classList.add("hide");$("setup").classList.remove("hide");players.forEach(p=>{p.drinks=0;p.passes=1;p.ans=0});rl()}
+function reset(){$("game").classList.add("hide");$("waterBreak").classList.add("hide");$("board").classList.add("hide");$("setup").classList.remove("hide");turns=0;players.forEach(p=>{p.drinks=0;p.passes=1;p.ans=0});rl()}
 </script></body></html>

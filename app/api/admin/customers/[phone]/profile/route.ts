@@ -337,11 +337,11 @@ export async function GET(
       .filter((id): id is string => typeof id === 'string' && id.length > 0))];
     const consentResult = profile?.id
       ? await database.from('user_consent')
-        .select('analytics,marketing,personalization,updated_at')
+        .select('analytics,marketing,in_app_marketing,personalization,updated_at')
         .eq('user_id', profile.id).maybeSingle()
       : anonymousIds.length
         ? await database.from('user_consent')
-          .select('analytics,marketing,personalization,updated_at')
+          .select('analytics,marketing,in_app_marketing,personalization,updated_at')
           .in('anonymous_id', anonymousIds)
           .order('updated_at', { ascending: false }).limit(1)
         : { data: [], error: null };
@@ -752,6 +752,7 @@ export async function GET(
           consent: consent ? {
             analytics: consent.analytics === true,
             marketing: consent.marketing === true,
+            in_app_marketing: consent.in_app_marketing === true,
             personalization: consent.personalization === true,
             updated_at: typeof consent.updated_at === 'string' ? consent.updated_at : null
           } : null,
