@@ -36,6 +36,9 @@ export async function GET(request: Request) {
 
   let query = database.from('products')
     .select(publicProductColumns)
+    .or('hide_product.is.null,hide_product.eq.false')
+    .or('is_available_now.is.null,is_available_now.eq.true')
+    .or('status.is.null,status.not.in.(draft,hidden,inactive,archived,deleted)')
     .order('created_at', { ascending: false })
     .limit(limit)
     .abortSignal(AbortSignal.timeout(8_000));
@@ -49,6 +52,9 @@ export async function GET(request: Request) {
   if (missingOptionalColumns) {
     let legacyQuery = database.from('products')
       .select(legacyPublicProductColumns)
+      .or('hide_product.is.null,hide_product.eq.false')
+      .or('is_available_now.is.null,is_available_now.eq.true')
+      .or('status.is.null,status.not.in.(draft,hidden,inactive,archived,deleted)')
       .order('created_at', { ascending: false })
       .limit(limit)
       .abortSignal(AbortSignal.timeout(8_000));

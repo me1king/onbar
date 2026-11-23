@@ -75,9 +75,18 @@ export default function CardGamesPage() {
   };
 
   const skipCard = () => {
-    setDrawnPrompt(null);
+    const pool = (remainingPrompts.length
+      ? remainingPrompts
+      : [...decks[selectedDeck].prompts]
+    ).filter(prompt => prompt !== drawnPrompt);
+    const available = pool.length
+      ? pool
+      : [...decks[selectedDeck].prompts].filter(prompt => prompt !== drawnPrompt);
+    if (!available.length) return;
+    const index = Math.floor(Math.random() * available.length);
+    setDrawnPrompt(available[index]);
+    setRemainingPrompts(available.filter((_, promptIndex) => promptIndex !== index));
     setPlayer(current => current === 1 ? 2 : 1);
-    drawCard();
   };
 
   const nextTurn = () => {

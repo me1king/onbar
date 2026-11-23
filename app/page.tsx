@@ -22,6 +22,9 @@ async function loadHomepageProducts(): Promise<Product[]> {
 
   let { data, error } = await database.from('products')
     .select(homepageProductColumns)
+    .or('hide_product.is.null,hide_product.eq.false')
+    .or('is_available_now.is.null,is_available_now.eq.true')
+    .or('status.is.null,status.not.in.(draft,hidden,inactive,archived,deleted)')
     .order('created_at', { ascending: false })
     .limit(100)
     .abortSignal(AbortSignal.timeout(8_000))
@@ -33,6 +36,9 @@ async function loadHomepageProducts(): Promise<Product[]> {
   if (missingOptionalColumns) {
     ({ data, error } = await database.from('products')
       .select(legacyHomepageProductColumns)
+      .or('hide_product.is.null,hide_product.eq.false')
+      .or('is_available_now.is.null,is_available_now.eq.true')
+      .or('status.is.null,status.not.in.(draft,hidden,inactive,archived,deleted)')
       .order('created_at', { ascending: false })
       .limit(100)
       .abortSignal(AbortSignal.timeout(8_000))
