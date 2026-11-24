@@ -3,7 +3,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { ShieldAlert, RefreshCcw } from 'lucide-react';
-import { reportClientRuntimeError } from '@/lib/posthogClient';
 
 interface Props {
   children?: ReactNode;
@@ -26,7 +25,6 @@ class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("[ONLINE_BAR] Component error:", error, errorInfo);
-    reportClientRuntimeError(error, Boolean(errorInfo.componentStack));
   }
 
   public render() {

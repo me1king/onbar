@@ -19,14 +19,12 @@ import {
   Loader2,
   LogOut,
   Megaphone,
-  MessageSquare,
   PackageCheck,
   Palette,
   Search,
   X,
   RefreshCw,
   ShieldCheck,
-  Snowflake,
   Star,
   Store,
   TrendingUp,
@@ -49,14 +47,6 @@ import {
 import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
 import { supabase } from '@/lib/supabaseClient';
 import MerchantAlertsPanel from '@/components/merchant/MerchantAlertsPanel';
-import OrderAlertToneSettings from '@/components/alerts/OrderAlertToneSettings';
-import { useOrderAlertTone } from '@/hooks/useOrderAlertTone';
-import MerchantOrderTicket from '@/components/merchant/MerchantOrderTicket';
-import MerchantReviewInbox from '@/components/merchant/MerchantReviewInbox';
-import MerchantSupportPanel from '@/components/merchant/MerchantSupportPanel';
-import MerchantInventoryCsv, { type StockChange } from '@/components/merchant/MerchantInventoryCsv';
-import MerchantWeeklyDigestSettings from '@/components/merchant/MerchantWeeklyDigestSettings';
-import GuidedPanelTour, { type GuidedPanelTourStep } from '@/components/onboarding/GuidedPanelTour';
 
 type PartnerEvent = { event_type: string; details: Record<string, unknown> | null; created_at: string };
 type PartnerDocument = { id: string; type: string; name: string; uploadedAt: string; expiresAt: string | null };
@@ -117,45 +107,6 @@ type MerchantPaymentOrder = {
     unit_price: number;
     selling_price?: number;
     size: string | null;
-  }>;
-};
-type MerchantSettlementSummary = {
-  policy: {
-    version: number;
-    merchant_share_bps: number;
-    minimum_payout_kes: number;
-    enabled: boolean;
-  } | null;
-  destination: {
-    id: string;
-    method: string;
-    masked_account: string;
-    verification_status: 'pending' | 'verified' | 'rejected';
-    review_note: string | null;
-  } | null;
-  balances: {
-    ledger_total_kes: number;
-    available_kes: number;
-    pending_kes: number;
-    paid_kes: number;
-  };
-  entries: Array<{
-    id: number;
-    entry_type: 'sale' | 'adjustment';
-    order_id: number | null;
-    amount_kes: number;
-    description: string;
-    created_at: string;
-  }>;
-  settlements: Array<{
-    id: string;
-    amount_kes: number;
-    status: string;
-    provider_reference: string | null;
-    mpesa_receipt: string | null;
-    failure_message: string | null;
-    created_at: string;
-    updated_at: string;
   }>;
 };
 type SellerSalesOrder = {
@@ -226,7 +177,6 @@ type PartnerApplication = {
       margin_percent: number | null;
       sizes: string[];
       image_url: string | null;
-      images: string[];
       variant_prices: Record<string, number>;
       pending_price?: number | null;
       pending_base_price?: number | null;
@@ -257,15 +207,6 @@ type PartnerApplication = {
   batches: PartnerBatch[];
   orders: PartnerOrder[];
   incidents: PartnerIncident[];
-  catalogNotifications: Array<{
-    id: string;
-    product_id: number;
-    product_name: string;
-    category: string | null;
-    listed_price: number;
-    created_at: string;
-    images: string[];
-  }>;
 };
 
 type MerchantPerformanceWindow = {
@@ -320,7 +261,7 @@ type MerchantPerformance = {
 
 type Section = 'sales' | 'overview' | 'orders' | 'inventory' | 'performance' | 'incidents' | 'business' | 'alerts' | 'riders' | 'settings'
   | 'food-live' | 'food-menu' | 'food-promotions' | 'food-payments' | 'food-history' | 'food-reviews' | 'food-business' | 'food-staff'
-  | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours' | 'support';
+  | 'liquor-live' | 'liquor-catalog' | 'liquor-promotions' | 'liquor-payments' | 'liquor-history' | 'liquor-reviews' | 'liquor-compliance' | 'liquor-hours';
 
 function getOutOfStockProducts(application: PartnerApplication['application'], batches: PartnerBatch[]) {
   const today = new Date().toISOString().slice(0, 10);
@@ -381,9 +322,7 @@ const statusLabels: Record<string, string> = {
   expired: 'Compliance expired',
   offer_price_updated: 'Price request submitted',
   offer_price_approved: 'Catalog price request approved',
-  offer_price_rejected: 'Catalog price request rejected',
-  new_product_available: 'New catalog product available',
-  catalog_update_acknowledged: 'Catalog product reviewed'
+  offer_price_rejected: 'Catalog price request rejected'
 };
 const documentLabels: Record<string, string> = {
   business_registration: 'Business registration',
@@ -436,8 +375,7 @@ const sections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'alerts', label: 'Order alerts', icon: BellRing },
   { id: 'incidents', label: 'Reports', icon: AlertTriangle },
   { id: 'business', label: 'Business profile', icon: Building2 },
-  { id: 'settings', label: 'Settings', icon: Palette },
-  { id: 'support', label: 'Support', icon: MessageSquare }
+  { id: 'settings', label: 'Settings', icon: Palette }
 ];
 const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'sales', label: 'Sales overview', icon: TrendingUp },
@@ -450,8 +388,7 @@ const foodSections: Array<{ id: Section; label: string; icon: typeof Store }> = 
   { id: 'food-reviews', label: 'Reviews', icon: Star },
   { id: 'food-business', label: 'Business profile', icon: Building2 },
   { id: 'food-staff', label: 'Staff & riders', icon: Users },
-  { id: 'settings', label: 'Settings', icon: Palette },
-  { id: 'support', label: 'Support', icon: MessageSquare }
+  { id: 'settings', label: 'Settings', icon: Palette }
 ];
 const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> = [
   { id: 'sales', label: 'Sales overview', icon: TrendingUp },
@@ -467,8 +404,7 @@ const liquorSections: Array<{ id: Section; label: string; icon: typeof Store }> 
   { id: 'liquor-hours', label: 'Hours', icon: Clock3 },
   { id: 'riders', label: 'Staff & riders', icon: Users },
   { id: 'business', label: 'Business profile', icon: Building2 },
-  { id: 'settings', label: 'Settings', icon: Palette },
-  { id: 'support', label: 'Support', icon: MessageSquare }
+  { id: 'settings', label: 'Settings', icon: Palette }
 ];
 const weekdayLabels: Record<MerchantWeekday, string> = {
   monday: 'Monday',
@@ -485,21 +421,6 @@ function dateTime(value: string): string {
   return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleString();
 }
 
-function formatOrderNotes(value: unknown): string | null {
-  if (typeof value === 'string') return value.trim().slice(0, 500) || null;
-  if (Array.isArray(value)) {
-    const notes = value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join(', ');
-    return notes.slice(0, 500) || null;
-  }
-  if (typeof value === 'object' && value !== null) {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, item]) => `${key}: ${typeof item === 'string' ? item : JSON.stringify(item)}`)
-      .join(', ')
-      .slice(0, 500) || null;
-  }
-  return null;
-}
-
 function statusClass(status: string): string {
   if (status === 'approved' || status === 'delivered' || status === 'resolved') return 'bg-emerald-100 text-emerald-800';
   if (['rejected', 'suspended', 'expired', 'critical', 'action_required'].includes(status)) return 'bg-rose-100 text-rose-800';
@@ -511,69 +432,8 @@ function latestFulfillment(events: FulfillmentEvent[]): string {
   return [...events].sort((left, right) => new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime())[0]?.event_type || '';
 }
 
-function MerchantCatalogUpdateBanner({
-  application,
-  notifications,
-  canOperate,
-  working,
-  onAction,
-  onOpenStock
-}: {
-  application: PartnerApplication['application'];
-  notifications: PartnerApplication['catalogNotifications'];
-  canOperate: boolean;
-  working: boolean;
-  onAction: (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
-  onOpenStock: (productId?: number) => void;
-}) {
-  if (!notifications.length) return null;
-  const acknowledge = async (notificationId: string, productId: number, open: boolean) => {
-    const saved = await onAction({
-      operation: 'acknowledge_catalog_update',
-      applicationId: application.id,
-      notificationId
-    }, open ? 'Catalog update opened. Set the stock and submit a price proposal for review.' : 'Catalog update dismissed.');
-    if (saved && open) onOpenStock(productId);
-  };
-
-  return <section aria-label="New catalog product notifications" className="space-y-3 rounded-2xl border border-sky-300/30 bg-sky-400/10 p-4">
-    <div className="flex items-center justify-between gap-3">
-      <div>
-        <h3 className="font-black text-sky-100">New products to review</h3>
-        <p className="mt-1 text-xs text-sky-100/70">{notifications.length} new catalog item{notifications.length === 1 ? '' : 's'} added by OnBar. Check each photo, then choose whether to carry it and submit a price request.</p>
-      </div>
-      <span className="rounded-full bg-sky-300 px-2.5 py-1 text-xs font-black text-sky-950">{notifications.length}</span>
-    </div>
-    <div className="grid gap-2 md:grid-cols-2">
-      {notifications.map(notification => <article key={notification.id} className="rounded-xl border border-sky-100/10 bg-black/20 p-4">
-        <MerchantProductPhotoGallery productName={notification.product_name} images={notification.images} />
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="font-bold text-white">{notification.product_name}</p>
-            <p className="mt-1 text-xs text-sky-100/70">{notification.category || 'Catalog item'} · listed KSh {Number(notification.listed_price).toLocaleString('en-KE')}</p>
-          </div>
-          <time className="text-[10px] text-sky-100/60">{dateTime(notification.created_at)}</time>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" disabled={!canOperate || working}
-            onClick={() => void acknowledge(notification.id, notification.product_id, true)}
-            className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-zinc-950 disabled:opacity-50">
-            Update price & stock
-          </button>
-          <button type="button" disabled={!canOperate || working}
-            onClick={() => void acknowledge(notification.id, notification.product_id, false)}
-            className="rounded-lg border border-white/20 px-3 py-2 text-xs font-bold text-zinc-200 disabled:opacity-50">
-            Dismiss
-          </button>
-        </div>
-      </article>)}
-    </div>
-  </section>;
-}
-
 function MerchantPaymentsPanel({
   application,
-  accessToken,
   orders,
   requests,
   canOperate,
@@ -581,78 +441,12 @@ function MerchantPaymentsPanel({
   onRequestStatement
 }: {
   application: PartnerApplication['application'];
-  accessToken: string;
   orders: MerchantPaymentOrder[];
   requests: PartnerEvent[];
   canOperate: boolean;
   working: boolean;
   onRequestStatement: (orderIds: number[]) => Promise<boolean>;
 }) {
-  const [settlementSummary, setSettlementSummary] = useState<MerchantSettlementSummary | null>(null);
-  const [settlementLoading, setSettlementLoading] = useState(true);
-  const [settlementBusy, setSettlementBusy] = useState(false);
-  const [settlementError, setSettlementError] = useState('');
-  const [settlementMessage, setSettlementMessage] = useState('');
-  const [payoutPhone, setPayoutPhone] = useState('');
-  const currency = (amount: number) => `KSh ${Number(amount || 0).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
-  const loadSettlements = useCallback(async () => {
-    if (!accessToken) {
-      setSettlementLoading(false);
-      setSettlementError('Sign in again to view merchant settlement records.');
-      return;
-    }
-    setSettlementLoading(true);
-    setSettlementError('');
-    try {
-      const response = await fetch(`/api/merchant/settlements?applicationId=${encodeURIComponent(application.id)}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: 'no-store'
-      });
-      const result = await response.json() as { summary?: MerchantSettlementSummary; error?: string };
-      if (!response.ok || !result.summary) throw new Error(result.error || 'Merchant settlement records could not be loaded.');
-      setSettlementSummary(result.summary);
-    } catch (error) {
-      setSettlementError(error instanceof Error ? error.message : 'Merchant settlement records could not be loaded.');
-    } finally {
-      setSettlementLoading(false);
-    }
-  }, [accessToken, application.id]);
-
-  useEffect(() => {
-    void loadSettlements();
-  }, [loadSettlements]);
-
-  const submitSettlementAction = async (action: 'submit_destination' | 'request_payout') => {
-    setSettlementBusy(true);
-    setSettlementError('');
-    setSettlementMessage('');
-    try {
-      const response = await fetch('/api/merchant/settlements', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action,
-          applicationId: application.id,
-          ...(action === 'submit_destination' ? { phone: payoutPhone } : {})
-        })
-      });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'The settlement action could not be completed.');
-      setSettlementMessage(action === 'submit_destination'
-        ? 'Payout number submitted. It must be verified by OnBar Finance before it can be used.'
-        : 'Payout request submitted for OnBar Finance review. No transfer has been sent yet.');
-      if (action === 'submit_destination') setPayoutPhone('');
-      await loadSettlements();
-    } catch (error) {
-      setSettlementError(error instanceof Error ? error.message : 'The settlement action could not be completed.');
-    } finally {
-      setSettlementBusy(false);
-    }
-  };
-
   const deliveredOrders = orders
     .filter(order => ['delivered', 'completed'].includes(order.status.toLowerCase())
       || latestFulfillment(order.fulfillment) === 'delivered')
@@ -695,124 +489,8 @@ function MerchantPaymentsPanel({
 
   return (
     <div className="space-y-5">
-      <section className="space-y-4 rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="flex items-center gap-2 font-black text-white"><CreditCard size={17} /> Merchant settlement</h3>
-            <p className="mt-1 text-xs leading-5 text-zinc-400">Payables include verified paid-and-delivered order items and finance adjustments. Requests are reviewed before any M-Pesa transfer.</p>
-            <p className="mt-2 max-w-3xl text-[11px] leading-5 text-amber-200">Current calculations apply the configured merchant share to traced item value. Fees, taxes, and cash refunds are not separately modeled; returned quantities reduce payables only when recorded in the stock ledger. Finance must confirm these rules before enabling real transfers.</p>
-          </div>
-          <button type="button" onClick={() => void loadSettlements()} disabled={settlementLoading}
-            className="inline-flex min-h-9 items-center rounded-lg border border-white/15 px-3 text-xs font-bold text-zinc-200 disabled:opacity-50">
-            <RefreshCw size={13} className={`mr-2 ${settlementLoading ? 'animate-spin' : ''}`} />Refresh
-          </button>
-        </div>
-        {settlementError && <p role="alert" className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs leading-5 text-rose-200">{settlementError}</p>}
-        {settlementMessage && <p role="status" className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-200">{settlementMessage}</p>}
-        {settlementLoading && !settlementSummary && <p role="status" className="text-sm text-zinc-400">Loading settlement summary…</p>}
-        {settlementSummary && <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ['Available', settlementSummary.balances.available_kes],
-              ['Under review / processing', settlementSummary.balances.pending_kes],
-              ['Paid', settlementSummary.balances.paid_kes],
-              ['Ledger total', settlementSummary.balances.ledger_total_kes]
-            ].map(([label, amount]) => <article key={String(label)} className="rounded-xl border border-white/10 bg-black/20 p-4">
-              <p className="text-lg font-black text-white">{currency(Number(amount))}</p>
-              <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">{label}</p>
-            </article>)}
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-white/10 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-wide text-zinc-300">Settlement terms</p>
-                  <p className="mt-1 text-sm text-zinc-100">{settlementSummary.policy?.enabled
-                    ? `${(settlementSummary.policy.merchant_share_bps / 100).toFixed(2)}% seller share · KSh ${Number(settlementSummary.policy.minimum_payout_kes).toLocaleString('en-KE')} minimum`
-                    : 'Not configured by OnBar Finance'}</p>
-                </div>
-                <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${settlementSummary.policy?.enabled ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-200'}`}>
-                  {settlementSummary.policy?.enabled ? `Terms v${settlementSummary.policy.version}` : 'Unavailable'}
-                </span>
-              </div>
-              <div className="mt-4 border-t border-white/10 pt-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-wide text-zinc-300">Payout destination</p>
-                    <p className="mt-1 text-sm text-zinc-100">{settlementSummary.destination?.masked_account || 'No M-Pesa number submitted'}</p>
-                  </div>
-                  {settlementSummary.destination && <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${
-                    settlementSummary.destination.verification_status === 'verified'
-                      ? 'bg-emerald-400/10 text-emerald-300'
-                      : settlementSummary.destination.verification_status === 'pending'
-                        ? 'bg-amber-400/10 text-amber-200'
-                        : 'bg-rose-400/10 text-rose-300'
-                  }`}>{settlementSummary.destination.verification_status}</span>}
-                </div>
-                {settlementSummary.destination?.review_note && <p className="mt-2 text-xs text-rose-200">Finance note: {settlementSummary.destination.review_note}</p>}
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-xl border border-white/10 p-4">
-              <form onSubmit={event => {
-                event.preventDefault();
-                void submitSettlementAction('submit_destination');
-              }} className="space-y-2">
-                <label htmlFor={`payout-phone-${application.id}`} className="text-xs font-black uppercase tracking-wide text-zinc-300">Submit or replace M-Pesa number</label>
-                <div className="flex flex-wrap gap-2">
-                  <Input id={`payout-phone-${application.id}`} type="tel" inputMode="tel" autoComplete="tel" maxLength={40}
-                    value={payoutPhone} onChange={event => setPayoutPhone(event.target.value)} placeholder="07xx xxx xxx or +254…" required
-                    className="min-w-[180px] flex-1 border-white/10 bg-black/20 text-white placeholder:text-zinc-500" />
-                  <button type="submit" disabled={!canOperate || working || settlementBusy}
-                    className="rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-zinc-950 disabled:opacity-50">
-                    {settlementBusy ? 'Saving…' : 'Submit number'}
-                  </button>
-                </div>
-                <p className="text-[11px] leading-5 text-zinc-500">The number is encrypted in storage and shown masked. Replacing it resets verification.</p>
-              </form>
-              <button type="button" disabled={!canOperate || working || settlementBusy
-                || !settlementSummary.policy?.enabled
-                || settlementSummary.destination?.verification_status !== 'verified'
-                || Number(settlementSummary.balances.available_kes) < Number(settlementSummary.policy?.minimum_payout_kes)}
-                onClick={() => void submitSettlementAction('request_payout')}
-                className="w-full rounded-lg border border-emerald-400/40 bg-emerald-400/10 px-4 py-3 text-xs font-black uppercase text-emerald-200 disabled:cursor-not-allowed disabled:opacity-40">
-                {settlementBusy ? 'Processing…' : 'Request available payout'}
-              </button>
-              {!canOperate && <p className="text-xs text-amber-200">Settlement actions are available to approved merchant accounts.</p>}
-            </div>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-white/10 p-4">
-              <h4 className="text-xs font-black uppercase tracking-wide text-zinc-300">Recent payable ledger entries</h4>
-              <div className="mt-3 space-y-2">
-                {settlementSummary.entries.slice(0, 8).map(entry => <div key={entry.id} className="flex flex-wrap justify-between gap-2 border-b border-white/5 pb-2 text-xs">
-                  <span className="text-zinc-300">{entry.description}</span>
-                  <strong className={Number(entry.amount_kes) < 0 ? 'text-rose-300' : 'text-emerald-300'}>{currency(Number(entry.amount_kes))}</strong>
-                </div>)}
-                {!settlementSummary.entries.length && <p className="text-xs text-zinc-500">No verified payable entries have been posted yet.</p>}
-              </div>
-            </div>
-            <div className="rounded-xl border border-white/10 p-4">
-              <h4 className="text-xs font-black uppercase tracking-wide text-zinc-300">Payout request history</h4>
-              <div className="mt-3 space-y-2">
-                {settlementSummary.settlements.map(settlement => <div key={settlement.id} className="border-b border-white/5 pb-2 text-xs">
-                  <div className="flex flex-wrap justify-between gap-2">
-                    <strong className="text-zinc-100">{currency(Number(settlement.amount_kes))}</strong>
-                    <span className="font-bold uppercase text-amber-200">{settlement.status}</span>
-                  </div>
-                  <p className="mt-1 text-zinc-500">{dateTime(settlement.created_at)}{settlement.mpesa_receipt ? ` · Receipt ${settlement.mpesa_receipt}` : ''}</p>
-                  {settlement.failure_message && <p className="mt-1 text-rose-200">{settlement.failure_message}</p>}
-                </div>)}
-                {!settlementSummary.settlements.length && <p className="text-xs text-zinc-500">No payout requests have been made.</p>}
-              </div>
-            </div>
-          </div>
-        </>}
-      </section>
       <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100">
-        Delivered item values below are an order-record export, not an earnings or payout calculation. The separate settlement ledger above includes only finance-configured shares on verified paid-and-delivered merchant-traced items, plus audited adjustments.
+        Payments are not yet connected to a verified merchant payout ledger or M-Pesa disbursement. The delivered item values below are taken from this merchant&apos;s order records; they are not earnings, a balance owed, or a payout promise.
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <article className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4">
@@ -1213,66 +891,10 @@ function MerchantSalesOverview({
   </section>;
 }
 
-type MerchantChecklistItem = {
-  label: string;
-  detail: string;
-  complete: boolean;
-  target: Section;
-};
-
-function MerchantActionChecklist({
-  items,
-  onNavigate
-}: {
-  items: MerchantChecklistItem[];
-  onNavigate: (section: Section) => void;
-}) {
-  return <section aria-labelledby="merchant-action-checklist" className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5 text-zinc-100">
-    <h2 id="merchant-action-checklist" className="font-black text-white">Business action checklist</h2>
-    <p className="mt-1 text-xs text-zinc-400">Live checks from your application, inventory, order, and incident records.</p>
-    <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-      {items.map(item => <li key={item.label} className="flex items-start justify-between gap-3 rounded-xl bg-white/[0.03] p-3">
-        <div>
-          <p className={`text-sm font-bold ${item.complete ? 'text-emerald-300' : 'text-amber-200'}`}>{item.complete ? 'Done · ' : 'Action · '}{item.label}</p>
-          <p className="mt-1 text-xs leading-5 text-zinc-400">{item.detail}</p>
-        </div>
-        {!item.complete && <button type="button" onClick={() => onNavigate(item.target)} className="shrink-0 rounded-lg border border-white/15 px-3 py-2 text-[10px] font-black uppercase text-white">Open</button>}
-      </li>)}
-    </ul>
-  </section>;
-}
-
-function MerchantProductPhotoGallery({
-  productName,
-  images
-}: {
-  productName: string;
-  images: string[];
-}) {
-  if (!images.length) return null;
-  return <div
-    role="group"
-    aria-label={`${productName} product photos`}
-    className={`mb-4 grid gap-2 ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}
-  >
-    {images.map((image, index) => <div key={`${image}-${index}`} className="relative aspect-[4/3] overflow-hidden rounded-xl bg-white/5">
-      <Image
-        src={image}
-        alt={`${productName} photo ${index + 1}`}
-        fill
-        sizes="(max-width: 768px) 90vw, 360px"
-        unoptimized
-        className="object-contain p-3"
-      />
-    </div>)}
-  </div>;
-}
-
 function FoodMerchantTerminal({
   section,
   application,
   overview,
-  accessToken,
   canOperate,
   working,
   performance,
@@ -1292,7 +914,6 @@ function FoodMerchantTerminal({
   section: Section;
   application: PartnerApplication['application'];
   overview: PartnerApplication;
-  accessToken: string;
   canOperate: boolean;
   working: boolean;
   performance: MerchantPerformance | null;
@@ -1324,48 +945,7 @@ function FoodMerchantTerminal({
   const foodReviewSection = section === 'food-reviews';
 
   if (section === 'sales') {
-    const outOfStock = getOutOfStockProducts(overview.application, overview.batches);
-    const openOrdersCount = foodOrders.filter(order => !isClosedFoodOrder(order)).length;
-    const unresolvedIncidents = overview.incidents.filter(item => !['resolved', 'closed'].includes(item.status)).length;
-    return <>
-    <MerchantActionChecklist
-      onNavigate={onSectionChange}
-      items={[
-        {
-          label: 'Business approval',
-          detail: application.status === 'approved' ? 'Your merchant account is approved.' : `Application status: ${application.status.replaceAll('_', ' ')}.`,
-          complete: application.status === 'approved',
-          target: 'food-business'
-        },
-        {
-          label: 'Stock availability',
-          detail: outOfStock.length ? `${outOfStock.length} approved item${outOfStock.length === 1 ? '' : 's'} out of stock.` : 'All approved catalog items have available stock.',
-          complete: outOfStock.length === 0,
-          target: 'food-menu'
-        },
-        {
-          label: 'New catalog updates',
-          detail: overview.catalogNotifications.length ? `${overview.catalogNotifications.length} new catalog update${overview.catalogNotifications.length === 1 ? '' : 's'} to review.` : 'No new catalog update notifications.',
-          complete: overview.catalogNotifications.length === 0,
-          target: 'food-menu'
-        },
-        {
-          label: 'Order queue',
-          detail: openOrdersCount ? `${openOrdersCount} assigned order${openOrdersCount === 1 ? '' : 's'} still open.` : 'No assigned orders need action.',
-          complete: openOrdersCount === 0,
-          target: 'food-live'
-        },
-        {
-          label: 'Open incidents',
-          detail: unresolvedIncidents
-            ? `${unresolvedIncidents} unresolved incident(s).`
-            : 'No unresolved merchant incidents.',
-          complete: unresolvedIncidents === 0,
-          target: 'food-history'
-        }
-      ]}
-    />
-    <MerchantSalesOverview
+    return <MerchantSalesOverview
       application={application}
       isFoodMerchant
       foodOrders={foodOrders}
@@ -1378,8 +958,7 @@ function FoodMerchantTerminal({
       outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
       onGoToStock={onOpenStock}
       onGoToPayments={() => onSectionChange('food-payments')}
-    />
-    </>;
+    />;
   }
 
   const submitCampaign = async (event: FormEvent<HTMLFormElement>) => {
@@ -1426,20 +1005,6 @@ function FoodMerchantTerminal({
       <p className="text-xs text-zinc-400">Customer {order.customer_phone
         ? <a className="text-amber-300 underline" href={`tel:${order.customer_phone}`}>{order.customer_phone}</a>
         : 'phone number unavailable'}</p>
-    </div>
-    <div className="mt-3">
-      <MerchantOrderTicket
-        applicationName={application.trading_name || application.business_name}
-        orderId={order.id}
-        createdAt={order.created_at}
-        status={fulfillmentLabels[latest] || order.status}
-        items={order.items.map(item => ({
-          name: item.product_name,
-          quantity: item.quantity,
-          detail: item.size,
-          notes: formatOrderNotes(item.addons)
-        }))}
-      />
     </div>
     {allowActions && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
       {nextEvents.map(eventType => <button key={eventType} type="button" disabled={working} onClick={() => void onFoodFulfillment(order.id, eventType)}
@@ -1512,19 +1077,10 @@ function FoodMerchantTerminal({
       }
     }
     return shell('Menu', 'Products linked to your approved OnBar menu, with traceable stock and the current proposed price. You can update the proposed price and stock; OnBar reviews price changes before customer display.', <>
-      <MerchantCatalogUpdateBanner
-        application={application}
-        notifications={overview.catalogNotifications}
-        canOperate={canOperate}
-        working={working}
-        onAction={onAction}
-        onOpenStock={onOpenStock}
-      />
       {products.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {products.map(product => {
           const stock = batchTotals.get(product.product_id) || 0;
           return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
-            <MerchantProductPhotoGallery productName={product.product_name} images={product.images} />
             <div className="flex items-start justify-between gap-3">
               <div><p className="font-black text-white">{product.product_name}</p><p className="mt-1 text-xs text-zinc-500">Catalog price {currency(product.listed_price)}</p></div>
               <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${stock > 0 ? 'bg-emerald-400/10 text-emerald-300' : 'bg-rose-400/10 text-rose-300'}`}>{stock > 0 ? 'In stock' : 'Out of stock'}</span>
@@ -1561,22 +1117,6 @@ function FoodMerchantTerminal({
         <div><h3 className="font-bold text-white">Stock and expiry tracking</h3><p className="mt-1 text-xs text-zinc-400">Add received batches, record lot numbers, and review expiry dates.</p></div>
         <button type="button" onClick={() => onOpenStock()} className="rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-black uppercase text-zinc-950">Open inventory</button>
       </div>
-      <MerchantInventoryCsv
-        items={products.map(product => ({ id: product.product_id, name: product.product_name, currentQuantity: batchTotals.get(product.product_id) || 0 }))}
-        alcoholMerchant={false}
-        canOperate={canOperate}
-        onApply={(change: StockChange) => onAction({
-          operation: 'set_stock_count',
-          applicationId: application.id,
-          productId: change.product_id,
-          quantity: change.quantity,
-          expectedQuantity: change.expected_quantity,
-          lotCode: change.lot_code,
-          supplierName: change.supplier_name,
-          expiryAt: change.expiry_at,
-          exciseStampConfirmed: change.excise_stamp_confirmed
-        }, `${change.productName} stock count saved to the merchant inventory ledger.`)}
-      />
     </>);
   }
 
@@ -1642,7 +1182,6 @@ function FoodMerchantTerminal({
       {foodOrdersLoading && <p role="status" className="rounded-xl border border-white/10 bg-[#1a1b1e] p-4 text-sm text-zinc-400">Loading delivered order records…</p>}
       <MerchantPaymentsPanel
         application={application}
-        accessToken={accessToken}
         orders={paymentOrders}
         requests={overview.events}
         canOperate={canOperate}
@@ -1675,7 +1214,7 @@ function FoodMerchantTerminal({
 
   if (foodReviewSection) {
     const window = performance?.windows[7];
-    return shell('Reviews & customer feedback', 'Review and reply to verified customer feedback linked to your fulfilled orders.', <>
+    return shell('Reviews & customer feedback', 'Only recorded OnBar scorecard data is shown. Individual review text and reply tools are not currently available.', <>
       {performanceLoading && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-6 text-sm text-zinc-400">Loading recorded scorecard…</div>}
       {performanceError && <div role="alert" className="rounded-2xl border border-rose-400/30 bg-rose-400/5 p-4 text-sm text-rose-200">{performanceError}</div>}
       {!performanceLoading && window && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1688,7 +1227,6 @@ function FoodMerchantTerminal({
       </div>}
       {!performanceLoading && !performanceError && !window && <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-6 text-sm text-zinc-400">No recorded customer scorecard data is available yet.</div>}
       <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-4 text-xs leading-5 text-zinc-400">This is aggregate scorecard data, not a feed of individual customer reviews. No ratings are generated when none have been recorded.</div>
-      <MerchantReviewInbox applicationId={application.id} accessToken={accessToken} />
     </>);
   }
 
@@ -1699,7 +1237,6 @@ function AlcoholMerchantTerminal({
   section,
   application,
   overview,
-  accessToken,
   canOperate,
   working,
   performance,
@@ -1714,7 +1251,6 @@ function AlcoholMerchantTerminal({
   section: Section;
   application: PartnerApplication['application'];
   overview: PartnerApplication;
-  accessToken: string;
   canOperate: boolean;
   working: boolean;
   performance: MerchantPerformance | null;
@@ -1752,46 +1288,7 @@ function AlcoholMerchantTerminal({
   </section>;
 
   if (section === 'sales') {
-    const outOfStock = getOutOfStockProducts(overview.application, overview.batches);
-    const openOrdersCount = overview.orders.filter(order => !['delivered', 'cancelled', 'rejected'].includes(latestFulfillment(order.fulfillment))).length;
-    const unresolvedIncidents = overview.incidents.filter(item => !['resolved', 'closed'].includes(item.status)).length;
-    return <>
-    <MerchantActionChecklist
-      onNavigate={onSectionChange}
-      items={[
-        {
-          label: 'Business approval and licence review',
-          detail: application.status === 'approved' ? 'Your application is approved; alcohol licence checks are still subject to manual review.' : `Application status: ${application.status.replaceAll('_', ' ')}.`,
-          complete: application.status === 'approved',
-          target: 'liquor-compliance'
-        },
-        {
-          label: 'Stock availability',
-          detail: outOfStock.length ? `${outOfStock.length} approved item${outOfStock.length === 1 ? '' : 's'} out of stock.` : 'All approved catalog items have available stock.',
-          complete: outOfStock.length === 0,
-          target: 'liquor-catalog'
-        },
-        {
-          label: 'New catalog updates',
-          detail: overview.catalogNotifications.length ? `${overview.catalogNotifications.length} new catalog update${overview.catalogNotifications.length === 1 ? '' : 's'} to review.` : 'No new catalog update notifications.',
-          complete: overview.catalogNotifications.length === 0,
-          target: 'liquor-catalog'
-        },
-        {
-          label: 'Order queue',
-          detail: openOrdersCount ? `${openOrdersCount} assigned order${openOrdersCount === 1 ? '' : 's'} still open.` : 'No assigned orders need action.',
-          complete: openOrdersCount === 0,
-          target: 'liquor-live'
-        },
-        {
-          label: 'Open incidents',
-          detail: unresolvedIncidents ? `${unresolvedIncidents} unresolved incident(s).` : 'No unresolved merchant incidents.',
-          complete: unresolvedIncidents === 0,
-          target: 'liquor-history'
-        }
-      ]}
-    />
-    <MerchantSalesOverview
+    return <MerchantSalesOverview
       application={application}
       isFoodMerchant={false}
       foodOrders={[]}
@@ -1804,8 +1301,7 @@ function AlcoholMerchantTerminal({
       outOfStockProducts={getOutOfStockProducts(overview.application, overview.batches)}
       onGoToStock={onOpenStock}
       onGoToPayments={() => onSectionChange('liquor-payments')}
-    />
-    </>;
+    />;
   }
 
   if (section === 'liquor-history') {
@@ -1827,7 +1323,6 @@ function AlcoholMerchantTerminal({
 
   if (section === 'liquor-live') {
     const orders = overview.orders.filter(order => !['delivered', 'cancelled', 'rejected'].includes(latestFulfillment(order.fulfillment)));
-    const minimumAge = application.alcohol_onboarding?.rules?.minimumAge ?? 18;
     return panel('Live orders', 'Orders linked to inventory batches assigned to this business. Age and ID must be checked at handoff; the terminal does not have a verified customer-age provider.',
       <>
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#1a1b1e] p-3">
@@ -1843,21 +1338,8 @@ function AlcoholMerchantTerminal({
           const nextEvents = fulfillmentNext[latest] || [];
           return <article key={order.id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase text-amber-400">Order #{order.id}</p><h3 className="mt-1 font-bold text-white">{order.customer_name || 'Customer'}</h3><p className="mt-1 text-xs text-zinc-400">{dateTime(order.created_at)} · {order.status}</p></div><span className="rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase text-amber-200">{fulfillmentLabels[latest] || 'Awaiting response'}</span></div>
-            <p className="mt-3 rounded-lg bg-amber-400/5 p-3 text-xs leading-5 text-amber-100">Check a valid photo ID at delivery and confirm the recipient is at least {minimumAge}. Do not leave alcohol unattended, hand it to an unverified third party, or complete the handover if the recipient appears intoxicated.</p>
+            <p className="mt-3 rounded-lg bg-amber-400/5 p-3 text-xs leading-5 text-amber-100">18+ ID check required at delivery. Confirm the recipient meets the configured minimum age and do not hand over if they appear intoxicated.</p>
             <div className="mt-3 space-y-2">{order.items.map((item, index) => <p key={`${item.product_name}-${index}`} className="text-sm text-zinc-200">{item.merchant_quantity} × {item.product_name}{item.size ? ` · ${item.size}` : ''}</p>)}</div>
-            <div className="mt-3">
-              <MerchantOrderTicket
-                applicationName={application.trading_name || application.business_name}
-                orderId={order.id}
-                createdAt={order.created_at}
-                status={fulfillmentLabels[latest] || order.status}
-                items={order.items.map(item => ({
-                  name: item.product_name,
-                  quantity: item.merchant_quantity,
-                  detail: item.size
-                }))}
-              />
-            </div>
             {section === 'liquor-live' && canOperate && nextEvents.length > 0 && <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">{nextEvents.map(eventType => <button key={eventType} type="button" disabled={working} onClick={() => void onAction({ operation: 'fulfillment', applicationId: application.id, orderId: order.id, eventType }, `Order #${order.id}: ${fulfillmentLabels[eventType]}.`)} className={`rounded-lg px-3 py-2 text-[10px] font-black uppercase disabled:opacity-50 ${['rejected', 'cancelled'].includes(eventType) ? 'border border-rose-400/40 text-rose-200' : 'bg-amber-400 text-zinc-950'}`}>{fulfillmentLabels[eventType]}</button>)}</div>}
           </article>;
         })}</div> : <div className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-8 text-sm text-zinc-400">No open traced orders for this shop.</div>}
@@ -1867,14 +1349,6 @@ function AlcoholMerchantTerminal({
   if (section === 'liquor-catalog') {
     return panel('Catalog and stock', 'Approved catalogue items and actual received batch records. Excise-stamp status is an applicant attestation, not an authenticity scan.',
       <>
-        <MerchantCatalogUpdateBanner
-          application={application}
-          notifications={overview.catalogNotifications}
-          canOperate={canOperate}
-          working={working}
-          onAction={onAction}
-          onOpenStock={onOpenStock}
-        />
         <button
           type="button"
           onClick={() => onOpenStock(getOutOfStockProducts(overview.application, overview.batches)[0]?.productId)}
@@ -1887,7 +1361,6 @@ function AlcoholMerchantTerminal({
           const batches = overview.batches.filter(batch => batch.product_id === product.product_id);
           const available = batches.reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0);
           return <article key={product.product_id} className="rounded-2xl border border-white/10 bg-[#1a1b1e] p-5">
-            <MerchantProductPhotoGallery productName={product.product_name} images={product.images} />
             <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-white">{product.product_name}</h3><p className="mt-1 text-xs text-zinc-400">{details?.size || 'Size not recorded'} · {details?.abv === undefined ? 'ABV not recorded' : `${details.abv}% ABV`}</p></div><span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${details?.exciseStampConfirmed ? 'bg-amber-400/10 text-amber-200' : 'bg-rose-400/10 text-rose-200'}`}>{details?.exciseStampConfirmed ? 'Stamp attested' : 'Stamp not confirmed'}</span></div>
             <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">{available}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Available units in received batches</p><p className={`mt-2 text-xs font-black uppercase ${available > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{available > 0 ? 'In stock · available for new orders' : 'Out of stock · unavailable for new orders'}</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-xl font-black text-white">KSh {Number(product.listed_price).toLocaleString('en-KE')}</p><p className="text-[10px] font-bold uppercase text-zinc-400">Live catalog base price</p>{product.pending_price != null && <p className="mt-2 text-xs font-bold text-amber-700">Requested {product.pending_variant ? `${product.pending_variant} ` : ''}price: KSh {Number(product.pending_price).toLocaleString('en-KE')} · waiting for OnBar</p>}</div></div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -1916,28 +1389,6 @@ function AlcoholMerchantTerminal({
             {batches.length > 0 && <div className="mt-3 space-y-2">{batches.map(batch => <p key={batch.id} className="rounded-lg bg-white/5 p-2 text-xs text-zinc-300">Lot {batch.lot_code} · {batch.available_quantity} units · {batch.on_hold ? 'ON HOLD' : batch.expiry_at ? `Expires ${batch.expiry_at}` : 'No expiry recorded'}</p>)}</div>}
           </article>;
         })}</div> : <p className="rounded-2xl bg-[#1a1b1e] p-6 text-sm text-zinc-400">No products were approved for this retailer.</p>}
-        <MerchantInventoryCsv
-          items={application.offered_goods_pricing.map(product => ({
-            id: product.product_id,
-            name: product.product_name,
-            currentQuantity: overview.batches
-              .filter(batch => batch.product_id === product.product_id)
-              .reduce((total, batch) => total + Math.max(0, batch.available_quantity), 0)
-          }))}
-          alcoholMerchant
-          canOperate={canOperate}
-          onApply={(change: StockChange) => onAction({
-            operation: 'set_stock_count',
-            applicationId: application.id,
-            productId: change.product_id,
-            quantity: change.quantity,
-            expectedQuantity: change.expected_quantity,
-            lotCode: change.lot_code,
-            supplierName: change.supplier_name,
-            expiryAt: change.expiry_at,
-            exciseStampConfirmed: change.excise_stamp_confirmed
-          }, `${change.productName} stock count saved to the merchant inventory ledger.`)}
-        />
       </>);
   }
 
@@ -1995,7 +1446,6 @@ function AlcoholMerchantTerminal({
     return panel('Payments and settlement', 'Delivered order records and finance statement requests. Recorded item values are not a payout or balance.',
       <MerchantPaymentsPanel
         application={application}
-        accessToken={accessToken}
         orders={paymentOrders}
         requests={overview.events}
         canOperate={canOperate}
@@ -2010,7 +1460,7 @@ function AlcoholMerchantTerminal({
 
   if (section === 'liquor-reviews') {
     const window = performance?.windows[7];
-    return panel('Reviews and customer feedback', 'Review and reply to verified customer feedback linked to your fulfilled orders.',
+    return panel('Reviews and customer feedback', 'Only recorded OnBar scorecard metrics are shown. Individual review text is not currently connected.',
       <>
         {performanceLoading && <p className="rounded-xl bg-[#1a1b1e] p-5 text-sm text-zinc-400">Loading recorded scorecard…</p>}
         {performanceError && <p role="alert" className="rounded-xl bg-rose-400/10 p-4 text-sm text-rose-200">{performanceError}</p>}
@@ -2021,7 +1471,6 @@ function AlcoholMerchantTerminal({
           ['On time', window.onTimePercent === null ? 'Not recorded' : `${window.onTimePercent}%`]
         ].map(([label, value]) => <article key={label} className="rounded-xl border border-white/10 bg-[#1a1b1e] p-5"><p className="text-2xl font-black text-white">{value}</p><p className="mt-2 text-xs font-bold uppercase text-zinc-400">{label}</p></article>)}</div>}
         {!performanceLoading && !performanceError && !window && <p className="rounded-xl bg-[#1a1b1e] p-5 text-sm text-zinc-400">No recorded customer scorecard data is available yet.</p>}
-        <MerchantReviewInbox applicationId={application.id} accessToken={accessToken} />
       </>);
   }
 
@@ -2079,9 +1528,6 @@ export default function OnBarPartnerNetworkPage() {
   const [performanceError, setPerformanceError] = useState('');
   const [performanceDays, setPerformanceDays] = useState<7 | 30>(7);
   const [selectedId, setSelectedId] = useState('');
-  const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
-  const orderTone = useOrderAlertTone(selected ? `merchant-${selected.application.id}` : 'merchant-default');
-  const { play: playOrderTone, toggle: toggleOrderTone } = orderTone;
   const [section, setSection] = useState<Section>('sales');
   const [merchantAccentColor, setMerchantAccentColor] = useState(MERCHANT_ACCENT_PRESETS[0]);
   const [appearanceMessage, setAppearanceMessage] = useState('');
@@ -2093,7 +1539,7 @@ export default function OnBarPartnerNetworkPage() {
   const [inventoryCategory, setInventoryCategory] = useState('all');
   const [enlargedProductPhoto, setEnlargedProductPhoto] = useState<{ name: string; imageUrl: string } | null>(null);
   const [photoRequestPending, setPhotoRequestPending] = useState<Set<number>>(() => new Set());
-  const [unavailableInventoryPhotos, setUnavailableInventoryPhotos] = useState<Set<string>>(() => new Set());
+  const [unavailableInventoryPhotos, setUnavailableInventoryPhotos] = useState<Set<number>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -2121,33 +1567,35 @@ export default function OnBarPartnerNetworkPage() {
   const [riderPhone, setRiderPhone] = useState('');
   const [ridersLoading, setRidersLoading] = useState(false);
   const [riderActionId, setRiderActionId] = useState('');
-  const orderSoundEnabled = orderTone.enabled;
+  const [orderSoundEnabled, setOrderSoundEnabled] = useState(false);
+  const [orderSoundVolume, setOrderSoundVolume] = useState(0.65);
   const [newOrderAlert, setNewOrderAlert] = useState(false);
+  const orderAudioContextRef = useRef<AudioContext | null>(null);
   const knownOrderIdsRef = useRef(new Map<string, Set<string>>());
   const newOrderAlertTimerRef = useRef<number | null>(null);
-  const newOrderAlertStartedAtRef = useRef(0);
+  const orderSoundEnabledRef = useRef(false);
+  const orderSoundVolumeRef = useRef(0.65);
 
-  const playOrderChime = useCallback((urgent = false) => {
-    playOrderTone(urgent);
-  }, [playOrderTone]);
-  const toggleOrderSound = useCallback(async () => {
-    try {
-      await toggleOrderTone();
-    } catch (soundError) {
-      setError(soundError instanceof Error ? soundError.message : 'Sound alerts could not be enabled.');
-    }
-  }, [toggleOrderTone]);
-
-  const stopNewOrderAlert = useCallback(() => {
-    if (newOrderAlertTimerRef.current !== null) window.clearInterval(newOrderAlertTimerRef.current);
-    newOrderAlertTimerRef.current = null;
-    newOrderAlertStartedAtRef.current = 0;
-    setNewOrderAlert(false);
+  const playOrderChime = useCallback((force = false) => {
+    const audio = orderAudioContextRef.current;
+    const volume = orderSoundVolumeRef.current;
+    if ((!orderSoundEnabledRef.current && !force) || !audio || audio.state !== 'running' || volume <= 0) return;
+    const now = audio.currentTime;
+    [880, 1174, 880].forEach((frequency, index) => {
+      const start = now + index * 0.18;
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.002, volume * 0.16), start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+      oscillator.connect(gain);
+      gain.connect(audio.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.16);
+    });
   }, []);
-
-  useEffect(() => {
-    stopNewOrderAlert();
-  }, [selected?.application.id, stopNewOrderAlert]);
 
   const registerOrderSnapshot = useCallback((feed: string, orderIds: string[]) => {
     let knownIds = knownOrderIdsRef.current.get(feed);
@@ -2162,18 +1610,36 @@ export default function OnBarPartnerNetworkPage() {
     if (newIds.length === 0) return;
 
     setNewOrderAlert(true);
-    if (newOrderAlertTimerRef.current !== null) window.clearInterval(newOrderAlertTimerRef.current);
-    newOrderAlertStartedAtRef.current = Date.now();
+    if (newOrderAlertTimerRef.current !== null) window.clearTimeout(newOrderAlertTimerRef.current);
+    newOrderAlertTimerRef.current = window.setTimeout(() => setNewOrderAlert(false), 15_000);
     playOrderChime();
-    newOrderAlertTimerRef.current = window.setInterval(() => {
-      playOrderChime(Date.now() - newOrderAlertStartedAtRef.current >= 10_000);
-    }, 2_500);
   }, [playOrderChime]);
 
+  const toggleOrderSound = async () => {
+    if (orderSoundEnabled) {
+      orderSoundEnabledRef.current = false;
+      setOrderSoundEnabled(false);
+      return;
+    }
+    try {
+      if (!('AudioContext' in window)) throw new Error('This browser does not support in-terminal sound alerts.');
+      const audio = orderAudioContextRef.current || new AudioContext();
+      orderAudioContextRef.current = audio;
+      await audio.resume();
+      orderSoundEnabledRef.current = true;
+      setOrderSoundEnabled(true);
+      playOrderChime(true);
+    } catch (soundError) {
+      setError(soundError instanceof Error ? soundError.message : 'Sound alerts could not be enabled.');
+    }
+  };
+
   useEffect(() => () => {
-    if (newOrderAlertTimerRef.current !== null) window.clearInterval(newOrderAlertTimerRef.current);
+    if (newOrderAlertTimerRef.current !== null) window.clearTimeout(newOrderAlertTimerRef.current);
+    void orderAudioContextRef.current?.close();
   }, []);
 
+  const selected = workspace.find(item => item.application.id === selectedId) || workspace[0] || null;
   const canOperate = selected?.application.status === 'approved';
   const isFoodMerchant = Boolean(selected && (
     ['kitchen', 'restaurant', 'food_vendor'].includes(selected.application.business_type)
@@ -2182,55 +1648,6 @@ export default function OnBarPartnerNetworkPage() {
   const isLiquorMerchant = Boolean(selected
     && selected.application.business_type === 'bar'
     && selected.application.vendor_type === 'retailer');
-  const merchantHoursSection = isFoodMerchant ? 'food-business' : 'business';
-  const merchantTourSteps = useMemo<GuidedPanelTourStep[]>(() => [
-    {
-      selector: '[data-tour="merchant-navigation"]',
-      title: 'Find your way around',
-      description: 'These tabs take you to orders, stock, products, hours, payments, and support. You can reopen this tour any time.'
-    },
-    {
-      selector: '[data-tour="merchant-inventory-tab"]',
-      title: 'Keep stock accurate',
-      description: 'Update quantities when stock changes. Alcohol stock may require lot, expiry, supplier, and excise-stamp details.'
-    },
-    ...(isFoodMerchant || isLiquorMerchant ? [{
-      selector: '[data-tour="merchant-catalog-tab"]',
-      title: 'Manage your product list',
-      description: 'Review OnBar catalog products here, add your proposed prices, and watch for OnBar approval before a price takes effect.'
-    }] : []),
-    {
-      selector: '[data-tour="merchant-orders-tab"]',
-      title: 'Handle incoming orders',
-      description: 'Open this tab to review new orders and update each order as you prepare it for rider pickup or collection.'
-    },
-    {
-      selector: '[data-tour="merchant-hours-form"]',
-      title: 'Set your operating hours',
-      description: 'Choose which days you trade and enter opening and closing times in Nairobi time. Overnight hours are supported.',
-      before: () => setSection(merchantHoursSection)
-    },
-    {
-      selector: '[data-tour="merchant-hours-schedule"]',
-      title: 'Set hours for each day',
-      description: 'Turn each day on or off, then set its opening and closing times. Leave a day switched off when you are closed.'
-    },
-    {
-      selector: '[data-tour="merchant-availability-toggle"]',
-      title: 'Go online or pause orders',
-      description: 'Turn this on only when you can accept new orders. You can pause temporarily without changing your weekly schedule.'
-    },
-    {
-      selector: '[data-tour="merchant-hours-save"]',
-      title: 'Save your schedule',
-      description: 'Your hours and availability are saved only after you press this button. Dispatch uses the saved schedule for new orders.'
-    },
-    {
-      selector: '[data-tour="merchant-support-tab"]',
-      title: 'Contact the OnBar team',
-      description: 'Request anything you need from the admin team—catalog changes, pricing, orders, payments, account help, or something else. Send it in Support and follow the reply there.'
-    }
-  ], [isFoodMerchant, isLiquorMerchant, merchantHoursSection]);
 
   useEffect(() => {
     if (isFoodMerchant && !foodSections.some(item => item.id === section)) setSection('sales');
@@ -2601,7 +2018,7 @@ export default function OnBarPartnerNetworkPage() {
       });
       const payload = await response.json() as { error?: string; warning?: string };
       if (!response.ok) throw new Error(payload.error || 'Your update could not be saved.');
-      const refreshedApplications = await loadWorkspace(accessToken, true);
+      const refreshedApplications = await loadWorkspace(accessToken);
       if (body.operation === 'set_stock_count') {
         const productId = Number(body.productId);
         const expectedQuantity = Number(body.quantity);
@@ -2628,7 +2045,6 @@ export default function OnBarPartnerNetworkPage() {
 
   const performMerchantAction = async (body: Record<string, unknown>, successMessage: string) => {
     const saved = await apiAction(body, successMessage);
-    if (saved && body.orderId) stopNewOrderAlert();
     if (saved && body.operation === 'set_stock_count') {
       const productId = Number(body.productId);
       setStockCountDraft(current => {
@@ -2682,10 +2098,7 @@ export default function OnBarPartnerNetworkPage() {
       orderId,
       eventType
     }, `Order #${orderId}: ${fulfillmentLabels[eventType] || eventType.replaceAll('_', ' ')}.`);
-    if (saved) {
-      stopNewOrderAlert();
-      await loadFoodOrders(true);
-    }
+    if (saved) await loadFoodOrders(true);
   };
 
   const productOptions = useMemo(() => {
@@ -2710,7 +2123,6 @@ export default function OnBarPartnerNetworkPage() {
         sku: null,
         category: offer.category,
         imageUrl: offer.image_url,
-        imageUrls: offer.images,
         offer
       }));
   }, [isFoodMerchant, isLiquorMerchant, selected]);
@@ -2725,49 +2137,16 @@ export default function OnBarPartnerNetworkPage() {
       const currentAvailable = selected?.batches
         .filter(batch => batch.product_id === product.id)
         .reduce((total, batch) => total + batch.available_quantity, 0) ?? 0;
-      const searchableDepartment = [
-        product.name,
-        product.category,
-        product.offer.sub_category
-      ].filter((value): value is string => typeof value === 'string').join(' ').toLowerCase();
-      const matchesLiquorDepartment = (filter: string) => {
-        if (filter === 'all') return true;
-        if (filter === 'needs-attention') return currentAvailable <= 5;
-        if (filter === 'spirits') {
-          return /(spirit|whisk|whisky|vodka|gin|rum|brandy|tequila|cognac|liqueur|liqueur|amarula|konyagi|can[a-z]* gin|schnapps)/i.test(searchableDepartment);
-        }
-        if (filter === 'wine') {
-          return /(wine|chardonnay|cabernet|merlot|pinot|riesling|sauvignon|champagne|cask|vin)/i.test(searchableDepartment);
-        }
-        if (filter === 'beer') {
-          return /(beer|lager|stout|cider|ale|pilsner|malt|guinness|smirnoff ice|heineken|tusker|balozi|savanna|caribia)/i.test(searchableDepartment);
-        }
-        if (filter === 'soft-drinks') {
-          return /(soft|soda|cola|coca|coke|fanta|sprite|stoney|krest|pepsi|tonic|mixer|juice)/i.test(searchableDepartment);
-        }
-        if (filter === 'energy') {
-          return /(energy|red bull|monster|predator)/i.test(searchableDepartment);
-        }
-        if (filter === 'water') {
-          return /(water|dasani|keringet|mineral|aquamist)/i.test(searchableDepartment);
-        }
-        if (filter === 'mixers') {
-          return /(mixer|tonic|soda water|lime juice|cordial)/i.test(searchableDepartment);
-        }
-        return (product.category || '').trim() === filter;
-      };
       const matchesSearch = !query
         || product.name.toLowerCase().includes(query)
         || (product.category || '').toLowerCase().includes(query);
-      const matchesCategory = isLiquorMerchant
-        ? matchesLiquorDepartment(inventoryCategory)
-        : inventoryCategory === 'all'
-          || (inventoryCategory === 'needs-attention'
-            ? currentAvailable <= 5
-            : product.category?.trim() === inventoryCategory);
+      const matchesCategory = inventoryCategory === 'all'
+        || (inventoryCategory === 'needs-attention'
+          ? currentAvailable <= 5
+          : product.category?.trim() === inventoryCategory);
       return matchesSearch && matchesCategory;
     });
-  }, [inventoryCategory, inventorySearch, isLiquorMerchant, productOptions, selected?.batches]);
+  }, [inventoryCategory, inventorySearch, productOptions, selected?.batches]);
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3184,43 +2563,18 @@ export default function OnBarPartnerNetworkPage() {
             <div className="flex gap-2">
               <Button type="button" onClick={() => {
                 setSection(isFoodMerchant ? 'food-live' : isLiquorMerchant ? 'liquor-live' : 'orders');
-                stopNewOrderAlert();
+                setNewOrderAlert(false);
               }} className="rounded-lg">View orders</Button>
-              <Button type="button" variant="outline" onClick={stopNewOrderAlert} className="rounded-lg">Dismiss</Button>
+              <Button type="button" variant="outline" onClick={() => setNewOrderAlert(false)} className="rounded-lg">Dismiss</Button>
             </div>
           </div>
         )}
 
-        {overview && section !== 'support' && (
-          <aside className={`mb-5 flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 ${isFoodMerchant || isLiquorMerchant ? 'border-amber-400/30 bg-[#1a1b1e] text-white' : 'border-primary/20 bg-white text-slate-900'}`}>
-            <div className="flex items-start gap-3">
-              <MessageSquare size={20} aria-hidden="true" className={`mt-0.5 shrink-0 ${isFoodMerchant || isLiquorMerchant ? 'text-amber-400' : 'text-primary'}`} />
-              <div>
-                <h2 className="font-black">Need anything from the OnBar admin?</h2>
-                <p className={`mt-1 text-sm leading-6 ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-300' : 'text-slate-600'}`}>
-                  Request catalog or pricing changes, product help, order or payment support, account updates, or anything else. Send a message in Support and follow replies in your ticket.
-                </p>
-              </div>
-            </div>
-            <Button type="button" onClick={() => setSection('support')} className="shrink-0 rounded-xl font-black">
-              <MessageSquare size={16} className="mr-2" aria-hidden="true" /> Message admin
-            </Button>
-          </aside>
-        )}
-
-        {overview && <nav data-tour="merchant-navigation" className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
+        {overview && <nav className={`mb-6 flex gap-2 overflow-x-auto pb-1 ${isFoodMerchant || isLiquorMerchant ? 'border-b border-white/10' : ''}`} aria-label="Merchant workspace sections">
           {(isFoodMerchant ? foodSections : isLiquorMerchant ? liquorSections : sections.filter(item => item.id !== 'performance' || Boolean(selected?.application.vendor_type))).map(item => {
             const Icon = item.icon;
             const isOrderTab = ['food-live', 'liquor-live', 'orders'].includes(item.id);
-            const catalogUpdateTab = item.id === 'food-menu' || item.id === 'liquor-catalog';
-            const catalogUpdateCount = catalogUpdateTab ? overview.catalogNotifications.length : 0;
-            const isHoursTab = item.id === 'business' || item.id === 'food-business';
-            const tourTarget = item.id === 'inventory' ? 'merchant-inventory-tab'
-              : catalogUpdateTab ? 'merchant-catalog-tab'
-                : isOrderTab ? 'merchant-orders-tab'
-                  : isHoursTab ? 'merchant-hours-tab'
-                    : item.id === 'support' ? 'merchant-support-tab' : undefined;
-            return <button key={item.id} type="button" data-tour={tourTarget} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}{catalogUpdateCount > 0 && <span aria-label={`${catalogUpdateCount} new products`} className="rounded-full bg-sky-500 px-2 py-0.5 text-[10px] font-black text-white">{catalogUpdateCount}</span>}{isOrderTab && pendingOrderCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">{pendingOrderCount}</span>}</button>;
+            return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-black uppercase tracking-wide ${section === item.id ? (isFoodMerchant || isLiquorMerchant ? 'bg-amber-400 text-zinc-950' : 'bg-primary text-white') : (isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5 hover:text-white' : 'bg-white text-slate-600 hover:bg-slate-100')}`}><Icon size={16} />{item.label}{isOrderTab && pendingOrderCount > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">{pendingOrderCount}</span>}</button>;
           })}
           <button type="button" disabled={loading} onClick={() => accessToken && void loadWorkspace(accessToken)} aria-label="Refresh workspace" className={`ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl disabled:opacity-50 ${isFoodMerchant || isLiquorMerchant ? 'text-zinc-400 hover:bg-white/5' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><RefreshCw size={16} /></button>
         </nav>}
@@ -3245,7 +2599,24 @@ export default function OnBarPartnerNetworkPage() {
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
               </label>
             </article>
-            <OrderAlertToneSettings controller={orderTone} />
+            <article className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div><h3 className="flex items-center gap-2 font-black text-slate-900">{orderSoundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />} New-order sound</h3>
+                <p className="mt-1 max-w-2xl text-sm text-slate-500">A browser chime plays when a new order appears during refresh. It cannot override device mute or play reliably when the browser is suspended.</p></div>
+              <div className="flex flex-wrap items-center gap-3">
+                {orderSoundEnabled && <label className="flex items-center gap-2 text-xs font-bold text-slate-600">Volume
+                  <input type="range" min="0" max="1" step="0.05" value={orderSoundVolume} aria-label="New order sound volume"
+                    onChange={event => {
+                      const volume = Number(event.target.value);
+                      orderSoundVolumeRef.current = volume;
+                      setOrderSoundVolume(volume);
+                    }} className="w-28 accent-primary" />
+                </label>}
+                <Button type="button" variant={orderSoundEnabled ? 'outline' : 'default'} aria-pressed={orderSoundEnabled}
+                  onClick={() => void toggleOrderSound()} className="rounded-xl">
+                  {orderSoundEnabled ? 'Turn sound off' : 'Enable and test sound'}
+                </Button>
+              </div>
+            </article>
             <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">Order sound is an optional browser convenience. Keep push, SMS, or voice alerts configured in Order Alerts for background and locked-screen notifications.</p>
           </section>
         )}
@@ -3265,7 +2636,6 @@ export default function OnBarPartnerNetworkPage() {
             section={section}
             application={application}
             overview={overview}
-            accessToken={accessToken}
             canOperate={canOperate}
             working={working}
             performance={performance}
@@ -3289,7 +2659,6 @@ export default function OnBarPartnerNetworkPage() {
             section={section}
             application={application}
             overview={overview}
-            accessToken={accessToken}
             canOperate={canOperate}
             working={working}
             performance={performance}
@@ -3300,21 +2669,6 @@ export default function OnBarPartnerNetworkPage() {
             onAction={performMerchantAction}
             onSectionChange={setSection}
             onOpenStock={openInventoryForProduct}
-          />
-        )}
-
-        {!loading && selected && section === 'sales' && (
-          <MerchantWeeklyDigestSettings
-            applicationId={selected.application.id}
-            accessToken={accessToken}
-          />
-        )}
-
-        {!loading && overview && selected && section === 'support' && (
-          <MerchantSupportPanel
-            applicationId={selected.application.id}
-            applicationName={selected.application.trading_name || selected.application.business_name}
-            accessToken={accessToken}
           />
         )}
 
@@ -3665,28 +3019,10 @@ export default function OnBarPartnerNetworkPage() {
                 </Button>
               </article>;
             })()}
-            {isLiquorMerchant && (
-              <header className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
-                <div className="relative z-10 max-w-2xl">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-[9px] font-black uppercase tracking-[0.25em] text-amber-700">
-                    <Snowflake size={14} aria-hidden="true" /> Beverages
-                  </div>
-                  <h2 className="mt-4 text-3xl font-black uppercase leading-none tracking-tight text-slate-950 sm:text-5xl" style={{ fontStyle: 'italic' }}>
-                    Beverage <span className="text-amber-500">Command.</span>
-                  </h2>
-                  <p className="mt-3 max-w-xl text-sm font-medium italic leading-6 text-slate-500">
-                    Update chilled stock and submit selling prices for OnBar review. Matching the storefront presentation keeps every product easy to identify.
-                  </p>
-                </div>
-                <Snowflake aria-hidden="true" className="absolute -bottom-10 -right-10 h-64 w-64 rotate-12 text-slate-900/[0.04]" />
-              </header>
-            )}
-            {!isLiquorMerchant && (
-              <div>
-                <h2 className="text-xl font-black text-slate-900">Inventory and stock counts</h2>
-                <p className="mt-1 text-sm text-slate-600">Set the units available for new orders. Updates are saved to the same audited stock ledger used by OnBar Admin and dispatch.</p>
-              </div>
-            )}
+            <div>
+              <h2 className="text-xl font-black text-slate-900">Inventory and stock counts</h2>
+              <p className="mt-1 text-sm text-slate-600">Set the units available for new orders. Updates are saved to the same audited stock ledger used by OnBar Admin and dispatch.</p>
+            </div>
             {canOperate && productOptions.length > 0 && (
               <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
                 Available stock excludes held or expired batches and stock already allocated to orders. Lowering a count cannot remove units reserved for a customer. Increasing stock requires the real lot code; alcohol stock also needs an excise-stamp attestation.
@@ -3707,19 +3043,9 @@ export default function OnBarPartnerNetworkPage() {
                 </label>
                 <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Filter stock products">
                   {[
-                    { id: 'all', label: isLiquorMerchant ? 'All drinks' : 'All' },
+                    { id: 'all', label: 'All' },
                     { id: 'needs-attention', label: 'Needs attention' },
-                    ...(isLiquorMerchant
-                      ? [
-                          { id: 'spirits', label: 'Spirits' },
-                          { id: 'wine', label: 'Wine' },
-                          { id: 'beer', label: 'Beer' },
-                          { id: 'soft-drinks', label: 'Soft drinks' },
-                          { id: 'energy', label: 'Energy' },
-                          { id: 'water', label: 'Water' },
-                          { id: 'mixers', label: 'Mixers' }
-                        ]
-                      : inventoryCategoryOptions.map(category => ({ id: category, label: category })))
+                    ...inventoryCategoryOptions.map(category => ({ id: category, label: category }))
                   ].map(filter => (
                     <button
                       key={filter.id}
@@ -3728,7 +3054,7 @@ export default function OnBarPartnerNetworkPage() {
                       onClick={() => setInventoryCategory(filter.id)}
                       className={`shrink-0 rounded-full border px-4 py-2 text-xs font-black transition-colors ${
                         inventoryCategory === filter.id
-                          ? 'border-amber-500 bg-amber-500 text-white shadow-md shadow-amber-500/20'
+                          ? 'border-amber-400 bg-amber-400 text-slate-950'
                           : 'border-slate-200 bg-white text-slate-700 hover:border-amber-300'
                       }`}
                     >
@@ -3739,8 +3065,6 @@ export default function OnBarPartnerNetworkPage() {
               </section>
               <div className="grid gap-4 lg:grid-cols-2">
                 {filteredInventoryProducts.map(product => {
-                  const availablePhotos = product.imageUrls
-                    .filter(image => !unavailableInventoryPhotos.has(`${product.id}:${image}`));
                   const currentAvailable = overview.batches
                     .filter(batch => batch.product_id === product.id)
                     .reduce((total, batch) => total + batch.available_quantity, 0);
@@ -3763,35 +3087,30 @@ export default function OnBarPartnerNetworkPage() {
                     <article
                       key={product.id}
                       id={`merchant-stock-card-${product.id}`}
-                      className={`space-y-3 rounded-[2rem] border bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg sm:p-5 ${inventoryFocusProductId === product.id ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200/80'}`}
+                      className={`space-y-3 rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5 ${inventoryFocusProductId === product.id ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200'}`}
                     >
-                      <div className="relative flex h-44 items-center justify-center overflow-hidden rounded-[1.5rem] border border-slate-100 bg-gradient-to-br from-amber-50 via-white to-slate-50 sm:h-52">
+                      <div className="relative flex h-48 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 via-slate-50 to-amber-50">
                         <span className={`absolute left-3 top-3 z-10 rounded-full px-3 py-1 text-[10px] font-black uppercase ${stockStatus.className}`}>
                           {stockStatus.label}
                         </span>
-                        <span className="absolute right-3 top-3 z-10 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-black text-white shadow-md shadow-amber-500/20">
-                          KSh {Number(product.offer.listed_price || 0).toLocaleString('en-KE')}
-                        </span>
-                        {availablePhotos.length > 0 ? (
-                          <div className="absolute inset-0 flex gap-1 overflow-x-auto p-1" aria-label={`${product.name} photos`}>
-                            {availablePhotos.map((imageUrl, index) => <button
-                              key={`${imageUrl}-${index}`}
-                              type="button"
-                              onClick={() => setEnlargedProductPhoto({ name: `${product.name} · photo ${index + 1}`, imageUrl })}
-                              aria-label={`Tap to enlarge ${product.name} photo ${index + 1}`}
-                              className={`relative min-h-0 shrink-0 overflow-hidden rounded-lg ${availablePhotos.length === 1 ? 'w-full' : 'w-[58%] sm:w-[48%]'}`}
-                            >
-                              <Image
-                                src={imageUrl}
-                                alt={`${product.name} photo ${index + 1}`}
-                                fill
-                                sizes="(max-width: 1024px) 45vw, 280px"
-                                unoptimized
-                                className="object-contain p-2 transition-transform duration-300 hover:scale-105"
-                                onError={() => setUnavailableInventoryPhotos(current => new Set(current).add(`${product.id}:${imageUrl}`))}
-                              />
-                            </button>)}
-                          </div>
+                        {product.imageUrl && !unavailableInventoryPhotos.has(product.id) ? (
+                          <button
+                            type="button"
+                            onClick={() => setEnlargedProductPhoto({ name: product.name, imageUrl: product.imageUrl || '' })}
+                            aria-label={`Tap to enlarge ${product.name} photo`}
+                            className="absolute inset-0 flex items-center justify-center"
+                          >
+                            <Image
+                              src={product.imageUrl}
+                              alt={product.name}
+                              fill
+                              sizes="(max-width: 1024px) 90vw, 560px"
+                              unoptimized
+                              className="object-contain p-8 transition-transform duration-300 hover:scale-105"
+                              onError={() => setUnavailableInventoryPhotos(current => new Set(current).add(product.id))}
+                            />
+                            <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-white">Tap to enlarge</span>
+                          </button>
                         ) : (
                           <div className="flex flex-col items-center gap-2 px-4 text-center">
                             <ImageIcon size={34} aria-hidden="true" className="text-slate-400" />
@@ -3921,7 +3240,7 @@ export default function OnBarPartnerNetworkPage() {
                       <Button
                         type="submit"
                         disabled={working || stockDraftIsStale || !Number.isSafeInteger(targetQuantity) || targetQuantity === currentAvailable}
-                        className="h-10 rounded-xl bg-amber-500 font-black text-slate-950 hover:bg-amber-400"
+                        className="h-10 rounded-xl font-bold"
                       >
                         {working ? <Loader2 size={15} className="mr-2 animate-spin" /> : <PackageCheck size={15} className="mr-2" />}
                         Save stock count
@@ -3987,7 +3306,7 @@ export default function OnBarPartnerNetworkPage() {
                             type="submit"
                             variant="outline"
                             disabled={working || product.offer.pending_price != null || Number(offerPriceDraft[product.id] ?? currentPrice) === currentPrice}
-                            className="h-10 rounded-xl border-amber-300 bg-amber-50 font-black text-amber-900 hover:bg-amber-100"
+                            className="h-10 rounded-xl"
                           >
                             Request review
                           </Button>
@@ -4101,7 +3420,7 @@ export default function OnBarPartnerNetworkPage() {
         {!loading && overview && ['business', 'food-business'].includes(section) && (
           <section className="space-y-5">
             <div><h2 className="text-xl font-black text-slate-900">Business profile</h2><p className="mt-1 text-sm text-slate-500">Application and contact details submitted to OnBar.</p></div>
-            <form data-tour="merchant-hours-form" onSubmit={submitAvailability} className="rounded-2xl bg-white p-6 shadow-sm">
+            <form onSubmit={submitAvailability} className="rounded-2xl bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h3 className="flex items-center gap-2 font-black text-slate-900"><Clock3 size={18} /> Order availability & operating hours</h3>
@@ -4114,7 +3433,6 @@ export default function OnBarPartnerNetworkPage() {
               {!canOperate && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Availability controls unlock after OnBar approves this business.</p>}
               <label className={`mt-5 flex items-start gap-3 rounded-xl border p-4 ${canOperate ? 'cursor-pointer border-slate-200' : 'border-slate-100 opacity-60'}`}>
                 <input
-                  data-tour="merchant-availability-toggle"
                   type="checkbox"
                   checked={acceptingOrdersDraft}
                   disabled={!canOperate || working}
@@ -4129,7 +3447,7 @@ export default function OnBarPartnerNetworkPage() {
               <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {merchantWeekdays.map(day => {
                   const hours = scheduleDraft[day];
-                  return <div key={day} data-tour={day === 'monday' ? 'merchant-hours-schedule' : undefined} className="grid gap-3 rounded-xl border border-slate-200 p-3">
+                  return <div key={day} className="grid gap-3 rounded-xl border border-slate-200 p-3">
                     <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
                       <input
                         type="checkbox"
@@ -4179,7 +3497,7 @@ export default function OnBarPartnerNetworkPage() {
               {merchantWeekdays.some(day => scheduleDraft[day].enabled && scheduleDraft[day].open === scheduleDraft[day].close) && <p role="alert" className="mt-3 text-sm font-semibold text-rose-700">For an open day, opening and closing times must be different.</p>}
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs leading-5 text-slate-500">Going offline prevents new allocations; orders already assigned to you remain visible and still need fulfillment updates.</p>
-                <Button data-tour="merchant-hours-save" type="submit" disabled={!canOperate || working || merchantWeekdays.some(day => scheduleDraft[day].enabled && scheduleDraft[day].open === scheduleDraft[day].close)} className="h-11 rounded-xl font-black uppercase">
+                <Button type="submit" disabled={!canOperate || working || merchantWeekdays.some(day => scheduleDraft[day].enabled && scheduleDraft[day].open === scheduleDraft[day].close)} className="h-11 rounded-xl font-black uppercase">
                   {working && <Loader2 size={16} className="mr-2 animate-spin" />} Save availability
                 </Button>
               </div>
@@ -4241,12 +3559,6 @@ export default function OnBarPartnerNetworkPage() {
           <Link href="/" className="font-bold text-primary hover:underline"><CheckCircle2 size={14} className="mr-1 inline" /> Return to OnBar</Link>
         </footer>
       </div>
-      {!loading && overview && selected && canOperate && <GuidedPanelTour
-        key={selected.application.id}
-        tourKey={`merchant:${selected.application.id}`}
-        title="Merchant workspace"
-        steps={merchantTourSteps}
-      />}
     </main>
   );
 }

@@ -1,116 +1,130 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
-import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
-import { normalizePublicImageUrl } from '@/lib/marketingImageUrl';
+import { verifySessionCookie } from '@/lib/adminAuth';
 
 export const dynamic = 'force-dynamic';
 
-const PLATFORMS = new Set(['INSTAGRAM', 'FACEBOOK', 'WHATSAPP', 'TIKTOK', 'BEVERAGE', 'FOOD', 'SOUVENIR']);
+const platforms = new Set([
+  'instagram',
+  'facebook',
+  'whatsapp',
+  'tiktok',
+  'beverage',
+  'food',
+  'souvenir'
+]);
 
-async function getAuthorizedAccess() {
-  const session = await getAdminSession();
-  if (!session) return { response: NextResponse.json({ error: 'Admin access required.' }, { status: 401 }) };
-  if (!hasAdminPermission(session, 'can_manage_marketing')) {
-    return { response: NextResponse.json({ error: 'Marketing permission is required.' }, { status: 403 }) };
+async function getAuthorizedDatabase() {
+  const cookieStore = await cookies();
+  const session = await verifySessionCookie(cookieStore.get('admin_session')?.value);
+  if (!session) {
+    return {
+      database: null,
+      response: NextResponse.json({ error: 'Your admin session has expired. Sign in again.' }, { status: 401 })
+    };
+  }
+
+  const canManageCalendar = session.role === 'owner'
+    || session.role === 'admin'
+    || session.permissions.can_manage_marketing === true;
+  if (!canManageCalendar) {
+    return {
+      database: null,
+      response: NextResponse.json({ error: 'You do not have permission to manage the growth calendar.' }, { status: 403 })
+    };
   }
 
   const database = createServerSupabaseClient();
   if (!database) {
-    return { response: NextResponse.json({ error: 'Publishing queue database access is not configured on the server.' }, { status: 503 }) };
+    return {
+      database: null,
+      response: NextResponse.json({ error: 'The protected calendar service is not configured.' }, { status: 503 })
+    };
   }
+  return { database, response: null };
+}
 
-  return { database, session };
+function databaseErrorResponse(error: { code?: string; message?: string }) {
+  if (['42P01', '42703', 'PGRST202', 'PGRST204', 'PGRST205'].includes(error.code || '')) {
+    return NextResponse.json({
+      error: 'The publishing calendar schema is missing. Apply supabase/CONTENT_CALENDAR_QUEUE_MIGRATION.sql, then reload this page.'
+    }, { status: 503 });
+  }
+  console.error('[GrowthCalendar] Database request failed:', error);
+  return NextResponse.json({ error: 'The publishing queue could not be loaded or saved. Try again shortly.' }, { status: 503 });
 }
 
 export async function GET() {
-  const access = await getAuthorizedAccess();
-  if ('response' in access) return access.response;
-
-  const { data: queueRows, error: queueError } = await access.database
-    .from('publishing_queue')
-    .select('id, master_id, title, platform, scheduled_at, status, image_url')
-    .order('scheduled_at', { ascending: true })
-    .limit(2000);
-
-  if (queueError) {
-    console.error('[GrowthCalendar] Could not load the publishing queue:', queueError);
-    return NextResponse.json({ error: 'Could not load the publishing queue. Check that the content calendar schema is installed.' }, { status: 503 });
+  const { database, response } = await getAuthorizedDatabase();
+  if (!database) {
+    return response || NextResponse.json({ error: 'The protected calendar service is not configured.' }, { status: 503 });
   }
+
+  const { data: queueRows, error: queueError } = await database
+    .from('publishing_queue')
+    .select('id,master_id,title,platform,status,scheduled_at,image_url')
+    .order('scheduled_at', { ascending: true });
+
+  if (queueError) return databaseErrorResponse(queueError);
 
   const rows = queueRows || [];
   const masterIds = [...new Set(rows
-    .map(row => typeof row.master_id === 'string' ? row.master_id : String(row.master_id || ''))
-    .filter(Boolean))];
+    .map(row => row.master_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0))];
   const contentById = new Map<string, { title: string | null; base_description: string | null }>();
 
-  if (masterIds.length) {
-    const { data: contentRows, error: contentError } = await access.database
+  if (masterIds.length > 0) {
+    const { data: contentRows, error: contentError } = await database
       .from('content_master')
-      .select('id, title, base_description')
+      .select('id,title,base_description')
       .in('id', masterIds);
-    if (contentError) {
-      console.error('[GrowthCalendar] Could not load queued content:', contentError);
-      return NextResponse.json({ error: 'Could not load content details. Check that the content calendar schema is installed.' }, { status: 503 });
-    }
+    if (contentError) return databaseErrorResponse(contentError);
     for (const content of contentRows || []) contentById.set(String(content.id), content);
   }
 
   const missions = rows
     .filter(row => row.scheduled_at && Number.isFinite(new Date(row.scheduled_at).getTime()))
-    .map(row => {
-      const content = contentById.get(String(row.master_id));
-      return {
-        id: String(row.id),
-        title: content?.title || row.title || 'Untitled schedule',
-        scheduledAt: new Date(row.scheduled_at).toISOString(),
-        type: String(row.platform || 'other').toLowerCase(),
-        status: String(row.status || 'SCHEDULED'),
-        caption: content?.base_description || undefined,
-        image_url: row.image_url || undefined
-      };
-    });
+    .map(row => ({
+      id: String(row.id),
+      title: contentById.get(String(row.master_id))?.title || row.title || 'Untitled schedule',
+      scheduledAt: new Date(row.scheduled_at).toISOString(),
+      type: String(row.platform || 'other').toLowerCase(),
+      status: row.status || 'SCHEDULED',
+      caption: contentById.get(String(row.master_id))?.base_description || null,
+      image_url: row.image_url || null
+    }));
 
-  return NextResponse.json({ missions }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+  return NextResponse.json({ missions }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(request: Request) {
-  if (!isSameOriginRequest(request)) {
-    return NextResponse.json({ error: 'Request origin could not be verified.' }, { status: 403 });
+  const { database, response } = await getAuthorizedDatabase();
+  if (!database) {
+    return response || NextResponse.json({ error: 'The protected calendar service is not configured.' }, { status: 503 });
   }
-
-  const access = await getAuthorizedAccess();
-  if ('response' in access) return access.response;
 
   let body: Record<string, unknown>;
   try {
     const parsed: unknown = await request.json();
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid body.');
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error();
     body = parsed as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ error: 'Send valid content schedule details.' }, { status: 400 });
+    return NextResponse.json({ error: 'A valid mission schedule is required.' }, { status: 400 });
   }
 
   const title = typeof body.title === 'string' ? body.title.trim() : '';
   const caption = typeof body.caption === 'string' ? body.caption.trim() : '';
-  const platform = typeof body.platform === 'string' ? body.platform.trim().toUpperCase() : '';
-  const scheduledAtValue = typeof body.scheduledAt === 'string' ? body.scheduledAt : '';
-  const scheduledAt = scheduledAtValue ? new Date(scheduledAtValue) : null;
-  const imageUrlResult = normalizePublicImageUrl(body.imageUrl);
-  if (!imageUrlResult.valid) {
-    return NextResponse.json({ error: imageUrlResult.error }, { status: 400 });
+  const platform = typeof body.platform === 'string' ? body.platform.toLowerCase() : '';
+  const scheduledAt = typeof body.scheduledAt === 'string' ? new Date(body.scheduledAt) : null;
+  if (!title || title.length > 160 || caption.length > 5000 || !platforms.has(platform)) {
+    return NextResponse.json({ error: 'Enter a title, supported mission type, and caption under 5,000 characters.' }, { status: 400 });
+  }
+  if (!scheduledAt || !Number.isFinite(scheduledAt.getTime())) {
+    return NextResponse.json({ error: 'Select a valid date and time.' }, { status: 400 });
   }
 
-  if (
-    title.length < 2 || title.length > 200 ||
-    caption.length > 5000 ||
-    !PLATFORMS.has(platform) ||
-    !scheduledAt ||
-    !Number.isFinite(scheduledAt.getTime())
-  ) {
-    return NextResponse.json({ error: 'Enter a title, valid platform, schedule time, and caption under 5,000 characters.' }, { status: 400 });
-  }
-
-  const { data: master, error: masterError } = await access.database
+  const { data: master, error: masterError } = await database
     .from('content_master')
     .insert({
       title,
@@ -119,34 +133,25 @@ export async function POST(request: Request) {
     })
     .select('id')
     .single();
+  if (masterError) return databaseErrorResponse(masterError);
 
-  if (masterError) {
-    console.error('[GrowthCalendar] Could not save content details:', masterError);
-    return NextResponse.json({ error: 'Could not save this content record.' }, { status: 500 });
-  }
-
-  const { data: queueRecord, error: queueError } = await access.database
+  const { data: queueItem, error: queueError } = await database
     .from('publishing_queue')
     .insert({
       master_id: master.id,
       title,
-      platform,
+      platform: platform.toUpperCase(),
       scheduled_at: scheduledAt.toISOString(),
-      image_url: imageUrlResult.imageUrl,
       status: 'SCHEDULED'
     })
     .select('id')
     .single();
 
   if (queueError) {
-    console.error('[GrowthCalendar] Could not create a publishing queue record:', queueError);
-    const { error: cleanupError } = await access.database.from('content_master').delete().eq('id', master.id);
-    if (cleanupError) {
-      console.error('[GrowthCalendar] Could not remove incomplete content details:', cleanupError);
-      return NextResponse.json({ error: 'The queue rejected this schedule and its incomplete content record needs admin review.' }, { status: 500 });
-    }
-    return NextResponse.json({ error: 'The publishing queue rejected this schedule; the incomplete content record was removed.' }, { status: 500 });
+    const { error: cleanupError } = await database.from('content_master').delete().eq('id', master.id);
+    if (cleanupError) console.error('[GrowthCalendar] Could not remove incomplete content draft:', cleanupError);
+    return databaseErrorResponse(queueError);
   }
 
-  return NextResponse.json({ id: String(queueRecord.id) }, { status: 201 });
+  return NextResponse.json({ id: String(queueItem.id) }, { status: 201 });
 }

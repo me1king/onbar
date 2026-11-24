@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import posthog from 'posthog-js';
 import { isAllowed } from '@/lib/consentService';
-import { initializePostHogAnalytics, stopPostHogAnalytics } from '@/lib/posthogClient';
 
 const EXCLUDED_PATHS = ['/lord', '/checkout', '/payment', '/merchant', '/profile', '/track', '/dispatch', '/rider', '/supplier'];
 
@@ -19,22 +18,39 @@ function hasSensitiveQuery() {
 
 export default function PostHogSessionReplay({ appName }: { appName: string }) {
   const pathname = usePathname();
+  const initialized = useRef(false);
   const lastPage = useRef('');
+  const projectKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const apiHost = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
 
   useEffect(() => {
     function syncRecording() {
-      const analyticsAllowed = isAllowed('analytics');
-      let hasReplayConsent = false;
-      try {
-        hasReplayConsent = window.localStorage.getItem('ob_session_replay_consent') === 'true';
-      } catch (error) {
-        console.warn('[PostHog] Could not read replay consent; session recording remains disabled:', error);
-      }
-      if (!analyticsAllowed) {
-        stopPostHogAnalytics();
+      const hasReplayConsent = window.localStorage.getItem('ob_session_replay_consent') === 'true';
+      if (!isAllowed('analytics') || !hasReplayConsent) {
+        if (initialized.current) {
+          posthog.stopSessionRecording();
+          posthog.opt_out_capturing();
+        }
         return;
       }
-      if (!initializePostHogAnalytics()) return;
+      if (!projectKey) return;
+
+      if (!initialized.current) {
+        initialized.current = true;
+        posthog.init(projectKey, {
+          api_host: apiHost,
+          autocapture: false,
+          capture_pageview: false,
+          capture_pageleave: true,
+          disable_session_recording: true,
+          session_recording: {
+            maskAllInputs: true,
+            maskTextSelector: '.ph-no-capture, [data-private], [data-sensitive]'
+          }
+        });
+      } else {
+        posthog.opt_in_capturing();
+      }
 
       if (!canRecordPath(pathname) || hasSensitiveQuery()) {
         posthog.stopSessionRecording();
@@ -42,8 +58,7 @@ export default function PostHogSessionReplay({ appName }: { appName: string }) {
         return;
       }
 
-      if (hasReplayConsent) posthog.startSessionRecording();
-      else posthog.stopSessionRecording();
+      posthog.startSessionRecording();
       const page = pathname;
       if (lastPage.current !== page) {
         lastPage.current = page;
@@ -55,7 +70,7 @@ export default function PostHogSessionReplay({ appName }: { appName: string }) {
     syncRecording();
     window.addEventListener('ob-consent-updated', syncRecording);
     return () => window.removeEventListener('ob-consent-updated', syncRecording);
-  }, [appName, pathname]);
+  }, [apiHost, appName, pathname, projectKey]);
 
   return null;
 }

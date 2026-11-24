@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission } from '@/lib/adminAccess.server';
-import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 20;
@@ -81,11 +80,11 @@ export async function GET() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const publicSupabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim()
     || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-    || process.env.SUPABASE_SECRET_KEY?.trim();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const resendKey = process.env.RESEND_API_KEY?.trim();
   const paystackKey = process.env.PAYSTACK_SECRET_KEY?.trim();
-  const { token: whatsappToken, phoneId: whatsappPhoneId } = getWhatsAppCredentials();
+  const whatsappToken = process.env.WHATSAPP_TOKEN?.trim();
+  const whatsappPhoneId = process.env.WHATSAPP_PHONE_ID?.trim();
   const mapsKey = process.env.GOOGLE_MAPS_API_KEY?.trim() || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
   const checkedAt = new Date().toISOString();
 

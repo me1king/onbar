@@ -1,0 +1,21 @@
+{
+  "id": "/rider/dashboard",
+  "name": "Online Bar Rider Terminal",
+  "short_name": "Rider Terminal",
+  "description": "Accept missions, navigate pickups, verify handovers, and complete deliveries.",
+  "start_url": "/rider/dashboard",
+  "scope": "/rider/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#07111f",
+  "theme_color": "#39d98a",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/favicon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Rider terminal", "short_name": "Terminal", "url": "/rider/dashboard", "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }] },
+    { "name": "Rider login", "short_name": "Login", "url": "/rider/login", "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }] }
+  ]
+}

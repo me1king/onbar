@@ -1,11 +1,11 @@
 import axios from "axios";
-import { getWhatsAppCredentials } from "./whatsappCredentials";
 
 /**
  * Sends a WhatsApp message via the official Meta Cloud API (v23.0).
  */
 export async function sendWhatsAppMessage(to: string, text: string) {
-    const { token, phoneId } = getWhatsAppCredentials();
+    const token = process.env.WHATSAPP_TOKEN;
+    const phoneId = process.env.WHATSAPP_PHONE_ID;
 
     if (!token || !phoneId) {
         console.warn("[WhatsApp] Credentials missing in environment variables.");

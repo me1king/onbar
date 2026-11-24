@@ -5,7 +5,6 @@ import {
   verifyDeliveryTrackingSession
 } from '@/lib/deliveryTrackingSession.server';
 import { routingEngine } from '@/lib/engines/routingEngine';
-import { normalizeOrderTimeline } from '@/lib/orderTimeline';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,17 +45,6 @@ async function loadTrackingOrder(orderId: number) {
     return { response: NextResponse.json({ error: 'Delivery tracking could not be loaded.' }, { status: 503 }) };
   }
   if (!order) return { response: NextResponse.json({ error: 'Order or contact details did not match.' }, { status: 404 }) };
-
-  const { data: statusEvents, error: statusEventsError } = await database
-    .from('order_status_events')
-    .select('to_status,created_at')
-    .eq('order_id', orderId)
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(100);
-  if (statusEventsError) {
-    console.error('[DeliveryTracking] Could not load order timeline:', statusEventsError);
-  }
 
   let riderLocation: { latitude: number; longitude: number; updatedAt: string } | null = null;
   let riderLocationMessage: string | null = null;
@@ -145,8 +133,6 @@ async function loadTrackingOrder(orderId: number) {
     order: {
       id: order.id,
       status: order.status,
-      status_timeline: normalizeOrderTimeline(statusEvents || []),
-      status_timeline_unavailable: Boolean(statusEventsError),
       customer_name: order.customer_name,
       total_price: order.total_price,
       created_at: order.created_at,

@@ -32,10 +32,8 @@ type CheckoutBody = {
   customerName: string;
   customerPhone: string;
   customerEmail: string | null;
-  ageConfirmed: boolean;
   paymentMethod: 'Paystack' | 'PayHero' | 'Daraja' | 'COD';
   sessionId: string;
-  recoverySessionId: string | null;
   deliveryZoneId: string | null;
   coordinates: { lat: number; lng: number } | null;
   deliveryBuilding: string | null;
@@ -150,10 +148,8 @@ function readBody(value: unknown): CheckoutBody | null {
     customerName,
     customerPhone,
     customerEmail,
-    ageConfirmed,
     paymentMethod,
     sessionId,
-    recoverySessionId,
     deliveryZoneId,
     coordinates,
     deliveryBuilding,
@@ -200,12 +196,8 @@ function readBody(value: unknown): CheckoutBody | null {
     || typeof customerPhone !== 'string' || !customerPhone.trim() || customerPhone.length > 40
     || (customerEmail !== null && typeof customerEmail !== 'string')
     || (typeof customerEmail === 'string' && customerEmail.length > 254)
-    || typeof ageConfirmed !== 'boolean'
     || (paymentMethod !== 'Paystack' && paymentMethod !== 'PayHero' && paymentMethod !== 'Daraja' && paymentMethod !== 'COD')
     || typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 160
-    || (recoverySessionId !== undefined && recoverySessionId !== null
-      && (typeof recoverySessionId !== 'string'
-        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(recoverySessionId)))
     || (deliveryZoneId !== null && typeof deliveryZoneId !== 'string')
     || typeof usePoints !== 'boolean'
     || typeof isGift !== 'boolean'
@@ -251,10 +243,8 @@ function readBody(value: unknown): CheckoutBody | null {
     customerName: customerName.trim(),
     customerPhone: customerPhone.trim(),
     customerEmail: typeof customerEmail === 'string' ? customerEmail.trim() || null : null,
-    ageConfirmed,
     paymentMethod,
     sessionId: sessionId.trim(),
-    recoverySessionId: typeof recoverySessionId === 'string' ? recoverySessionId : null,
     deliveryZoneId: typeof deliveryZoneId === 'string' && deliveryZoneId.trim() ? deliveryZoneId.trim() : null,
     coordinates: coordinate,
     deliveryBuilding: building as string | null,
@@ -297,29 +287,8 @@ export async function POST(request: Request) {
   if (!body) {
     return NextResponse.json({ error: 'Checkout details are incomplete or invalid.' }, { status: 400 });
   }
-  if (!body.ageConfirmed) {
-    return NextResponse.json({ error: 'Confirm that you are at least 18 years old before placing an order.' }, { status: 400 });
-  }
 
   try {
-    const { database } = configuration;
-    let verifiedRecoverySessionId: string | null = null;
-    if (body.recoverySessionId) {
-      const { data: recoverySession, error: recoverySessionError } = await database
-        .from('checkout_recovery_sessions')
-        .select('id,recovery_token_expires_at')
-        .eq('id', body.recoverySessionId)
-        .eq('session_id', body.sessionId)
-        .eq('status', 'sent')
-        .maybeSingle();
-      if (recoverySessionError) {
-        console.error('[CheckoutOrder] Could not verify the recovery attribution token:', recoverySessionError);
-      } else if (recoverySession?.recovery_token_expires_at
-        && Date.parse(recoverySession.recovery_token_expires_at) > Date.now()) {
-        verifiedRecoverySessionId = recoverySession.id;
-      }
-    }
-
     const authorization = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
     let userId: string | null = null;
     let verifiedUserEmail: string | null = null;
@@ -337,6 +306,7 @@ export async function POST(request: Request) {
       }
     }
 
+    const { database } = configuration;
     let waitlistMemberIds: string[] = [];
     if (userId && verifiedUserEmail) {
       const { data: waitlistMembers, error: waitlistLookupError } = await database
@@ -899,36 +869,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The order items could not be saved. Please try again.' }, { status: 503 });
     }
 
-    const recoveryUpdates = await database
-      .from('checkout_recovery_sessions')
-      .update({
-        status: 'suppressed',
-        suppression_reason: 'order_placed',
-        updated_at: new Date().toISOString()
-      })
-      .eq('session_id', body.sessionId)
-      .in('status', ['active', 'abandoned', 'sending', 'sent']);
-    if (recoveryUpdates.error) {
-      console.error('[CheckoutOrder] Could not suppress a recovery reminder after order creation:', recoveryUpdates.error);
-    }
-    if (verifiedRecoverySessionId) {
-      const { error: recoveredError } = await database
-        .from('checkout_recovery_sessions')
-        .update({
-          status: 'converted',
-          suppression_reason: null,
-          recovered_order_id: order.id,
-          recovered_revenue: total,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', verifiedRecoverySessionId)
-        .eq('session_id', body.sessionId)
-        .in('status', ['sent', 'suppressed']);
-      if (recoveredError) {
-        console.error('[CheckoutOrder] Could not attribute the recovered checkout order:', recoveredError);
-      }
-    }
-
     if (spinCampaignWin && couponCode) {
       const { error: redeemError } = await database.rpc('redeem_spin_campaign_win', {
         code_input: couponCode,
@@ -1108,12 +1048,6 @@ export async function POST(request: Request) {
         code: 'STOCK_UNAVAILABLE',
         stockIssue: error.stockIssue
       }, { status: 409 });
-    }
-    if (error instanceof SyntaxError && /unexpected token|not valid JSON/i.test(error.message)) {
-      console.error('[CheckoutOrder] A checkout dependency returned a non-JSON response:', error);
-      return NextResponse.json({
-        error: 'A required checkout service returned an invalid response. Check your Orders before retrying to avoid a duplicate, or contact support.'
-      }, { status: 503 });
     }
     if (error instanceof Error) {
       return NextResponse.json({ error: error.message }, { status: 409 });

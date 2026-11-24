@@ -16,7 +16,6 @@ import { formatPrice, cn } from '@/lib/utils';
 import TaxControlCenter from '@/components/admin/finance/TaxControlCenter';
 import InventoryValuation from '@/components/admin/finance/InventoryValuation';
 import ReconciliationEngine from '@/components/admin/finance/ReconciliationEngine';
-import PaymentReviewQueue from '@/components/admin/finance/PaymentReviewQueue';
 import { AdminFinanceData, FinancialLedgerEntry } from '@/lib/adminFinanceTypes';
 import type { LaunchOpsSummary } from '@/lib/launchOperations';
 
@@ -160,13 +159,6 @@ export default function AdminFinancePage() {
                     </Card>
                 ))}
             </div>
-
-            <PaymentReviewQueue
-                cases={financeData?.paymentReview || []}
-                error={financeData?.errors.paymentReview || null}
-                onRefresh={fetchLedger}
-                loading={loading}
-            />
 
             {launchOpsSummary && (
                 <div className="grid lg:grid-cols-[1.4fr_0.8fr] gap-8">

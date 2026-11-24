@@ -66,12 +66,9 @@ export default function BiteCommandCenter() {
     const [timeline, setTimeline] = React.useState<OrderTimelineItem[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
-    const [merchantNotificationMessage, setMerchantNotificationMessage] = React.useState<{ type: 'success' | 'warning'; text: string } | null>(null);
-    const [notificationRetryProductId, setNotificationRetryProductId] = React.useState<number | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [imageFile, setImageFile] = React.useState<File | null>(null);
-    const [uploadingImageId, setUploadingImageId] = React.useState<string | null>(null);
     const [addons, setAddons] = React.useState<FoodAddon[]>([]);
     const [isAddonManagerOpen, setIsAddonManagerOpen] = React.useState(false);
     const [addonDraft, setAddonDraft] = React.useState<{ id?: string; name: string; price: string }>({ name: '', price: '' });
@@ -215,40 +212,6 @@ export default function BiteCommandCenter() {
         }
     };
 
-    const handleProductImageUpload = async (product: BiteProduct, file: File) => {
-        if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) {
-            setError('Choose a JPEG, PNG, WebP, or AVIF image.');
-            return;
-        }
-        if (file.size === 0 || file.size > 8 * 1024 * 1024) {
-            setError('Choose an image smaller than 8 MB.');
-            return;
-        }
-
-        const productId = String(product.id);
-        setUploadingImageId(productId);
-        setError(null);
-        try {
-            const form = new FormData();
-            form.set('file', file);
-            form.set('product_id', productId);
-            const response = await fetch('/api/admin/food-image', { method: 'POST', body: form });
-            const result = await response.json() as { product?: BiteProduct; error?: string };
-            if (!response.ok || !result.product) {
-                throw new Error(result.error || 'Food photo could not be saved.');
-            }
-            const updatedProduct = result.product;
-            setBites(current => current.map(item => (
-                String(item.id) === productId ? updatedProduct : item
-            )));
-        } catch (uploadError) {
-            console.error('[BiteCommand] Could not save product photo:', uploadError);
-            setError(uploadError instanceof Error ? uploadError.message : 'Food photo could not be saved.');
-        } finally {
-            setUploadingImageId(null);
-        }
-    };
-
     const handleDelete = async (id: number | string) => {
         if (!confirm('Are you sure you want to remove this food item from the menu?')) return;
         try {
@@ -308,22 +271,9 @@ export default function BiteCommandCenter() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ product: payload })
             });
-            const result = await response.json() as {
-                product?: BiteProduct;
-                error?: string;
-                merchantNotificationCount?: number | null;
-                merchantNotificationWarning?: string | null;
-            };
+            const result = await response.json() as { product?: BiteProduct; error?: string };
             if (!response.ok || !result.product) throw new Error(result.error || 'Food item could not be saved.');
             setBites([result.product, ...bites]);
-            const productId = Number(result.product.id);
-            setNotificationRetryProductId(result.merchantNotificationWarning && Number.isSafeInteger(productId) ? productId : null);
-            setMerchantNotificationMessage({
-                type: result.merchantNotificationWarning ? 'warning' : 'success',
-                text: result.merchantNotificationWarning
-                    ? `Food item saved. ${result.merchantNotificationWarning}`
-                    : `${result.merchantNotificationCount || 0} compatible approved merchants notified to review price and stock.`
-            });
             setIsAddModalOpen(false);
             setNewFood({
                 name: '',
@@ -352,30 +302,6 @@ export default function BiteCommandCenter() {
             alert(insertError instanceof Error ? insertError.message : 'Unable to add food item because the request failed. Please try again.');
         } finally {
             setIsSubmitting(false);
-        }
-    };
-
-    const retryMerchantNotifications = async () => {
-        if (!notificationRetryProductId) return;
-        try {
-            const response = await fetch('/api/admin/bites', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'notify_merchants', id: notificationRetryProductId })
-            });
-            const result = await response.json() as { merchantNotificationCount?: number; error?: string };
-            if (!response.ok) throw new Error(result.error || 'Merchant notifications could not be retried.');
-            setNotificationRetryProductId(null);
-            setMerchantNotificationMessage({
-                type: 'success',
-                text: `${result.merchantNotificationCount || 0} compatible approved merchants notified.`
-            });
-        } catch (retryError) {
-            console.error('[BiteCommand] Could not retry merchant notifications:', retryError);
-            setMerchantNotificationMessage({
-                type: 'warning',
-                text: retryError instanceof Error ? retryError.message : 'Merchant notifications could not be retried.'
-            });
         }
     };
 
@@ -549,12 +475,6 @@ export default function BiteCommandCenter() {
                 </div>
 
                 {error && <p role="alert" className="mx-6 rounded-xl bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</p>}
-                {merchantNotificationMessage && <div role={merchantNotificationMessage.type === 'warning' ? 'alert' : 'status'} className={`mx-6 flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 text-sm font-medium ${merchantNotificationMessage.type === 'warning' ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'}`}>
-                    <span>{merchantNotificationMessage.text}</span>
-                    {notificationRetryProductId && <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void retryMerchantNotifications()} className="border-amber-300 bg-white text-amber-950">
-                        Retry merchant notifications
-                    </Button>}
-                </div>}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="tablist" aria-label="Menu section">
                     <button
                         type="button"
@@ -627,29 +547,6 @@ export default function BiteCommandCenter() {
                                 ) : (
                                     <div className="flex h-full items-center justify-center text-sm text-slate-400">No product image</div>
                                 )}
-                                <label className={cn(
-                                    "absolute bottom-3 left-3 right-3 flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-white/95 px-3 text-xs font-bold text-slate-700 shadow-md transition-colors hover:text-primary",
-                                    uploadingImageId !== null && "cursor-wait opacity-70"
-                                )}>
-                                    {uploadingImageId === String(bite.id)
-                                        ? <Loader2 size={15} className="animate-spin" />
-                                        : <ImagePlus size={15} />}
-                                    {uploadingImageId === String(bite.id)
-                                        ? 'Uploading photo…'
-                                        : bite.image_url ? 'Change photo' : 'Add photo'}
-                                    <input
-                                        type="file"
-                                        accept="image/jpeg,image/png,image/webp,image/avif"
-                                        className="sr-only"
-                                        aria-label={`${bite.image_url ? 'Change' : 'Add'} photo for ${bite.name}`}
-                                        disabled={uploadingImageId !== null}
-                                        onChange={event => {
-                                            const file = event.currentTarget.files?.[0];
-                                            event.currentTarget.value = '';
-                                            if (file) void handleProductImageUpload(bite, file);
-                                        }}
-                                    />
-                                </label>
                                 <div className={cn(
                                     "absolute top-4 right-4 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg",
                                     bite.status === 'Live' ? "bg-emerald-500 text-white" : "bg-slate-500 text-white"

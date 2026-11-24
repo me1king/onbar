@@ -54,8 +54,8 @@ const decks = {
 } as const;
 
 type DeckId = keyof typeof decks;
-type GameMode = 'bottle' | 'truth-or-dare' | 'cards';
-type ChallengeType = 'truth' | 'dare';
+type GameMode = 'bottle' | 'truth-or-dare' | 'do-or-drink' | 'cards';
+type ChallengeType = 'truth' | 'dare' | 'do-or-drink';
 
 const challenges: Record<ChallengeType, string[]> = {
   truth: [
@@ -73,6 +73,16 @@ const challenges: Record<ChallengeType, string[]> = {
     'Give someone at the table a sincere, specific compliment.',
     'Draw your favourite snack with your eyes closed.',
     'Commentate on the next minute like a sports announcer.'
+  ],
+  'do-or-drink': [
+    'Do your best dramatic movie-trailer voice for the next sentence.',
+    'Let the group pick a song for your ten-second dance, or pass.',
+    'Tell a short, funny story about a harmless mistake.',
+    'Give someone a sincere compliment, or take an optional sip.',
+    'Try to make the group laugh in ten seconds.',
+    'Invent a new name for the drink or snack in front of you.',
+    'Hum a song until someone guesses it, or pass.',
+    'Share your most-used emoji and explain why.'
   ]
 };
 
@@ -110,7 +120,7 @@ function isGameSnapshot(value: unknown): value is GameSnapshot {
   const challenge = snapshot.challenge;
   return (
     typeof snapshot.confirmed === 'boolean'
-    && (snapshot.gameMode === 'bottle' || snapshot.gameMode === 'truth-or-dare' || snapshot.gameMode === 'cards')
+    && (snapshot.gameMode === 'bottle' || snapshot.gameMode === 'truth-or-dare' || snapshot.gameMode === 'do-or-drink' || snapshot.gameMode === 'cards')
     && typeof snapshot.selectedDeck === 'string'
     && snapshot.selectedDeck in decks
     && Number.isInteger(snapshot.player)
@@ -130,7 +140,7 @@ function isGameSnapshot(value: unknown): value is GameSnapshot {
     && (challenge === null || (
       typeof challenge === 'object'
       && challenge !== null
-      && ((challenge as Record<string, unknown>).type === 'truth' || (challenge as Record<string, unknown>).type === 'dare')
+      && ((challenge as Record<string, unknown>).type === 'truth' || (challenge as Record<string, unknown>).type === 'dare' || (challenge as Record<string, unknown>).type === 'do-or-drink')
       && typeof (challenge as Record<string, unknown>).text === 'string'
     ))
     && Array.isArray(snapshot.usedChallenges)
@@ -143,13 +153,13 @@ function isGameAction(value: unknown): value is GameAction {
   if (typeof value !== 'object' || value === null || !('type' in value)) return false;
   const action = value as Record<string, unknown>;
   if (action.type === 'set-mode') {
-    return action.mode === 'bottle' || action.mode === 'truth-or-dare' || action.mode === 'cards';
+    return action.mode === 'bottle' || action.mode === 'truth-or-dare' || action.mode === 'do-or-drink' || action.mode === 'cards';
   }
   if (action.type === 'start-round') {
     return typeof action.deck === 'string' && action.deck in decks;
   }
   if (action.type === 'draw-challenge') {
-    return action.challengeType === 'truth' || action.challengeType === 'dare';
+    return action.challengeType === 'truth' || action.challengeType === 'dare' || action.challengeType === 'do-or-drink';
   }
   return [
     'spin-bottle',
@@ -184,6 +194,7 @@ export default function CardGamesPage() {
   const [onlineRoom, setOnlineRoom] = React.useState(false);
   const snapshotRef = React.useRef<GameSnapshot | null>(null);
   const applyActionRef = React.useRef<(action: GameAction) => void>(() => undefined);
+  const bottleSpinTimeoutRef = React.useRef<number | null>(null);
 
   const players = React.useMemo(
     () => playerNames.split(/[\n,]/).map(name => name.trim()).filter(Boolean),
@@ -208,7 +219,11 @@ export default function CardGamesPage() {
     setBottleRotation(current =>
       current + 5 * 360 + ((targetAngle - current % 360 + 360) % 360)
     );
-    window.setTimeout(() => {
+    if (bottleSpinTimeoutRef.current !== null) {
+      window.clearTimeout(bottleSpinTimeoutRef.current);
+    }
+    bottleSpinTimeoutRef.current = window.setTimeout(() => {
+      bottleSpinTimeoutRef.current = null;
       setBottleWinner(players[winnerIndex]);
       setBottleSpinning(false);
     }, 3200);
@@ -216,7 +231,9 @@ export default function CardGamesPage() {
 
   const drawChallengeNow = (type: ChallengeType) => {
     const options = challenges[type].filter(prompt => !usedChallenges.includes(prompt));
-    const pool = options.length ? options : challenges[type];
+    const pool = options.length
+      ? options
+      : challenges[type].filter(prompt => challenge?.type !== type || prompt !== challenge.text);
     const prompt = pool[Math.floor(Math.random() * pool.length)];
     setChallenge({ type, text: prompt });
     setUsedChallenges(current => options.length ? [...current, prompt] : [prompt]);
@@ -299,6 +316,10 @@ export default function CardGamesPage() {
         nextTurnNow();
         break;
       case 'end-game':
+        if (bottleSpinTimeoutRef.current !== null) {
+          window.clearTimeout(bottleSpinTimeoutRef.current);
+          bottleSpinTimeoutRef.current = null;
+        }
         setConfirmed(false);
         setGameMode('bottle');
         setSelectedDeck('warmup');
@@ -490,7 +511,9 @@ export default function CardGamesPage() {
   };
 
   React.useEffect(() => {
-    const requestedRoom = new URLSearchParams(window.location.search).get('room');
+    const searchParams = new URLSearchParams(window.location.search);
+    const requestedRoom = searchParams.get('room');
+    if (searchParams.get('mode') === 'do-or-drink') setGameMode('do-or-drink');
     if (requestedRoom && /^[a-f\d]{32}$/i.test(requestedRoom)) setRoomInput(requestedRoom);
   }, []);
 
@@ -498,6 +521,12 @@ export default function CardGamesPage() {
     if (!onlineRoom || !isRoomHost || !roomChannel) return;
     void roomChannel.send({ type: 'broadcast', event: 'game-state', payload: snapshot });
   }, [onlineRoom, isRoomHost, roomChannel, snapshot]);
+
+  React.useEffect(() => () => {
+    if (bottleSpinTimeoutRef.current !== null) {
+      window.clearTimeout(bottleSpinTimeoutRef.current);
+    }
+  }, []);
 
   React.useEffect(() => () => {
     if (supabase && roomChannel) void supabase.removeChannel(roomChannel);
@@ -613,9 +642,10 @@ export default function CardGamesPage() {
               {!supabase && <p role="alert" className="mt-3 text-xs font-semibold text-amber-200">Online rooms are unavailable because Supabase is not configured. Local games still work.</p>}
             </section>
 
-            <div className="mt-8 grid gap-3 sm:grid-cols-3" aria-label="Choose a game">
+            <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Choose a game">
               <button
                 type="button"
+                disabled={bottleSpinning}
                 aria-pressed={gameMode === 'bottle'}
                 onClick={() => requestAction({ type: 'set-mode', mode: 'bottle' })}
                 className={`rounded-2xl border p-4 text-left transition-colors ${
@@ -627,6 +657,7 @@ export default function CardGamesPage() {
               </button>
               <button
                 type="button"
+                disabled={bottleSpinning}
                 aria-pressed={gameMode === 'truth-or-dare'}
                 onClick={() => requestAction({ type: 'set-mode', mode: 'truth-or-dare' })}
                 className={`rounded-2xl border p-4 text-left transition-colors ${
@@ -638,6 +669,19 @@ export default function CardGamesPage() {
               </button>
               <button
                 type="button"
+                disabled={bottleSpinning}
+                aria-pressed={gameMode === 'do-or-drink'}
+                onClick={() => requestAction({ type: 'set-mode', mode: 'do-or-drink' })}
+                className={`rounded-2xl border p-4 text-left transition-colors ${
+                  gameMode === 'do-or-drink' ? 'border-primary bg-primary/15' : 'border-white/10 bg-white/5 hover:bg-white/10'
+                }`}
+              >
+                <span className="block font-black">Do or Drink</span>
+                <span className="mt-1 block text-xs leading-5 text-white/60">Silly challenges. A sip is optional; passing is always okay.</span>
+              </button>
+              <button
+                type="button"
+                disabled={bottleSpinning}
                 aria-pressed={gameMode === 'cards'}
                 onClick={() => requestAction({ type: 'set-mode', mode: 'cards' })}
                 className={`rounded-2xl border p-4 text-left transition-colors ${
@@ -759,6 +803,44 @@ export default function CardGamesPage() {
                   <Button type="button" onClick={() => requestAction({ type: 'draw-challenge', challengeType: 'truth' })} className="h-12 rounded-xl bg-primary px-6 font-black text-slate-950 hover:bg-amber-400">Truth</Button>
                   <Button type="button" onClick={() => requestAction({ type: 'draw-challenge', challengeType: 'dare' })} className="h-12 rounded-xl bg-primary px-6 font-black text-slate-950 hover:bg-amber-400">Dare</Button>
                   <Button type="button" variant="outline" onClick={() => requestAction({ type: 'next-challenge' })} className="h-12 rounded-xl border-white/20 bg-transparent px-6 font-bold text-white hover:bg-white/10">{challenge ? 'Next turn' : 'Pass'}</Button>
+                </div>
+              </section>
+            )}
+
+            {gameMode === 'do-or-drink' && (
+              <section className="mt-6 rounded-3xl border border-white/10 bg-[#211b17] p-6 text-center shadow-2xl sm:p-8">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">
+                  {players.length ? players[turnIndex % players.length] : 'Player'} · do or drink?
+                </p>
+                {challenge?.type === 'do-or-drink' ? (
+                  <div aria-live="polite" className="flex min-h-48 flex-col items-center justify-center">
+                    <p className="max-w-xl py-4 text-2xl font-bold leading-relaxed sm:text-3xl">{challenge.text}</p>
+                  </div>
+                ) : (
+                  <p className="flex min-h-48 items-center justify-center text-lg text-white/65">Draw a challenge. Do it, take an optional sip of any drink, or pass.</p>
+                )}
+                <p className="mb-4 text-xs leading-5 text-white/50">No alcohol is required. Any drink can be alcohol-free, and skipping is always fine.</p>
+                <div className="flex flex-col justify-center gap-3 sm:flex-row">
+                  <Button
+                    type="button"
+                    onClick={() => requestAction({ type: 'draw-challenge', challengeType: 'do-or-drink' })}
+                    className="h-12 rounded-xl bg-primary px-6 font-black text-slate-950 hover:bg-amber-400"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" /> {challenge?.type === 'do-or-drink' ? 'Next challenge' : 'Draw a challenge'}
+                  </Button>
+                  {challenge?.type === 'do-or-drink' && (
+                    <>
+                      <Button type="button" variant="outline" onClick={() => requestAction({ type: 'next-challenge' })} className="h-12 rounded-xl border-white/20 bg-transparent px-6 font-bold text-white hover:bg-white/10">
+                        Did it
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => requestAction({ type: 'next-challenge' })} className="h-12 rounded-xl border-white/20 bg-transparent px-6 font-bold text-white hover:bg-white/10">
+                        Optional sip
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => requestAction({ type: 'next-challenge' })} className="h-12 rounded-xl border-white/20 bg-transparent px-6 font-bold text-white hover:bg-white/10">
+                        Pass
+                      </Button>
+                    </>
+                  )}
                 </div>
               </section>
             )}

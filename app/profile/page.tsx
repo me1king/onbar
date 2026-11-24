@@ -139,6 +139,8 @@ interface WorkspaceAccess {
     reviewNote: string | null;
     submittedAt: string;
     reviewedAt: string | null;
+    offeredGoods: string[];
+    offeredGoodsPricing: Array<{ product_id: number; product_name: string; price: number; currency: string }>;
   }>;
   marketApplications: Array<{
     id: string;
@@ -1113,13 +1115,24 @@ export default function ProfilePage() {
                                 )}
                                 <div className="flex flex-wrap gap-3">
                                 {workspaceAccess.merchantApplications.filter(application => application.status === 'approved').map(application => (
-                                    <div key={application.id} className="w-full">
+                                    <div key={application.id} className="w-full rounded-2xl border border-slate-200 bg-white p-4">
                                         <Link
                                             href="/merchant/network"
                                             className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-3 text-xs font-black uppercase tracking-wide text-white transition hover:opacity-90"
                                         >
                                             <Store size={15} /> Open {application.businessName} merchant terminal
                                         </Link>
+                                        <p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">Goods offered</p>
+                                        {application.offeredGoodsPricing.length ? (
+                                            <ul className="mt-2 space-y-1">
+                                                {application.offeredGoodsPricing.map(good => (
+                                                    <li key={good.product_id} className="flex justify-between gap-3 text-sm text-slate-700">
+                                                        <span>{good.product_name}</span>
+                                                        <strong className="shrink-0">{good.currency} {Number(good.price).toLocaleString()}</strong>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : <p className="mt-1 text-sm text-slate-700">{application.offeredGoods.length ? `${application.offeredGoods.join(', ')} · Proposed prices not recorded.` : 'No goods selected on this application.'}</p>}
                                     </div>
                                 ))}
                                 {workspaceAccess.riderApproved && (

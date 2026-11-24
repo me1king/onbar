@@ -40,12 +40,6 @@ interface ProductListing {
   images: Array<{ url: string; alt: string; mediaType: 'image' | 'video' }>;
 }
 
-function listedPrice(product: ProductListing) {
-  const variant = product.variants[0];
-  if (!variant) return null;
-  return variant.sale_price_minor || variant.price_minor;
-}
-
 interface Merchant {
   id: string;
   name: string;
@@ -105,7 +99,7 @@ export default function MarketOperationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [products, setProducts] = useState<ProductListing[]>([]);
   const [productStatusFilter, setProductStatusFilter] = useState<'all' | ProductListing['status']>('all');
-  const [productSort, setProductSort] = useState<'newest' | 'oldest' | 'merchant' | 'product' | 'price_low' | 'price_high'>('newest');
+  const [productSort, setProductSort] = useState<'newest' | 'oldest' | 'merchant' | 'product'>('newest');
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [offers, setOffers] = useState<MarketOffer[]>([]);
   const [orders, setOrders] = useState<MarketOrderRequest[]>([]);
@@ -345,15 +339,6 @@ export default function MarketOperationsPage() {
     .sort((a, b) => {
       if (productSort === 'merchant') return a.merchant.name.localeCompare(b.merchant.name) || a.name.localeCompare(b.name);
       if (productSort === 'product') return a.name.localeCompare(b.name) || a.merchant.name.localeCompare(b.merchant.name);
-      if (productSort === 'price_low' || productSort === 'price_high') {
-        const priceA = listedPrice(a);
-        const priceB = listedPrice(b);
-        if (priceA === null) return priceB === null ? a.name.localeCompare(b.name) : 1;
-        if (priceB === null) return -1;
-        const priceDifference = priceA - priceB;
-        if (priceDifference !== 0) return productSort === 'price_low' ? priceDifference : -priceDifference;
-        return a.name.localeCompare(b.name);
-      }
       const dateDifference = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return productSort === 'newest' ? -dateDifference : dateDifference;
     });
@@ -468,8 +453,6 @@ export default function MarketOperationsPage() {
                 <option value="oldest">Oldest first</option>
                 <option value="merchant">Merchant name</option>
                 <option value="product">Product name</option>
-                <option value="price_low">Lowest listed price</option>
-                <option value="price_high">Highest listed price</option>
               </select>
             </label>
           </div>

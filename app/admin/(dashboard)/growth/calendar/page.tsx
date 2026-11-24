@@ -23,7 +23,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
-import Link from 'next/link';
 
 interface ScheduledMission {
     id: string;
@@ -32,7 +31,7 @@ interface ScheduledMission {
     time: string;
     day: number;
     type: 'instagram' | 'facebook' | 'whatsapp' | 'tiktok' | 'beverage' | 'food' | 'souvenir';
-    status: 'DRAFT' | 'APPROVED' | 'SCHEDULED' | 'QUEUED' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED';
+    status: 'DRAFT' | 'APPROVED' | 'SCHEDULED' | 'QUEUED' | 'PENDING_REVIEW' | 'PUBLISHING' | 'RETRYING' | 'PUBLISHED' | 'SUCCESS' | 'FAILED';
     scheduledAt: string;
     image_url?: string;
 }
@@ -58,6 +57,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 export default function GrowthCalendar() {
     const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [notice, setNotice] = React.useState<string | null>(null);
     const [viewMode, setViewMode] = React.useState<'month' | 'hourly'>('month');
@@ -75,8 +75,7 @@ export default function GrowthCalendar() {
         type: 'instagram' as ScheduledMission['type'],
         day: String(new Date().getDate()),
         time: new Date().toTimeString().slice(0, 5),
-        caption: '',
-        imageUrl: ''
+        caption: ''
     });
 
     const fetchCalendar = React.useCallback(async () => {
@@ -84,28 +83,34 @@ export default function GrowthCalendar() {
         setError(null);
         try {
             const response = await fetch('/api/admin/growth-calendar', { cache: 'no-store' });
-            const result = await response.json() as {
-                missions?: Array<Omit<ScheduledMission, 'day' | 'time'>>;
-                error?: string;
-            };
-            if (!response.ok) throw new Error(result.error || 'Unable to load the publishing queue.');
-            if (!Array.isArray(result.missions)) throw new Error('Publishing queue response is incomplete.');
-            const formatted: ScheduledMission[] = result.missions
-                .filter(item => Number.isFinite(new Date(item.scheduledAt).getTime()))
-                .map(item => {
-                    const scheduledAt = new Date(item.scheduledAt);
-                    return {
-                        ...item,
-                        time: scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        day: scheduledAt.getDate(),
-                        type: item.type.toLowerCase() as ScheduledMission['type'],
-                        status: item.status as ScheduledMission['status']
-                    };
-                });
+            const payload = await response.json() as { missions?: unknown; error?: string };
+            if (!response.ok) throw new Error(payload.error || 'Unable to load the publishing queue.');
+            if (!Array.isArray(payload.missions)) throw new Error('The publishing queue returned an invalid response.');
+            const formatted: ScheduledMission[] = payload.missions.map((item: {
+                id: string;
+                title: string;
+                scheduledAt: string;
+                type: string;
+                status: string;
+                caption?: string | null;
+                image_url?: string | null;
+            }) => {
+                const scheduledAt = new Date(item.scheduledAt);
+                return {
+                    id: item.id,
+                    title: item.title,
+                    time: scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    day: scheduledAt.getDate(),
+                    scheduledAt: scheduledAt.toISOString(),
+                    type: item.type as ScheduledMission['type'],
+                    status: item.status as ScheduledMission['status'],
+                    caption: item.caption || undefined,
+                    image_url: item.image_url || undefined
+                };
+            });
             setMissions(formatted);
         } catch (err) {
             console.error('Publishing queue fetch error:', err);
-            setMissions([]);
             setError(getErrorMessage(err, 'Unable to load the publishing queue.'));
         } finally {
             setLoading(false);
@@ -114,8 +119,8 @@ export default function GrowthCalendar() {
 
     React.useEffect(() => {
         void fetchCalendar();
-        const interval = setInterval(() => { void fetchCalendar(); }, 30_000);
-        return () => clearInterval(interval);
+        const interval = window.setInterval(() => void fetchCalendar(), 30_000);
+        return () => window.clearInterval(interval);
     }, [fetchCalendar]);
 
     const handleCreateMission = async (e: React.FormEvent) => {
@@ -128,27 +133,30 @@ export default function GrowthCalendar() {
         const day = Number(builderForm.day);
         const [hours, minutes] = builderForm.time.split(':').map(Number);
         const scheduledDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), day, hours, minutes);
-        if (!Number.isInteger(day) || day < 1 || day > new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate() || Number.isNaN(scheduledDate.getTime())) {
+        if (!Number.isInteger(day) || day < 1 || day > new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate()
+            || !Number.isInteger(hours) || hours < 0 || hours > 23
+            || !Number.isInteger(minutes) || minutes < 0 || minutes > 59
+            || Number.isNaN(scheduledDate.getTime())) {
             setError('Select a valid date and time.');
             return;
         }
 
         setError(null);
         setNotice(null);
+        setSaving(true);
         try {
             const response = await fetch('/api/admin/growth-calendar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    title: builderForm.title,
-                    caption: builderForm.caption,
-                    imageUrl: builderForm.imageUrl,
+                    title: builderForm.title.trim(),
                     platform: builderForm.type,
-                    scheduledAt: scheduledDate.toISOString()
+                    scheduledAt: scheduledDate.toISOString(),
+                    caption: builderForm.caption.trim()
                 })
             });
-            const result = await response.json() as { error?: string };
-            if (!response.ok) throw new Error(result.error || 'Unable to save the schedule.');
+            const payload = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(payload.error || 'Unable to save the schedule.');
 
             await fetchCalendar();
             setIsBuilderOpen(false);
@@ -156,6 +164,8 @@ export default function GrowthCalendar() {
         } catch (err) {
             console.error('Publishing queue save error:', err);
             setError(getErrorMessage(err, 'Unable to save the schedule.'));
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -195,27 +205,8 @@ export default function GrowthCalendar() {
                     </div>
                     <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Content Studio & Calendar</h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1">Review records saved to the internal publishing queue. Queue status does not confirm external delivery.</p>
-                    <p className="text-muted-foreground text-xs mt-2">Plan audience-specific email drafts and requested send times in the campaign builder. Saving a time does not create an automatic send.</p>
                 </div>
                 <div className="flex gap-4 items-center flex-wrap">
-                    <Link
-                        href="/admin/marketing/create"
-                        className="inline-flex h-12 items-center rounded-2xl border border-slate-200 bg-white px-5 text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50"
-                    >
-                        Plan email campaign
-                    </Link>
-                    <Link
-                        href="/admin/marketing/list"
-                        className="inline-flex h-12 items-center rounded-2xl border border-slate-200 bg-white px-5 text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50"
-                    >
-                        View campaign plans
-                    </Link>
-                    <Link
-                        href="/admin/marketing/game-break-ads"
-                        className="inline-flex h-12 items-center rounded-2xl border border-emerald-200 bg-emerald-50 px-5 text-[10px] font-black uppercase tracking-widest text-emerald-800 hover:bg-emerald-100"
-                    >
-                        Game break ads
-                    </Link>
                     <div className="flex p-1 bg-white border border-slate-200 rounded-xl shadow-sm">
                         <button
                             onClick={() => setViewMode('month')}
@@ -253,11 +244,11 @@ export default function GrowthCalendar() {
                 </Card>
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1">
                     <p className="text-[9px] font-black uppercase text-indigo-600 tracking-widest">Scheduled</p>
-                    <p className="text-3xl font-black text-indigo-600 tabular-nums">{missions.filter(mission => mission.status === 'SCHEDULED').length.toLocaleString()}</p>
+                    <p className="text-3xl font-black text-indigo-600 tabular-nums">{missions.filter(mission => ['SCHEDULED', 'QUEUED', 'PUBLISHING', 'RETRYING'].includes(mission.status)).length.toLocaleString()}</p>
                 </Card>
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1">
                     <p className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Published Records</p>
-                    <p className="text-3xl font-black text-emerald-600 tabular-nums">{missions.filter(mission => mission.status === 'PUBLISHED').length.toLocaleString()}</p>
+                    <p className="text-3xl font-black text-emerald-600 tabular-nums">{missions.filter(mission => mission.status === 'PUBLISHED' || mission.status === 'SUCCESS').length.toLocaleString()}</p>
                 </Card>
                 <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-sm space-y-1">
                     <p className="text-[9px] font-black uppercase text-rose-600 tracking-widest">Failed Records</p>
@@ -276,6 +267,7 @@ export default function GrowthCalendar() {
                 {[
                     { id: 'all', label: 'All Channels', icon: Share2 },
                     { id: 'instagram', label: 'Instagram', icon: Instagram },
+                    { id: 'facebook', label: 'Facebook', icon: Share2 },
                     { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
                     { id: 'tiktok', label: 'TikTok', icon: Music },
                     { id: 'beverage', label: 'Beverage Launch', icon: Wine },
@@ -454,7 +446,7 @@ export default function GrowthCalendar() {
 
                         {selectedMission.image_url && (
                             <div className="h-40 w-full rounded-2xl relative overflow-hidden bg-slate-900 shadow-md">
-                                <Image src={selectedMission.image_url} alt={selectedMission.title} fill unoptimized className="object-cover" />
+                                <Image src={selectedMission.image_url} alt={selectedMission.title} fill className="object-cover" />
                             </div>
                         )}
 
@@ -562,25 +554,6 @@ export default function GrowthCalendar() {
                                 />
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black uppercase text-slate-400">Marketing Image</label>
-                                <Input
-                                    type="text"
-                                    maxLength={2000}
-                                    value={builderForm.imageUrl}
-                                    onChange={e => setBuilderForm({ ...builderForm, imageUrl: e.target.value })}
-                                    placeholder="https://... or /images/campaign.jpg"
-                                    className="rounded-xl h-12 bg-slate-50 border-none"
-                                />
-                                <p className="text-xs text-slate-500">Use a public HTTPS image URL or a site-relative image path. This adds the image to the internal schedule; it does not publish automatically.</p>
-                                {(builderForm.imageUrl.startsWith('https://')
-                                    || (builderForm.imageUrl.startsWith('/') && !builderForm.imageUrl.startsWith('//'))) && (
-                                    <div className="relative mt-2 h-36 overflow-hidden rounded-xl border border-slate-200">
-                                        <Image src={builderForm.imageUrl} alt="Campaign image preview" fill unoptimized className="object-cover" />
-                                    </div>
-                                )}
-                            </div>
-
                             <div className="pt-4 flex justify-end gap-3">
                                 <Button
                                     type="button"
@@ -592,9 +565,10 @@ export default function GrowthCalendar() {
                                 </Button>
                                 <Button
                                     type="submit"
+                                    disabled={saving}
                                     className="rounded-xl h-12 px-8 bg-primary text-white font-black uppercase text-xs shadow-lg"
                                 >
-                                    <CheckCircle2 size={16} className="mr-2" /> Schedule Mission
+                                    <CheckCircle2 size={16} className="mr-2" /> {saving ? 'Saving…' : 'Schedule Mission'}
                                 </Button>
                             </div>
                         </form>

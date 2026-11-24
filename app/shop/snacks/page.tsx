@@ -84,17 +84,20 @@ export default function SnackShopPage() {
     return (
         <div className="min-h-screen bg-white text-left selection:bg-primary/20">
             {/* 1. Header */}
-            <header className="bg-slate-50 py-16 border-b border-slate-100 relative overflow-hidden">
+            <header className="relative isolate overflow-hidden border-b border-amber-100 bg-[#fff8ec] py-10 sm:py-14 lg:py-16">
+                <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-24 h-80 w-80 rounded-full bg-amber-300/40 blur-3xl" />
+                <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 left-0 h-72 w-72 rounded-full bg-orange-200/50 blur-3xl" />
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-                    <Link href="/shop" className="inline-flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 hover:text-primary transition-colors mb-8">
+                    <Link href="/shop" className="inline-flex items-center gap-2 text-[10px] font-black uppercase text-slate-600 hover:text-primary transition-colors mb-8">
                         <ArrowLeft className="h-4 w-4" /> Back to Bar
                     </Link>
                     <div className="max-w-xl space-y-6">
-                        <h1 className="text-6xl font-black text-foreground uppercase tracking-tighter leading-none">
-                            The Snack <span className="text-primary italic">Shop.</span>
+                        <h1 className="text-5xl font-black uppercase leading-[0.94] tracking-[-0.055em] text-slate-950 sm:text-6xl md:text-7xl">
+                            The Snack
+                            <span className="mt-1 block text-primary">shop.</span>
                         </h1>
-                        <p className="text-slate-500 text-lg font-medium leading-relaxed italic">
-                            &quot;Premium pairings for your favorite beverages. Chilled, crunchy, and delivered with surgical speed.&quot;
+                        <p className="text-slate-600 text-lg font-medium leading-relaxed">
+                            Premium pairings for your favourite drinks, delivered with your order.
                         </p>
                     </div>
                 </div>

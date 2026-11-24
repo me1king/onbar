@@ -30,6 +30,7 @@ import { formatPrice, cn, getPublicBaseUrl } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { copyTextToClipboard, getKenyanWhatsAppNumber } from '@/lib/riderContact';
 import { formatBatteryTelemetry } from '@/lib/riderTelemetry';
+import DeliveryZonesPanel from '@/components/admin/dispatch/DeliveryZonesPanel';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 
@@ -581,6 +582,8 @@ export default function AdminDispatchPage() {
                     <p className="text-xs font-black uppercase tracking-widest">{message.text}</p>
                 </div>
             )}
+
+            <DeliveryZonesPanel />
 
             {/* Top Stats HUD */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 items-stretch">

@@ -9,120 +9,10 @@ import { isAllowed } from '@/lib/consentService';
 
 const PRIVATE_ANALYTICS_PATHS = ['/admin', '/lord', '/merchant', '/profile', '/track', '/payment', '/rider', '/supplier', '/api', '/checkout'];
 
-interface SessionAttribution {
-    sessionId: string;
-    source: string;
-    medium: string;
-    campaign: string | null;
-    campaignId: string | null;
-    content: string | null;
-    term: string | null;
-    landingPage: string;
-    referrerHost: string | null;
-    capturedAt: number;
-}
-
 function isTrackablePath(pathname: string | null) {
     return Boolean(pathname) && !PRIVATE_ANALYTICS_PATHS.some(path =>
         pathname === path || pathname?.startsWith(`${path}/`)
     );
-}
-
-function safeAttributionValue(value: string | null | undefined) {
-    const normalized = value?.trim().slice(0, 100) || '';
-    if (!normalized || /[^\s@]+@[^\s@]+\.[^\s@]{2,}/i.test(normalized) || /(?:\+?254|0)(?:[\s()-]*\d){9}/.test(normalized)) return null;
-    return normalized;
-}
-
-function sourceFromReferrer(host: string) {
-    const sources: Array<[RegExp, string]> = [
-        [/google/i, 'Google'],
-        [/bing/i, 'Bing'],
-        [/duckduckgo/i, 'DuckDuckGo'],
-        [/instagram/i, 'Instagram'],
-        [/facebook|fb\.com/i, 'Facebook'],
-        [/tiktok/i, 'TikTok'],
-        [/youtube/i, 'YouTube'],
-        [/whatsapp/i, 'WhatsApp'],
-        [/twitter|x\.com/i, 'X']
-    ];
-    return sources.find(([pattern]) => pattern.test(host))?.[1] || host;
-}
-
-function getSessionAttribution(pathname: string, searchParams: URLSearchParams, sessionId: string): SessionAttribution {
-    const storageKey = 'ob_current_session_attribution';
-    const attributionLifetime = 30 * 60 * 1000;
-
-    try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-            const parsed: unknown = JSON.parse(stored);
-            if (
-                typeof parsed === 'object' &&
-                parsed !== null &&
-                'sessionId' in parsed &&
-                parsed.sessionId === sessionId &&
-                'capturedAt' in parsed &&
-                typeof parsed.capturedAt === 'number' &&
-                Date.now() - parsed.capturedAt >= 0 &&
-                Date.now() - parsed.capturedAt < attributionLifetime &&
-                'source' in parsed &&
-                typeof parsed.source === 'string' &&
-                'medium' in parsed &&
-                typeof parsed.medium === 'string' &&
-                'campaign' in parsed &&
-                (typeof parsed.campaign === 'string' || parsed.campaign === null) &&
-                'campaignId' in parsed &&
-                (typeof parsed.campaignId === 'string' || parsed.campaignId === null) &&
-                'content' in parsed &&
-                (typeof parsed.content === 'string' || parsed.content === null) &&
-                'term' in parsed &&
-                (typeof parsed.term === 'string' || parsed.term === null) &&
-                'landingPage' in parsed &&
-                typeof parsed.landingPage === 'string' &&
-                'referrerHost' in parsed &&
-                (typeof parsed.referrerHost === 'string' || parsed.referrerHost === null)
-            ) {
-                return parsed as SessionAttribution;
-            }
-        }
-    } catch (error) {
-        console.warn('[Analytics] Could not restore campaign attribution:', error);
-    }
-
-    let referrerHost: string | null = null;
-    try {
-        const referrer = document.referrer ? new URL(document.referrer) : null;
-        if (referrer && referrer.hostname !== window.location.hostname) referrerHost = referrer.hostname;
-    } catch (error) {
-        console.warn('[Analytics] Could not parse the referring site:', error);
-    }
-
-    const utmSource = safeAttributionValue(searchParams.get('utm_source'));
-    const source = utmSource || (
-        referrerHost
-            ? sourceFromReferrer(referrerHost)
-            : 'Direct'
-    );
-    const attribution: SessionAttribution = {
-        sessionId,
-        source,
-        medium: safeAttributionValue(searchParams.get('utm_medium')) || (source === 'Direct' ? 'direct' : utmSource ? 'unspecified' : 'referral'),
-        campaign: safeAttributionValue(searchParams.get('utm_campaign')),
-        campaignId: safeAttributionValue(searchParams.get('utm_id')),
-        content: safeAttributionValue(searchParams.get('utm_content')),
-        term: safeAttributionValue(searchParams.get('utm_term')),
-        landingPage: pathname.slice(0, 200),
-        referrerHost,
-        capturedAt: Date.now()
-    };
-
-    try {
-        localStorage.setItem(storageKey, JSON.stringify(attribution));
-    } catch (error) {
-        console.warn('[Analytics] Could not persist campaign attribution:', error);
-    }
-    return attribution;
 }
 
 function safeSearchTerm(value: string | null) {
@@ -154,7 +44,7 @@ export default function AnalyticsTracker() {
             if (event === 'SIGNED_IN' && session && isAllowed('analytics') && isTrackablePath(pathname)) {
                 // Supabase awaits async auth listeners while holding its auth lock.
                 void (async () => {
-                    const activeSessId = OB_OS.prepareAnalyticsSession();
+                    const activeSessId = OB_OS.getSessionId();
                     const anonId = localStorage.getItem('ob_anonymous_id');
 
                     if (activeSessId) {
@@ -222,22 +112,25 @@ export default function AnalyticsTracker() {
                     } catch { /* Silent */ }
                 }
 
-                const activeSessId = OB_OS.prepareAnalyticsSession();
-                if (!activeSessId) return;
+                const activeSessId = OB_OS.getSessionId();
 
-                const attribution = getSessionAttribution(
-                    pathname || '/',
-                    new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
-                    activeSessId
-                );
+                // 🚀 [WIDGET_INTEL] Capture Mobile Widget Attribution
+                const docReferrer = typeof document !== 'undefined' ? document.referrer : '';
+                const source = searchParams?.get('utm_source') ||
+                               (docReferrer.includes('instagram.com') ? 'Instagram' :
+                                docReferrer.includes('google.com') ? 'Google' : 'Direct');
+
+                const campaign = searchParams?.get('utm_campaign') || 'Direct';
+                const utmId = searchParams?.get('utm_id') || undefined;
+                const utmContent = searchParams?.get('utm_content') || undefined;
 
                 if (typeof sessionStorage !== 'undefined') {
                     try {
-                        sessionStorage.setItem('ob_attribution_source', attribution.source);
-                        sessionStorage.setItem('ob_attribution_campaign', attribution.campaign || '');
-                        if (attribution.campaignId) sessionStorage.setItem('ob_attribution_id', attribution.campaignId);
-                        if (attribution.content) sessionStorage.setItem('ob_content_variant', attribution.content);
-                        if (attribution.source === 'mobile_widget') sessionStorage.setItem('ob_widget_engagement', 'true');
+                        sessionStorage.setItem('ob_attribution_source', source);
+                        sessionStorage.setItem('ob_attribution_campaign', campaign);
+                        if (utmId) sessionStorage.setItem('ob_attribution_id', utmId);
+                        if (utmContent) sessionStorage.setItem('ob_content_variant', utmContent);
+                        if (source === 'mobile_widget') sessionStorage.setItem('ob_widget_engagement', 'true');
                     } catch { /* Ignore quota errors */ }
                 }
 
@@ -253,7 +146,7 @@ export default function AnalyticsTracker() {
                     const screenRes = typeof window !== 'undefined' ? `${window.screen.width}x${window.screen.height}` : '0x0';
                     const lang = typeof navigator !== 'undefined' ? navigator.language : 'en';
 
-                    const sessionData = {
+                    await supabase.from('customer_sessions').upsert({
                         id: activeSessId,
                         user_id: session?.user?.id,
                         anonymous_id: anonId,
@@ -261,47 +154,16 @@ export default function AnalyticsTracker() {
                         current_page: pathname,
                         analytics_consent: true,
                         analytics_consent_updated_at: new Date().toISOString(),
-                        source_channel: attribution.source,
-                        campaign_id: attribution.campaign || attribution.campaignId,
-                        attribution_id: attribution.campaignId,
-                        content_variant: attribution.content,
+                        source_channel: source,
+                        campaign_id: campaign,
+                        attribution_id: utmId,
+                        content_variant: utmContent,
                         device_info: {
                             ua: ua,
                             res: screenRes,
-                            lang: lang,
-                            attribution: {
-                                source: attribution.source,
-                                medium: attribution.medium,
-                                campaign: attribution.campaign,
-                                campaignId: attribution.campaignId,
-                                content: attribution.content,
-                                term: attribution.term,
-                                landingPage: attribution.landingPage,
-                                referrerHost: attribution.referrerHost
-                            }
+                            lang: lang
                         }
-                    };
-                    const { error: insertError } = await supabase.from('customer_sessions').upsert(
-                        sessionData,
-                        { onConflict: 'id', ignoreDuplicates: true }
-                    );
-                    if (insertError) throw insertError;
-
-                    const { error: updateError } = await supabase.from('customer_sessions')
-                        .update({
-                            user_id: session?.user?.id,
-                            anonymous_id: anonId,
-                            current_page: pathname,
-                            analytics_consent: true,
-                            analytics_consent_updated_at: new Date().toISOString(),
-                            source_channel: attribution.source,
-                            campaign_id: attribution.campaign || attribution.campaignId,
-                            attribution_id: attribution.campaignId,
-                            content_variant: attribution.content,
-                            device_info: sessionData.device_info
-                        })
-                        .eq('id', activeSessId);
-                    if (updateError) throw updateError;
+                    }, { onConflict: 'id' });
 
                     if (!isAllowed('analytics') || !isTrackablePath(pathname)) {
                         const { error } = await supabase.from('customer_sessions')

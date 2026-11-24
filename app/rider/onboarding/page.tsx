@@ -27,7 +27,7 @@ const normalizePhone = (p: string) => {
     let digits = p.replace(/\D/g, '');
     if (digits.startsWith('254')) digits = digits.slice(3);
     else if (digits.startsWith('0')) digits = digits.slice(1);
-    return digits;
+    return /^[17]\d{8}$/.test(digits) ? `254${digits}` : '';
 };
 const riderProgressSteps: Step[] = ['phone', 'identity', 'vehicle', 'verification', 'agreement', 'biometrics', 'pending'];
 
@@ -168,7 +168,7 @@ export default function RiderOnboarding() {
             return false;
         }
         const normalized = normalizePhone(phone);
-        if (!/^[17]\d{8}$/.test(normalized)) {
+        if (!/^254[17]\d{8}$/.test(normalized)) {
             setError('Enter a valid Kenyan mobile number, for example +254 7XX XXX XXX.');
             return false;
         }
@@ -253,7 +253,7 @@ export default function RiderOnboarding() {
 
     const handleIdentify = async () => {
         const normalized = normalizePhone(phone);
-        if (!/^[17]\d{8}$/.test(normalized)) {
+        if (!/^254[17]\d{8}$/.test(normalized)) {
             setError('Enter a valid Kenyan mobile number, for example +254 7XX XXX XXX.');
             return;
         }

@@ -3,7 +3,6 @@ import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission } from '@/lib/adminAccess.server';
 import { getTransactionalEmailConfig } from '@/lib/jmsurfMail.server';
 import { isWebPushConfigured } from '@/lib/webPush.server';
-import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 import {
   CUSTOMER_NOTIFICATION_CHANNELS,
   CUSTOMER_NOTIFICATION_STATUSES,
@@ -22,20 +21,11 @@ type FlowEvent = {
   detail: string;
   status: EventStatus;
   occurredAt: string;
-  channel?: string;
-  notificationStatus?: string;
 };
 type OrderFlow = {
   id: number;
   status: string;
   createdAt: string;
-  paymentMethod: string | null;
-  riderName: string | null;
-  riderPhone: string | null;
-  retryableCustomerChannels: string[];
-  failedCustomerChannels: string[];
-  retryableMerchantAlerts: number;
-  events: FlowEvent[];
   stages: {
     order: { status: EventStatus; label: string };
     payment: { status: EventStatus; label: string };
@@ -132,7 +122,7 @@ export async function GET() {
     type DispatchRow = { id: number; order_id: number; selected_rider_name: string | null; decision_type: string; created_at: string };
     type DispatchJobRow = { order_id: number; status: string; attempt_count: number; last_error: string | null; updated_at: string };
     type NotificationRow = { id: number; order_id: number; notification_status: string; channel: string; delivery_status: string; error_message: string | null; created_at: string };
-    type MerchantAlertRow = { id: number; order_id: number | null; channel: string; step: string; status: string; error: string | null; created_at: string };
+    type MerchantAlertRow = { id: number; order_id: number | null; channel: string; step: string; status: string; created_at: string };
     type HeartbeatRow = { worker_key: string; last_seen_at: string };
 
     const orders = (ordersResult.data || []) as OrderRow[];
@@ -191,7 +181,7 @@ export async function GET() {
           .limit(300)
           .abortSignal(AbortSignal.timeout(8000)),
         database.from('merchant_order_alert_log')
-          .select('id,order_id,channel,step,status,error,created_at')
+          .select('id,order_id,channel,step,status,created_at')
           .in('order_id', orderIds)
           .order('created_at', { ascending: false })
           .limit(300)
@@ -354,13 +344,9 @@ export async function GET() {
         orderId: notification.order_id,
         stage: 'customer_notification',
         title: `${notification.channel.toUpperCase()} ${notification.delivery_status} · ${notification.notification_status}`,
-        detail: notification.error_message || (notification.delivery_status === 'failed'
-          ? 'Delivery failed, but the provider did not return a reason.'
-          : 'Customer delivery attempt'),
+        detail: 'Customer delivery attempt',
         status: deliveryStatus(notification.delivery_status),
-        occurredAt: notification.created_at,
-        channel: notification.channel,
-        notificationStatus: notification.notification_status
+        occurredAt: notification.created_at
       });
     }
     for (const alert of merchantAlertRows) {
@@ -370,7 +356,7 @@ export async function GET() {
         orderId: alert.order_id,
         stage: 'merchant_notification',
         title: `Merchant ${alert.channel} alert ${alert.status}`,
-        detail: alert.error || alert.step.replaceAll('_', ' '),
+        detail: alert.step.replaceAll('_', ' '),
         status: deliveryStatus(alert.status),
         occurredAt: alert.created_at
       });
@@ -383,15 +369,6 @@ export async function GET() {
       const dispatchDecision = latestDispatch.get(order.id);
       const orderNotifications = notificationsByOrder.get(order.id) || [];
       const merchantAlerts = merchantAlertsByOrder.get(order.id) || [];
-      const retryableCustomerChannels = [...new Set(orderNotifications
-        .filter(row => row.notification_status === order.status && row.delivery_status === 'failed')
-        .map(row => row.channel)
-        .filter(channel => ['email', 'sms', 'whatsapp', 'push'].includes(channel)))];
-      const failedCustomerChannels = [...new Set(orderNotifications
-        .filter(row => row.delivery_status === 'failed')
-        .map(row => row.channel)
-        .filter(channel => ['email', 'sms', 'whatsapp', 'push'].includes(channel)))];
-      const retryableMerchantAlerts = merchantAlerts.filter(alert => alert.status === 'failed').length;
       const paymentVerified = Boolean(payment || order.payment_verified_at);
       const isCash = (order.payment_method || '').toLowerCase() === 'cod';
       const merchantEvent = merchant?.event_type || null;
@@ -411,15 +388,6 @@ export async function GET() {
         id: order.id,
         status: orderStatus,
         createdAt: order.created_at,
-        paymentMethod: order.payment_method,
-        riderName: order.rider_name,
-        riderPhone: order.rider_phone,
-        retryableCustomerChannels,
-        failedCustomerChannels,
-        retryableMerchantAlerts,
-        events: timeline
-          .filter(event => event.orderId === order.id)
-          .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)),
         stages: {
           order: { status: 'success', label: `Placed ${new Date(order.created_at).toLocaleTimeString()}` },
           payment: paymentVerified
@@ -455,66 +423,17 @@ export async function GET() {
     const workers = ['default', 'order-dispatch'].map(workerKey => {
       const heartbeat = heartbeatRows.find(row => row.worker_key === workerKey);
       const ageMs = heartbeat ? now - new Date(heartbeat.last_seen_at).getTime() : null;
-      const status = ageMs === null ? 'unavailable' : ageMs > 90_000 ? 'stale' : 'online';
-      const isDispatchWorker = workerKey === 'order-dispatch';
       return {
         key: workerKey,
-        status,
-        lastSeenAt: heartbeat?.last_seen_at || null,
-        diagnostic: status === 'online'
-          ? `Heartbeat received ${Math.max(0, Math.floor((ageMs || 0) / 1000))} seconds ago.`
-          : status === 'stale'
-            ? 'The last heartbeat is over 90 seconds old. The worker may have stopped or lost database connectivity.'
-            : isDispatchWorker
-              ? 'No dispatch heartbeat is recorded. Confirm the always-on worker is running and dispatch automation credentials are set.'
-              : 'No merchant alert worker heartbeat is recorded. The alert worker is not running or cannot reach Supabase.',
-        requirements: isDispatchWorker
-          ? ['Run npm run worker:merchant-alerts as a persistent Node service.', 'Configure NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, REDIS_URL, INTERNAL_API_SECRET, and an HTTPS INTERNAL_API_BASE_URL or NEXT_PUBLIC_BASE_URL.', 'Apply MERCHANT_ORDER_ALERTS_MIGRATION.sql and ORDER_DISPATCH_AUTOMATION_MIGRATION.sql.']
-          : ['Run npm run worker:merchant-alerts as a persistent Node service.', 'Configure NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and REDIS_URL.', 'Apply MERCHANT_ORDER_ALERTS_MIGRATION.sql.']
+        status: ageMs === null ? 'unavailable' : ageMs > 90_000 ? 'stale' : 'online',
+        lastSeenAt: heartbeat?.last_seen_at || null
       };
     });
-    const emailConfig = getTransactionalEmailConfig();
     const providerReadiness = {
-      email: emailConfig.configured,
+      email: getTransactionalEmailConfig().configured,
       sms: Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim()),
-      whatsapp: getWhatsAppCredentials().configured,
+      whatsapp: Boolean(process.env.WHATSAPP_TOKEN?.trim() && process.env.WHATSAPP_PHONE_ID?.trim()),
       push: isWebPushConfigured()
-    };
-    const hasEnvironmentValue = (name: string) => Boolean(process.env[name]?.trim());
-    const whatsappCredentials = getWhatsAppCredentials();
-    const providerDiagnostics: Record<string, { diagnostic: string; requirements: string[] }> = {
-      email: {
-        diagnostic: providerReadiness.email
-          ? `Transactional email credentials are present (${emailConfig.provider}).`
-          : 'No complete email provider key and verified sender pair is configured.',
-        requirements: [
-          'Set JMSURF_MAIL_KEY and a verified JMSURF_FROM_EMAIL, or',
-          'Set RESEND_API_KEY and a verified RESEND_FROM_EMAIL.'
-        ]
-      },
-      sms: {
-        diagnostic: providerReadiness.sms
-          ? 'Twilio credentials are present; send a test message to verify delivery.'
-          : 'One or more required Twilio environment variables are missing.',
-        requirements: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER']
-          .filter(name => !hasEnvironmentValue(name))
-      },
-      whatsapp: {
-        diagnostic: whatsappCredentials.configured
-          ? 'WhatsApp credentials are present; send a test message to verify delivery.'
-          : 'A WhatsApp access token or phone-number ID is missing.',
-        requirements: [
-          ...(!whatsappCredentials.token ? ['WHATSAPP_TOKEN or WHATSAPP_ACCESS_TOKEN'] : []),
-          ...(!whatsappCredentials.phoneId ? ['WHATSAPP_PHONE_ID or WHATSAPP_PHONE_NUMBER_ID'] : [])
-        ]
-      },
-      push: {
-        diagnostic: providerReadiness.push
-          ? 'Web Push VAPID credentials are present; send a test notification to verify delivery.'
-          : 'One or more required Web Push VAPID environment variables are missing.',
-        requirements: ['WEB_PUSH_VAPID_PUBLIC_KEY', 'WEB_PUSH_VAPID_PRIVATE_KEY', 'WEB_PUSH_SUBJECT']
-          .filter(name => !hasEnvironmentValue(name))
-      }
     };
     const notificationConfig = normalizeCustomerNotificationConfig(messagingSettingsResult.data?.value);
     const enabledNotificationStatuses = messagingSettingsResult.error
@@ -551,26 +470,12 @@ export async function GET() {
       timeline: timeline.slice(0, 60),
       workers,
       providers: providerReadiness,
-      providerDiagnostics,
       internalNotificationBridge: Boolean(process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim()),
-      internalNotificationBridgeDiagnostic: process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim()
-        ? 'An internal notification secret is configured.'
-        : 'No internal notification secret is configured.',
-      internalNotificationBridgeRequirements: ['INTERNAL_API_SECRET (recommended) or ADMIN_PASSWORD'],
-      permissions: {
-        manageOrders: hasAdminPermission(session, 'can_manage_orders'),
-        manageCommunications: hasAdminPermission(session, 'can_manage_communications')
-      },
       notificationRules: {
         enabledStatuses: enabledNotificationStatuses.length,
         totalStatuses: CUSTOMER_NOTIFICATION_STATUSES.length,
         enabledChannels: enabledNotificationChannels,
-        available: !messagingSettingsResult.error,
-        diagnostic: messagingSettingsResult.error
-          ? 'The customer messaging settings query failed. Check the settings table and database access.'
-          : enabledNotificationStatuses.length
-            ? `${enabledNotificationStatuses.length} of ${CUSTOMER_NOTIFICATION_STATUSES.length} notification statuses are enabled.`
-            : 'No customer notification status is enabled.'
+        available: !messagingSettingsResult.error
       },
       warnings
     }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });

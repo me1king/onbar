@@ -56,18 +56,5 @@ export async function POST(request: Request) {
     console.error('[CheckoutMarketingConsent] Could not remove promotional email opt-in:', error);
     return NextResponse.json({ error: 'Your promotional email preference could not be updated. Please try again.' }, { status: 503 });
   }
-  const { error: recoveryError } = await database
-    .from('checkout_recovery_sessions')
-    .update({
-      status: 'opted_out',
-      recovery_token_hash: null,
-      recovery_token_expires_at: null,
-      updated_at: timestamp
-    })
-    .eq('customer_email', email)
-    .in('status', ['active', 'abandoned', 'sending', 'sent', 'failed']);
-  if (recoveryError) {
-    console.error('[CheckoutMarketingConsent] Could not suppress pending recovery reminders:', recoveryError);
-  }
   return NextResponse.json({ saved: false });
 }

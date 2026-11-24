@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { formatPrice } from '@/lib/utils';
 
-type TerminalTab = 'overview' | 'contacts' | 'documents' | 'zones' | 'payments' | 'performance' | 'incidents' | 'security';
+type TerminalTab = 'overview' | 'documents' | 'zones' | 'payments' | 'performance' | 'incidents' | 'security';
 type TerminalOrder = {
   id: number;
   status: string;
@@ -42,6 +42,10 @@ type RiderDetails = {
   mpesaNameVerified: boolean;
   licenseExpiryDate: string | null;
   insuranceExpiryDate: string | null;
+  licenseDocumentSubmitted: boolean;
+  licenseDocumentVerified: boolean;
+  insuranceDocumentSubmitted: boolean;
+  insuranceDocumentVerified: boolean;
   ageCheckTrainingCompletedAt: string | null;
   riderAgreementAcceptedAt: string | null;
   riderAgreementVersion: string | null;
@@ -61,6 +65,10 @@ type RiderProfileResponse = {
     locationUpdatedAt: string | null;
   };
   details: RiderDetails | null;
+  deliveryZones: Array<{ id: string; name: string }>;
+  selectedDeliveryZoneIds: string[];
+  dispatchMaxDistanceKm: number | null;
+  expiryWarnings: Array<{ document: string; daysRemaining: number }>;
   documents: {
     id_number_last4: string | null;
     license_number_last4: string | null;
@@ -94,12 +102,12 @@ type RiderProfileResponse = {
   }>;
   audit: Array<{ id: number; changed_fields: string[]; created_at: string }>;
   profileSetupRequired: boolean;
+  safetySetupRequired: boolean;
   warnings: string[];
 };
 
 const tabItems: Array<{ id: TerminalTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
-  { id: 'contacts', label: 'Emergency contact' },
   { id: 'documents', label: 'Documents' },
   { id: 'zones', label: 'Zones & shifts' },
   { id: 'payments', label: 'Payments' },
@@ -147,8 +155,11 @@ export default function RiderTerminalProfile({
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null);
+  const [saveTarget, setSaveTarget] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [zoneInput, setZoneInput] = React.useState('');
+  const [selectedZoneIds, setSelectedZoneIds] = React.useState<string[]>([]);
+  const [licenseDocumentFile, setLicenseDocumentFile] = React.useState<File | null>(null);
+  const [insuranceDocumentFile, setInsuranceDocumentFile] = React.useState<File | null>(null);
   const [currentPin, setCurrentPin] = React.useState('');
   const [newPin, setNewPin] = React.useState('');
   const [confirmPin, setConfirmPin] = React.useState('');
@@ -166,7 +177,7 @@ export default function RiderTerminalProfile({
       const result = await response.json() as RiderProfileResponse & { error?: string };
       if (!response.ok) throw new Error(result.error || 'Rider profile could not be loaded.');
       setData(result);
-      setZoneInput(result.details?.deliveryZones.join(', ') || '');
+      setSelectedZoneIds(result.selectedDeliveryZoneIds || []);
     } catch (error) {
       console.error('[RiderTerminalProfile] Could not load rider profile:', error);
       setLoadError(error instanceof Error ? error.message : 'Rider profile could not be loaded.');
@@ -178,7 +189,7 @@ export default function RiderTerminalProfile({
     void loadProfile();
   }, [loadProfile, supportPreview]);
 
-  const saveProfile = async (updates: Record<string, unknown>) => {
+  const saveProfile = async (updates: Record<string, unknown>, target: string) => {
     setSaving(true);
     setSaveError(null);
     setSaveMessage(null);
@@ -192,9 +203,44 @@ export default function RiderTerminalProfile({
       const result = await response.json() as { error?: string; warning?: string };
       if (!response.ok) throw new Error(result.error || 'Rider profile could not be saved.');
       await loadProfile();
+      setSaveTarget(target);
       setSaveMessage(result.warning || 'Your profile has been saved.');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Rider profile could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const uploadDocuments = async () => {
+    if (!licenseDocumentFile && !insuranceDocumentFile) {
+      setSaveError('Choose a new licence or insurance file to upload.');
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    try {
+      const form = new FormData();
+      if (licenseDocumentFile) form.set('licenseDocument', licenseDocumentFile);
+      if (insuranceDocumentFile) form.set('insuranceDocument', insuranceDocumentFile);
+      if (details?.licenseExpiryDate) form.set('licenseExpiryDate', details.licenseExpiryDate);
+      if (details?.insuranceExpiryDate) form.set('insuranceExpiryDate', details.insuranceExpiryDate);
+      const response = await fetch('/api/rider/profile/documents', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+        cache: 'no-store'
+      });
+      const result = await response.json() as { error?: string; warning?: string };
+      if (!response.ok) throw new Error(result.error || 'Replacement documents could not be submitted.');
+      await loadProfile();
+      setLicenseDocumentFile(null);
+      setInsuranceDocumentFile(null);
+      setSaveTarget('documents');
+      setSaveMessage(result.warning || 'Replacement documents submitted for review.');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Replacement documents could not be submitted.');
     } finally {
       setSaving(false);
     }
@@ -232,6 +278,7 @@ export default function RiderTerminalProfile({
     expiryLabel(details?.insuranceExpiryDate || null, 'Insurance'),
     expiryLabel(details?.licenseExpiryDate || null, 'Driving licence')
   ].filter((alert): alert is NonNullable<typeof alert> => Boolean(alert));
+  const earlyShiftStart = Boolean(details?.shiftStartTime && details.shiftStartTime < '06:00');
 
   if (supportPreview) {
     return (
@@ -249,12 +296,23 @@ export default function RiderTerminalProfile({
       {alerts.map(alert => (
         <div key={alert.text} role="alert" className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${alert.tone === 'rose' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{alert.text} Update your document details and contact dispatch to upload a replacement.</span>
+          <span>{alert.text} Upload a replacement document below; dispatch is blocked until it is reviewed.</span>
+        </div>
+      ))}
+      {data?.expiryWarnings.map(alert => (
+        <div key={`${alert.document}-${alert.daysRemaining}`} role="alert" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{alert.document} expires in {alert.daysRemaining} day{alert.daysRemaining === 1 ? '' : 's'}. Upload its replacement before expiry.</span>
         </div>
       ))}
       {data?.profileSetupRequired && (
         <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           Basic terminal data is available. To save your contacts, zones, shifts, payout preferences, and document dates, apply <strong>supabase/RIDER_PROFILE_DETAILS_MIGRATION.sql</strong>.
+        </div>
+      )}
+      {data?.safetySetupRequired && (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Dispatch safety controls are not installed yet. Ask an administrator to apply <strong>supabase/RIDER_DISPATCH_SAFETY_MIGRATION.sql</strong>.
         </div>
       )}
       {errors.map(error => <div key={error} role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>)}
@@ -393,63 +451,14 @@ export default function RiderTerminalProfile({
             </div>
           )}
 
-          {tab === 'contacts' && (
-            <Card className="space-y-5 rounded-xl border-slate-200 bg-white p-5 shadow-sm">
-              <div>
-                <h2 className="font-bold">Emergency contact</h2>
-                <p className="mt-1 text-sm text-slate-500">Keep a trusted contact up to date for rider safety. This information is private to your rider profile.</p>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-sm font-semibold">
-                  Contact name
-                  <Input
-                    autoComplete="name"
-                    disabled={!details || saving}
-                    value={details?.emergencyContactName || ''}
-                    onChange={event => setData(current => current?.details
-                      ? { ...current, details: { ...current.details, emergencyContactName: event.target.value || null } }
-                      : current)}
-                    className="mt-2"
-                  />
-                </label>
-                <label className="text-sm font-semibold">
-                  Contact phone
-                  <Input
-                    type="tel"
-                    autoComplete="tel"
-                    disabled={!details || saving}
-                    value={details?.emergencyContactPhone || ''}
-                    onChange={event => setData(current => current?.details
-                      ? { ...current, details: { ...current.details, emergencyContactPhone: event.target.value || null } }
-                      : current)}
-                    className="mt-2"
-                  />
-                </label>
-              </div>
-              <p className="text-xs text-slate-500">Enter both fields to record a complete emergency contact. Phone numbers are validated when saved.</p>
-              {Boolean((details?.emergencyContactName || '').trim()) !== Boolean((details?.emergencyContactPhone || '').trim()) && (
-                <p role="alert" className="text-xs font-semibold text-rose-700">Add both the contact name and phone number, or clear both fields.</p>
-              )}
-              <Button
-                type="button"
-                disabled={!details || saving || Boolean((details.emergencyContactName || '').trim()) !== Boolean((details.emergencyContactPhone || '').trim())}
-                onClick={() => void saveProfile({
-                  emergencyContactName: details?.emergencyContactName || null,
-                  emergencyContactPhone: details?.emergencyContactPhone || null
-                })}
-              >
-                {saving ? 'Saving…' : 'Save emergency contact'}
-              </Button>
-            </Card>
-          )}
-
           {tab === 'documents' && (
             <Card className="space-y-5 rounded-xl border-slate-200 bg-white p-5 shadow-sm">
               <div><h2 className="font-bold">Your documents & safety</h2><p className="mt-1 text-sm text-slate-500">Private document data is limited to your own signed-in rider account.</p></div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
                   ['National ID', data?.documents?.id_number_last4 ? `Ending ${data.documents.id_number_last4}` : 'Not uploaded'],
-                  ['Driving licence', data?.documents?.license_number_last4 ? `Ending ${data.documents.license_number_last4}` : 'Not uploaded'],
+                  ['Driving licence', details?.licenseDocumentVerified ? 'Verified' : details?.licenseDocumentSubmitted ? 'Submitted for review' : 'Not uploaded'],
+                  ['Insurance', details?.insuranceDocumentVerified ? 'Verified' : details?.insuranceDocumentSubmitted ? 'Submitted for review' : 'Not uploaded'],
                   ['Vehicle', valueOrMissing(data?.rider.vehicleRegistration)],
                   ['Rider photo', data?.documents?.rider_photo_url ? 'Uploaded' : 'Not uploaded'],
                   ['Vehicle photo', data?.documents?.vehicle_photo_url ? 'Uploaded' : 'Not uploaded'],
@@ -460,6 +469,15 @@ export default function RiderTerminalProfile({
                 <label className="text-sm font-semibold">Licence expiry date<Input type="date" disabled={!details || saving} value={details?.licenseExpiryDate || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, licenseExpiryDate: event.target.value || null } } : current)} className="mt-2" /></label>
                 <label className="text-sm font-semibold">Insurance expiry date<Input type="date" disabled={!details || saving} value={details?.insuranceExpiryDate || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, insuranceExpiryDate: event.target.value || null } } : current)} className="mt-2" /></label>
               </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-sm font-semibold">Replacement driving licence (image or PDF)
+                  <Input type="file" accept="image/jpeg,image/png,application/pdf" disabled={!details || saving} onChange={event => setLicenseDocumentFile(event.target.files?.[0] || null)} className="mt-2 h-auto min-h-11 py-2" />
+                </label>
+                <label className="text-sm font-semibold">Replacement insurance certificate (image or PDF)
+                  <Input type="file" accept="image/jpeg,image/png,application/pdf" disabled={!details || saving} onChange={event => setInsuranceDocumentFile(event.target.files?.[0] || null)} className="mt-2 h-auto min-h-11 py-2" />
+                </label>
+              </div>
+              <p className="text-xs leading-5 text-slate-500">A newly submitted file is pending until an administrator checks it. Updating an expiry date requires a replacement file and fresh review.</p>
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-4">
                 <div>
                   <p className="text-sm font-semibold">Rider agreement v1</p>
@@ -472,19 +490,45 @@ export default function RiderTerminalProfile({
                         <li>Complete the required age and ID checks before handover.</li>
                       </ul>}
                 </div>
-                {!details?.riderAgreementAcceptedAt && <Button type="button" disabled={!details || saving} onClick={() => void saveProfile({ acceptAgreement: true })}>I agree to Rider Agreement v1</Button>}
+                {!details?.riderAgreementAcceptedAt && <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" disabled={!details || saving} onClick={() => void saveProfile({ acceptAgreement: true }, 'agreement')}>I agree to Rider Agreement v1</Button>
+                  {saveMessage && saveTarget === 'agreement' && <p role="status" className="text-sm text-emerald-800">{saveMessage}</p>}
+                </div>}
               </div>
-              <p className="text-xs text-slate-500">Document uploads and age-check training verification are not available in the current terminal. Expiry dates you enter are saved for dispatch visibility; they do not upload or renew certificates.</p>
-              <Button type="button" disabled={!details || saving} onClick={() => void saveProfile({ licenseExpiryDate: details?.licenseExpiryDate || null, insuranceExpiryDate: details?.insuranceExpiryDate || null })}>{saving ? 'Saving…' : 'Save document dates'}</Button>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" disabled={!details || saving || (!licenseDocumentFile && !insuranceDocumentFile)} onClick={() => void uploadDocuments()}>{saving ? 'Submitting…' : 'Submit replacement documents'}</Button>
+                {saveMessage && saveTarget === 'documents' && <p role="status" className="text-sm text-emerald-800">{saveMessage}</p>}
+              </div>
             </Card>
           )}
 
           {tab === 'zones' && (
             <Card className="space-y-5 rounded-xl border-slate-200 bg-white p-5 shadow-sm">
-              <div><h2 className="font-bold">Delivery zones & shifts</h2><p className="mt-1 text-sm text-slate-500">These are your profile preferences. Dispatch must still confirm that zones are configured for order routing.</p></div>
+              <div><h2 className="font-bold">Delivery zones & shifts</h2><p className="mt-1 text-sm text-slate-500">Select configured map zones. Dispatch uses the customer’s map pin, not a free-text area name.</p></div>
               <label className="block text-sm font-semibold">Home / primary area<Input value={data?.rider.areaZone || ''} readOnly className="mt-2 bg-slate-50" /></label>
-              <label className="block text-sm font-semibold">Delivery zones (comma separated)<Input disabled={!details || saving} value={zoneInput} onChange={event => setZoneInput(event.target.value)} placeholder="Westlands, Ngumo, Kilimani" className="mt-2" /></label>
-              <label className="block max-w-xs text-sm font-semibold">Maximum distance (km)<Input type="number" min="1" max="100" step="1" disabled={!details || saving} value={details?.maxDistanceKm ?? ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, maxDistanceKm: event.target.value ? Number(event.target.value) : null } } : current)} className="mt-2" /></label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-sm font-semibold">Emergency contact name<Input required disabled={!details || saving} value={details?.emergencyContactName || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, emergencyContactName: event.target.value || null } } : current)} className="mt-2" /></label>
+                <label className="text-sm font-semibold">Emergency contact phone<Input required type="tel" disabled={!details || saving} value={details?.emergencyContactPhone || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, emergencyContactPhone: event.target.value || null } } : current)} className="mt-2" /></label>
+                <label className="text-sm font-semibold">Guarantor name<Input required disabled={!details || saving} value={details?.guarantorName || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, guarantorName: event.target.value || null } } : current)} className="mt-2" /></label>
+                <label className="text-sm font-semibold">Guarantor phone<Input required type="tel" disabled={!details || saving} value={details?.guarantorPhone || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, guarantorPhone: event.target.value || null } } : current)} className="mt-2" /></label>
+              </div>
+              <fieldset disabled={!details || saving || data?.safetySetupRequired} className="space-y-2">
+                <legend className="text-sm font-semibold">Delivery zones</legend>
+                {data?.deliveryZones.map(item => (
+                  <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 p-3 text-sm">
+                    <input type="checkbox" checked={selectedZoneIds.includes(item.id)} onChange={() => setSelectedZoneIds(current =>
+                      current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id]
+                    )} />
+                    {item.name}
+                  </label>
+                ))}
+                {!data?.deliveryZones.length && <p className="text-xs text-amber-800">No active zones are configured. Ask dispatch to add a zone.</p>}
+              </fieldset>
+              <label className="block max-w-xs text-sm font-semibold">
+                Maximum distance (km)
+                <Input type="number" min="1" max={data?.dispatchMaxDistanceKm || 100} step="0.1" disabled={!details || saving} value={details?.maxDistanceKm ?? data?.dispatchMaxDistanceKm ?? ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, maxDistanceKm: event.target.value ? Number(event.target.value) : null } } : current)} className="mt-2" />
+                <span className="mt-1 block text-xs font-normal text-slate-500">Admin cap: {data?.dispatchMaxDistanceKm ?? 'not configured'} km</span>
+              </label>
               <div>
                 <p className="mb-2 text-sm font-semibold">Available days</p>
                 <div className="flex flex-wrap gap-2">
@@ -501,7 +545,21 @@ export default function RiderTerminalProfile({
                 <label className="text-sm font-semibold">Shift starts<Input type="time" disabled={!details || saving} value={details?.shiftStartTime || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, shiftStartTime: event.target.value || null } } : current)} className="mt-2" /></label>
                 <label className="text-sm font-semibold">Shift ends<Input type="time" disabled={!details || saving} value={details?.shiftEndTime || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, shiftEndTime: event.target.value || null } } : current)} className="mt-2" /></label>
               </div>
-              <Button type="button" disabled={!details || saving} onClick={() => void saveProfile({ deliveryZones: zoneInput.split(',').map(zone => zone.trim()).filter(Boolean), maxDistanceKm: details?.maxDistanceKm ?? null, shiftDays: details?.shiftDays || [], shiftStartTime: details?.shiftStartTime || null, shiftEndTime: details?.shiftEndTime || null })}>{saving ? 'Saving…' : 'Save zones & shifts'}</Button>
+              {earlyShiftStart && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">This shift starts before 6:00 AM Nairobi time. Check that the time is intentional.</p>}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" disabled={!details || saving || data?.safetySetupRequired} onClick={() => void saveProfile({
+                  emergencyContactName: details?.emergencyContactName || null,
+                  emergencyContactPhone: details?.emergencyContactPhone || null,
+                  guarantorName: details?.guarantorName || null,
+                  guarantorPhone: details?.guarantorPhone || null,
+                  deliveryZoneIds: selectedZoneIds,
+                  maxDistanceKm: details?.maxDistanceKm ?? null,
+                  shiftDays: details?.shiftDays || [],
+                  shiftStartTime: details?.shiftStartTime || null,
+                  shiftEndTime: details?.shiftEndTime || null
+                }, 'zones')}>{saving ? 'Saving…' : 'Save zones & shifts'}</Button>
+                {saveMessage && saveTarget === 'zones' && <p role="status" className="text-sm text-emerald-800">{saveMessage}</p>}
+              </div>
             </Card>
           )}
 
@@ -516,8 +574,17 @@ export default function RiderTerminalProfile({
                 <label className="text-sm font-semibold">M-Pesa payout number<Input type="tel" disabled={!details || saving} value={details?.mpesaNumber || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, mpesaNumber: event.target.value || null } } : current)} className="mt-2" /></label>
                 <label className="text-sm font-semibold">Name registered on M-Pesa<Input disabled={!details || saving} value={details?.mpesaRegisteredName || ''} onChange={event => setData(current => current?.details ? { ...current, details: { ...current.details, mpesaRegisteredName: event.target.value || null } } : current)} className="mt-2" /></label>
               </div>
-              <div className="rounded-lg border border-slate-200 p-3 text-sm"><span className="text-slate-500">Name check: </span><span className="font-semibold">{details?.mpesaNameVerified ? 'Verified by admin' : 'Not verified'}</span></div>
-              <Button type="button" disabled={!details || saving} onClick={() => void saveProfile({ mpesaNumber: details?.mpesaNumber || null, mpesaRegisteredName: details?.mpesaRegisteredName || null })}>{saving ? 'Saving…' : 'Save payout details'}</Button>
+              <div className="rounded-lg border border-slate-200 p-3 text-sm">
+                <span className="text-slate-500">Name check: </span>
+                <span className="font-semibold">{details?.mpesaNameVerified ? 'Verified by admin' : 'Not verified; payouts are held until dispatch verifies the destination'}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" disabled={!details || saving} onClick={() => void saveProfile({
+                  mpesaNumber: details?.mpesaNumber || null,
+                  mpesaRegisteredName: details?.mpesaRegisteredName || null
+                }, 'payments')}>{saving ? 'Saving…' : 'Save payout details'}</Button>
+                {saveMessage && saveTarget === 'payments' && <p role="status" className="text-sm text-emerald-800">{saveMessage}</p>}
+              </div>
               <div className="grid gap-2 border-t border-slate-100 pt-4 text-sm">
                 <p><strong>Payout history:</strong> Not tracked yet.</p>
                 <p><strong>Cash held / amount to hand in:</strong> Not tracked yet.</p>
@@ -623,7 +690,6 @@ export default function RiderTerminalProfile({
             </Card>
           )}
 
-          {saveMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{saveMessage}</p>}
         </div>
       </div>
       {loadError && <Button type="button" variant="outline" onClick={() => void loadProfile()}>Retry profile</Button>}

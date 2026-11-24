@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import { isValidMerchantOperatingHours } from '@/lib/merchantAvailability';
 import { isBeverageInventoryProduct, isKitchenFoodProduct } from '@/lib/productDepartment';
 import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
-import { getProductImageUrls } from '@/lib/productImages';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,13 +149,12 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     { data: events, error: eventsError },
     { data: batches, error: batchesError },
     { data: fulfillment, error: fulfillmentError },
-    { data: incidents, error: incidentsError },
-    { data: catalogNotifications, error: catalogNotificationsError }
+    { data: incidents, error: incidentsError }
   ] = await Promise.all([
     database.from('merchant_application_events')
       .select('event_type, details, created_at')
       .eq('application_id', applicationId)
-      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected', 'stock_confirmed', 'payment_statement_requested', 'new_product_available', 'catalog_update_acknowledged'])
+      .in('event_type', ['submitted', 'under_review', 'information_requested', 'approved', 'rejected', 'suspended', 'expired', 'availability_updated', 'food_campaign_requested', 'alcohol_campaign_requested', 'alcohol_rules_updated', 'offer_price_updated', 'offer_price_approved', 'offer_price_rejected', 'stock_confirmed', 'payment_statement_requested'])
       .order('created_at', { ascending: false })
       .limit(100),
     database.from('merchant_product_batches')
@@ -174,15 +172,9 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
       .select('id, incident_code, order_id, batch_id, category, description, status, severity, resolution_note, created_at')
       .eq('application_id', applicationId)
       .order('created_at', { ascending: false })
-      .limit(200),
-    database.from('merchant_catalog_update_notifications')
-      .select('id, product_id, product_name, category, listed_price, created_at')
-      .eq('application_id', applicationId)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(100)
+      .limit(200)
   ]);
-  const queryError = eventsError || batchesError || fulfillmentError || incidentsError || catalogNotificationsError;
+  const queryError = eventsError || batchesError || fulfillmentError || incidentsError;
   if (queryError) throw queryError;
 
   const batchRows = [...(batches || [])];
@@ -204,11 +196,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
   const offeredProductIds = applicationOffers
     .map(offer => Number(offer.product_id))
     .filter(Number.isSafeInteger);
-  const productIds = [...new Set([
-    ...batchRows.map(batch => batch.product_id),
-    ...offeredProductIds,
-    ...(catalogNotifications || []).map(notification => Number(notification.product_id))
-  ])];
+  const productIds = [...new Set([...batchRows.map(batch => batch.product_id), ...offeredProductIds])];
   const [
     { data: products, error: productsError },
     movementRows,
@@ -216,7 +204,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     traceRows
   ] = await Promise.all([
     productIds.length
-      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price, image_url, images, image_gallery, sizes, variant_prices, beverage_specs').in('id', productIds)
+      ? database.from('products').select('id, name, sku, category, sub_category, is_bite, is_snack, is_souvenir, price, image_url, sizes, variant_prices, beverage_specs').in('id', productIds)
       : Promise.resolve({ data: [], error: null }),
     getPagedBatchRows(batchIds, (ids, from, to) => database.from('merchant_inventory_movements')
         .select('id, batch_id, movement_type, quantity_delta, order_item_id, note, created_at')
@@ -339,7 +327,6 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
         const product = productRows.find(row => Number(row.id) === Number(offer.product_id));
         const sellingPrice = Number(offer.price || 0);
         const listedPrice = Number(product?.price || 0);
-        const images = getProductImageUrls(product?.image_url, product?.images, product?.image_gallery);
         return {
           ...offer,
           category: product?.category || null,
@@ -347,8 +334,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
           is_bite: product?.is_bite || false,
           is_snack: product?.is_snack || false,
           is_souvenir: product?.is_souvenir || false,
-          image_url: images[0] || null,
-          images,
+          image_url: typeof product?.image_url === 'string' ? product.image_url : null,
           listed_price: listedPrice,
           sizes: Array.isArray(product?.sizes) ? product.sizes : [],
           variant_prices: product?.variant_prices || product?.beverage_specs?.variant_prices || {},
@@ -373,14 +359,7 @@ async function getApplicationWorkspace(database: SupabaseClient, application: Re
     events: events || [],
     batches: batchData,
     orders: orderData,
-    incidents: incidents || [],
-    catalogNotifications: (catalogNotifications || []).map(notification => {
-      const product = productRows.find(row => Number(row.id) === Number(notification.product_id));
-      return {
-        ...notification,
-        images: getProductImageUrls(product?.image_url, product?.images, product?.image_gallery)
-      };
-    })
+    incidents: incidents || []
   };
 }
 
@@ -443,9 +422,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error('[MerchantNetwork] Could not load partner workspace:', error);
-    const message = error instanceof Error && /merchant_catalog_update_notifications/i.test(error.message)
-      ? 'New product notifications are not installed yet. Run supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql.'
-      : error instanceof Error && /alcohol_onboarding|excise_stamp_confirmed/i.test(error.message)
+    const message = error instanceof Error && /alcohol_onboarding|excise_stamp_confirmed/i.test(error.message)
       ? 'Alcohol retailer workspace is not installed. Run supabase/MERCHANT_LIQUOR_ONBOARDING_MIGRATION.sql after merchant operations.'
       : error instanceof Error && /merchant_|does not exist|schema cache/i.test(error.message)
         ? 'Merchant operations data is unavailable. Confirm supabase/MERCHANT_OPERATIONS_MIGRATION.sql and supabase/DISPATCH_MIGRATION.sql are installed.'
@@ -481,27 +458,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Only currently approved partners can make operational updates.' }, { status: 403 });
   }
 
-  if (body.operation === 'acknowledge_catalog_update') {
-    if (!isUuid(body.notificationId)) {
-      return NextResponse.json({ error: 'Choose a valid catalog update notification.' }, { status: 400 });
-    }
-    const { data, error } = await context.database.rpc('acknowledge_merchant_catalog_update', {
-      p_application_id: application.id,
-      p_notification_id: body.notificationId,
-      p_actor: context.actor
-    });
-    if (error) {
-      console.error('[MerchantNetwork] Could not acknowledge catalog update:', error);
-      return NextResponse.json({
-        error: /acknowledge_merchant_catalog_update|schema cache/i.test(error.message)
-          ? 'New product notifications are not installed yet. Run supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql.'
-          : 'This catalog update could not be acknowledged.'
-      }, { status: 503 });
-    }
-    if (data !== true) return NextResponse.json({ error: 'This catalog update is no longer waiting for action.' }, { status: 409 });
-    return NextResponse.json({ acknowledged: true });
-  }
-
   if (body.operation === 'request_product_photo') {
     const productId = Number(body.productId);
     if (!Number.isSafeInteger(productId) || productId < 1) {
@@ -517,7 +473,7 @@ export async function POST(request: Request) {
 
     const { data: product, error: productError } = await context.database
       .from('products')
-      .select('category, sub_category, is_bite, is_snack, is_souvenir, image_url, images, image_gallery')
+      .select('category, sub_category, is_bite, is_snack, is_souvenir, image_url')
       .eq('id', productId)
       .maybeSingle();
     if (productError) {
@@ -527,7 +483,7 @@ export async function POST(request: Request) {
     if (!product || !isAllowedMerchantProduct(application, product)) {
       return NextResponse.json({ error: 'This product is not available to your merchant category.' }, { status: 403 });
     }
-    if (getProductImageUrls(product.image_url, product.images, product.image_gallery).length > 0) {
+    if (typeof product.image_url === 'string' && product.image_url.trim()) {
       return NextResponse.json({ error: 'This product already has a catalog photo. Contact OnBar if it needs replacing.' }, { status: 409 });
     }
 

@@ -13,6 +13,7 @@ import CustomerAnnouncementHost from './CustomerAnnouncementHost';
 import LocationOnboarding from './LocationOnboarding';
 import CustomerLiveLocationSharing from './CustomerLiveLocationSharing';
 import AgeVerification from './AgeVerification';
+import RiderDispatchSupport from '@/components/rider/RiderDispatchSupport';
 
 // Lazy Load Non-Critical Components
 const LiveTicker = dynamic(() => import('./LiveTicker'), { ssr: false });
@@ -162,6 +163,7 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
     }, [pathname, mounted]);
 
     const isAdmin = pathname?.startsWith('/lord');
+    const isRider = pathname?.startsWith('/rider/');
     const isMarket = pathname?.startsWith('/market')
         || pathname === '/merchant/register'
         || pathname?.startsWith('/merchant/dashboard')
@@ -170,6 +172,15 @@ function ShieldContent({ children, initialSettings }: { children: React.ReactNod
 
     if (isAdmin) {
         return <main className="flex-grow">{children}</main>;
+    }
+
+    if (isRider) {
+        return (
+            <>
+                <main className="flex-grow">{children}</main>
+                <RiderDispatchSupport />
+            </>
+        );
     }
 
     if (isMarket) {

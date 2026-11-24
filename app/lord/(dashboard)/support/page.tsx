@@ -39,27 +39,16 @@ interface UniversalItem {
     metadata?: Record<string, unknown>;
 }
 
-interface SupportThreadMessage {
-    id: string | number;
-    senderRole: string;
-    senderName: string;
-    body: string;
-    createdAt: string;
-}
-
 export default function SupportCaseManagement() {
     const { email: adminEmail } = useAdmin();
     const [items, setItems] = React.useState<UniversalItem[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [typeFilter, setTypeFilter] = React.useState<'all' | 'Support' | 'Message' | 'Review'>('all');
-    const [threadMessages, setThreadMessages] = React.useState<SupportThreadMessage[]>([]);
-    const [threadError, setThreadError] = React.useState('');
-    const [replyNotice, setReplyNotice] = React.useState('');
 
-    const fetchUniversalData = React.useCallback(async (quiet = false) => {
+    const fetchUniversalData = React.useCallback(async () => {
         if (!supabase) return;
-        if (!quiet) setLoading(true);
+        setLoading(true);
         try {
             const [ticketsRes, messagesResponse, reviewsRes] = await Promise.all([
                 supabase.from('support_tickets').select('*').order('created_at', { ascending: false }),
@@ -99,11 +88,7 @@ export default function SupportCaseManagement() {
                     status: t.status,
                     created_at: t.created_at,
                     sentiment: analyzeSentiment(t.description),
-                    metadata: {
-                        sla: t.sla_hours,
-                        assigned_to: t.assigned_to,
-                        merchant_application_id: t.merchant_application_id
-                    }
+                    metadata: { sla: t.sla_hours, assigned_to: t.assigned_to }
                 })),
                 ...(messagesResult.messages || []).map(m => ({
                     id: `msg-${m.id}`,
@@ -145,16 +130,12 @@ export default function SupportCaseManagement() {
         } catch (err) {
             console.error(err);
         } finally {
-            if (!quiet) setLoading(false);
+            setLoading(false);
         }
     }, []);
 
     React.useEffect(() => {
         fetchUniversalData();
-        const timer = window.setInterval(() => {
-            if (document.visibilityState === 'visible') void fetchUniversalData(true);
-        }, 15_000);
-        return () => window.clearInterval(timer);
     }, [fetchUniversalData]);
 
     const [activeChat, setActiveChat] = React.useState<UniversalItem | null>(null);
@@ -162,50 +143,18 @@ export default function SupportCaseManagement() {
     const [isSending, setIsSending] = React.useState(false);
     const chatRef = React.useRef<HTMLDivElement>(null);
 
-    const merchantTicketId = activeChat?.type === 'Support'
-        && activeChat.metadata?.merchant_application_id
-        ? activeChat.id.slice(4)
-        : null;
-
-    React.useEffect(() => {
-        setThreadMessages([]);
-        setThreadError('');
-        if (!merchantTicketId) return;
-        let cancelled = false;
-        const loadThread = async () => {
-            try {
-                const response = await fetch(`/api/admin/merchant-support?ticketId=${encodeURIComponent(merchantTicketId)}`, { cache: 'no-store' });
-                const result = await response.json() as { messages?: SupportThreadMessage[]; error?: string };
-                if (!response.ok || !result.messages) throw new Error(result.error || 'Merchant conversation could not be loaded.');
-                if (!cancelled) setThreadMessages(result.messages);
-            } catch (error) {
-                if (!cancelled) setThreadError(error instanceof Error ? error.message : 'Merchant conversation could not be loaded.');
-            }
-        };
-        void loadThread();
-        const timer = window.setInterval(() => {
-            if (document.visibilityState === 'visible') void loadThread();
-        }, 10_000);
-        return () => {
-            cancelled = true;
-            window.clearInterval(timer);
-        };
-    }, [merchantTicketId]);
-
     React.useEffect(() => {
         if (chatRef.current) {
             chatRef.current.scrollTop = chatRef.current.scrollHeight;
         }
-    }, [activeChat, threadMessages]);
+    }, [activeChat]);
 
     const handleSendReply = async () => {
         if (!activeChat || !replyText.trim()) return;
         setIsSending(true);
-        setThreadError('');
         try {
             const tableMap = { Support: 'support_tickets', Message: 'messages', Review: 'reviews' };
-            const rawId = activeChat.id.slice(4);
-            const id: string | number = activeChat.type === 'Support' ? rawId : Number(rawId);
+            const id = parseInt(activeChat.id.split('-')[1]);
 
             if (!supabase) throw new Error("Database offline");
 
@@ -217,20 +166,6 @@ export default function SupportCaseManagement() {
                 });
                 const result = await response.json() as { error?: string };
                 if (!response.ok) throw new Error(result.error || 'Could not send the reply.');
-            } else if (activeChat.type === 'Support' && activeChat.metadata?.merchant_application_id) {
-                const response = await fetch('/api/admin/merchant-support', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ticketId: rawId, message: replyText.trim() })
-                });
-                const result = await response.json() as {
-                    message?: SupportThreadMessage;
-                    error?: string;
-                    notificationWarning?: string;
-                };
-                if (!response.ok || !result.message) throw new Error(result.error || 'Could not send the merchant reply.');
-                setThreadMessages(current => [...current, result.message!]);
-                setReplyNotice(result.notificationWarning || '');
             } else {
                 const { error } = await supabase.from(tableMap[activeChat.type]).update({
                     admin_response: replyText.trim(),
@@ -241,11 +176,10 @@ export default function SupportCaseManagement() {
 
             await logAuditAction(adminEmail, 'LIVE_CHAT_REPLY', { id: activeChat.id });
             setItems(prev => prev.map(i => i.id === activeChat.id ? { ...i, status: 'Resolved' } : i));
+            setActiveChat(null);
             setReplyText('');
-            if (activeChat.type !== 'Support' || !activeChat.metadata?.merchant_application_id) setActiveChat(null);
         } catch (err) {
             console.error(err);
-            setThreadError(err instanceof Error ? err.message : 'The reply could not be sent.');
         } finally {
             setIsSending(false);
         }
@@ -266,8 +200,7 @@ export default function SupportCaseManagement() {
     const updateItemStatus = async (item: UniversalItem, newStatus: string) => {
         if (!supabase) return;
         const tableMap = { Support: 'support_tickets', Message: 'messages', Review: 'reviews' };
-        const rawId = item.id.slice(4);
-        const id: string | number = item.type === 'Support' ? rawId : Number(rawId);
+        const id = parseInt(item.id.split('-')[1]);
 
         let updatePayload: Record<string, unknown> = { status: newStatus };
         if (item.type === 'Review') updatePayload = { admin_response: 'Internal status change' };
@@ -304,7 +237,7 @@ export default function SupportCaseManagement() {
                     <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter leading-none">Universal Command</h1>
                     <p className="text-muted-foreground text-sm font-medium mt-1">Cross-channel customer intelligence and prioritized response grid.</p>
                 </div>
-                <Button onClick={() => fetchUniversalData()} variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-50">
+                <Button onClick={fetchUniversalData} variant="outline" className="rounded-xl h-12 px-6 border-slate-200 bg-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-50">
                     <RefreshCcw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} /> Sync Matrix
                 </Button>
             </header>
@@ -406,9 +339,7 @@ export default function SupportCaseManagement() {
                                     <div className="pl-16 space-y-4">
                                         <div className="flex items-center gap-3">
                                             <Tag size={12} className="text-primary" />
-                                            <span className="text-[9px] font-black uppercase text-primary tracking-widest">
-                                                {item.metadata?.merchant_application_id ? 'Merchant → Founder' : `${item.type} Channel`}
-                                            </span>
+                                            <span className="text-[9px] font-black uppercase text-primary tracking-widest">{item.type} Channel</span>
                                         </div>
                                         <h4 className="text-xl font-black text-foreground uppercase tracking-tight leading-none">{item.subject}</h4>
                                         <p className="text-slate-600 font-medium leading-relaxed italic max-w-4xl">&quot;{item.body}&quot;</p>
@@ -422,7 +353,7 @@ export default function SupportCaseManagement() {
 
                                 <div className="lg:w-64 flex flex-col gap-3 justify-center">
                                     <Button
-                                        onClick={() => { setActiveChat(item); setReplyNotice(''); setThreadError(''); }}
+                                        onClick={() => setActiveChat(item)}
                                         className="w-full h-14 rounded-2xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95"
                                     >
                                         <MessageSquare className="h-3 w-3 mr-2" /> Live Mode
@@ -460,32 +391,19 @@ export default function SupportCaseManagement() {
                     </div>
 
                     <div ref={chatRef} className="flex-1 overflow-y-auto p-10 space-y-8 no-scrollbar bg-slate-50/30">
-                        {merchantTicketId ? <>
-                            {threadMessages.map(message => <div
-                                key={message.id}
-                                className={`flex ${message.senderRole === 'admin' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div className={`max-w-[85%] p-5 rounded-2xl shadow-sm text-sm leading-relaxed ${message.senderRole === 'admin' ? 'bg-primary text-white' : 'bg-white border border-slate-100 text-slate-700'}`}>
-                                    <p className="mb-2 text-[9px] font-black uppercase tracking-widest opacity-70">{message.senderRole === 'admin' ? `OnBar · ${message.senderName}` : message.senderName} · {new Date(message.createdAt).toLocaleString()}</p>
-                                    <p className="whitespace-pre-wrap">{message.body}</p>
-                                </div>
-                            </div>)}
-                            {threadError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{threadError}</p>}
-                            {replyNotice && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{replyNotice}</p>}
-                        </> : <>
-                            <div className="flex justify-start">
-                                <div className="max-w-[85%] p-6 rounded-[2rem] rounded-tl-sm bg-white border border-slate-100 shadow-sm text-sm font-medium leading-relaxed italic text-slate-600">
-                                    &quot;{activeChat.body}&quot;
+                        <div className="flex justify-start">
+                            <div className="max-w-[85%] p-6 rounded-[2rem] rounded-tl-sm bg-white border border-slate-100 shadow-sm text-sm font-medium leading-relaxed italic text-slate-600">
+                                &quot;{activeChat.body}&quot;
+                            </div>
+                        </div>
+
+                        {activeChat.status === 'Resolved' && (
+                             <div className="flex justify-end">
+                                <div className="max-w-[85%] p-6 rounded-[2rem] rounded-tr-sm bg-primary text-white shadow-lg text-sm font-bold leading-relaxed">
+                                    {activeChat.type === 'Review' ? 'Official response logged for customer feedback.' : 'Mission Resolved. Resolution payload transmitted.'}
                                 </div>
                             </div>
-                            {activeChat.status === 'Resolved' && (
-                                <div className="flex justify-end">
-                                    <div className="max-w-[85%] p-6 rounded-[2rem] rounded-tr-sm bg-primary text-white shadow-lg text-sm font-bold leading-relaxed">
-                                        {activeChat.type === 'Review' ? 'Official response logged for customer feedback.' : 'Mission Resolved. Resolution payload transmitted.'}
-                                    </div>
-                                </div>
-                            )}
-                        </>}
+                        )}
                     </div>
 
                     <div className="p-8 border-t border-slate-100 bg-white space-y-4">

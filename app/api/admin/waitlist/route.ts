@@ -7,7 +7,6 @@ import { createMarketingUnsubscribeToken } from '@/lib/marketingUnsubscribe';
 import { getTransactionalEmailConfig, sendTransactionalEmail } from '@/lib/jmsurfMail.server';
 import type { CustomerNotificationChannel } from '@/lib/customerMessaging';
 import { renderWaitlistCampaignEmail } from '@/lib/lifecycleEmailPreviews';
-import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
 export const dynamic = 'force-dynamic';
 
@@ -400,7 +399,8 @@ async function sendWaitlistSms(phone: string, message: string, country: string) 
 }
 
 async function sendWaitlistWhatsApp(phone: string, name: string, message: string, country: string) {
-  const { token, phoneId } = getWhatsAppCredentials();
+  const token = process.env.WHATSAPP_TOKEN?.trim();
+  const phoneId = process.env.WHATSAPP_PHONE_ID?.trim();
   const templateName = process.env.WHATSAPP_WAITLIST_INVITE_TEMPLATE_NAME?.trim();
   const templateLanguage = process.env.WHATSAPP_WAITLIST_INVITE_TEMPLATE_LANGUAGE?.trim() || 'en';
   if (!token || !phoneId || !templateName) {

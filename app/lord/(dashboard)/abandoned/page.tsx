@@ -1,13 +1,12 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import {
   ShoppingBag,
   User,
   Phone,
-  Mail,
+  MessageSquare,
   RefreshCcw,
   Zap,
   Loader2,
@@ -84,8 +83,10 @@ export default function AdminAbandonedPage() {
   const [carts, setCarts] = useState<AbandonedCart[]>([]);
   const [visitors, setVisitors] = useState<ActiveVisitor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCart, setSelectedCart] = useState<AbandonedCart | null>(null);
+  const [ghostStatus] = useState<'idle' | 'running' | 'warning'>('running');
 
   const stats = useMemo(() => {
       const potentialRevenue = carts.filter(c => c.recovery_status === 'Waiting' || c.recovery_status === 'Contacted').reduce((sum, c) => sum + Number(c.total_price || 0), 0);
@@ -125,6 +126,28 @@ export default function AdminAbandonedPage() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleManualRecovery = async () => {
+      setIsRecovering(true);
+      try {
+          const response = await fetch('/api/admin/recover-carts', { method: 'POST' });
+          if (!response.ok) throw new Error('Cart recovery could not be started.');
+          await response.json();
+          fetchData();
+      } catch (err) {
+          console.error(err);
+      } finally {
+          setIsRecovering(false);
+      }
+  };
+
+  const handleDraftNudge = (cart: AbandonedCart) => {
+      const items = cart.cart_items.map(i => `• ${i.name}`).join('\n');
+      const discountLink = `${window.location.origin}/cart?coupon=RECOVER5&session=${cart.session_id}`;
+      const message = `Hello ${cart.customer_name}!\n\nI noticed you left some premium items in your bag at Online Bar:\n\n${items}\n\nTo make it easier to complete your order, I've initialized a *5% OFF* tactical discount for you. Valid for the next 2 hours!\n\n*Secure your bottles here:* ${discountLink}\n\nCheers, David.`;
+
+      window.open(`https://wa.me/${cart.customer_phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
   const updateStatus = async (id: number, status: AbandonedCart['recovery_status']) => {
       if (!supabase) return;
       const { error } = await supabase.from('abandoned_carts').update({ recovery_status: status }).eq('id', id);
@@ -143,18 +166,22 @@ export default function AdminAbandonedPage() {
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 border-b border-slate-200 pb-8">
         <div>
           <div className="flex items-center gap-3 mb-2">
-              <div className="h-2 w-2 rounded-full bg-slate-400"></div>
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Legacy cart tracking</span>
+              <div className={cn("h-2 w-2 rounded-full animate-pulse", ghostStatus === 'running' ? "bg-primary" : "bg-primary/50")}></div>
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Ghost Worker: {ghostStatus.toUpperCase()}</span>
           </div>
           <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">Baggage Rescue</h1>
-          <p className="text-slate-500 text-sm font-medium mt-1">Legacy cart and live-visitor view. Marketing reminders are available only in the consent-checked recovery queue.</p>
+          <p className="text-slate-500 text-sm font-medium mt-1">AI-powered recovery suite for high-intent abandoned beverage bags.</p>
         </div>
         <div className="flex gap-2">
-            <Link href="/lord/marketing/abandoned-checkouts">
-              <Button variant="outline" className="rounded-xl h-12 px-6 border-primary/20 bg-primary/5 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all shadow-sm">
-                <Mail className="mr-2 h-4 w-4" /> Consent-based email queue
-              </Button>
-            </Link>
+            <Button
+                onClick={handleManualRecovery}
+                disabled={isRecovering}
+                variant="outline"
+                className="rounded-xl h-12 px-6 border-primary/20 bg-primary/5 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all shadow-sm"
+            >
+                {isRecovering ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+                Force Global Rescue
+            </Button>
             <Button onClick={fetchData} variant="outline" className="rounded-xl h-12 bg-white border-slate-100 font-black uppercase text-[10px] tracking-widest"><RefreshCcw className="h-4 w-4 mr-2" /> Sync Grid</Button>
         </div>
       </header>
@@ -291,6 +318,12 @@ export default function AdminAbandonedPage() {
                                           <p className="text-2xl font-black text-foreground tracking-tighter leading-none">{formatPrice(cart.total_price)}</p>
                                           <div className="flex gap-2">
                                               <Button onClick={() => setSelectedCart(cart)} variant="ghost" size="sm" className="h-10 px-4 rounded-xl text-[9px] font-black uppercase text-slate-400 hover:text-primary border border-transparent hover:border-primary/20">Journey</Button>
+                                              <Button
+                                                onClick={() => handleDraftNudge(cart)}
+                                                className="h-12 px-8 rounded-[1rem] bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase text-[10px] tracking-widest shadow-xl shadow-emerald-500/20 active:scale-95 transition-all"
+                                              >
+                                                  <MessageSquare className="h-4 w-4 mr-2" /> Draft Nudge
+                                              </Button>
                                           </div>
                                       </div>
                                   </div>

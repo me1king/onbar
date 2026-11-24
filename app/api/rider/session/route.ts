@@ -12,12 +12,16 @@ function getDatabase() {
     : null;
 }
 
-function serializeRider(rider: Record<string, unknown>, dashboard?: Record<string, unknown>) {
+function serializeRider(
+  rider: Record<string, unknown>,
+  dashboard?: Record<string, unknown>,
+  status = rider.status
+) {
   return {
     id: rider.id,
     name: rider.rider_name,
     phone: rider.rider_phone,
-    status: rider.status,
+    status,
     verificationStatus: rider.verification_status,
     currentTier: dashboard?.current_tier,
     rating: dashboard?.rating,
@@ -88,8 +92,18 @@ export async function POST(request: Request) {
       console.error('[RiderSession] Could not load rider dashboard details:', dashboardError);
       return NextResponse.json({ error: 'Rider dashboard details could not be loaded.' }, { status: 503 });
     }
+    const { data: blockReasons, error: readinessError } = await database.rpc(
+      'rider_online_block_reasons',
+      { p_rider_phone: String(data.rider_phone) }
+    );
+    if (readinessError) {
+      console.error('[RiderSession] Could not verify rider safety readiness:', readinessError);
+      return NextResponse.json({ error: 'Rider safety checks are unavailable. Apply supabase/RIDER_DISPATCH_SAFETY_MIGRATION.sql.' }, { status: 503 });
+    }
+    const reasons = Array.isArray(blockReasons) ? blockReasons : [];
+    const status = data.status === 'Idle' && reasons.length > 0 ? 'Offline' : data.status;
     return NextResponse.json({
-      rider: serializeRider(data, dashboard),
+      rider: { ...serializeRider(data, dashboard, status), onlineBlockReasons: reasons },
       token: createRiderSession(data.rider_phone)
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (sessionError) {
@@ -119,7 +133,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'This rider account is no longer approved.' }, { status: 401 });
   }
 
-  return NextResponse.json({ rider: serializeRider(data, data) }, {
+  const { data: blockReasons, error: readinessError } = await database.rpc(
+    'rider_online_block_reasons',
+    { p_rider_phone: session.phone }
+  );
+  if (readinessError) {
+    console.error('[RiderSession] Could not verify rider safety readiness:', readinessError);
+    return NextResponse.json({ error: 'Rider safety checks are unavailable. Apply supabase/RIDER_DISPATCH_SAFETY_MIGRATION.sql.' }, { status: 503 });
+  }
+  const reasons = Array.isArray(blockReasons) ? blockReasons : [];
+  const status = data.status === 'Idle' && reasons.length > 0 ? 'Offline' : data.status;
+
+  return NextResponse.json({
+    rider: { ...serializeRider(data, data, status), onlineBlockReasons: reasons }
+  }, {
     headers: { 'Cache-Control': 'no-store' }
   });
 }

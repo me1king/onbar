@@ -76,6 +76,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
   if (!rider) return NextResponse.json({ error: 'Rider was not found.' }, { status: 404 });
 
+  const { data: dispatchEligibilityReasons, error: readinessError } = await database.rpc(
+    'rider_online_block_reasons',
+    { p_rider_phone: rider.rider_phone }
+  );
+  if (readinessError) {
+    console.error('[AdminRiderProfile] Could not verify rider dispatch readiness:', readinessError);
+    return NextResponse.json({ error: 'Rider safety checks are unavailable. Apply supabase/RIDER_DISPATCH_SAFETY_MIGRATION.sql.' }, { status: 503 });
+  }
+  const blockReasons = Array.isArray(dispatchEligibilityReasons) ? dispatchEligibilityReasons : [];
+  const displayStatus = rider.status === 'Idle' && blockReasons.length > 0 ? 'Offline' : rider.status;
+  const riderForDisplay = { ...rider, status: displayStatus };
+
   const now = new Date();
   const weekStart = getNairobiWeekStart(now);
   const [walletResult, deliveredResult, weeklyResult, recentOrdersResult, activeOrdersResult] = await Promise.all([
@@ -114,22 +126,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }, { status: 503 });
   }
 
-  const { data: lastOfflineLocation, error: offlineLocationError } = await database
-    .from('rider_offline_location_events')
-    .select('latitude,longitude,location_recorded_at,went_offline_at')
-    .eq('rider_phone', rider.rider_phone)
-    .order('went_offline_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const lastOfflineLocationUnavailable = Boolean(offlineLocationError
-    && (offlineLocationError.code === '42P01'
-      || offlineLocationError.code === 'PGRST205'
-      || /rider_offline_location_events|schema cache/i.test(offlineLocationError.message)));
-  if (offlineLocationError && !lastOfflineLocationUnavailable) {
-    console.error('[AdminRiderProfile] Could not load the last offline rider location:', offlineLocationError);
-    return NextResponse.json({ error: 'The rider location security history could not be loaded.' }, { status: 503 });
-  }
-
   const sensitiveAllowed = session.role.toLowerCase() === 'owner'
     || hasAdminPermission(session, 'can_view_sensitive_data');
   let documents: {
@@ -150,7 +146,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         .eq('id', riderId)
         .maybeSingle(),
       database.from('rider_profile_details')
-        .select('whatsapp_number,emergency_contact_name,emergency_contact_phone,guarantor_name,guarantor_phone,delivery_zones,max_distance_km,shift_days,shift_start_time,shift_end_time,mpesa_number,mpesa_registered_name,mpesa_name_verified_at,license_expiry_date,insurance_expiry_date,age_check_training_completed_at,rider_agreement_accepted_at,rider_agreement_version')
+        .select('whatsapp_number,emergency_contact_name,emergency_contact_phone,guarantor_name,guarantor_phone,delivery_zones,max_distance_km,shift_days,shift_start_time,shift_end_time,mpesa_number,mpesa_registered_name,mpesa_name_verified_at,mpesa_name_verified_by,license_expiry_date,insurance_expiry_date,license_document_path,license_document_submitted_at,license_document_verified_at,license_document_verified_by,insurance_document_path,insurance_document_submitted_at,insurance_document_verified_at,insurance_document_verified_by,age_check_training_completed_at,rider_agreement_accepted_at,rider_agreement_version')
         .eq('rider_phone', rider.rider_phone)
         .maybeSingle()
     ]);
@@ -167,7 +163,25 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         return NextResponse.json({ error: 'Authorized rider account details could not be loaded.' }, { status: 503 });
       }
     } else {
-      profileDetails = details;
+      const licensePath = getVerificationStoragePath(details?.license_document_path);
+      const insurancePath = getVerificationStoragePath(details?.insurance_document_path);
+      const [licenseUrlResult, insuranceUrlResult] = await Promise.all([
+        licensePath
+          ? database.storage.from('rider-verifications').createSignedUrl(licensePath, 60 * 15)
+          : Promise.resolve({ data: null, error: null }),
+        insurancePath
+          ? database.storage.from('rider-verifications').createSignedUrl(insurancePath, 60 * 15)
+          : Promise.resolve({ data: null, error: null })
+      ]);
+      if (licenseUrlResult.error || insuranceUrlResult.error) {
+        console.error('[AdminRiderProfile] Could not sign replacement compliance documents:', licenseUrlResult.error || insuranceUrlResult.error);
+        return NextResponse.json({ error: 'A rider compliance document is temporarily unavailable.' }, { status: 503 });
+      }
+      profileDetails = {
+        ...details,
+        license_document_url: licenseUrlResult.data?.signedUrl || null,
+        insurance_document_url: insuranceUrlResult.data?.signedUrl || null
+      };
     }
 
     const photoPath = getVerificationStoragePath(sensitive?.rider_photo_url);
@@ -210,7 +224,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }).filter(order => new Date(order.deliveredAt).getTime() >= now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
   return NextResponse.json({
-    rider,
+    rider: riderForDisplay,
+    dispatchEligibilityReasons: blockReasons,
     wallet: walletResult.data || null,
     profileDetails,
     profileDetailsRestricted: !sensitiveAllowed,
@@ -227,9 +242,115 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     },
     orders: recentOrdersResult.data || [],
     activeOrders: activeOrdersResult.data || [],
-    lastOfflineLocation: offlineLocationError ? null : lastOfflineLocation,
-    lastOfflineLocationUnavailable,
     documents,
     refreshedAt: now.toISOString()
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getAdminSession();
+  const sensitiveAllowed = session?.role.toLowerCase() === 'owner'
+    || Boolean(session && hasAdminPermission(session, 'can_view_sensitive_data'));
+  if (!session || !hasAdminPermission(session, 'can_manage_orders') || !sensitiveAllowed) {
+    return NextResponse.json({ error: 'Sensitive rider-payment or document verification access is required.' }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const riderId = Number(id);
+  if (!Number.isSafeInteger(riderId) || riderId <= 0) {
+    return NextResponse.json({ error: 'A valid rider ID is required.' }, { status: 400 });
+  }
+
+  let body: { action?: unknown };
+  try {
+    body = await request.json() as { action?: unknown };
+  } catch {
+    return NextResponse.json({ error: 'Send a valid rider verification action.' }, { status: 400 });
+  }
+  if (!['verify-mpesa', 'verify-license', 'verify-insurance'].includes(String(body.action))) {
+    return NextResponse.json({ error: 'Choose a supported rider verification action.' }, { status: 400 });
+  }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !serviceKey) {
+    return NextResponse.json({ error: 'Rider database access is not configured on the server.' }, { status: 503 });
+  }
+  const database = createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+  const { data: rider, error: riderError } = await database.from('rider_status')
+    .select('rider_phone')
+    .eq('id', riderId)
+    .maybeSingle();
+  if (riderError) {
+    console.error('[AdminRiderProfile] Could not verify rider identity:', riderError);
+    return NextResponse.json({ error: 'Rider identity could not be verified.' }, { status: 503 });
+  }
+  if (!rider) return NextResponse.json({ error: 'Rider was not found.' }, { status: 404 });
+
+  const { data: details, error: detailsError } = await database.from('rider_profile_details')
+    .select('mpesa_number,mpesa_registered_name,license_document_path,license_expiry_date,insurance_document_path,insurance_expiry_date')
+    .eq('rider_phone', rider.rider_phone)
+    .maybeSingle();
+  if (detailsError || !details) {
+    console.error('[AdminRiderProfile] Could not load rider verification target:', detailsError);
+    return NextResponse.json({ error: 'Rider verification details could not be loaded.' }, { status: 503 });
+  }
+
+  const now = new Date();
+  const nairobiParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Nairobi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(now);
+  const nairobiDate = Object.fromEntries(nairobiParts.map(part => [part.type, part.value]));
+  const today = `${nairobiDate.year}-${nairobiDate.month}-${nairobiDate.day}`;
+  const actor = session.role;
+  let updates: Record<string, unknown>;
+  let changedField: string;
+
+  if (body.action === 'verify-mpesa') {
+    if (!details.mpesa_number?.trim() || !details.mpesa_registered_name?.trim()) {
+      return NextResponse.json({ error: 'The rider must save both an M-Pesa number and registered name first.' }, { status: 409 });
+    }
+    updates = { mpesa_name_verified_at: now.toISOString(), mpesa_name_verified_by: actor };
+    changedField = 'mpesa_name_verified_at';
+  } else if (body.action === 'verify-license') {
+    if (!details.license_document_path || !details.license_expiry_date || details.license_expiry_date < today) {
+      return NextResponse.json({ error: 'A submitted, unexpired driving licence is required before verification.' }, { status: 409 });
+    }
+    updates = { license_document_verified_at: now.toISOString(), license_document_verified_by: actor };
+    changedField = 'license_document_verified_at';
+  } else {
+    if (!details.insurance_document_path || !details.insurance_expiry_date || details.insurance_expiry_date < today) {
+      return NextResponse.json({ error: 'A submitted, unexpired insurance certificate is required before verification.' }, { status: 409 });
+    }
+    updates = { insurance_document_verified_at: now.toISOString(), insurance_document_verified_by: actor };
+    changedField = 'insurance_document_verified_at';
+  }
+
+  const { error: updateError } = await database.from('rider_profile_details')
+    .update({ ...updates, updated_at: now.toISOString() })
+    .eq('rider_phone', rider.rider_phone);
+  if (updateError) {
+    console.error('[AdminRiderProfile] Could not save rider verification:', updateError);
+    return NextResponse.json({ error: 'The rider verification could not be saved.' }, { status: 503 });
+  }
+
+  const { error: auditError } = await database.from('rider_profile_audit_events').insert({
+    rider_phone: rider.rider_phone,
+    actor_type: 'admin',
+    actor,
+    changed_fields: [changedField]
+  });
+  if (auditError) {
+    console.error('[AdminRiderProfile] Verification saved but its audit event could not be recorded:', auditError);
+    return NextResponse.json({
+      saved: true,
+      warning: 'Verification was saved, but its audit entry could not be recorded.'
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+  return NextResponse.json({ saved: true }, { headers: { 'Cache-Control': 'no-store' } });
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import {
     Rocket,
     ArrowRight,
@@ -43,7 +44,6 @@ export default function CreateCampaign() {
         name: '',
         type: 'Product Launch',
         product_id: '',
-        image_url: '',
         status: 'Draft',
         scheduled_at: '',
         audience_id: 'all'
@@ -63,17 +63,37 @@ export default function CreateCampaign() {
 
     React.useEffect(() => {
         async function fetchData() {
+            const client = supabase;
+            if (!client) {
+                setAudienceError('Supabase is not configured. Products and audience data are unavailable.');
+                setLoading(false);
+                return;
+            }
             try {
-                const response = await fetch('/api/admin/marketing/campaign-setup', { cache: 'no-store' });
-                const result = await response.json() as {
-                    products?: typeof products;
-                    segments?: typeof segments;
-                    error?: string;
-                };
-                if (!response.ok) throw new Error(result.error || 'Unable to load campaign setup data.');
-                if (!result.products || !result.segments) throw new Error('Campaign setup response is incomplete.');
-                setProducts(result.products);
-                setSegments(result.segments);
+                const [prodRes, segRes, profilesRes] = await Promise.all([
+                    client.from('products').select('id, name, image_url, price, stock, category, description').eq('status', 'Live').gt('stock', 0).order('name'),
+                    client.from('audience_segments').select('id, name, rules').order('name'),
+                    client.from('profiles').select('id', { count: 'exact', head: true })
+                ]);
+                const queryError = prodRes.error || segRes.error || profilesRes.error;
+                if (queryError) throw queryError;
+                setProducts(prodRes.data || []);
+                const reachableSegments = await Promise.all((segRes.data || []).map(async segment => {
+                    const rules = (segment.rules || {}) as Record<string, unknown>;
+                    const { data, error: reachError } = await client.rpc('count_matching_audience_members', {
+                        p_spend_min: Number(rules.spend_min) || 0,
+                        p_orders_min: Number(rules.orders_min) || 0,
+                        p_last_order_days: Number(rules.last_order_days) || 0
+                    });
+                    if (reachError) {
+                        console.error(`Audience reach unavailable for ${segment.name}:`, reachError);
+                    }
+                    return { id: segment.id, name: segment.name, estimated_reach: reachError ? null : Number(data) };
+                }));
+                setSegments([
+                    { id: 'all', name: 'All registered members', estimated_reach: profilesRes.count },
+                    ...reachableSegments
+                ]);
             } catch (fetchError) {
                 console.error('Campaign setup data load failed:', fetchError);
                 setAudienceError(fetchError instanceof Error ? fetchError.message : 'Unable to load campaign setup data.');
@@ -124,6 +144,12 @@ export default function CreateCampaign() {
     };
 
     const launchCampaign = async () => {
+        const client = supabase;
+        if (!client) {
+            setMessage({ type: 'error', text: 'Supabase is not configured. The campaign draft was not saved.' });
+            return;
+        }
+
         // Final Validation
         if (!campaign.name || !campaign.product_id) {
             setMessage({ type: 'error', text: "Incomplete Mission Specs: Name and Product required." });
@@ -140,14 +166,33 @@ export default function CreateCampaign() {
         setLoading(true);
         setMessage(null);
         try {
-            const response = await fetch('/api/admin/marketing/campaign-setup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ campaign, channels })
-            });
-            const result = await response.json() as { campaignId?: string; error?: string };
-            if (!response.ok || !result.campaignId) {
-                throw new Error(result.error || 'Failed to save the campaign draft.');
+            const { data, error } = await client
+                .from('marketing_campaigns')
+                .insert([{
+                    name: campaign.name,
+                    type: campaign.type,
+                    product_id: Number(campaign.product_id),
+                    status: 'Draft',
+                    scheduled_at: campaign.scheduled_at || null,
+                    audience_segment_id: campaign.audience_id === 'all' ? null : campaign.audience_id
+                }])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Insert channels
+            const channelData = [
+                { campaign_id: data.id, channel: 'Instagram', content: channels.instagram },
+                { campaign_id: data.id, channel: 'WhatsApp', content: channels.whatsapp },
+                { campaign_id: data.id, channel: 'Email', content: { subject: channels.email.subject, body: channels.email.body } }
+            ];
+
+            const { error: channelError } = await client.from('campaign_channels').insert(channelData);
+            if (channelError) {
+                const { error: cleanupError } = await client.from('marketing_campaigns').delete().eq('id', data.id);
+                if (cleanupError) console.error('Unable to remove incomplete campaign draft:', cleanupError);
+                throw channelError;
             }
 
             // Log Audit
@@ -169,11 +214,6 @@ export default function CreateCampaign() {
             setLoading(false);
         }
     };
-
-    const enteredImageUrl = campaign.image_url.trim();
-    const isPublicImageUrl = enteredImageUrl.startsWith('https://')
-        || (enteredImageUrl.startsWith('/') && !enteredImageUrl.startsWith('//'));
-    const campaignImageUrl = (isPublicImageUrl ? enteredImageUrl : '') || selectedProduct?.image_url || '';
 
     return (
         <div className="p-4 sm:p-8 space-y-8 sm:space-y-10 bg-background min-h-screen text-left pb-40">
@@ -263,17 +303,6 @@ export default function CreateCampaign() {
                                             </button>
                                         ))}
                                     </div>
-                                </div>
-                                <div className="space-y-2 sm:col-span-2">
-                                    <label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Campaign Image Override (optional)</label>
-                                    <Input
-                                        maxLength={2000}
-                                        value={campaign.image_url}
-                                        onChange={e => setCampaign({ ...campaign, image_url: e.target.value })}
-                                        placeholder="https://... or /images/campaign.jpg"
-                                        className="h-12 rounded-2xl bg-secondary"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Paste a public HTTPS image URL or a site-relative image path. Leave blank to use the selected product photo.</p>
                                 </div>
                             </div>
 
@@ -404,13 +433,13 @@ export default function CreateCampaign() {
                                         <>
                                             {activePreview === 'instagram' && (
                                                 <InstagramPreview
-                                                    imageUrl={campaignImageUrl}
+                                                    imageUrl={selectedProduct.image_url}
                                                     caption={channels.instagram.caption}
                                                 />
                                             )}
                                             {activePreview === 'whatsapp' && (
                                                 <WhatsAppPreview
-                                                    imageUrl={campaignImageUrl}
+                                                    imageUrl={selectedProduct.image_url}
                                                     body={channels.whatsapp.body}
                                                 />
                                             )}
@@ -418,7 +447,7 @@ export default function CreateCampaign() {
                                                 <EmailPreview
                                                     productName={selectedProduct.name}
                                                     productPrice={selectedProduct.price}
-                                                    imageUrl={campaignImageUrl}
+                                                    imageUrl={selectedProduct.image_url}
                                                     subject={channels.email.subject}
                                                     body={channels.email.body}
                                                 />
@@ -539,7 +568,7 @@ export default function CreateCampaign() {
                                 <div className="space-y-6">
                                     <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                                         <div className="h-16 w-16 rounded-2xl bg-slate-50 p-2 overflow-hidden relative border border-slate-100 flex items-center justify-center">
-                                            {campaignImageUrl && <Image src={campaignImageUrl} fill unoptimized className="object-contain" alt="" />}
+                                            {selectedProduct.image_url && <Image src={selectedProduct.image_url} fill className="object-contain" alt="" />}
                                         </div>
                                         <div className="min-w-0">
                                             <p className="text-[9px] font-black text-primary uppercase leading-none mb-1">Target Viewport</p>

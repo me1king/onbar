@@ -63,21 +63,6 @@ function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: stri
   });
 }
 
-async function readJsonResponse<T>(response: Response, serviceName: string): Promise<T> {
-  const body = await response.text();
-  try {
-    return JSON.parse(body) as T;
-  } catch {
-    const isPaymentRequired = response.status === 402 || /^payment required\b/i.test(body.trim());
-    const nextStep = serviceName === 'Order service'
-      ? ' Check Orders before retrying to avoid a duplicate.'
-      : ' Please contact support or try Cash on Delivery.';
-    throw new Error(isPaymentRequired
-      ? `${serviceName} is unavailable because the server returned Payment Required (HTTP ${response.status}).${nextStep}`
-      : `${serviceName} returned an invalid response (HTTP ${response.status}).${nextStep}`);
-  }
-}
-
 declare global {
   interface Window {
     fbq?: (action: string, eventName: string, params?: Record<string, unknown>) => void;
@@ -99,20 +84,17 @@ declare global {
 
 
 function CheckoutContent() {
-  const { cart, clearCart, removeFromCart, replaceCart } = useCart();
+  const { cart, clearCart, removeFromCart } = useCart();
   const { settings, loading: storeSettingsLoading } = useSettings();
   const onlinePaymentProvider = settings.payment_config.online_provider;
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [emailMarketingConsent, setEmailMarketingConsent] = useState(false);
   const [emailMarketingConsentEmail, setEmailMarketingConsentEmail] = useState<string | null>(null);
   const [emailMarketingConsentBusy, setEmailMarketingConsentBusy] = useState(false);
   const [emailMarketingConsentError, setEmailMarketingConsentError] = useState('');
-  const [checkoutRecoveryNotice, setCheckoutRecoveryNotice] = useState<string | null>(null);
-  const [pendingRecoveryCart, setPendingRecoveryCart] = useState<{ cart: unknown; sessionId: string } | null>(null);
   const [showCustomerErrors, setShowCustomerErrors] = useState(false);
   const customerNameInputRef = useRef<HTMLInputElement>(null);
   const customerPhoneInputRef = useRef<HTMLInputElement>(null);
@@ -120,7 +102,6 @@ function CheckoutContent() {
   const quickCustomerNameInputRef = useRef<HTMLInputElement>(null);
   const quickCustomerPhoneInputRef = useRef<HTMLInputElement>(null);
   const quickCustomerEmailInputRef = useRef<HTMLInputElement>(null);
-  const quickDetailsDialogRef = useRef<HTMLElement>(null);
   const quickDetailsPromptHandled = useRef(false);
   const [showQuickDetails, setShowQuickDetails] = useState(false);
   const deliveryZoneSelectRef = useRef<HTMLSelectElement>(null);
@@ -136,7 +117,6 @@ function CheckoutContent() {
   const [freeDeliveryOver, setFreeDeliveryOver] = useState(3000);
   const [deliveryAreasLoaded, setDeliveryAreasLoaded] = useState(false);
   const [deliveryAreasError, setDeliveryAreasError] = useState<string | null>(null);
-  const [deliveryAreasRetryToken, setDeliveryAreasRetryToken] = useState(0);
   const [couponCode, setCouponCode] = useState("");
   const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
@@ -286,45 +266,6 @@ function CheckoutContent() {
   }, [customerEmail, customerName, customerPhone, paymentMethod, showQuickDetails]);
 
   useEffect(() => {
-    if (!showQuickDetails) return;
-    const handleDialogKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setShowQuickDetails(false);
-        window.setTimeout(() => customerNameInputRef.current?.focus(), 0);
-        return;
-      }
-      if (event.key !== 'Tab') return;
-
-      const focusable = quickDetailsDialogRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      if (!focusable?.length) {
-        event.preventDefault();
-        quickDetailsDialogRef.current?.focus();
-        return;
-      }
-      if (!quickDetailsDialogRef.current?.contains(document.activeElement)) {
-        event.preventDefault();
-        focusable[0].focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleDialogKeyDown);
-    return () => document.removeEventListener('keydown', handleDialogKeyDown);
-  }, [showQuickDetails]);
-
-  useEffect(() => {
     async function checkLockdown() {
         try {
             const response = await fetch('/api/admin/system-lockdown', { cache: 'no-store' });
@@ -360,54 +301,42 @@ function CheckoutContent() {
 
   useEffect(() => {
     let active = true;
-    let timedOut = false;
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, 10_000);
-
     async function loadFreeDeliveryAreas() {
-      setDeliveryAreasLoaded(false);
-      setDeliveryAreasError(null);
+      if (!supabase) {
+        setDeliveryAreasError('Delivery zones could not be checked because the store is not connected.');
+        setDeliveryAreasLoaded(true);
+        return;
+      }
       try {
-        const response = await fetch('/api/checkout/delivery-settings', {
-          cache: 'no-store',
-          signal: controller.signal
-        });
-        const result: unknown = await readJsonResponse(response, 'Delivery settings');
-        const payload = typeof result === 'object' && result !== null
-          ? result as Record<string, unknown>
-          : {};
-        if (!response.ok) {
-          throw new Error(typeof payload.error === 'string'
-            ? payload.error
-            : 'Delivery zones are temporarily unavailable. Please try again.');
-        }
-
+        const [{ data, error }, { data: pricingData, error: pricingError }] = await withTimeout(
+          Promise.all([
+            supabase.from('settings').select('value').eq('key', 'free_delivery_areas').maybeSingle(),
+            supabase.from('settings').select('value').eq('key', 'delivery_pricing').maybeSingle()
+          ]),
+          12000,
+          'Delivery zone settings timed out. Refresh checkout and try again.'
+        );
         if (!active) return;
-        setFreeDeliveryAreas(parseDeliveryAreas(payload.areas));
-        setFreeDeliveryOver(parseDeliveryPricing(payload.pricing).free_delivery_over);
+        if (error || pricingError) {
+          console.error('Delivery zone lookup failed:', error || pricingError);
+          setDeliveryAreasError('Delivery zones are temporarily unavailable. Please try again before placing your order.');
+        } else {
+          setFreeDeliveryAreas(parseDeliveryAreas(data?.value ?? []));
+          setFreeDeliveryOver(parseDeliveryPricing(pricingData?.value).free_delivery_over);
+        }
       } catch (error) {
         if (!active) return;
         console.error('Delivery zone lookup failed:', error);
-        setDeliveryAreasError(timedOut
-          ? 'Delivery zone settings took too long to load. Check your connection and retry.'
-          : error instanceof Error
-            ? error.message
-            : 'Delivery zones are temporarily unavailable. Please try again.');
+        setDeliveryAreasError(error instanceof Error
+          ? error.message
+          : 'Delivery zones are temporarily unavailable. Please try again before placing your order.');
       } finally {
-        window.clearTimeout(timeoutId);
         if (active) setDeliveryAreasLoaded(true);
       }
     }
     loadFreeDeliveryAreas();
-    return () => {
-      active = false;
-      controller.abort();
-      window.clearTimeout(timeoutId);
-    };
-  }, [deliveryAreasRetryToken]);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!deliveryAreasLoaded || coords.lat == null || coords.lng == null) return;
@@ -418,7 +347,6 @@ function CheckoutContent() {
 
   const searchParams = useSearchParams();
   const [referralCode, setReferralCode] = useState<string | null>(null);
-  const handledRecoveryToken = useRef<string | null>(null);
 
   // Clear status when switching payment methods
   useEffect(() => {
@@ -437,43 +365,6 @@ function CheckoutContent() {
 
     setReferralCode(urlRef || sessionRef || cookieRef);
   }, [searchParams]);
-
-  useEffect(() => {
-    const token = searchParams?.get('recover');
-    if (!token || handledRecoveryToken.current === token) return;
-    handledRecoveryToken.current = token;
-
-    const restoreCart = async () => {
-      try {
-        const response = await fetch(`/api/checkout/abandonment/recover?token=${encodeURIComponent(token)}`, {
-          cache: 'no-store'
-        });
-        const result = await response.json() as { cart?: unknown; recoverySessionId?: string; error?: string };
-        if (!response.ok || !result.cart || !result.recoverySessionId) {
-          throw new Error(result.error || 'This saved cart could not be restored.');
-        }
-        if (cart.length > 0) {
-          setPendingRecoveryCart({ cart: result.cart, sessionId: result.recoverySessionId });
-          setCheckoutRecoveryNotice('Your current cart is unchanged. Choose whether to replace it with the saved checkout.');
-        } else if (!replaceCart(result.cart)) {
-          throw new Error('The saved cart could not be restored safely.');
-        } else {
-          localStorage.setItem('ob_recovery_session_id', result.recoverySessionId);
-          setPendingRecoveryCart(null);
-          setCheckoutRecoveryNotice('Your saved cart is back. Please review current prices and availability before ordering.');
-        }
-      } catch (error) {
-        console.error('[CheckoutRecovery] Could not restore the saved cart:', error);
-        setCheckoutRecoveryNotice(error instanceof Error ? error.message : 'This saved cart could not be restored.');
-      } finally {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('recover');
-        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
-      }
-    };
-
-    void restoreCart();
-  }, [cart.length, replaceCart, searchParams]);
 
   // 0. Load Profile & Loyalty Points
   useEffect(() => {
@@ -737,54 +628,6 @@ function CheckoutContent() {
     return () => clearTimeout(timer);
   }, [customerName, customerPhone, customerEmail, user?.email, cart, total, loyaltyPoints, pointsDiscount, pointsPerKsh, usePoints]);
 
-  useEffect(() => {
-    const email = customerEmail.trim().toLowerCase();
-    if (!emailMarketingConsent
-      || emailMarketingConsentBusy
-      || !emailMarketingConsentEmail
-      || emailMarketingConsentEmail !== email
-      || cart.length === 0
-      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
-
-    let active = true;
-    const timer = window.setTimeout(async () => {
-      try {
-        const sessionId = localStorage.getItem('ob_session_id');
-        if (!sessionId) return;
-        const response = await fetch('/api/checkout/abandonment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(10000),
-          body: JSON.stringify({
-            sessionId,
-            customerName,
-            customerEmail: email,
-            cartItems: cart
-          })
-        });
-        const result = await response.json() as { error?: string; saved?: boolean; reason?: string };
-        if (!response.ok) throw new Error(result.error || 'The consented recovery cart could not be saved.');
-        if (active && result.saved === false) {
-          setCheckoutRecoveryNotice(result.reason === 'unavailable'
-            ? 'A cart item is no longer available, so this checkout will not receive a recovery reminder.'
-            : 'Email consent could not be confirmed, so this checkout will not receive a marketing reminder.');
-        }
-      } catch (error) {
-        console.error('[CheckoutRecovery] Could not save the consented checkout:', error);
-        if (active) {
-          setCheckoutRecoveryNotice(error instanceof Error
-            ? `${error.message} Your order is unaffected.`
-            : 'The recovery cart could not be saved. Your order is unaffected.');
-        }
-      }
-    }, 5000);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [cart, customerEmail, customerName, emailMarketingConsent, emailMarketingConsentBusy, emailMarketingConsentEmail]);
-
   // 1.5 Realtime "Magic" Checkout Listener
   useEffect(() => {
     if (!supabase || !placedOrderId) return;
@@ -849,14 +692,6 @@ function CheckoutContent() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!ageConfirmed) {
-      setCheckoutStatus({
-        type: "error",
-        message: "Confirm that you are at least 18 years old before placing your order."
-      });
-      document.getElementById('checkout-age-confirmation')?.focus();
-      return;
-    }
     if (isSystemLockdown) {
         setCheckoutStatus({
             type: "error",
@@ -967,7 +802,6 @@ function CheckoutContent() {
               customerName,
               customerPhone,
               customerEmail: customerEmail.trim() || null,
-              ageConfirmed,
               paymentMethod: paymentMethod === 'M-Pesa'
                 ? onlinePaymentProvider === 'payhero'
                   ? 'PayHero'
@@ -990,11 +824,10 @@ function CheckoutContent() {
               isGift,
               giftMessage: giftMessage.trim() || null,
               giftRecipient: giftRecipient.trim() || null,
-              giftOccasion: giftOccasion.trim() || null,
-              recoverySessionId: localStorage.getItem('ob_recovery_session_id')
+              giftOccasion: giftOccasion.trim() || null
           })
       }), 16000, 'The order service did not respond within 15 seconds. Your order may still be processing; check Orders before retrying to avoid a duplicate.');
-      const orderResult = await readJsonResponse<{
+      const orderResult = await orderResponse.json() as {
           error?: string;
           code?: string;
           stockIssue?: {
@@ -1010,7 +843,7 @@ function CheckoutContent() {
           currency?: string;
           provider?: 'Paystack' | 'PayHero' | 'Daraja' | 'COD';
           paymentStarted?: boolean;
-      }>(orderResponse, 'Order service');
+      };
       if (!orderResponse.ok || !orderResult.orderId || typeof orderResult.total !== 'number') {
           if (orderResult.code === 'STOCK_UNAVAILABLE' && orderResult.stockIssue) {
             setUnavailableItem(orderResult.stockIssue);
@@ -1019,7 +852,6 @@ function CheckoutContent() {
       }
       const orderId = orderResult.orderId;
       submittedOrderId = orderId;
-      localStorage.removeItem('ob_recovery_session_id');
       const authoritativeTotal = orderResult.total;
       const newsletterStatus = emailMarketingConsent ? 'joined' : null;
       setPlacedOrderId(orderId);
@@ -1063,10 +895,7 @@ function CheckoutContent() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ reference: response.reference })
                         });
-                        const verificationResult = await readJsonResponse<{ error?: string }>(
-                            verification,
-                            'Payment verification service'
-                        );
+                        const verificationResult = await verification.json() as { error?: string };
                         if (!verification.ok) {
                             throw new Error(verificationResult.error || 'Server-side payment verification failed.');
                         }
@@ -1212,7 +1041,7 @@ function CheckoutContent() {
     }
   };
 
-  if (cart.length === 0 && checkoutStatus.type !== "success" && !pendingRecoveryCart) {
+  if (cart.length === 0 && checkoutStatus.type !== "success") {
     return (
       <div className="container mx-auto px-4 py-24 text-center">
         <h1 className="text-4xl font-black uppercase tracking-tighter">Your Cart is Empty</h1>
@@ -1228,45 +1057,19 @@ function CheckoutContent() {
     <div className="container mx-auto px-4 py-12 max-w-7xl text-left min-h-screen">
       <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
       <DeliveryPushPreferences />
-      {pendingRecoveryCart && (
-        <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm font-medium text-amber-950">
-            A saved checkout is available. Replacing your current cart will discard its current items.
-          </p>
-          <Button
-            type="button"
-            className="shrink-0 rounded-xl"
-            onClick={() => {
-              if (!replaceCart(pendingRecoveryCart.cart)) {
-                setCheckoutRecoveryNotice('The saved cart could not be restored safely.');
-                setPendingRecoveryCart(null);
-                return;
-              }
-              localStorage.setItem('ob_recovery_session_id', pendingRecoveryCart.sessionId);
-              setPendingRecoveryCart(null);
-              setCheckoutRecoveryNotice('Your saved cart is back. Please review current prices and availability before ordering.');
-            }}
-          >
-            Replace cart with saved checkout
-          </Button>
-        </div>
-      )}
       {showQuickDetails && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm">
           <section
             role="dialog"
             aria-modal="true"
             aria-labelledby="quick-checkout-details-title"
-            aria-describedby="quick-checkout-details-description"
-            ref={quickDetailsDialogRef}
-            tabIndex={-1}
             className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
           >
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Quick checkout</p>
             <h2 id="quick-checkout-details-title" className="mt-2 text-2xl font-black tracking-tight text-slate-950">
               A few details before your order
             </h2>
-            <p id="quick-checkout-details-description" className="mt-2 text-sm leading-6 text-slate-500">
+            <p className="mt-2 text-sm leading-6 text-slate-500">
               Add your contact details so we can confirm your order and coordinate delivery. You can review your delivery location and payment next.
             </p>
             <form
@@ -1299,11 +1102,10 @@ function CheckoutContent() {
                   value={customerName}
                   onChange={event => setCustomerName(event.target.value)}
                   aria-invalid={showCustomerErrors && !customerName.trim()}
-                  aria-describedby={showCustomerErrors && !customerName.trim() ? 'quick-checkout-name-error' : undefined}
                   placeholder="Your name"
                   className="h-12 rounded-xl"
                 />
-                {showCustomerErrors && !customerName.trim() && <p id="quick-checkout-name-error" role="alert" className="text-xs text-rose-600">Enter your full name.</p>}
+                {showCustomerErrors && !customerName.trim() && <p role="alert" className="text-xs text-rose-600">Enter your full name.</p>}
               </div>
               <div className="space-y-2">
                 <label htmlFor="quick-checkout-phone" className="text-xs font-bold text-slate-700">Phone number *</label>
@@ -1316,11 +1118,10 @@ function CheckoutContent() {
                   value={customerPhone}
                   onChange={event => setCustomerPhone(event.target.value)}
                   aria-invalid={showCustomerErrors && !customerPhone.trim()}
-                  aria-describedby={showCustomerErrors && !customerPhone.trim() ? 'quick-checkout-phone-error' : undefined}
                   placeholder="07XXXXXXXX"
                   className="h-12 rounded-xl"
                 />
-                {showCustomerErrors && !customerPhone.trim() && <p id="quick-checkout-phone-error" role="alert" className="text-xs text-rose-600">Enter a phone number we can reach.</p>}
+                {showCustomerErrors && !customerPhone.trim() && <p role="alert" className="text-xs text-rose-600">Enter a phone number we can reach.</p>}
               </div>
               <div className="space-y-2">
                 <label htmlFor="quick-checkout-email" className="text-xs font-bold text-slate-700">
@@ -1335,24 +1136,15 @@ function CheckoutContent() {
                   value={customerEmail}
                   onChange={event => setCustomerEmail(event.target.value)}
                   aria-invalid={showCustomerErrors && paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())}
-                  aria-describedby={showCustomerErrors && paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? 'quick-checkout-email-error' : undefined}
                   placeholder="you@example.com"
                   className="h-12 rounded-xl"
                 />
                 {showCustomerErrors && paymentMethod === 'M-Pesa' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) && (
-                  <p id="quick-checkout-email-error" role="alert" className="text-xs text-rose-600">Enter a valid email address for online payment.</p>
+                  <p role="alert" className="text-xs text-rose-600">Enter a valid email address for online payment.</p>
                 )}
               </div>
               <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setShowQuickDetails(false);
-                    window.setTimeout(() => customerNameInputRef.current?.focus(), 0);
-                  }}
-                  className="h-12 rounded-xl sm:flex-1"
-                >
+                <Button type="button" variant="outline" onClick={() => setShowQuickDetails(false)} className="h-12 rounded-xl sm:flex-1">
                   I&apos;ll fill this in below
                 </Button>
                 <Button type="submit" className="h-12 rounded-xl font-bold sm:flex-1">
@@ -1441,7 +1233,6 @@ function CheckoutContent() {
                       {emailMarketingConsentBusy && <span className="mt-1 block font-semibold">Saving your preference…</span>}
                       {emailMarketingConsent && !emailMarketingConsentBusy && <span className="mt-1 block font-semibold text-emerald-700">Saved for {emailMarketingConsentEmail}. Uncheck to remove this address from promotional emails.</span>}
                       {emailMarketingConsentError && <span role="alert" className="mt-1 block font-semibold text-rose-700">{emailMarketingConsentError}</span>}
-                      {checkoutRecoveryNotice && <span role="status" className="mt-1 block font-semibold text-amber-700">{checkoutRecoveryNotice}</span>}
                     </span>
                   </label>
                 </div>
@@ -1561,8 +1352,7 @@ function CheckoutContent() {
                         </Button>
                     </div>
                 </div>
-                <div className="relative z-10 space-y-2">
-                <p role={deliveryAreasError ? 'alert' : 'status'} className="text-sm font-semibold">
+                <p role="status" className="relative z-10 text-sm font-semibold">
                     {deliveryAreasError
                         ? deliveryAreasError
                         : !deliveryAreasLoaded || storeSettingsLoading
@@ -1585,18 +1375,6 @@ function CheckoutContent() {
                                                 ? `Free delivery applied for orders of ${formatPrice(freeDeliveryOver)} or more.`
                                                 : `${selectedZone.name}: ${zoneFee === 0 ? 'free delivery' : `${formatPrice(zoneFee)} delivery fee`}${freeDeliveryOver > 0 ? ` · free over ${formatPrice(freeDeliveryOver)}` : ''}.`}
                 </p>
-                {deliveryAreasError && (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setDeliveryAreasRetryToken(token => token + 1)}
-                        disabled={!deliveryAreasLoaded || isPlacingOrder}
-                        className="h-10 rounded-xl text-xs font-bold"
-                    >
-                        Retry delivery settings
-                    </Button>
-                )}
-                </div>
                 {checkoutStatus.type === 'error' && checkoutNeedsDeliveryLocation && (
                     <p role="alert" className="relative z-10 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
                         {checkoutStatus.message}
@@ -1903,24 +1681,6 @@ function CheckoutContent() {
                       </div>
                   </div>
               )}
-
-              <label htmlFor="checkout-age-confirmation" className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left text-xs leading-5 text-slate-700">
-                <input
-                  id="checkout-age-confirmation"
-                  type="checkbox"
-                  checked={ageConfirmed}
-                  onChange={event => setAgeConfirmed(event.target.checked)}
-                  aria-required="true"
-                  aria-describedby="checkout-age-note"
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
-                />
-                <span>
-                  I confirm that I am at least 18 years old.
-                  <span id="checkout-age-note" className="mt-1 block text-slate-500">
-                    This is a self-confirmation, not identity or age verification.
-                  </span>
-                </span>
-              </label>
 
               <Button
                 size="lg"

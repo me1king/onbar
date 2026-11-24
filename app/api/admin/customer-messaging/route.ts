@@ -10,7 +10,6 @@ import { createServerSupabaseClient } from '@/lib/serverSupabase';
 import { getAdminSession, hasAdminPermission, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { getTransactionalEmailConfig } from '@/lib/jmsurfMail.server';
 import { isWebPushConfigured } from '@/lib/webPush.server';
-import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,7 +111,7 @@ export async function GET() {
     customers,
     providers: {
       email: getTransactionalEmailConfig().configured,
-      whatsapp: getWhatsAppCredentials().configured,
+      whatsapp: Boolean(process.env.WHATSAPP_TOKEN?.trim() && process.env.WHATSAPP_PHONE_ID?.trim()),
       sms: Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim()),
       push: isWebPushConfigured()
     },

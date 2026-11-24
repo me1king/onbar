@@ -8,6 +8,6 @@ export async function GET() {
     configured: isWebPushConfigured(),
     publicKey: getWebPushPublicKey()
   }, {
-    headers: { 'Cache-Control': 'public, max-age=300' }
+    headers: { 'Cache-Control': 'private, no-store, max-age=0' }
   });
 }

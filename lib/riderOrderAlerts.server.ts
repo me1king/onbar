@@ -1,13 +1,13 @@
 import 'server-only';
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { Queue } from 'bullmq/dist/esm/classes/queue.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendWebPush } from '@/lib/webPush.server';
 
 const QUEUE_NAME = 'merchant-order-alerts';
 
-type RiderSmsJob = { orderId: number; riderPhone: string; buzzAttemptId?: string };
+type RiderSmsJob = { orderId: number; riderPhone: string };
 type PushSubscriptionRow = {
   id: string;
   endpoint: string;
@@ -52,7 +52,7 @@ async function claimAlert(
     orderId: number;
     riderPhone: string;
     channel: 'push' | 'sms';
-    step: 'assignment' | 'sms_10s' | 'buzz';
+    step: 'assignment' | 'sms_10s';
     recipientKey: string;
   }
 ) {
@@ -76,17 +76,14 @@ async function pushToDevice(
   database: SupabaseClient,
   orderId: number,
   riderPhone: string,
-  subscription: PushSubscriptionRow,
-  step: 'assignment' | 'buzz' = 'assignment',
-  attemptId?: string
+  subscription: PushSubscriptionRow
 ) {
-  const endpointKey = createHash('sha256').update(subscription.endpoint).digest('hex');
-  const recipientKey = attemptId ? `${endpointKey}:${attemptId}` : endpointKey;
+  const recipientKey = createHash('sha256').update(subscription.endpoint).digest('hex');
   const alertId = await claimAlert(database, {
     orderId,
     riderPhone,
     channel: 'push',
-    step,
+    step: 'assignment',
     recipientKey
   });
   if (!alertId) return false;
@@ -94,27 +91,16 @@ async function pushToDevice(
   try {
     const result = await sendWebPush(
       { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
-      step === 'buzz'
-        ? {
-          title: `Order #${orderId} needs your attention`,
-          body: 'Open Rider Command to receive and confirm this delivery.',
-          url: `/rider/dashboard?orderId=${orderId}`,
-          tag: `rider-buzz-${orderId}-${attemptId}`,
-          orderId,
-          type: 'rider_buzz',
-          requireInteraction: true,
-          expiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
-        }
-        : {
-          title: `New mission #${orderId}`,
-          body: 'You have been assigned a delivery. Open Rider Command to review it.',
-          url: `/rider/dashboard?orderId=${orderId}`,
-          tag: `rider-order-${orderId}`,
-          orderId,
-          requireInteraction: true,
-          expiresAt: new Date(Date.now() + 25_000).toISOString()
-        },
-      step === 'buzz' ? 300 : 25
+      {
+        title: `New mission #${orderId}`,
+        body: 'You have been assigned a delivery. Open Rider Command to review it.',
+        url: `/rider/dashboard?orderId=${orderId}`,
+        tag: `rider-order-${orderId}`,
+        orderId,
+        requireInteraction: true,
+        expiresAt: new Date(Date.now() + 25_000).toISOString()
+      },
+      25
     );
     await updateAlert(database, alertId, {
       status: 'sent',
@@ -200,80 +186,5 @@ export async function alertAssignedRider(
   } catch (error) {
     console.error('[RiderOrderAlerts] Could not queue SMS fallback:', error);
     return { pushSent, smsQueued: false, warning: 'Rider push was attempted, but SMS fallback could not be queued.' };
-  }
-}
-
-export async function buzzAssignedRider(
-  database: SupabaseClient,
-  orderId: number,
-  attemptId = randomUUID()
-) {
-  const { data: order, error: orderError } = await database.from('orders')
-    .select('id,status,rider_phone')
-    .eq('id', orderId)
-    .maybeSingle();
-  if (orderError) throw orderError;
-  if (!order || order.status !== 'Dispatched' || !order.rider_phone) {
-    return { pushSent: 0, smsQueued: false, warning: null, error: 'Only an assigned, not-yet-collected order can buzz its rider.' };
-  }
-
-  const { data: subscriptions, error: subscriptionsError } = await database
-    .from('rider_push_subscriptions')
-    .select('id,endpoint,p256dh,auth')
-    .eq('rider_phone', order.rider_phone);
-  if (subscriptionsError) throw subscriptionsError;
-
-  const recipients = subscriptions || [];
-  let pushSent = 0;
-  if (!recipients.length) {
-    const alertId = await claimAlert(database, {
-      orderId,
-      riderPhone: order.rider_phone,
-      channel: 'push',
-      step: 'buzz',
-      recipientKey: `no-device:${attemptId}`
-    });
-    if (alertId) await updateAlert(database, alertId, { status: 'no_device' });
-  } else {
-    const outcomes = await Promise.all(recipients.map(subscription =>
-      pushToDevice(database, orderId, order.rider_phone!, subscription as PushSubscriptionRow, 'buzz', attemptId)
-    ));
-    pushSent = outcomes.filter(Boolean).length;
-  }
-
-  const targetQueue = getQueue();
-  if (!targetQueue) {
-    return {
-      pushSent,
-      smsQueued: false,
-      warning: pushSent
-        ? 'Push buzz sent. SMS fallback is unavailable because Redis is not configured.'
-        : 'No rider push device received the buzz, and SMS fallback is unavailable because Redis is not configured.',
-      error: pushSent ? null : 'The rider could not be notified. Register a push-enabled device or configure Redis and Twilio.'
-    };
-  }
-
-  try {
-    await targetQueue.add('rider-buzz-sms', {
-      orderId,
-      riderPhone: order.rider_phone,
-      buzzAttemptId: attemptId
-    }, {
-      jobId: `rider-buzz-sms-${orderId}-${order.rider_phone}-${attemptId}`,
-      delay: 15_000,
-      attempts: 4,
-      backoff: { type: 'exponential', delay: 5000 },
-      removeOnComplete: 1000,
-      removeOnFail: 5000
-    });
-    return { pushSent, smsQueued: true, warning: null, error: null };
-  } catch (error) {
-    console.error('[RiderOrderAlerts] Could not queue rider buzz SMS fallback:', error);
-    return {
-      pushSent,
-      smsQueued: false,
-      warning: pushSent ? 'Push buzz sent, but SMS fallback could not be scheduled.' : null,
-      error: pushSent ? null : 'The rider could not be notified; push delivery failed and the SMS fallback could not be scheduled.'
-    };
   }
 }

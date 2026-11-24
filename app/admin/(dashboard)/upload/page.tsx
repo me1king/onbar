@@ -40,6 +40,7 @@ import { logAuditAction } from '@/lib/auditService';
 import { auditImageQuality, standardizeImageCanvas, type ImageAuditResult } from '@/lib/engines/imageEngine';
 import { getStoredVariantPrices } from '@/lib/productPricing';
 import { getAdminProductCategoryOptions } from '@/lib/productCategories';
+import { getStorefrontProductVisibilityReasons } from '@/lib/productVisibility';
 
 const initialForm = {
   name: '',
@@ -133,6 +134,7 @@ interface Product {
   is_best_seller?: boolean;
   allow_backorders?: boolean;
   hide_product?: boolean;
+  is_available_now?: boolean;
   seo_title?: string;
   seo_description?: string;
   seo_keywords?: string[];
@@ -1374,7 +1376,9 @@ function UploadContent() {
                       <button onClick={fetchProducts} className="text-slate-300 hover:text-primary transition-colors"><RefreshCcw size={16} /></button>
                   </div>
                   <div className="flex-1 overflow-y-auto divide-y divide-slate-50 no-scrollbar">
-                      {visibleProducts.map(p => (
+                      {visibleProducts.map(p => {
+                          const visibilityReasons = getStorefrontProductVisibilityReasons(p);
+                          return (
                           <div key={p.id} onClick={() => startEditing(p)} className={cn("p-6 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-all group", editingId === p.id && "bg-primary/5 border-l-4 border-primary shadow-inner")}>
                               <div className="flex items-center gap-4 min-w-0">
                                   <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 p-1 flex items-center justify-center shrink-0">
@@ -1382,6 +1386,9 @@ function UploadContent() {
                                   </div>
                                   <div className="min-w-0">
                                       <p className="text-xs font-black uppercase truncate text-foreground group-hover:text-primary transition-colors">{p.name}</p>
+                                      <p className={cn("mt-1 text-[9px] font-black uppercase tracking-wide", visibilityReasons.length ? "text-rose-600" : "text-emerald-700")}>
+                                          {visibilityReasons.length ? `Not on storefront · ${visibilityReasons.join(' ')}` : 'Visible on storefront'}
+                                      </p>
                                       <div className="flex items-center gap-2">
                                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">{p.stock} Units • {p.sub_category || p.category}</p>
                                           {p.is_snack && <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-500 text-[7px] font-black uppercase">Munchie</span>}
@@ -1390,7 +1397,7 @@ function UploadContent() {
                               </div>
                               <ChevronRight className="h-4 w-4 text-slate-200 group-hover:text-primary group-hover:translate-x-1 transition-all" />
                           </div>
-                      ))}
+                      );})}
                   </div>
               </div>
           </div>

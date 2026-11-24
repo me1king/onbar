@@ -23,8 +23,6 @@ const CustomerDeliveryMap = dynamic(() => import('@/components/tracking/Customer
 interface OrderDetails {
   id: number;
   status: string;
-  status_timeline?: { status: string; createdAt: string }[];
-  status_timeline_unavailable?: boolean;
   customer_name: string;
   total_price: number;
   created_at: string;
@@ -380,39 +378,6 @@ function TrackingContent() {
                   </div>
                 </div>
 
-                <section aria-labelledby="order-updates-title" className="mb-12 border-t border-slate-100 pt-8">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                      <h3 id="order-updates-title" className="text-lg font-black uppercase tracking-tight text-foreground">
-                        Order updates
-                      </h3>
-                      <p className="mt-1 text-xs text-slate-500">The latest status changes recorded for this order.</p>
-                    </div>
-                    <p className="text-[10px] font-semibold text-slate-400">Refreshes with your live tracking</p>
-                  </div>
-                  {order.status_timeline?.length ? (
-                    <ol className="mt-5 space-y-3">
-                      {order.status_timeline.map((event, index) => (
-                        <li key={`${event.createdAt}-${index}`} className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                          <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                          <div className="min-w-0 flex-1 sm:flex sm:items-center sm:justify-between sm:gap-4">
-                            <p className="text-sm font-bold text-slate-800">{event.status}</p>
-                            <time dateTime={event.createdAt} className="mt-1 block text-xs text-slate-500 sm:mt-0">
-                              {new Date(event.createdAt).toLocaleString()}
-                            </time>
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p className="mt-5 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-                      {order.status_timeline_unavailable
-                        ? 'Detailed history is temporarily unavailable. The current order status above is still live.'
-                        : 'Status updates will appear here as your order moves through fulfillment.'}
-                    </p>
-                  )}
-                </section>
-
                 <div className="grid grid-cols-1 gap-10 border-t border-slate-50 pt-8 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-1">
                     <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Recipient</p>
@@ -670,18 +635,6 @@ function TrackingContent() {
                     </div>
                   </div>
                 )}
-
-                <div className="mt-8 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm leading-6 text-slate-600">
-                    Missing an update or need help with this order? Contact support and include order #{order.id}.
-                  </p>
-                  <Link
-                    href={`/contact?orderId=${order.id}`}
-                    className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  >
-                    Report an order issue
-                  </Link>
-                </div>
               </div>
             </div>
 

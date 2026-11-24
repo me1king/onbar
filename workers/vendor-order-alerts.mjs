@@ -4,8 +4,7 @@ import { Worker } from 'bullmq';
 
 const queueName = 'merchant-order-alerts';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  || process.env.SUPABASE_SECRET_KEY?.trim();
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 const redisUrl = process.env.REDIS_URL?.trim();
 const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
 const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
@@ -108,20 +107,16 @@ async function claimDelivery({ orderId, applicationId, contactId, channel, step,
   }
   const oldSentAt = existing.sent_at ? new Date(existing.sent_at).getTime() : 0;
   if (existing.status === 'sending' && Date.now() - oldSentAt < 120_000) return null;
-  const claimedAt = new Date().toISOString();
-  let reclaim = database.from('merchant_order_alert_log')
+  const { error: updateError } = await database.from('merchant_order_alert_log')
     .update({
       status: 'sending',
       error: null,
-      sent_at: claimedAt,
+      sent_at: new Date().toISOString(),
       attempt_count: (existing.attempt_count || 1) + 1
     })
-    .eq('id', existing.id)
-    .eq('status', existing.status);
-  reclaim = existing.sent_at ? reclaim.eq('sent_at', existing.sent_at) : reclaim.is('sent_at', null);
-  const { data: reclaimed, error: reclaimError } = await reclaim.select('id').maybeSingle();
-  if (reclaimError) throw reclaimError;
-  return reclaimed?.id || null;
+    .eq('id', existing.id);
+  if (updateError) throw updateError;
+  return existing.id;
 }
 
 async function recordAlert(id, patch) {
@@ -284,27 +279,26 @@ async function processChannel(job, channel) {
 }
 
 async function processTimeout(job) {
-  const alertId = await claimDelivery({
-    orderId: job.orderId,
-    applicationId: job.applicationId,
-    contactId: null,
-    channel: 'timeout',
-    step: 'timeout_60s',
-    recipientKey: 'scheduler'
-  });
-  if (!alertId) return;
-
   const { data, error } = await database.rpc('expire_merchant_order_alert', {
     p_order_id: job.orderId,
     p_application_id: job.applicationId
   });
   if (error) throw error;
   const state = typeof data?.status === 'string' ? data.status : 'unknown';
-  const { error: logError } = await database.from('merchant_order_alert_log').update({
+  const { error: logError } = await database.from('merchant_order_alert_log').upsert({
+    order_id: job.orderId,
+    application_id: job.applicationId,
+    contact_id: null,
+    channel: 'timeout',
+    step: 'timeout_60s',
+    recipient_key: 'scheduler',
     status: state === 'missed' ? 'missed' : state === 'already_answered' ? 'stopped' : 'failed',
     error: state === 'missed' ? null : `Timeout was not applied: ${state}`,
     sent_at: new Date().toISOString()
-  }).eq('id', alertId);
+  }, {
+    onConflict: 'order_id,application_id,channel,step,recipient_key',
+    ignoreDuplicates: true
+  });
   if (logError) throw logError;
   console.log(`[MerchantOrderAlerts] Order #${job.orderId}, merchant ${job.applicationId}: ${state}`);
   if (state === 'missed' || state === 'already_answered') {
@@ -325,7 +319,6 @@ async function processTimeout(job) {
 }
 
 async function processRiderSms(job) {
-  const isBuzz = typeof job.buzzAttemptId === 'string';
   const { data: order, error: orderError } = await database.from('orders')
     .select('id,status,rider_phone')
     .eq('id', job.orderId)
@@ -336,8 +329,8 @@ async function processRiderSms(job) {
     p_order_id: job.orderId,
     p_rider_phone: job.riderPhone,
     p_channel: 'sms',
-    p_step: isBuzz ? 'buzz' : 'sms_10s',
-    p_recipient_key: isBuzz ? `buzz-sms-${job.buzzAttemptId}` : job.riderPhone
+    p_step: 'sms_10s',
+    p_recipient_key: job.riderPhone
   });
   if (alertId.error) throw alertId.error;
   if (typeof alertId.data !== 'string') return;
@@ -361,9 +354,7 @@ async function processRiderSms(job) {
   const form = new URLSearchParams({
     To: job.riderPhone,
     From: twilioNumber,
-    Body: isBuzz
-      ? `Online Bar: Order #${job.orderId} is waiting. Open Rider Command to receive it: ${publicBaseUrl}/rider/dashboard?orderId=${job.orderId}`
-      : `Online Bar: You have been assigned delivery order #${job.orderId}. Open Rider Command: ${publicBaseUrl}/rider/dashboard?orderId=${job.orderId}`
+    Body: `Online Bar: You have been assigned delivery order #${job.orderId}. Open Rider Command: ${publicBaseUrl}/rider/dashboard?orderId=${job.orderId}`
   });
   const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`, {
     method: 'POST',
@@ -400,13 +391,12 @@ async function processJob(job) {
   if (job.name === 'sms') return processChannel(job.data, 'sms');
   if (job.name === 'voice') return processChannel(job.data, 'voice');
   if (job.name === 'timeout') return processTimeout(job.data);
-  if (job.name === 'rider-sms' || job.name === 'rider-buzz-sms') return processRiderSms(job.data);
+  if (job.name === 'rider-sms') return processRiderSms(job.data);
   throw new Error(`Unknown merchant alert job: ${job.name}`);
 }
 
 let dispatchPollRunning = false;
 let dispatchPollWarning = '';
-let weeklyDigestPollWarning = '';
 async function pollAutomaticDispatchJobs() {
   if (dispatchPollRunning || !dispatchAutomationConfigured) return;
   dispatchPollRunning = true;
@@ -483,41 +473,6 @@ async function pollAutomaticDispatchJobs() {
   }
 }
 
-async function pollMerchantWeeklyDigests() {
-  if (!dispatchAutomationConfigured) return;
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Nairobi',
-    weekday: 'short',
-    hour: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(new Date());
-  const weekday = parts.find(part => part.type === 'weekday')?.value;
-  const hour = Number(parts.find(part => part.type === 'hour')?.value);
-  if (weekday !== 'Mon' || hour < 9) return;
-
-  try {
-    const url = new URL('/api/internal/merchant-weekly-digest', dispatchAutomationBaseUrl);
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${internalApiSecret}`, 'Content-Type': 'application/json' },
-      body: '{}',
-      signal: AbortSignal.timeout(30_000)
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || `Weekly digest request failed (${response.status}).`);
-    weeklyDigestPollWarning = '';
-    if (result.sent || result.failed) {
-      console.log(`[MerchantWeeklyDigest] Sent ${result.sent || 0}; failed ${result.failed || 0}.`);
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Weekly digest polling failed.';
-    if (weeklyDigestPollWarning !== message) {
-      console.error('[MerchantWeeklyDigest] Weekly summary delivery is unavailable:', message);
-      weeklyDigestPollWarning = message;
-    }
-  }
-}
-
 const worker = new Worker(queueName, processJob, {
   connection,
   concurrency: 20,
@@ -546,8 +501,6 @@ if (!dispatchAutomationConfigured) {
 const heartbeatTimer = setInterval(() => void heartbeat(), 30_000);
 void pollAutomaticDispatchJobs();
 const dispatchPollTimer = setInterval(() => void pollAutomaticDispatchJobs(), 5_000);
-void pollMerchantWeeklyDigests();
-const weeklyDigestPollTimer = setInterval(() => void pollMerchantWeeklyDigests(), 15 * 60_000);
 worker.on('completed', job => console.log(`[MerchantOrderAlerts] Completed ${job.name} for order #${job.data.orderId}`));
 worker.on('failed', (job, error) => console.error(`[MerchantOrderAlerts] Failed ${job?.name || 'job'}:`, error.message));
 worker.on('error', error => console.error('[MerchantOrderAlerts] Worker error:', error.message));
@@ -557,7 +510,6 @@ async function shutdown(signal) {
   console.log(`[MerchantOrderAlerts] Shutting down on ${signal}.`);
   clearInterval(heartbeatTimer);
   clearInterval(dispatchPollTimer);
-  clearInterval(weeklyDigestPollTimer);
   await worker.close();
   process.exit(0);
 }

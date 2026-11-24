@@ -6,9 +6,12 @@ import { usePathname } from 'next/navigation';
 import {
     Home,
     Search,
-    Gamepad2,
+    Cookie,
     User,
-    Flame
+    Flame,
+    Wine,
+    Gift,
+    Utensils
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
@@ -16,8 +19,11 @@ import { useCart } from '@/context/CartContext';
 const NAV_ITEMS = [
     { label: 'Home', icon: Home, href: '/' },
     { label: 'Shop', icon: Search, href: '/shop' },
+    { label: 'Drinks', icon: Wine, href: '/beverages' },
+    { label: 'Food', icon: Utensils, href: '/bites' },
+    { label: 'Souvenirs', icon: Gift, href: '/souvenirs' },
     { label: 'Build Night', icon: Flame, href: '/build-the-night' },
-    { label: 'Game Night', icon: Gamepad2, href: '/games' },
+    { label: 'Munchies', icon: Cookie, href: '/shop/snacks' },
     { label: 'My Bar', icon: User, href: '/profile' }
 ];
 
@@ -39,13 +45,12 @@ export default function MobileBottomNav() {
             <div className="flex justify-around items-center h-20 px-1 sm:px-4">
                 {NAV_ITEMS.map((item) => {
                     const Icon = item.icon;
-                    const isActive = pathname === item.href || (item.href === '/games' && pathname?.startsWith('/games/'));
+                    const isActive = pathname === item.href;
 
                     return (
                         <Link
                             key={item.label}
                             href={item.href}
-                            aria-current={isActive ? 'page' : undefined}
                             className="relative flex min-w-0 flex-col items-center justify-center w-full h-full group"
                         >
                             <div className={cn(
@@ -58,10 +63,7 @@ export default function MobileBottomNav() {
                                         <div className="absolute -top-1 -right-1 h-1.5 w-1.5 bg-primary rounded-full animate-pulse" />
                                     )}
                                 </div>
-                                <span className={cn(
-                                    "w-full text-center font-black uppercase tracking-[0.02em] sm:text-[10px] sm:tracking-normal",
-                                    item.href === '/games' ? "whitespace-normal break-words text-[6px] leading-[7px] sm:leading-normal" : "truncate text-[7px]"
-                                )}>{item.label}</span>
+                                <span className="w-full truncate text-center text-[7px] font-black uppercase tracking-[0.02em] sm:text-[10px] sm:tracking-normal">{item.label}</span>
                             </div>
 
                             {/* Active Indicator Bar */}

@@ -36,10 +36,7 @@ export const viewport: Viewport = {
 import PublicLayoutShield from "@/components/layout/PublicLayoutShield";
 import JsonLd from "@/components/seo/JsonLd";
 import AnalyticsSwitcher from "@/components/layout/AnalyticsSwitcher";
-import MobileBottomNav from "@/components/layout/MobileBottomNav";
-import InstallAppWidget from "@/components/layout/InstallAppWidget";
-import RoleAppInstaller from "@/components/layout/RoleAppInstaller";
-import ExperienceNotificationHost from "@/components/layout/ExperienceNotificationHost";
+import RootClientWidgets from "@/components/layout/RootClientWidgets";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import RootStabilityGuard from "@/components/layout/RootStabilityGuard";
 import PostHogSessionReplay from "@/components/layout/PostHogSessionReplay";
@@ -66,12 +63,7 @@ export default function RootLayout({
 
                         <PostHogSessionReplay appName="Online Bar" />
 
-                        <Suspense fallback={null}>
-                            <InstallAppWidget />
-                            <RoleAppInstaller />
-                            <ExperienceNotificationHost />
-                            <MobileBottomNav />
-                        </Suspense>
+                        <RootClientWidgets />
                     </WishlistProvider>
                 </CartProvider>
             </ErrorBoundary>

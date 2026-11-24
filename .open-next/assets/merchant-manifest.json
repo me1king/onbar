@@ -1,0 +1,21 @@
+{
+  "id": "/merchant/network",
+  "name": "Online Bar Merchant Hub",
+  "short_name": "Merchant Hub",
+  "description": "Manage your catalog, stock, offers, and incoming marketplace activity.",
+  "start_url": "/merchant/network",
+  "scope": "/merchant/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#fffaf5",
+  "theme_color": "#ff6b00",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/favicon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Merchant hub", "short_name": "Hub", "url": "/merchant/network", "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }] },
+    { "name": "Merchant alerts", "short_name": "Alerts", "url": "/merchant/network?tab=alerts", "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }] }
+  ]
+}

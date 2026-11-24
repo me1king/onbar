@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { verifyRiderSession } from '@/lib/riderSession.server';
+import { normalizeKenyanRiderPhone } from '@/lib/riderContact';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,15 +42,18 @@ function getNairobiDateKey(date: Date) {
 
 function isProfileMigrationMissing(error: { code?: string; message?: string }) {
   return error.code === '42P01' || error.code === 'PGRST205'
-    || /rider_profile_details|rider_profile_audit_events|schema cache/i.test(error.message || '');
+    || /rider_profile_details|rider_profile_audit_events|rider_delivery_zones|delivery_zones|rider_dispatch_policy|schema cache/i.test(error.message || '');
 }
 
 function optionalPhone(value: unknown, name: string) {
   if (value === null || value === '') return null;
-  if (typeof value !== 'string' || value.trim().length > 40 || value.replace(/\D/g, '').length < 7) {
+  const phone = typeof value === 'string' && value.trim().length <= 40
+    ? normalizeKenyanRiderPhone(value)
+    : null;
+  if (!phone) {
     throw new Error(`${name} must be a valid phone number.`);
   }
-  return value.trim();
+  return phone;
 }
 
 function optionalText(value: unknown, name: string, maxLength = 120) {
@@ -127,7 +131,10 @@ export async function GET(request: Request) {
     offersResult,
     incidentsResult,
     documentsResult,
-    auditResult
+    auditResult,
+    availableZonesResult,
+    selectedZonesResult,
+    dispatchPolicyResult
   ] = await Promise.all([
     database.from('rider_profile_details').select('*').eq('rider_phone', session.phone).maybeSingle(),
     database.from('rider_wallets').select('balance,total_earned,updated_at').eq('rider_phone', session.phone).maybeSingle(),
@@ -138,7 +145,10 @@ export async function GET(request: Request) {
     database.from('rider_offer_events').select('response,created_at').eq('rider_phone', session.phone).gte('created_at', oneYearAgo).in('response', ['accepted', 'declined', 'expired']).limit(2000),
     database.from('delivery_events').select('id,order_id,to_status,metadata,created_at').eq('actor_id', session.phone).like('to_status', 'Issue reported:%').gte('created_at', oneYearAgo).order('created_at', { ascending: false }).limit(100),
     database.from('rider_status').select('id_number,license_number,rider_photo_url,vehicle_photo_url,plate_number').eq('rider_phone', session.phone).maybeSingle(),
-    database.from('rider_profile_audit_events').select('id,changed_fields,created_at').eq('rider_phone', session.phone).order('created_at', { ascending: false }).limit(100)
+    database.from('rider_profile_audit_events').select('id,changed_fields,created_at').eq('rider_phone', session.phone).order('created_at', { ascending: false }).limit(100),
+    database.from('delivery_zones').select('id,name').eq('is_active', true).order('name', { ascending: true }),
+    database.from('rider_delivery_zones').select('zone_id').eq('rider_phone', session.phone),
+    database.from('rider_dispatch_policy').select('max_distance_km').eq('singleton', true).maybeSingle()
   ]);
   if (deliveredCountResult.error || weeklyCountResult.error || recentOrdersResult.error || walletResult.error) {
     const error = deliveredCountResult.error || weeklyCountResult.error || recentOrdersResult.error || walletResult.error;
@@ -153,6 +163,18 @@ export async function GET(request: Request) {
   }
   const profileWarnings: string[] = [];
   if (profileSetupRequired) profileWarnings.push('Apply supabase/RIDER_PROFILE_DETAILS_MIGRATION.sql to save contact details, zones, shifts, payout preferences, and document dates.');
+  const safetyQueries = [availableZonesResult, selectedZonesResult, dispatchPolicyResult];
+  const safetyMigrationMissing = safetyQueries.some(result =>
+    result.error && isProfileMigrationMissing(result.error)
+  );
+  const safetyQueryError = safetyQueries.find(result => result.error && !isProfileMigrationMissing(result.error))?.error;
+  if (safetyQueryError) {
+    console.error('[RiderProfile] Could not load dispatch safety settings:', safetyQueryError);
+    return NextResponse.json({ error: 'Delivery zones and dispatch safety settings could not be loaded.' }, { status: 503 });
+  }
+  if (safetyMigrationMissing) {
+    profileWarnings.push('Apply supabase/RIDER_DISPATCH_SAFETY_MIGRATION.sql to enable configured delivery zones and dispatch safety checks.');
+  }
   if (offersResult.error) {
     if (isProfileMigrationMissing(offersResult.error)) profileWarnings.push('Offer acceptance history is unavailable until RIDER_TERMINAL_WORKFLOW_MIGRATION.sql is applied.');
     else {
@@ -270,6 +292,22 @@ export async function GET(request: Request) {
     rider_agreement_version: null,
     updated_at: null
   });
+  const todayKey = getNairobiDateKey(now);
+  const todayUtc = Date.parse(`${todayKey}T00:00:00.000Z`);
+  const expiryWarnings = [
+    { label: 'Driving licence', date: details?.license_expiry_date },
+    { label: 'Insurance', date: details?.insurance_expiry_date }
+  ].flatMap(document => {
+    if (!document.date) return [];
+    const daysRemaining = Math.round((Date.parse(`${document.date}T00:00:00.000Z`) - todayUtc) / 86_400_000);
+    return [14, 7, 1].includes(daysRemaining)
+      ? [{ document: document.label, daysRemaining }]
+      : [];
+  });
+  const zoneNamesById = new Map((availableZonesResult.data || []).map(zone => [String(zone.id), zone.name]));
+  const selectedZoneNames = (selectedZonesResult.data || [])
+    .map(zone => zoneNamesById.get(String(zone.zone_id)))
+    .filter((name): name is string => Boolean(name));
 
   return NextResponse.json({
     rider: {
@@ -292,8 +330,11 @@ export async function GET(request: Request) {
       emergencyContactPhone: details.emergency_contact_phone,
       guarantorName: details.guarantor_name,
       guarantorPhone: details.guarantor_phone,
-      deliveryZones: details.delivery_zones || [],
-      maxDistanceKm: details.max_distance_km === null ? null : Number(details.max_distance_km),
+      deliveryZones: selectedZoneNames,
+      maxDistanceKm: details.max_distance_km === null ? null
+        : dispatchPolicyResult.data
+          ? Math.min(Number(details.max_distance_km), Number(dispatchPolicyResult.data.max_distance_km))
+          : Number(details.max_distance_km),
       shiftDays: details.shift_days || [],
       shiftStartTime: details.shift_start_time?.slice(0, 5) || null,
       shiftEndTime: details.shift_end_time?.slice(0, 5) || null,
@@ -302,11 +343,21 @@ export async function GET(request: Request) {
       mpesaNameVerified: Boolean(details.mpesa_name_verified_at),
       licenseExpiryDate: details.license_expiry_date,
       insuranceExpiryDate: details.insurance_expiry_date,
+      licenseDocumentSubmitted: Boolean(details.license_document_path),
+      licenseDocumentVerified: Boolean(details.license_document_verified_at),
+      insuranceDocumentSubmitted: Boolean(details.insurance_document_path),
+      insuranceDocumentVerified: Boolean(details.insurance_document_verified_at),
       ageCheckTrainingCompletedAt: details.age_check_training_completed_at,
       riderAgreementAcceptedAt: details.rider_agreement_accepted_at,
       riderAgreementVersion: details.rider_agreement_version,
       updatedAt: details.updated_at
     } : null,
+    deliveryZones: (availableZonesResult.data || []).map(zone => ({ id: String(zone.id), name: zone.name })),
+    selectedDeliveryZoneIds: (selectedZonesResult.data || []).map(zone => String(zone.zone_id)),
+    dispatchMaxDistanceKm: dispatchPolicyResult.data?.max_distance_km === undefined
+      ? null
+      : Number(dispatchPolicyResult.data.max_distance_km),
+    expiryWarnings,
     documents,
     wallet: walletResult.data || null,
     earnings: {
@@ -339,6 +390,7 @@ export async function GET(request: Request) {
     incidents: incidentsResult.data || [],
     audit: auditResult.error ? [] : auditResult.data || [],
     profileSetupRequired,
+    safetySetupRequired: safetyMigrationMissing,
     warnings: profileWarnings,
     refreshedAt: now.toISOString()
   }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
@@ -371,7 +423,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Only approved riders can update this profile.' }, { status: 403 });
   }
 
+  let dispatchMaxDistanceKm: number | null = null;
+  if (Object.hasOwn(body, 'maxDistanceKm')) {
+    const { data: policy, error: policyError } = await database
+      .from('rider_dispatch_policy')
+      .select('max_distance_km')
+      .eq('singleton', true)
+      .maybeSingle();
+    if (policyError) {
+      console.error('[RiderProfile] Could not load the rider distance cap:', policyError);
+      return NextResponse.json({ error: 'The dispatch distance cap could not be verified.' }, { status: 503 });
+    }
+    if (!policy) return NextResponse.json({ error: 'The admin dispatch distance cap is not configured.' }, { status: 503 });
+    dispatchMaxDistanceKm = Number(policy.max_distance_km);
+  }
+
   const updates: Record<string, unknown> = {};
+  let selectedZoneIds: string[] | null = null;
   try {
     if (Object.hasOwn(body, 'whatsappNumber')) updates.whatsapp_number = optionalPhone(body.whatsappNumber, 'WhatsApp number');
     if (Object.hasOwn(body, 'emergencyContactName')) updates.emergency_contact_name = optionalText(body.emergencyContactName, 'Emergency contact name');
@@ -379,15 +447,23 @@ export async function POST(request: Request) {
     if (Object.hasOwn(body, 'guarantorName')) updates.guarantor_name = optionalText(body.guarantorName, 'Guarantor name');
     if (Object.hasOwn(body, 'guarantorPhone')) updates.guarantor_phone = optionalPhone(body.guarantorPhone, 'Guarantor phone');
     if (Object.hasOwn(body, 'deliveryZones')) {
-      if (!Array.isArray(body.deliveryZones) || body.deliveryZones.length > 20
-        || body.deliveryZones.some(zone => typeof zone !== 'string' || !zone.trim() || zone.trim().length > 80)) {
-        throw new Error('Add up to 20 valid delivery zones.');
+      throw new Error('Choose delivery zones from the configured list.');
+    }
+    if (Object.hasOwn(body, 'deliveryZoneIds')) {
+      if (!Array.isArray(body.deliveryZoneIds) || body.deliveryZoneIds.length > 20
+        || body.deliveryZoneIds.some(zoneId => typeof zoneId !== 'string'
+          || !/^[1-9]\d{0,17}$/.test(zoneId)
+          || !Number.isSafeInteger(Number(zoneId)))) {
+        throw new Error('Choose up to 20 valid delivery zones from the configured list.');
       }
-      updates.delivery_zones = [...new Set(body.deliveryZones.map(zone => (zone as string).trim()))];
+      selectedZoneIds = [...new Set(body.deliveryZoneIds as string[])];
+      updates.delivery_zones = [];
     }
     if (Object.hasOwn(body, 'maxDistanceKm')) {
       const value = body.maxDistanceKm === null || body.maxDistanceKm === '' ? null : Number(body.maxDistanceKm);
-      if (value !== null && (!Number.isFinite(value) || value < 1 || value > 100)) throw new Error('Maximum delivery distance must be between 1 and 100 km.');
+      if (value !== null && (!Number.isFinite(value) || value < 1 || value > (dispatchMaxDistanceKm || 0))) {
+        throw new Error(`Maximum delivery distance must be between 1 and ${dispatchMaxDistanceKm} km, the admin-set cap.`);
+      }
       updates.max_distance_km = value;
     }
     if (Object.hasOwn(body, 'shiftDays')) {
@@ -396,15 +472,61 @@ export async function POST(request: Request) {
       }
       updates.shift_days = [...new Set(body.shiftDays)];
     }
-    if (Object.hasOwn(body, 'shiftStartTime')) updates.shift_start_time = optionalTime(body.shiftStartTime, 'Shift start time');
-    if (Object.hasOwn(body, 'shiftEndTime')) updates.shift_end_time = optionalTime(body.shiftEndTime, 'Shift end time');
-    if (Object.hasOwn(body, 'mpesaNumber')) updates.mpesa_number = optionalPhone(body.mpesaNumber, 'M-Pesa number');
-    if (Object.hasOwn(body, 'mpesaRegisteredName')) updates.mpesa_registered_name = optionalText(body.mpesaRegisteredName, 'M-Pesa registered name');
-    if (Object.hasOwn(body, 'licenseExpiryDate')) updates.license_expiry_date = optionalDate(body.licenseExpiryDate, 'Licence expiry date');
-    if (Object.hasOwn(body, 'insuranceExpiryDate')) updates.insurance_expiry_date = optionalDate(body.insuranceExpiryDate, 'Insurance expiry date');
+    if (Object.hasOwn(body, 'shiftStartTime') !== Object.hasOwn(body, 'shiftEndTime')) {
+      throw new Error('Save both shift times together.');
+    }
+    if (Object.hasOwn(body, 'shiftStartTime')) {
+      const start = optionalTime(body.shiftStartTime, 'Shift start time');
+      const end = optionalTime(body.shiftEndTime, 'Shift end time');
+      if (start && end && start === end) throw new Error('Shift start and end times must be different.');
+      updates.shift_start_time = start;
+      updates.shift_end_time = end;
+    }
+    if (Object.hasOwn(body, 'mpesaNumber')) {
+      updates.mpesa_number = optionalPhone(body.mpesaNumber, 'M-Pesa number');
+    }
+    if (Object.hasOwn(body, 'mpesaRegisteredName')) {
+      updates.mpesa_registered_name = optionalText(body.mpesaRegisteredName, 'M-Pesa registered name');
+    }
+    if (Object.hasOwn(body, 'licenseExpiryDate')) {
+      updates.license_expiry_date = optionalDate(body.licenseExpiryDate, 'Licence expiry date');
+    }
+    if (Object.hasOwn(body, 'insuranceExpiryDate')) {
+      updates.insurance_expiry_date = optionalDate(body.insuranceExpiryDate, 'Insurance expiry date');
+    }
     if (Object.hasOwn(body, 'acceptAgreement') && body.acceptAgreement !== true) throw new Error('Agreement acceptance must be confirmed.');
   } catch (validationError) {
     return NextResponse.json({ error: validationError instanceof Error ? validationError.message : 'Check the profile fields and try again.' }, { status: 400 });
+  }
+
+  if (Object.hasOwn(body, 'mpesaNumber') || Object.hasOwn(body, 'mpesaRegisteredName')
+    || Object.hasOwn(body, 'licenseExpiryDate') || Object.hasOwn(body, 'insuranceExpiryDate')) {
+    const { data: current, error: currentError } = await database.from('rider_profile_details')
+      .select('mpesa_number,mpesa_registered_name,license_expiry_date,insurance_expiry_date')
+      .eq('rider_phone', session.phone)
+      .maybeSingle();
+    if (currentError) {
+      console.error('[RiderProfile] Could not verify sensitive profile changes:', currentError);
+      return NextResponse.json({ error: 'The current payment and document details could not be verified.' }, { status: 503 });
+    }
+    const mpesaChanged = (Object.hasOwn(body, 'mpesaNumber')
+      && updates.mpesa_number !== current?.mpesa_number)
+      || (Object.hasOwn(body, 'mpesaRegisteredName')
+        && updates.mpesa_registered_name !== current?.mpesa_registered_name);
+    if (mpesaChanged) {
+      updates.mpesa_name_verified_at = null;
+      updates.mpesa_name_verified_by = null;
+    }
+    if (Object.hasOwn(body, 'licenseExpiryDate')
+      && updates.license_expiry_date !== current?.license_expiry_date) {
+      updates.license_document_verified_at = null;
+      updates.license_document_verified_by = null;
+    }
+    if (Object.hasOwn(body, 'insuranceExpiryDate')
+      && updates.insurance_expiry_date !== current?.insurance_expiry_date) {
+      updates.insurance_document_verified_at = null;
+      updates.insurance_document_verified_by = null;
+    }
   }
 
   if (!Object.keys(updates).length && body.acceptAgreement !== true) {
@@ -431,7 +553,23 @@ export async function POST(request: Request) {
     }, { status: 503 });
   }
 
+  if (selectedZoneIds) {
+    const { error: zonesError } = await database.rpc('save_rider_delivery_zones', {
+      p_rider_phone: session.phone,
+      p_zone_ids: selectedZoneIds
+    });
+    if (zonesError) {
+      console.error('[RiderProfile] Profile saved but delivery zones could not be updated:', zonesError);
+      return NextResponse.json({
+        error: /save_rider_delivery_zones|schema cache/i.test(zonesError.message)
+          ? 'Your other profile changes were saved, but delivery-zone support is not installed. Apply supabase/RIDER_DISPATCH_SAFETY_MIGRATION.sql.'
+          : 'Your other profile changes were saved, but delivery zones could not be updated.'
+      }, { status: 503 });
+    }
+  }
+
   const changedFields = Object.keys(updates).filter(field => field !== 'rider_phone' && field !== 'updated_at');
+  if (selectedZoneIds) changedFields.push('delivery_zone_ids');
   const { error: auditError } = await database.from('rider_profile_audit_events').insert({
     rider_phone: session.phone,
     actor_type: 'rider',
@@ -445,5 +583,13 @@ export async function POST(request: Request) {
       warning: 'Profile changes were saved, but their audit entry could not be recorded.'
     }, { status: 200 });
   }
-  return NextResponse.json({ saved: true, profileDetails: saved }, { headers: { 'Cache-Control': 'no-store' } });
+  const warning = typeof saved.shift_start_time === 'string'
+    && saved.shift_start_time.slice(0, 5) < '06:00'
+    ? 'Your shift starts before 6:00 AM Nairobi time. Please confirm that this start time is intentional.'
+    : undefined;
+  return NextResponse.json({
+    saved: true,
+    profileDetails: saved,
+    ...(warning ? { warning } : {})
+  }, { headers: { 'Cache-Control': 'no-store' } });
 }

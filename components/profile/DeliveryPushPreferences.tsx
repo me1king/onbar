@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Bell, BellOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { ensurePushServiceWorkerReady } from '@/lib/pushServiceWorker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
@@ -13,6 +12,9 @@ function decodeVapidKey(value: string): ArrayBuffer {
   const raw = window.atob(base64);
   const bytes = new Uint8Array(raw.length);
   for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+  if (bytes.length !== 65 || bytes[0] !== 4) {
+    throw new Error('Delivery alerts are misconfigured. Ask the store to check its VAPID public key.');
+  }
   return bytes.buffer;
 }
 
@@ -120,7 +122,8 @@ export default function DeliveryPushPreferences() {
         : await Notification.requestPermission();
       if (permission !== 'granted') throw new Error('Notification permission was not granted.');
 
-      const registration = await ensurePushServiceWorkerReady();
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: decodeVapidKey(config.publicKey)
@@ -137,7 +140,10 @@ export default function DeliveryPushPreferences() {
       }
       setEnabled(true);
     } catch (toggleError) {
-      setError(toggleError instanceof Error ? toggleError.message : 'Delivery alerts could not be updated.');
+      const message = toggleError instanceof Error ? toggleError.message : '';
+      setError(/push service error/i.test(message)
+        ? 'This browser could not reach its push service. Check your connection, browser notification settings, and device support, then try again.'
+        : message || 'Delivery alerts could not be updated.');
     } finally {
       setBusy(false);
     }

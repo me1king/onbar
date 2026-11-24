@@ -4,7 +4,6 @@ import { createHmac, randomInt } from 'crypto';
 import { verifyRiderSession } from '@/lib/riderSession.server';
 import { normalizeCustomerContactKey } from '@/lib/customerMessaging';
 import { getPublicBaseUrl } from '@/lib/utils';
-import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,7 +89,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The customer has not opted in to WhatsApp delivery messages.' }, { status: 403 });
   }
 
-  const { token, phoneId } = getWhatsAppCredentials();
+  const token = process.env.WHATSAPP_TOKEN?.trim() || process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+  const phoneId = process.env.WHATSAPP_PHONE_ID?.trim() || process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
   const templateName = process.env.WHATSAPP_DELIVERY_CODE_TEMPLATE_NAME?.trim();
   const handoverSecret = process.env.RIDER_HANDOVER_CODE_SECRET?.trim();
   const version = process.env.WHATSAPP_API_VERSION?.trim() || 'v23.0';

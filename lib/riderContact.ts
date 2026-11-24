@@ -1,9 +1,15 @@
-export function getKenyanWhatsAppNumber(value: string) {
+export function normalizeKenyanRiderPhone(value: string) {
   const digits = value.replace(/\D/g, '');
-  if (digits.startsWith('254')) return digits;
-  if (digits.startsWith('0')) return `254${digits.slice(1)}`;
-  if (digits.length === 9) return `254${digits}`;
-  return digits;
+  const national = digits.startsWith('254')
+    ? digits.slice(3)
+    : digits.startsWith('0')
+      ? digits.slice(1)
+      : digits;
+  return /^[17]\d{8}$/.test(national) ? `254${national}` : null;
+}
+
+export function getKenyanWhatsAppNumber(value: string) {
+  return normalizeKenyanRiderPhone(value) || value.replace(/\D/g, '');
 }
 
 export async function copyTextToClipboard(value: string) {

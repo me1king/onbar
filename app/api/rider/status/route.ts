@@ -27,28 +27,68 @@ export async function POST(request: Request) {
     auth: { autoRefreshToken: false, persistSession: false }
   });
 
-  const { data, error } = await database.rpc('set_rider_online_status', {
-    p_rider_phone: session.phone,
-    p_online: body.online
-  });
-  if (error) {
-    console.error('[RiderStatus] Could not update rider state:', error);
-    return NextResponse.json({
-      error: /set_rider_online_status|rider_offline_location_events|schema cache/i.test(error.message)
-        ? 'Rider offline-location audit is not installed. Apply supabase/RIDER_OFFLINE_LOCATION_AND_BUZZ_MIGRATION.sql.'
-        : 'Rider status could not be saved.'
-    }, { status: 503 });
+  const { data: rider, error: riderError } = await database
+    .from('rider_status')
+    .select('status, verification_status')
+    .eq('rider_phone', session.phone)
+    .maybeSingle();
+  if (riderError) {
+    console.error('[RiderStatus] Could not load rider state:', riderError);
+    return NextResponse.json({ error: 'Rider status could not be loaded.' }, { status: 503 });
   }
-  const result = data as { success?: boolean; status?: string; updated_at?: string; code?: string; error?: string } | null;
-  if (!result?.success || !result.status || !result.updated_at) {
-    const status = result?.code === 'RIDER_NOT_VERIFIED' ? 403
-      : result?.code === 'ACTIVE_DELIVERY' ? 409
-        : 400;
-    return NextResponse.json({ error: result?.error || 'Rider status could not be saved.' }, { status });
+  if (!rider || rider.verification_status !== 'Verified') {
+    return NextResponse.json({ error: 'Only verified riders can change online status.' }, { status: 403 });
+  }
+
+  if (body.online) {
+    const { data: blockReasons, error: readinessError } = await database
+      .rpc('rider_online_block_reasons', { p_rider_phone: session.phone });
+    if (readinessError) {
+      console.error('[RiderStatus] Could not verify rider readiness:', readinessError);
+      return NextResponse.json({ error: 'Online safety checks are unavailable. Apply supabase/RIDER_DISPATCH_SAFETY_MIGRATION.sql.' }, { status: 503 });
+    }
+    if (Array.isArray(blockReasons) && blockReasons.length > 0) {
+      return NextResponse.json({
+        error: `Complete these safety requirements before going online: ${blockReasons.join(' ')}`,
+        reasons: blockReasons
+      }, { status: 409 });
+    }
+  }
+
+  if (!body.online) {
+    const { count, error: activeOrdersError } = await database
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('rider_phone', session.phone)
+      .in('status', ['Dispatched', 'Out for Delivery']);
+    if (activeOrdersError) {
+      console.error('[RiderStatus] Could not verify active deliveries:', activeOrdersError);
+      return NextResponse.json({ error: 'Active deliveries could not be verified; status was not changed.' }, { status: 503 });
+    }
+    if ((count || 0) > 0) {
+      return NextResponse.json({ error: 'Complete or hand off active deliveries before going offline.' }, { status: 409 });
+    }
+  }
+
+  const timestamp = new Date().toISOString();
+  const { error: updateError } = await database
+    .from('rider_status')
+    .update({
+      status: body.online ? 'Idle' : 'Offline',
+      online_since: body.online ? timestamp : null,
+      updated_at: timestamp
+    })
+    .eq('rider_phone', session.phone);
+  if (updateError) {
+    console.error('[RiderStatus] Could not update rider state:', updateError);
+    if (body.online && updateError.message.includes('Rider cannot go online:')) {
+      return NextResponse.json({ error: updateError.message.replace(/^.*Rider cannot go online:\s*/, '') }, { status: 409 });
+    }
+    return NextResponse.json({ error: 'Rider status could not be saved.' }, { status: 503 });
   }
 
   return NextResponse.json({
-    status: result.status,
-    updatedAt: result.updated_at
+    status: body.online ? 'Idle' : 'Offline',
+    updatedAt: timestamp
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

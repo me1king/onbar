@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[87212],{87212:(e,h,t)=>{t.d(h,{A:()=>k});let k=(0,t(13185).A)("chevron-right",[["path",{d:"m9 18 6-6-6-6",key:"mthhwq"}]])}}]);

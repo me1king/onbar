@@ -12,13 +12,15 @@ import {
     Flame,
     MessageSquare,
     MousePointer2,
-    Bot
+    Bot,
+    Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn, formatPrice } from '@/lib/utils';
+import CustomerTimeInsights from '@/components/admin/analytics/CustomerTimeInsights';
 
-type AnalyticsTabId = 'overview' | 'roi' | 'performance' | 'ab_testing' | 'dispatch' | 'kitchen' | 'stock' | 'support' | 'ux_heatmaps' | 'ai_insights';
+type AnalyticsTabId = 'overview' | 'roi' | 'performance' | 'ab_testing' | 'dispatch' | 'kitchen' | 'stock' | 'support' | 'ux_heatmaps' | 'peak_hours' | 'ai_insights';
 
 interface HeatmapClick {
     x: number;
@@ -273,7 +275,8 @@ export default function AdminAnalyticsPage() {
                     { id: 'stock', label: '7. Stock Radar', icon: BarChart3 },
                     { id: 'support', label: '8. Support Tickets', icon: MessageSquare },
                     { id: 'ux_heatmaps', label: '9. UX Events', icon: MousePointer2 },
-                    { id: 'ai_insights', label: '10. Store Summary', icon: Bot },
+                    { id: 'peak_hours', label: '10. Peak Hours', icon: Clock },
+                    { id: 'ai_insights', label: '11. Store Summary', icon: Bot },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -632,7 +635,11 @@ export default function AdminAnalyticsPage() {
                 </div>
             )}
 
-            {/* TAB 10: AI MORNING BRIEF */}
+            {activeTab === 'peak_hours' && (
+                <CustomerTimeInsights />
+            )}
+
+            {/* TAB 11: AI MORNING BRIEF */}
             {activeTab === 'ai_insights' && (
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
                     <Card className="p-5 sm:p-8 rounded-2xl sm:rounded-[3.5rem] bg-white text-foreground border border-slate-200 shadow-sm space-y-6">

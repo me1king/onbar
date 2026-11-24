@@ -45,7 +45,7 @@ export default function EmailPreview({ productName, productPrice, imageUrl, subj
 
                     <div className="aspect-video bg-slate-50 rounded-2xl relative overflow-hidden flex items-center justify-center p-6 border border-slate-100">
                         {imageUrl ? (
-                            <Image src={imageUrl} fill unoptimized className="object-contain p-4" alt="Preview" />
+                            <Image src={imageUrl} fill className="object-contain p-4" alt="Preview" />
                         ) : (
                             <Zap size={48} className="text-slate-100" />
                         )}

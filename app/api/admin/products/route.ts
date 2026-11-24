@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { isSameOriginRequest } from '@/lib/adminAccess.server';
 import { verifySessionCookie } from '@/lib/adminAuth';
-import { isBeverageInventoryProduct } from '@/lib/productDepartment';
-import { getSupabaseServerKey } from '@/lib/supabaseServerConfig';
 
 export const dynamic = 'force-dynamic';
 
 type ProductPayload = Record<string, unknown>;
-type AuthorizedDatabase = { database: SupabaseClient; actor: string } | { response: NextResponse };
+type AuthorizedDatabase = { database: SupabaseClient } | { response: NextResponse };
 type ProductSalesRow = {
     quantity: number | null;
     products: { id: number; name: string } | Array<{ id: number; name: string }> | null;
@@ -24,14 +22,13 @@ async function getAuthorizedDatabase(): Promise<AuthorizedDatabase> {
     }
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = getSupabaseServerKey();
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) {
         return { response: NextResponse.json({ error: 'Product database access is not configured on the server.' }, { status: 500 }) };
     }
 
     return {
-        database: createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } }),
-        actor: session.email || session.role
+        database: createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
     };
 }
 
@@ -134,40 +131,6 @@ export async function GET(request: Request) {
         topSeller,
         salesReportAvailable
     });
-}
-
-async function notifyMerchantsOfProduct(
-    database: SupabaseClient,
-    productId: number,
-    actor: string
-): Promise<{ count: number | null; warning: string | null }> {
-    const { data, error } = await database.rpc('notify_approved_merchants_of_new_product', {
-        p_product_id: productId,
-        p_actor: actor
-    });
-    if (error) {
-        console.error('[ProductAdmin] Product was saved, but merchant catalog notifications failed:', error);
-        const catalogSetupUnavailable = error.code === '42804'
-            || /notify_approved_merchants_of_new_product|merchant_catalog_update_notifications|merchant_application_events|schema cache|does not exist|permission denied/i.test(error.message);
-        return {
-            count: null,
-            warning: catalogSetupUnavailable
-                ? 'The product was saved, but the Supabase merchant catalog function has a schema/type mismatch or missing setup. Apply or re-apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql and its prerequisites, then retry.'
-                : `The product was saved, but Supabase rejected merchant catalog sync (database code ${error.code || 'unknown'}). Check the server log for the full error, then retry.`
-        };
-    }
-    return { count: typeof data === 'number' ? data : 0, warning: null };
-}
-
-const merchantCatalogProductFields = [
-    'name', 'brand', 'category', 'sub_category', 'description', 'sku',
-    'price', 'size_label', 'sizes', 'image', 'image_url', 'images', 'image_gallery',
-    'variant_prices', 'beverage_specs', 'is_bite', 'is_snack', 'is_souvenir',
-    'hide_product', 'status'
-];
-
-function hasMerchantCatalogChanges(product: ProductPayload) {
-    return merchantCatalogProductFields.some(field => Object.prototype.hasOwnProperty.call(product, field));
 }
 
 async function saveProduct(database: SupabaseClient, id: number | null, product: ProductPayload) {
@@ -300,12 +263,8 @@ export async function POST(request: Request) {
     try {
         await synchronizeSingleVariantStock(access.database, null, body.product);
         const result = await saveProduct(access.database, null, body.product);
-        const notifications = await notifyMerchantsOfProduct(access.database, result.id, access.actor);
-        return NextResponse.json({
-            ...result,
-            merchantNotificationCount: notifications.count,
-            merchantNotificationWarning: notifications.warning
-        }, { status: 201 });
+        revalidatePath('/');
+        return NextResponse.json(result, { status: 201 });
     } catch (error) {
         console.error('[ProductAdmin] Could not create product:', error);
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Product could not be created.' }, { status: 500 });
@@ -316,98 +275,11 @@ export async function PATCH(request: Request) {
     const access = await getAuthorizedDatabase();
     if ('response' in access) return access.response;
 
-    let body: { id?: unknown; product?: unknown; action?: unknown };
+    let body: { id?: unknown; product?: unknown };
     try {
         body = await request.json() as typeof body;
     } catch {
         return NextResponse.json({ error: 'A valid product payload is required.' }, { status: 400 });
-    }
-    if (body.action === 'notify_all_merchants') {
-        if (!isSameOriginRequest(request)) {
-            return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
-        }
-        const catalogProducts: Array<{
-            id: number;
-            category: string | null;
-            sub_category: string | null;
-            is_bite: boolean | null;
-            is_snack: boolean | null;
-            is_souvenir: boolean | null;
-            status: string | null;
-        }> = [];
-        for (let offset = 0; ; offset += 500) {
-            const { data, error } = await access.database.from('products')
-                .select('id, category, sub_category, is_bite, is_snack, is_souvenir, status')
-                .order('id', { ascending: true })
-                .range(offset, offset + 499);
-            if (error) {
-                console.error('[ProductAdmin] Could not load catalog products for merchant publication:', error);
-                return NextResponse.json({ error: 'Beverage products could not be loaded for merchant publication.' }, { status: 503 });
-            }
-            const page = (data || []) as typeof catalogProducts;
-            catalogProducts.push(...page);
-            if (page.length < 500) break;
-        }
-
-        const eligibleProducts = catalogProducts.filter(product =>
-            !['archived', 'deleted'].includes((product.status || 'live').toLowerCase())
-            && isBeverageInventoryProduct(product)
-        );
-        if (eligibleProducts.length === 0) {
-            return NextResponse.json({ productCount: 0, merchantProductListingsUpdated: 0 });
-        }
-
-        const { data: syncResult, error: syncError } = await access.database.rpc(
-            'notify_approved_merchants_of_products',
-            {
-                p_product_ids: eligibleProducts.map(product => product.id),
-                p_actor: access.actor
-            }
-        );
-        if (syncError) {
-            console.error('[ProductAdmin] Could not sync the full beverage catalog to merchants:', syncError);
-            const migrationUnavailable = syncError.code === '42804'
-                || /notify_approved_merchants_of_products|notify_approved_merchants_of_new_product|schema cache|does not exist|permission denied/i.test(syncError.message);
-            return NextResponse.json({
-                error: migrationUnavailable
-                    ? 'Merchant catalog sync is missing or out of date. Re-apply supabase/MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql, then retry.'
-                    : `Merchant catalog sync failed (database code ${syncError.code || 'unknown'}). No merchant offers were updated. Check the server log and retry.`,
-                processedProductCount: 0,
-                merchantProductListingsUpdated: 0
-            }, { status: 503 });
-        }
-
-        const result = syncResult && typeof syncResult === 'object' && !Array.isArray(syncResult)
-            ? syncResult as { product_count?: unknown; merchant_product_listings_updated?: unknown }
-            : null;
-        if (!result
-            || typeof result.product_count !== 'number'
-            || !Number.isSafeInteger(result.product_count)
-            || result.product_count !== eligibleProducts.length
-            || typeof result.merchant_product_listings_updated !== 'number'
-            || !Number.isSafeInteger(result.merchant_product_listings_updated)
-            || result.merchant_product_listings_updated < 0) {
-            console.error('[ProductAdmin] Catalog sync returned an invalid result:', syncResult);
-            return NextResponse.json({ error: 'Supabase returned an invalid catalog sync result. No success was reported; check the server log.' }, { status: 503 });
-        }
-
-        return NextResponse.json({
-            productCount: result.product_count,
-            merchantProductListingsUpdated: result.merchant_product_listings_updated
-        });
-    }
-    if (body.action === 'notify_merchants') {
-        if (!isSameOriginRequest(request)) {
-            return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
-        }
-        if (!Number.isSafeInteger(body.id) || Number(body.id) < 1) {
-            return NextResponse.json({ error: 'A valid product ID is required.' }, { status: 400 });
-        }
-        const notifications = await notifyMerchantsOfProduct(access.database, Number(body.id), access.actor);
-        if (notifications.warning) {
-            return NextResponse.json({ error: notifications.warning }, { status: 503 });
-        }
-        return NextResponse.json({ merchantNotificationCount: notifications.count });
     }
     if (!Number.isSafeInteger(body.id) || Number(body.id) < 1 || !isProductPayload(body.product)) {
         return NextResponse.json({ error: 'A valid product ID and payload are required.' }, { status: 400 });
@@ -418,14 +290,8 @@ export async function PATCH(request: Request) {
     try {
         await synchronizeSingleVariantStock(access.database, Number(body.id), body.product);
         const result = await saveProduct(access.database, Number(body.id), body.product);
-        const notifications = hasMerchantCatalogChanges(body.product)
-            ? await notifyMerchantsOfProduct(access.database, result.id, access.actor)
-            : { count: null, warning: null };
-        return NextResponse.json({
-            ...result,
-            merchantNotificationCount: notifications.count,
-            merchantNotificationWarning: notifications.warning
-        });
+        revalidatePath('/');
+        return NextResponse.json(result);
     } catch (error) {
         console.error('[ProductAdmin] Could not update product:', error);
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Product could not be updated.' }, { status: 500 });
@@ -457,5 +323,6 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: `Product could not be deleted: ${error.message}` }, { status: 500 });
     }
     if (!data) return NextResponse.json({ error: 'Product not found.' }, { status: 404 });
+    revalidatePath('/');
     return NextResponse.json({ success: true });
 }

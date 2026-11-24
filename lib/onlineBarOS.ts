@@ -6,12 +6,33 @@ import { isAllowed } from './consentService';
 import { isBuiltInAnalyticsEnabled, PROVIDER_UPDATED_EVENT } from './analyticsProvider';
 
 const PRIVATE_ANALYTICS_PATHS = ['/admin', '/lord', '/merchant', '/profile', '/track', '/payment', '/rider', '/supplier', '/api', '/checkout'];
-const SESSION_INACTIVITY_MS = 30 * 60 * 1000;
 
 function isAnalyticsPathAllowed() {
     if (typeof window === 'undefined') return false;
     const pathname = window.location.pathname;
     return !PRIVATE_ANALYTICS_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+function getAnalyticsSourceChannel() {
+    const campaignSource = new URLSearchParams(window.location.search).get('utm_source')?.trim();
+    const safeCampaignSource = campaignSource?.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80);
+    if (safeCampaignSource) return `Campaign: ${safeCampaignSource}`;
+    if (!document.referrer) return 'Unattributed';
+
+    try {
+        const host = new URL(document.referrer).hostname.toLowerCase().replace(/^www\./, '');
+        if (!host) return 'Unattributed';
+        if (host === 'google.com' || host.startsWith('google.') || host.endsWith('.google.com')) return 'Search: Google';
+        if (host === 'bing.com' || host.endsWith('.bing.com')) return 'Search: Bing';
+        if (host === 'instagram.com' || host.endsWith('.instagram.com')) return 'Instagram';
+        if (host === 'facebook.com' || host.endsWith('.facebook.com')) return 'Facebook';
+        if (host === 'wa.me' || host === 'whatsapp.com' || host.endsWith('.whatsapp.com')) return 'WhatsApp';
+        if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) return 'TikTok';
+        if (['x.com', 't.co', 'twitter.com'].includes(host) || host.endsWith('.twitter.com')) return 'X';
+        return `Referral: ${host}`.slice(0, 100);
+    } catch {
+        return 'Unattributed';
+    }
 }
 
 /**
@@ -142,9 +163,6 @@ class OnlineBarOS {
     private heartbeatInterval: NodeJS.Timeout | null = null;
     private isInitialized: boolean = false;
     private lastInteractionTime: number = Date.now();
-    private markSessionInteraction = () => {
-        this.lastInteractionTime = Date.now();
-    };
     private consecutiveFailures: number = 0;
 
     private constructor() {}
@@ -174,10 +192,6 @@ class OnlineBarOS {
             // High-fidelity Batch Flusher (15s)
             this.flushInterval = setInterval(() => this.flushQueue(), 15000);
             window.addEventListener('pagehide', this.flushQueueOnPageHide);
-            window.addEventListener('pointerdown', this.markSessionInteraction, { passive: true });
-            window.addEventListener('keydown', this.markSessionInteraction);
-            window.addEventListener('scroll', this.markSessionInteraction, { passive: true });
-            window.addEventListener('touchstart', this.markSessionInteraction, { passive: true });
             window.addEventListener('ob-consent-updated', this.handleConsentUpdate);
             window.addEventListener(PROVIDER_UPDATED_EVENT, this.handleAnalyticsProviderUpdate);
             document.addEventListener('visibilitychange', this.flushQueueOnHidden);
@@ -282,37 +296,15 @@ class OnlineBarOS {
     };
 
     private initializeAnalyticsIdentity() {
-        const now = Date.now();
-        const storedSessionId = localStorage.getItem('ob_session_active_id');
-        const lastActivity = Number(localStorage.getItem('ob_session_last_activity'));
-        const isExpired = !Number.isFinite(lastActivity) || lastActivity <= 0 || now - lastActivity > SESSION_INACTIVITY_MS;
-        this.sessionId = storedSessionId && !isExpired ? storedSessionId : null;
+        this.sessionId = localStorage.getItem('ob_session_active_id');
         if (!this.sessionId) {
             this.sessionId = uuidv4();
             localStorage.setItem('ob_session_active_id', this.sessionId);
         }
-        localStorage.setItem('ob_session_last_activity', String(now));
 
         if (!localStorage.getItem('ob_anonymous_id')) {
             localStorage.setItem('ob_anonymous_id', `anon-${uuidv4().substring(0, 8)}`);
         }
-    }
-
-    private touchAnalyticsSession(now: number) {
-        const lastActivity = Number(localStorage.getItem('ob_session_last_activity'));
-        const isExpired = !this.sessionId ||
-            !Number.isFinite(lastActivity) ||
-            lastActivity <= 0 ||
-            now - lastActivity > SESSION_INACTIVITY_MS;
-
-        if (isExpired) {
-            this.sessionId = uuidv4();
-            localStorage.setItem('ob_session_active_id', this.sessionId);
-            this.correlationId = null;
-        }
-
-        localStorage.setItem('ob_session_last_activity', String(now));
-        return isExpired;
     }
 
     private handleConsentUpdate = () => {
@@ -334,8 +326,6 @@ class OnlineBarOS {
             this.sessionId = null;
             try {
                 localStorage.removeItem('ob_session_active_id');
-                localStorage.removeItem('ob_session_last_activity');
-                localStorage.removeItem('ob_current_session_attribution');
             } catch (error) {
                 console.warn('[OB_OS] Could not clear the analytics session identifier:', error);
             }
@@ -359,8 +349,6 @@ class OnlineBarOS {
             this.sessionId = null;
             try {
                 localStorage.removeItem('ob_session_active_id');
-                localStorage.removeItem('ob_session_last_activity');
-                localStorage.removeItem('ob_current_session_attribution');
             } catch (error) {
                 console.warn('[OB_OS] Could not clear the analytics session identifier:', error);
             }
@@ -432,33 +420,18 @@ class OnlineBarOS {
         return this.sessionId;
     }
 
-    public prepareAnalyticsSession(): string | null {
-        if (!isAllowed('analytics') || !isBuiltInAnalyticsEnabled()) return null;
-        const sessionExpired = this.touchAnalyticsSession(Date.now());
-        if (sessionExpired) void this.track('SESSION_START');
-        return this.sessionId;
-    }
-
     /**
      * The single entry point for all platform side-effects.
      */
     public async track(eventType: OSEventType, payload: OSEventPayload = {}) {
         if (!supabase) return;
         const isSystemEvent = this.isSystemEvent(eventType);
-        const isCheckoutStart = eventType === 'CHECKOUT_START' && typeof window !== 'undefined' && window.location.pathname === '/checkout';
-        const shouldRecordAnalytics = isAllowed('analytics') &&
-            isBuiltInAnalyticsEnabled() &&
-            (isAnalyticsPathAllowed() || isCheckoutStart);
+        const shouldRecordAnalytics = isAllowed('analytics') && isBuiltInAnalyticsEnabled() && isAnalyticsPathAllowed();
         if (!shouldRecordAnalytics && !isSystemEvent) return;
 
         try {
-            if (shouldRecordAnalytics && eventType !== 'HEARTBEAT' && eventType !== 'SESSION_START') {
-                const now = Date.now();
-                const sessionExpired = this.touchAnalyticsSession(now);
-                this.lastInteractionTime = now;
-                if (sessionExpired && eventType !== 'CHECKOUT_START') {
-                    void this.track('SESSION_START');
-                }
+            if (eventType !== 'HEARTBEAT' && eventType !== 'SESSION_START') {
+                this.lastInteractionTime = Date.now();
             }
             const corrId = this.correlationId || generateCorrelationId();
             const reqId = generateRequestId();
@@ -466,9 +439,7 @@ class OnlineBarOS {
 
             // 0. Ensure Session Record Exists (Non-blocking)
             if (sessId && shouldRecordAnalytics) {
-                this.ensureSessionRecord(sessId, payload.userId, payload.anonymousId, isCheckoutStart).catch(error => {
-                    console.warn('[OB_OS] Could not sync the analytics session:', error);
-                });
+                this.ensureSessionRecord(sessId, payload.userId, payload.anonymousId).catch(() => {});
             }
 
             // 1. High-Fidelity Batching for Behavioral Noise
@@ -578,14 +549,8 @@ class OnlineBarOS {
         }
     }
 
-    private async ensureSessionRecord(sessionId: string, userId?: string, anonymousId?: string, allowCheckoutStart = false) {
-        if (
-            !supabase ||
-            typeof window === 'undefined' ||
-            !isAllowed('analytics') ||
-            !isBuiltInAnalyticsEnabled() ||
-            (!isAnalyticsPathAllowed() && !(allowCheckoutStart && window.location.pathname === '/checkout'))
-        ) return;
+    private async ensureSessionRecord(sessionId: string, userId?: string, anonymousId?: string) {
+        if (!supabase || typeof window === 'undefined' || !isAllowed('analytics') || !isBuiltInAnalyticsEnabled() || !isAnalyticsPathAllowed()) return;
 
         // Simple local cache to avoid redundant session inserts per page load
         const key = `ob_sess_sync_${sessionId}`;
@@ -597,13 +562,13 @@ class OnlineBarOS {
                 id: sessionId,
                 user_id: userId,
                 anonymous_id: anonymousId,
-                source_channel: document.referrer.includes('google') ? 'Search' : 'Direct',
+                source_channel: getAnalyticsSourceChannel(),
                 entry_page: window.location.pathname,
                 current_page: window.location.pathname,
                 analytics_consent: true,
                 analytics_consent_updated_at: new Date().toISOString(),
                 device_info: { ua: userAgent }
-            }, { onConflict: 'id', ignoreDuplicates: true });
+            }, { onConflict: 'id' });
 
             if (!error) sessionStorage.setItem(key, 'true');
         } catch (err) {

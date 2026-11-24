@@ -18,33 +18,6 @@ interface NotificationPayload {
     attributionId?: string;
 }
 
-type UserNotificationInsert = {
-    user_id: string;
-    title: string;
-    message: string;
-    icon?: string | null;
-    style?: string | null;
-    duration: number;
-    action_url?: string | null;
-};
-
-function isMissingPopupDurationColumn(error: { code?: string; message?: string }) {
-    return /duration/i.test(error.message || '')
-        && ['42703', 'PGRST204'].includes(error.code || '');
-}
-
-async function insertUserNotification(notification: UserNotificationInsert) {
-    if (!supabase) return;
-    let { error } = await supabase.from('user_notifications').insert(notification);
-    if (error && isMissingPopupDurationColumn(error)) {
-        console.warn('[NOTIFICATION_SERVICE] Apply supabase/USER_NOTIFICATION_POPUP_DURATION_MIGRATION.sql to persist configured popup durations; using the seven-second default until then.');
-        const { user_id, title, message, icon, style, action_url } = notification;
-        const legacyNotification = { user_id, title, message, icon, style, action_url };
-        ({ error } = await supabase.from('user_notifications').insert(legacyNotification));
-    }
-    if (error) throw error;
-}
-
 /**
  * MASTER MESSAGE OBJECT: For multi-channel orchestration
  */
@@ -98,15 +71,15 @@ export async function triggerNotificationByEvent(eventType: string, payload: Not
     if (logError) throw logError;
 
     // 4. Save to User Inbox
-    await insertUserNotification({
+    const { error: inboxError } = await supabase.from('user_notifications').insert([{
         user_id: payload.userId,
         title: hydratedTitle,
         message: hydratedMessage,
         icon: template.icon,
         style: template.style,
-        duration: template.duration,
         action_url: template.cta_url ? hydrateTemplate(template.cta_url, context) : null
-    });
+    }]);
+    if (inboxError) throw inboxError;
 
     // 5. Optionally dispatch to other channels (WhatsApp/Email)
     // if (template.priority === 'CRITICAL' || template.priority === 'HIGH') {
@@ -179,11 +152,10 @@ async function performComplianceScan(text: string): Promise<boolean> {
 
 async function handleInApp(payload: NotificationPayload) {
     if (!supabase) return;
-    await insertUserNotification({
+    await supabase.from('user_notifications').insert([{
         user_id: payload.userId,
         title: payload.title || 'System Alert',
         message: payload.body || '',
-        duration: 7,
         action_url: payload.attributionId ? `/shop?utm_id=${payload.attributionId}` : undefined
-    });
+    }]);
 }

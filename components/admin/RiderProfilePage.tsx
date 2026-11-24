@@ -67,13 +67,6 @@ interface RiderProfileData {
   };
   orders: RiderOrder[];
   activeOrders: RiderOrder[];
-  lastOfflineLocation: {
-    latitude: number | null;
-    longitude: number | null;
-    location_recorded_at: string | null;
-    went_offline_at: string;
-  } | null;
-  lastOfflineLocationUnavailable: boolean;
   documents: {
     id_number_last4: string | null;
     license_number: string | null;
@@ -94,14 +87,24 @@ interface RiderProfileData {
     mpesa_number: string | null;
     mpesa_registered_name: string | null;
     mpesa_name_verified_at: string | null;
+    mpesa_name_verified_by: string | null;
     license_expiry_date: string | null;
     insurance_expiry_date: string | null;
+    license_document_url: string | null;
+    license_document_submitted_at: string | null;
+    license_document_verified_at: string | null;
+    license_document_verified_by: string | null;
+    insurance_document_url: string | null;
+    insurance_document_submitted_at: string | null;
+    insurance_document_verified_at: string | null;
+    insurance_document_verified_by: string | null;
     age_check_training_completed_at: string | null;
     rider_agreement_accepted_at: string | null;
     rider_agreement_version: string | null;
   } | null;
   profileDetailsRestricted: boolean;
   profileDetailsUnavailable: boolean;
+  dispatchEligibilityReasons: string[];
 }
 
 function display(value: string | number | null | undefined) {
@@ -140,6 +143,9 @@ export default function RiderProfilePage() {
   const [screenRefresh, setScreenRefresh] = React.useState(0);
   const [mirrorOpen, setMirrorOpen] = React.useState(false);
   const [photoPreview, setPhotoPreview] = React.useState<{ name: string; url: string } | null>(null);
+  const [verificationAction, setVerificationAction] = React.useState<string | null>(null);
+  const [verificationMessage, setVerificationMessage] = React.useState<string | null>(null);
+  const [verificationError, setVerificationError] = React.useState<string | null>(null);
 
   const loadProfile = React.useCallback(async () => {
     if (!id) return;
@@ -161,6 +167,29 @@ export default function RiderProfilePage() {
   React.useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  const verifyRiderRecord = async (action: 'verify-mpesa' | 'verify-license' | 'verify-insurance') => {
+    if (!id) return;
+    setVerificationAction(action);
+    setVerificationMessage(null);
+    setVerificationError(null);
+    try {
+      const response = await fetch(`/api/admin/riders/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+        cache: 'no-store'
+      });
+      const result = await response.json() as { error?: string; warning?: string };
+      if (!response.ok) throw new Error(result.error || 'Rider verification could not be saved.');
+      await loadProfile();
+      setVerificationMessage(result.warning || 'Verification saved.');
+    } catch (verificationFailure) {
+      setVerificationError(verificationFailure instanceof Error ? verificationFailure.message : 'Rider verification could not be saved.');
+    } finally {
+      setVerificationAction(null);
+    }
+  };
 
   if (loading) {
     return <main className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-slate-500"><Loader2 className="animate-spin text-primary" /><p className="text-sm font-semibold">Loading rider profile…</p></main>;
@@ -211,6 +240,16 @@ export default function RiderProfilePage() {
         </div>
       </header>
 
+      {data.dispatchEligibilityReasons.length > 0 && (
+        <section role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <h2 className="font-bold">Dispatch safety hold</h2>
+          <p className="mt-1">The rider’s approval status is retained, but they cannot go online or receive new orders until these checks pass.</p>
+          <ul className="mt-2 list-inside list-disc space-y-1">
+            {data.dispatchEligibilityReasons.map(reason => <li key={reason}>{reason}</li>)}
+          </ul>
+        </section>
+      )}
+
       <section aria-label="Rider overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: 'Deliveries this week', value: performance.deliveries_this_week, icon: Truck },
@@ -258,9 +297,18 @@ export default function RiderProfilePage() {
                     <div className="rounded-xl bg-white p-3"><p className="text-xs font-semibold text-slate-500">Registered account name</p><p className="mt-1 font-bold text-slate-900">{display(data.profileDetails?.mpesa_registered_name)}</p></div>
                     <p className={`sm:col-span-2 font-bold ${data.profileDetails?.mpesa_name_verified_at ? 'text-emerald-800' : 'text-amber-800'}`}>
                       {data.profileDetails?.mpesa_name_verified_at
-                        ? `Name verification recorded ${new Date(data.profileDetails.mpesa_name_verified_at).toLocaleString()}.`
-                        : 'Not verified. Confirm the recipient name and number before paying; submitted details alone are not verification.'}
+                        ? `Name verification recorded ${new Date(data.profileDetails.mpesa_name_verified_at).toLocaleString()}${data.profileDetails.mpesa_name_verified_by ? ` by ${data.profileDetails.mpesa_name_verified_by}` : ''}.`
+                        : 'Not verified. Confirm the recipient name and number before paying; payouts must be held until verification.'}
                     </p>
+                    <div className="sm:col-span-2">
+                      {!data.profileDetails?.mpesa_name_verified_at && <Button
+                        type="button"
+                        disabled={verificationAction !== null || !data.profileDetails?.mpesa_number || !data.profileDetails?.mpesa_registered_name}
+                        onClick={() => void verifyRiderRecord('verify-mpesa')}
+                      >{verificationAction === 'verify-mpesa' ? 'Verifying…' : 'Verify M-Pesa name and number'}</Button>}
+                      {verificationMessage && <p role="status" className="mt-2 text-xs text-emerald-800">{verificationMessage}</p>}
+                      {verificationError && <p role="alert" className="mt-2 text-xs text-rose-800">{verificationError}</p>}
+                    </div>
                     <p className="sm:col-span-2 text-xs leading-5 text-slate-600">Current rider wallet balance: {wallet ? formatPrice(wallet.balance) : 'not available'} · Total earned: {wallet ? formatPrice(wallet.total_earned) : 'not available'}. These figures are not a payout instruction.</p>
                   </div>}
           </Card>
@@ -278,6 +326,45 @@ export default function RiderProfilePage() {
 
           <Card className="rounded-2xl p-5 shadow-sm">
             <h2 className="mb-4 flex items-center gap-2 text-base font-bold"><ShieldCheck size={18} />Rider application documents</h2>
+            {!data.profileDetailsRestricted && data.profileDetails && (
+              <div className="mb-4 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <h3 className="text-sm font-bold">Replacement licence & insurance</h3>
+                {([
+                  {
+                    label: 'Driving licence',
+                    url: data.profileDetails.license_document_url,
+                    expiresAt: data.profileDetails.license_expiry_date,
+                    verifiedAt: data.profileDetails.license_document_verified_at,
+                    action: 'verify-license' as const
+                  },
+                  {
+                    label: 'Insurance',
+                    url: data.profileDetails.insurance_document_url,
+                    expiresAt: data.profileDetails.insurance_expiry_date,
+                    verifiedAt: data.profileDetails.insurance_document_verified_at,
+                    action: 'verify-insurance' as const
+                  }
+                ]).map(document => (
+                  <div key={document.label} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-3 text-sm">
+                    <div>
+                      <p className="font-semibold">{document.label}: {document.verifiedAt ? `Verified ${new Date(document.verifiedAt).toLocaleDateString()}` : document.url ? 'Awaiting review' : 'Not submitted'}</p>
+                      <p className="text-xs text-slate-500">Expires {display(document.expiresAt)}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      {document.url && <Button asChild size="sm" variant="outline"><a href={document.url} target="_blank" rel="noreferrer">Review file</a></Button>}
+                      {document.url && !document.verifiedAt && <Button
+                        size="sm"
+                        disabled={verificationAction !== null}
+                        onClick={() => void verifyRiderRecord(document.action)}
+                      >{verificationAction === document.action ? 'Verifying…' : 'Verify'}</Button>}
+                    </div>
+                  </div>
+                ))}
+                {verificationMessage && <p role="status" className="text-xs text-emerald-800">{verificationMessage}</p>}
+                {verificationError && <p role="alert" className="text-xs text-rose-800">{verificationError}</p>}
+                <p className="text-xs leading-5 text-amber-900">Confirm the uploaded file and its expiry date before marking it verified.</p>
+              </div>
+            )}
             {documents
               ? <>
                   <dl className="space-y-3 text-sm">
@@ -366,38 +453,6 @@ export default function RiderProfilePage() {
                   }]} showDemand={false} />
                 : <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-slate-500"><MapPin size={22} /><span>Location is shown only when the rider has a recent, valid GPS update.</span></div>}
             </div>
-          </Card>
-
-          <Card className="rounded-2xl p-5 shadow-sm">
-            <h2 className="flex items-center gap-2 font-bold"><ShieldCheck size={18} />Last location before going offline</h2>
-            {data.lastOfflineLocationUnavailable
-              ? <p className="mt-2 text-sm text-amber-800">Offline location audit is not installed. Apply supabase/RIDER_OFFLINE_LOCATION_AND_BUZZ_MIGRATION.sql.</p>
-              : data.lastOfflineLocation
-                ? <>
-                    <p className="mt-2 text-sm text-slate-600">
-                      Went offline {new Date(data.lastOfflineLocation.went_offline_at).toLocaleString()}
-                      {data.lastOfflineLocation.location_recorded_at
-                        ? ` · last GPS fix ${new Date(data.lastOfflineLocation.location_recorded_at).toLocaleString()}`
-                        : ' · no GPS fix was recorded'}
-                    </p>
-                    {data.lastOfflineLocation.latitude !== null && data.lastOfflineLocation.longitude !== null
-                      ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm">
-                          <span className="font-mono text-xs text-slate-700">
-                            {Number(data.lastOfflineLocation.latitude).toFixed(6)}, {Number(data.lastOfflineLocation.longitude).toFixed(6)}
-                          </span>
-                          <Button asChild size="sm" variant="outline">
-                            <a
-                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${data.lastOfflineLocation.latitude},${data.lastOfflineLocation.longitude}`)}`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Open map
-                            </a>
-                          </Button>
-                        </div>
-                      : <p className="mt-2 text-sm text-slate-500">The rider had no valid saved GPS coordinates when going offline.</p>}
-                  </>
-                : <p className="mt-2 text-sm text-slate-500">No rider online-to-offline events have been recorded yet.</p>}
           </Card>
 
           <Card className="overflow-hidden rounded-2xl shadow-sm">

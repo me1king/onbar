@@ -28,8 +28,7 @@ function makeSupportToken() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
     }
-    const random = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
-    return `${random()}${random()}-${random()}-4${random().slice(1)}-${random()}-${random()}${random()}${random()}`;
+    return `support-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
 async function getSupportHeaders(token: string, json = false) {
@@ -61,7 +60,7 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
     const [isAiTyping, setIsAiAiTyping] = useState(false);
 
     // Message Form State
-    const [msgForm, setMsgForm] = useState({ name: '', email: '', topic: 'Feature request', body: '' });
+    const [msgForm, setMsgForm] = useState({ name: '', email: '', body: '' });
     const [isSending, setIsSending] = useState(false);
     const [sent, setSent] = useState(false);
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -219,14 +218,14 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
                     name: msgForm.name.trim(),
                     email: msgForm.email.trim(),
                     message: msgForm.body.trim(),
-                    subject: msgForm.topic,
+                    subject: 'CORPORATE_INQUIRY',
                     token: supportToken
                 })
             });
             const result = await response.json() as { error?: string };
             if (!response.ok) throw new Error(result.error || 'Could not send your support message.');
             setSent(true);
-            setMsgForm({ name: '', email: '', topic: 'Feature request', body: '' });
+            setMsgForm({ name: '', email: '', body: '' });
             setSupportError('');
             window.setTimeout(async () => {
                 fetch('/api/support/messages', {
@@ -313,7 +312,7 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
                                 <button onClick={handleChat} className="w-full p-4 rounded-2xl bg-primary/5 hover:bg-primary/10 border border-primary/10 transition-all text-left flex items-center justify-between group">
                                     <div className="flex items-center gap-3">
                                         <div className="h-8 w-8 rounded-xl bg-white flex items-center justify-center text-primary shadow-sm"><MessageCircle className="h-4 w-4" /></div>
-                                        <span className="text-[10px] font-black uppercase text-foreground">Ask Admin</span>
+                                        <span className="text-[10px] font-black uppercase text-foreground">Speak to Sales</span>
                                     </div>
                                     <ChevronRight className="h-4 w-4 text-primary/30" />
                                 </button>
@@ -430,14 +429,14 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
                                             <CheckCircle className="h-6 w-6" />
                                         </div>
                                         <p className="text-[10px] font-black uppercase text-foreground tracking-tight">Message Received!</p>
-                                        <p className="text-[9px] text-slate-400 font-medium px-4 leading-relaxed">Your inquiry is in the admin inbox. Check Support Replies here for the team&apos;s response.</p>
+                                        <p className="text-[9px] text-slate-400 font-medium px-4 leading-relaxed">Your sales enquiry is in our admin inbox. Check Support Replies here for the team&apos;s response.</p>
                                     </div>
                                 ) : (
                                     <form onSubmit={handleSubmitMessage} className="space-y-3">
                                         {supportError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-[10px] font-bold text-rose-700">{supportError}</p>}
                                         <div className="rounded-xl border border-primary/10 bg-primary/5 p-3">
-                                            <p className="text-[10px] font-black uppercase tracking-wide text-foreground">Ask the OnBar Admin</p>
-                                            <p className="mt-1 text-[10px] leading-relaxed text-slate-600">Request a feature, ask a question, or send any inquiry. The team can reply from the admin panel.</p>
+                                            <p className="text-[10px] font-black uppercase tracking-wide text-foreground">Speak to Sales</p>
+                                            <p className="mt-1 text-[10px] leading-relaxed text-slate-600">Send your enquiry to our sales team through the site. The team can review and reply from the admin panel.</p>
                                         </div>
                                         <input
                                             required
@@ -454,23 +453,11 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
                                             placeholder="Email Address"
                                             className="w-full h-10 px-4 rounded-xl border border-slate-100 bg-slate-50 text-[10px] font-bold uppercase outline-none focus:ring-1 focus:ring-primary"
                                         />
-                                        <select
-                                            required
-                                            value={msgForm.topic}
-                                            onChange={e => setMsgForm({...msgForm, topic: e.target.value})}
-                                            className="w-full h-10 px-4 rounded-xl border border-slate-100 bg-slate-50 text-[10px] font-bold uppercase outline-none focus:ring-1 focus:ring-primary"
-                                        >
-                                            <option>Feature request</option>
-                                            <option>General inquiry</option>
-                                            <option>Product or wholesale question</option>
-                                            <option>Partnership or corporate inquiry</option>
-                                            <option>Something else</option>
-                                        </select>
                                         <textarea
                                             required
                                             value={msgForm.body}
                                             onChange={e => setMsgForm({...msgForm, body: e.target.value})}
-                                            placeholder="Tell the admin team what you need..."
+                                            placeholder="Tell our sales team what you need..."
                                             rows={3}
                                             className="w-full p-4 rounded-xl border border-slate-100 bg-slate-50 text-[10px] font-bold uppercase outline-none focus:ring-1 focus:ring-primary resize-none"
                                         />
@@ -478,7 +465,7 @@ export default function SupportBubble({ suppressLauncher = false }: { suppressLa
                                             disabled={isSending}
                                             className="w-full h-12 rounded-xl bg-primary text-white font-black uppercase text-[10px] tracking-widest shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all disabled:opacity-50"
                                         >
-                                            {isSending ? 'Sending...' : 'Send Inquiry'}
+                                            {isSending ? 'Sending...' : 'Send Sales Enquiry'}
                                         </button>
                                     </form>
                                 )}

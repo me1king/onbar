@@ -30,10 +30,6 @@ import { supabase } from '@/lib/supabaseClient';
 import dynamic from 'next/dynamic';
 import MerchantConnectionsPanel from '@/components/rider/MerchantConnectionsPanel';
 import RiderTerminalProfile from '@/components/rider/RiderTerminalProfile';
-import OrderAlertToneSettings from '@/components/alerts/OrderAlertToneSettings';
-import { useOrderAlertTone } from '@/hooks/useOrderAlertTone';
-import { ensurePushServiceWorkerReady } from '@/lib/pushServiceWorker';
-import GuidedPanelTour, { type GuidedPanelTourStep } from '@/components/onboarding/GuidedPanelTour';
 
 const RiderDeliveryMap = dynamic(() => import('@/components/tracking/CustomerDeliveryMap'), {
     ssr: false,
@@ -77,28 +73,6 @@ interface BatteryManagerLike {
 
 const RIDER_ACCENT_DEFAULT = '#39D98A';
 const RIDER_ACCENT_PRESETS = ['#39D98A', '#21C8A8', '#4E9BFF', '#A78BFA', '#FF8A4C', '#F05D6C'];
-const riderTourSteps: GuidedPanelTourStep[] = [
-    {
-        selector: '[data-tour="rider-online"]',
-        title: 'Choose when you are available',
-        description: 'Go online only when you are ready to receive delivery offers. You can go offline whenever you need a break.'
-    },
-    {
-        selector: '[data-tour="rider-map"]',
-        title: 'Share your live location',
-        description: 'Allow location access while online so dispatch can find you and customers can follow an active delivery.'
-    },
-    {
-        selector: '[data-tour="rider-mission"]',
-        title: 'Review and complete missions',
-        description: 'New offers appear here with an expiry timer. Check the pickup and delivery details before accepting, then update the delivery progress as you go.'
-    },
-    {
-        selector: '[data-tour="rider-alerts"]',
-        title: 'Turn on offer alerts',
-        description: 'Enable push alerts to hear about new assignments when the terminal is not in the foreground. Your selected sound works while the terminal is open.'
-    }
-];
 
 function isCashOrder(method: string) {
     return ['cash', 'cash on delivery', 'cod'].includes(method.trim().toLowerCase());
@@ -132,8 +106,6 @@ function RiderDashboardContent() {
     const supportRiderId = searchParams?.get('supportRiderId');
 
     const [phone, setPhone] = useState('');
-    const orderTone = useOrderAlertTone(`rider-${phone.replace(/\D/g, '') || 'default'}`);
-    const playOrderTone = orderTone.play;
     const [pin, setPin] = useState('');
     const [sessionToken, setSessionToken] = useState('');
     const [gpsMessage, setGpsMessage] = useState<string | null>(null);
@@ -168,28 +140,6 @@ function RiderDashboardContent() {
     const [issueMessage, setIssueMessage] = useState<string | null>(null);
     const seenOffers = useRef<Set<number>>(new Set());
     const offerTimerRunning = useRef(false);
-    const offerAlertTimerRef = useRef<number | null>(null);
-    const offerAlertStartedAtRef = useRef(0);
-
-    const startOfferAlertRing = useCallback(() => {
-        if (offerAlertTimerRef.current !== null) return;
-        offerAlertStartedAtRef.current = Date.now();
-        playOrderTone();
-        offerAlertTimerRef.current = window.setInterval(() => {
-            playOrderTone(Date.now() - offerAlertStartedAtRef.current >= 10_000);
-        }, 2_500);
-    }, [playOrderTone]);
-
-    const stopOfferAlertRing = useCallback(() => {
-        if (offerAlertTimerRef.current !== null) window.clearInterval(offerAlertTimerRef.current);
-        offerAlertTimerRef.current = null;
-        offerAlertStartedAtRef.current = 0;
-    }, []);
-
-    useEffect(() => () => stopOfferAlertRing(), [stopOfferAlertRing]);
-    useEffect(() => {
-        if (!isIdentified) stopOfferAlertRing();
-    }, [isIdentified, stopOfferAlertRing]);
 
     // Online Bar Pro States
     const [isOnline, setIsOnline] = useState(false);
@@ -243,7 +193,6 @@ function RiderDashboardContent() {
 
             // AUTO-SELECT ACTIVE MISSION
             const currentMissions = missionData.missions || [];
-            if (currentMissions.some(mission => mission.rider_offer_status === 'pending')) startOfferAlertRing();
             for (const mission of currentMissions) {
                 if (mission.rider_offer_status === 'pending') seenOffers.current.add(mission.id);
             }
@@ -286,7 +235,7 @@ function RiderDashboardContent() {
         } finally {
             setLoading(false);
         }
-    }, [startOfferAlertRing]);
+    }, []);
 
     const continueWithOnlineBarAccount = useCallback(async () => {
         setLoading(true);
@@ -620,7 +569,6 @@ function RiderDashboardContent() {
                 if (!response.ok) throw new Error(result.error || 'Rider missions could not be refreshed.');
                 if (!active) return;
                 const refreshedMissions = result.missions || [];
-                const hasPendingOffer = refreshedMissions.some(mission => mission.rider_offer_status === 'pending');
                 const newOffers = refreshedMissions.filter(mission =>
                     mission.rider_offer_status === 'pending' && !seenOffers.current.has(mission.id)
                 );
@@ -628,7 +576,6 @@ function RiderDashboardContent() {
                     if (mission.rider_offer_status === 'pending') seenOffers.current.add(mission.id);
                 }
                 if (newOffers.length > 0) {
-                    startOfferAlertRing();
                     if ('vibrate' in navigator) navigator.vibrate([300, 120, 300, 120, 600]);
                     setPushMessage(`New delivery offer${newOffers.length > 1 ? 's' : ''}: ${newOffers.map(item => `#${item.id}`).join(', ')}`);
                     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -639,7 +586,6 @@ function RiderDashboardContent() {
                         });
                     }
                 }
-                if (!hasPendingOffer) stopOfferAlertRing();
                 setMissions(refreshedMissions);
                 setActiveMission(current => {
                     const activeStatuses = ['Dispatched', 'Picked Up', 'Out for Delivery'];
@@ -662,7 +608,7 @@ function RiderDashboardContent() {
             active = false;
             window.clearInterval(timer);
         };
-    }, [isIdentified, sessionToken, startOfferAlertRing, stopOfferAlertRing]);
+    }, [isIdentified, sessionToken]);
 
     useEffect(() => {
         const mission = activeMission;
@@ -718,7 +664,7 @@ function RiderDashboardContent() {
                 throw new Error(config.error || 'Push mission alerts are not configured on the server.');
             }
 
-            const registration = await ensurePushServiceWorkerReady();
+            const registration = await navigator.serviceWorker.register('/sw.js');
             const subscription = await registration.pushManager.getSubscription()
                 || await registration.pushManager.subscribe({
                     userVisibleOnly: true,
@@ -1205,7 +1151,7 @@ function RiderDashboardContent() {
                             <span className={`h-2 w-2 rounded-full ${isOnline ? 'animate-pulse bg-emerald-500' : 'bg-slate-300'}`} />
                             {isOnline ? 'Online' : 'Offline'}
                         </span>
-                        {!supportPreview && <Button data-tour="rider-online" onClick={handleToggleOnline} disabled={loading} className="h-10 rounded-lg px-4 text-xs font-black uppercase" style={{ backgroundColor: isOnline ? '#202725' : accentColor, color: isOnline ? 'white' : '#08100c' }}>
+                        {!supportPreview && <Button onClick={handleToggleOnline} disabled={loading} className="h-10 rounded-lg px-4 text-xs font-black uppercase" style={{ backgroundColor: isOnline ? '#202725' : accentColor, color: isOnline ? 'white' : '#08100c' }}>
                             {isOnline ? 'Go offline' : 'Go online'}
                         </Button>}
                         {!supportPreview && <button aria-label="Log out" onClick={handleLogout} className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:text-rose-600">
@@ -1219,7 +1165,7 @@ function RiderDashboardContent() {
             <RiderTerminalProfile token={sessionToken} riderName={riderName} phone={phone} isOnline={isOnline} supportPreview={supportPreview}>
             <div className="mx-auto grid max-w-7xl gap-5 p-4 sm:p-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.85fr)]">
                 <section className="space-y-5">
-                    <div data-tour="rider-map" className="relative h-[288px] overflow-hidden rounded-2xl border border-white/10 bg-[#101614] sm:h-[340px]">
+                    <div className="relative h-[288px] overflow-hidden rounded-2xl border border-white/10 bg-[#101614] sm:h-[340px]">
                         {riderPosition ? (
                             <RiderDeliveryMap rider={riderPosition} destination={deliveryDestination} />
                         ) : (
@@ -1234,7 +1180,7 @@ function RiderDashboardContent() {
                         </div>
                     </div>
 
-                    <section data-tour="rider-mission" className="rounded-2xl border bg-[#101614] p-4 sm:p-6" style={{ borderColor: `${accentColor}66` }}>
+                    <section className="rounded-2xl border bg-[#101614] p-4 sm:p-6" style={{ borderColor: `${accentColor}66` }}>
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color: accentColor }}>
@@ -1472,14 +1418,12 @@ function RiderDashboardContent() {
                         {accentSaveMessage && <p role="status" className="mt-2 text-[11px] text-white/50">{accentSaveMessage}</p>}
                     </section>
 
-                    <OrderAlertToneSettings controller={orderTone} dark />
-
-                    <section data-tour="rider-alerts" className="rounded-2xl border border-white/10 bg-[#101614] p-5">
+                    <section className="rounded-2xl border border-white/10 bg-[#101614] p-5">
                         <div className="flex items-center justify-between gap-3">
                             <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-white/70"><Bell className="h-4 w-4" /> Offer alerts</h2>
                             {pushEnabled && <span className="text-[10px] font-bold uppercase" style={{ color: accentColor }}>Enabled</span>}
                         </div>
-                        <p className="mt-2 text-xs leading-relaxed text-white/45">Push and vibration for new assignments, with your selected sound while this terminal is open.</p>
+                        <p className="mt-2 text-xs leading-relaxed text-white/45">Push notification, vibration, and foreground alert for new assignments.</p>
                         {pushMessage && <p role="status" className="mt-2 text-[11px] text-white/55">{pushMessage}</p>}
                         {!pushEnabled && <Button type="button" onClick={() => void enableMissionAlerts()} disabled={pushBusy} className="mt-4 h-10 w-full rounded-lg text-xs font-black uppercase" style={{ backgroundColor: accentColor, color: '#08100c' }}>
                             {pushBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />} Enable push alerts
@@ -1504,12 +1448,6 @@ function RiderDashboardContent() {
             </div>
             </RiderTerminalProfile>
             </div>
-            {!supportPreview && <GuidedPanelTour
-                key={`rider:${phone.replace(/\D/g, '')}`}
-                tourKey={`rider:${phone.replace(/\D/g, '')}`}
-                title="Rider terminal"
-                steps={riderTourSteps}
-            />}
         </main>
     );
 }

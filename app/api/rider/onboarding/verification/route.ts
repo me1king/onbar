@@ -25,7 +25,7 @@ function normalizePhone(value: string) {
   let digits = value.replace(/\D/g, '');
   if (digits.startsWith('254')) digits = digits.slice(3);
   else if (digits.startsWith('0')) digits = digits.slice(1);
-  return /^[17]\d{8}$/.test(digits) ? digits : null;
+  return /^[17]\d{8}$/.test(digits) ? `254${digits}` : null;
 }
 
 function isImage(value: FormDataEntryValue | null): value is File {

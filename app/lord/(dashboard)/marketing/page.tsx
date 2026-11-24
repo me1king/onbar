@@ -5,8 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import {
     Activity as Zap,
     Camera as Instagram,
-    PieChart,
-    ShoppingCart
+    PieChart
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -83,11 +82,6 @@ export default function MarketingOverview() {
                     <p className="text-muted-foreground text-sm font-medium mt-1">Storefront event and account counts; social reach and ROI require connected platform data.</p>
                 </div>
                 <div className="flex gap-3">
-                    <Link href="/lord/marketing/abandoned-checkouts">
-                        <Button variant="outline" className="rounded-2xl h-12 px-6 border-amber-200 bg-amber-50 text-amber-800 font-black uppercase text-[10px] tracking-widest hover:bg-amber-600 hover:text-white transition-all">
-                            <ShoppingCart className="h-4 w-4 mr-2" /> Checkout Recovery
-                        </Button>
-                    </Link>
                     <Link href="/lord/marketing/stories">
                         <Button variant="outline" className="rounded-2xl h-12 px-6 border-primary/20 bg-primary/5 text-primary font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-white transition-all">
                             <Instagram className="h-4 w-4 mr-2" /> Story Scheduler

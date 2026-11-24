@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
-import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
 import { getMerchantMinutesUntilClose, isMerchantOpenAt } from '@/lib/merchantAvailability';
 import { isInternalRequest, isSameOriginRequest } from '@/lib/adminAccess.server';
 import { routingEngine, type GeoPoint } from '@/lib/engines/routingEngine';
-import { alertAllocatedMerchants, retryFailedMerchantOrderAlerts } from '@/lib/merchantOrderAlerts.server';
-import { alertAssignedRider, buzzAssignedRider } from '@/lib/riderOrderAlerts.server';
+import { alertAllocatedMerchants } from '@/lib/merchantOrderAlerts.server';
+import { alertAssignedRider } from '@/lib/riderOrderAlerts.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -560,11 +559,7 @@ function getRiderVerificationStoragePath(value: unknown): string | null {
   }
 }
 
-async function notifyCustomerOfDispatch(
-  orderId: number,
-  requestUrl: string,
-  forceResend = false
-): Promise<string | null> {
+async function notifyCustomerOfDispatch(orderId: number, requestUrl: string): Promise<string | null> {
   const secret = process.env.INTERNAL_API_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
   if (!secret) {
     console.error('[AdminDispatch] Rider assigned, but customer notification is not configured.');
@@ -578,7 +573,7 @@ async function notifyCustomerOfDispatch(
         Authorization: `Bearer ${secret}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ orderId, status: 'Dispatched', ...(forceResend ? { forceResend: true } : {}) }),
+      body: JSON.stringify({ orderId, status: 'Dispatched' }),
       cache: 'no-store',
       signal: AbortSignal.timeout(10_000)
     });
@@ -620,24 +615,15 @@ async function getRiderVerificationUrl(database: SupabaseClient, value: unknown,
   return data.signedUrl;
 }
 
-async function loadDispatchData(
-  database: SupabaseClient,
-  includeSensitiveRiderData: boolean,
-  requestedOrderId?: number
-) {
-  let orderQuery = database.from('orders')
-    .select('id, status, payment_method, payment_verified_at, checkout_request_id, customer_name, customer_email, total_price, latitude, longitude, note, created_at, rider_name, rider_phone')
-    .order('created_at', { ascending: true })
-    .limit(100);
-  orderQuery = requestedOrderId
-    ? orderQuery
-      .in('status', ['Paid', 'Confirmed', 'Dispatched'])
-      .or(`rider_phone.is.null,id.eq.${requestedOrderId}`)
-    : orderQuery
-      .in('status', ['Paid', 'Confirmed'])
-      .is('rider_phone', null);
+async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderData: boolean) {
   const [ordersResult, ridersResult, loadResult, decisionResult, directoryRidersResult, zonesResult] = await Promise.all([
-    orderQuery.in('payment_method', ['Paystack', 'PayHero', 'COD', 'Cash on Delivery']),
+    database.from('orders')
+      .select('id, status, payment_method, payment_verified_at, checkout_request_id, customer_name, customer_email, total_price, latitude, longitude, note, created_at, rider_name, rider_phone')
+      .in('status', ['Paid', 'Confirmed'])
+      .in('payment_method', ['Paystack', 'PayHero', 'COD'])
+      .is('rider_phone', null)
+      .order('created_at', { ascending: true })
+      .limit(100),
     database.from('rider_status')
       .select('id, rider_name, rider_phone, status, verification_status, area_zone, current_location, last_known_lat, last_known_lng, max_deliveries, health_score, location_updated_at, updated_at'),
     database.from('orders')
@@ -669,23 +655,18 @@ async function loadDispatchData(
     && order.status?.toLowerCase() === 'paid'
     && ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase())
   );
-  const dispatchOrders = unassignedOrders.filter(order => {
-    const isRequestedPrePickupOrder = requestedOrderId === order.id
-      && order.status === 'Dispatched'
-      && Boolean(order.rider_phone);
-    if (order.rider_phone && !isRequestedPrePickupOrder) return false;
-    return (
-      (isRequestedPrePickupOrder
-        && Boolean(order.payment_verified_at)
-        && ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase()))
-      || (order.status?.toLowerCase() === 'paid'
-        && Boolean(order.payment_verified_at)
-        && ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase()))
-      || (['confirmed', 'dispatched'].includes(order.status?.toLowerCase() || '')
-        && !order.payment_verified_at
-        && ['cod', 'cash on delivery'].includes((order.payment_method || '').toLowerCase()))
+  const dispatchOrders = unassignedOrders
+    .filter(order =>
+      !order.rider_phone
+      && (
+        (order.status?.toLowerCase() === 'paid'
+          && Boolean(order.payment_verified_at)
+          && ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase()))
+        || (order.status?.toLowerCase() === 'confirmed'
+          && !order.payment_verified_at
+          && ['cod', 'cash on delivery'].includes((order.payment_method || '').toLowerCase()))
+      )
     );
-  });
   const verifiedOnlineOrders = dispatchOrders.filter(order =>
     ['paystack', 'payhero'].includes((order.payment_method || '').toLowerCase())
   );
@@ -707,9 +688,7 @@ async function loadDispatchData(
     .map(confirmation => Number(confirmation.order_id)));
   const orders = dispatchOrders.filter(order =>
     ['cod', 'cash on delivery'].includes((order.payment_method || '').toLowerCase())
-      ? (order.status?.toLowerCase() === 'confirmed'
-        || (requestedOrderId === order.id && order.status === 'Dispatched' && Boolean(order.rider_phone)))
-        && !order.payment_verified_at
+      ? order.status?.toLowerCase() === 'confirmed' && !order.payment_verified_at
       : confirmedOrderIds.has(order.id)
   );
   const riders = (ridersResult.data || []) as Rider[];
@@ -850,7 +829,7 @@ async function loadDispatchData(
   return {
     jobs,
     decisions: decisionResult.data || [],
-    unverifiedPaymentCount: onlinePaymentOrders.filter(order => !confirmedOrderIds.has(order.id)).length,
+    unverifiedPaymentCount: onlinePaymentOrders.length - confirmedOrderIds.size,
     riders: directoryRiders.map(rider => ({
       ...rider,
       wallet: Array.isArray(rider.wallet) ? rider.wallet[0] || null : rider.wallet || null,
@@ -870,7 +849,7 @@ async function loadDispatchData(
   };
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   const session = await getAdminSession();
   if (!session) {
     return NextResponse.json({ error: 'Dispatch access requires an authorized admin session.' }, { status: 403 });
@@ -881,24 +860,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const rawOrderId = new URL(request.url).searchParams.get('orderId');
-    const requestedOrderId = rawOrderId === null ? undefined : Number(rawOrderId);
-    if (rawOrderId !== null && (!Number.isSafeInteger(requestedOrderId) || Number(requestedOrderId) < 1)) {
-      return NextResponse.json({ error: 'A valid order ID is required.' }, { status: 400 });
-    }
-    const data = await loadDispatchData(
+    return NextResponse.json(await loadDispatchData(
       database,
-      session.role.toLowerCase() === 'owner' || session.permissions?.can_view_sensitive_rider_data === true,
-      requestedOrderId
-    );
-    if (requestedOrderId !== undefined) {
-      const job = data.jobs.find(candidate => candidate.id === requestedOrderId);
-      if (!job) return NextResponse.json({ error: 'This order is not eligible for pre-pickup rider reassignment.' }, { status: 409 });
-      return NextResponse.json({ job }, {
-        headers: { 'Cache-Control': 'private, no-store, max-age=0' }
-      });
-    }
-    return NextResponse.json(data, {
+      session.role.toLowerCase() === 'owner' || session.permissions?.can_view_sensitive_rider_data === true
+    ), {
       headers: { 'Cache-Control': 'private, no-store, max-age=0' }
     });
   } catch (error) {
@@ -1005,148 +970,6 @@ export async function POST(request: Request) {
         ? 'Merchant stock was redistributed to currently available approved businesses.'
         : 'Available businesses were checked, but some stock is still unavailable. The order remains in the dispatch review queue.'
     });
-  }
-
-  if (body.operation === 'retry_merchant_alerts') {
-    if (!Number.isSafeInteger(orderId) || orderId <= 0) {
-      return NextResponse.json({ error: 'A valid order is required.' }, { status: 400 });
-    }
-    try {
-      const alerts = await retryFailedMerchantOrderAlerts(database, orderId, randomUUID());
-      if (!alerts.retryableFailures) {
-        return NextResponse.json({ error: 'There are no failed merchant alerts eligible for retry.' }, { status: 409 });
-      }
-      if (!alerts.applications) {
-        return NextResponse.json({ error: 'No unaccepted merchant allocation is eligible for another alert.' }, { status: 409 });
-      }
-      if (!alerts.escalationQueued && !alerts.pushSent) {
-        return NextResponse.json({ error: 'Merchant alerts could not be retried. Check the alert worker and provider configuration.' }, { status: 503 });
-      }
-      return NextResponse.json({
-        alerts,
-        ...(alerts.escalationQueued ? {} : { warning: 'Push was attempted, but delayed SMS and voice alerts could not be scheduled.' })
-      });
-    } catch (error) {
-      console.error('[AdminDispatch] Failed merchant alerts could not be retried:', error);
-      return NextResponse.json({ error: 'Merchant alerts could not be retried.' }, { status: 503 });
-    }
-  }
-
-  if (body.operation === 'buzz_rider') {
-    if (!Number.isSafeInteger(orderId) || orderId <= 0) {
-      return NextResponse.json({ error: 'A valid order is required.' }, { status: 400 });
-    }
-    try {
-      const result = await buzzAssignedRider(database, orderId, randomUUID());
-      if (result.error) {
-        return NextResponse.json({ error: result.error }, { status: 409 });
-      }
-      if (!result.pushSent && !result.smsQueued) {
-        return NextResponse.json({
-          error: result.warning || 'The rider could not be notified. Check rider push registration and SMS worker configuration.'
-        }, { status: 503 });
-      }
-      return NextResponse.json({
-        buzz: { pushDevicesNotified: result.pushSent, smsFallbackQueued: result.smsQueued },
-        ...(result.warning ? { warning: result.warning } : {}),
-        message: result.pushSent
-          ? `Rider buzz sent to ${result.pushSent} device${result.pushSent === 1 ? '' : 's'}; SMS fallback ${result.smsQueued ? 'queued' : 'unavailable'}.`
-          : 'No rider push device is registered; SMS fallback is queued.'
-      });
-    } catch (error) {
-      console.error('[AdminDispatch] Rider buzz failed:', error);
-      return NextResponse.json({
-        error: /claim_rider_order_alert|rider_order_alert_log|schema cache/i.test(error instanceof Error ? error.message : '')
-          ? 'Rider buzz support is not installed. Apply supabase/RIDER_OFFLINE_LOCATION_AND_BUZZ_MIGRATION.sql.'
-          : 'The rider could not be buzzed. Check push, Redis, Twilio, and worker configuration.'
-      }, { status: 503 });
-    }
-  }
-
-  if (body.operation === 'reassign_rider') {
-    const riderPhone = typeof body.riderPhone === 'string' ? body.riderPhone.trim() : '';
-    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
-    if (!Number.isSafeInteger(orderId) || orderId <= 0 || !riderPhone || reason.length < 8 || reason.length > 500) {
-      return NextResponse.json({ error: 'Choose a replacement rider and enter a reason between 8 and 500 characters.' }, { status: 400 });
-    }
-
-    try {
-      const { data: currentOrder, error: currentOrderError } = await database.from('orders')
-        .select('id,status,rider_name,rider_phone')
-        .eq('id', orderId)
-        .maybeSingle();
-      if (currentOrderError) throw currentOrderError;
-      if (!currentOrder || currentOrder.status !== 'Dispatched' || !currentOrder.rider_phone) {
-        return NextResponse.json({ error: 'Rider replacement is only available before pickup, while the order is Dispatched.' }, { status: 409 });
-      }
-
-      const dispatchData = await loadDispatchData(database, false, orderId);
-      const job = dispatchData.jobs.find(candidate => candidate.id === orderId);
-      if (!job) {
-        return NextResponse.json({ error: 'The order is no longer eligible for reassignment. Refresh and review the order.' }, { status: 409 });
-      }
-      if (!job.fulfillment.ready) {
-        return NextResponse.json({
-          error: 'Rider replacement is blocked because merchant fulfillment is not verified.',
-          fulfillment: job.fulfillment
-        }, { status: 409 });
-      }
-      const selectedRider = job.riderCandidates.find(candidate =>
-        candidate.riderPhone === riderPhone && candidate.riderPhone !== currentOrder.rider_phone
-      );
-      if (!selectedRider) {
-        return NextResponse.json({ error: 'The replacement rider is no longer verified, online, nearby, or below the active delivery limit.' }, { status: 409 });
-      }
-
-      const criteria = {
-        vendor_ready: job.fulfillment.ready,
-        vendor_reasons: job.fulfillment.reasons,
-        selected_vendor_ids: job.fulfillment.selectedVendorIds,
-        selected_vendor_names: job.fulfillment.selectedVendorNames,
-        product_checks: job.fulfillment.productChecks,
-        rider_selection: selectedRider,
-        reassigned_from_rider_phone: currentOrder.rider_phone,
-        reassigned_from_rider_name: currentOrder.rider_name
-      };
-      const { data, error } = await database.rpc('reassign_dispatched_order_rider', {
-        p_order_id: orderId,
-        p_previous_rider_phone: currentOrder.rider_phone,
-        p_rider_phone: selectedRider.riderPhone,
-        p_actor: session?.email || session?.role || 'admin',
-        p_reason: reason,
-        p_criteria: criteria
-      });
-      if (error) {
-        console.error('[AdminDispatch] Atomic rider reassignment failed:', error);
-        return NextResponse.json({
-          error: /reassign_dispatched_order_rider|schema cache/i.test(error.message)
-            ? 'Rider reassignment is not installed. Apply supabase/ORDER_RIDER_REASSIGNMENT_MIGRATION.sql.'
-            : 'Rider reassignment could not be saved. Refresh and review rider availability.'
-        }, { status: 503 });
-      }
-      const result = data as { success?: boolean; error?: string; code?: string; rider_phone?: string } | null;
-      if (!result?.success) {
-        return NextResponse.json({ error: result?.error || 'Rider reassignment was not completed.', code: result?.code }, { status: 409 });
-      }
-
-      const warnings: string[] = [];
-      const customerWarning = await notifyCustomerOfDispatch(orderId, request.url, true);
-      if (customerWarning) warnings.push(customerWarning);
-      if (result.rider_phone) {
-        try {
-          const riderNotice = await alertAssignedRider(database, orderId, result.rider_phone);
-          if (riderNotice.warning) warnings.push(riderNotice.warning);
-        } catch (riderError) {
-          console.error('[AdminDispatch] Reassignment saved but replacement rider alerts failed:', riderError);
-          warnings.push('Reassignment was saved, but the replacement rider could not be notified.');
-        }
-      }
-      warnings.push('Contact the previous rider directly to confirm they will not collect this order.');
-      return NextResponse.json({ assignment: result, warning: warnings.join(' ') });
-    } catch (error) {
-      console.error('[AdminDispatch] Rider reassignment failed:', error);
-      return NextResponse.json({ error: 'Rider reassignment could not be completed. Refresh and try again.' }, { status: 503 });
-    }
   }
 
   const mode = body.mode;

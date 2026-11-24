@@ -20,54 +20,6 @@ import { cn, formatPrice } from '@/lib/utils';
 
 type AnalyticsTabId = 'overview' | 'roi' | 'performance' | 'ab_testing' | 'dispatch' | 'kitchen' | 'stock' | 'support' | 'ux_heatmaps' | 'ai_insights';
 
-interface PerformanceReport {
-    periodDays: number;
-    data: {
-        summary: {
-            sessions: number;
-            visitors: number;
-            pageViews: number;
-            orders: number;
-            convertedSessions: number;
-            revenue: number;
-            averageSessionSeconds: number;
-            averageActiveSeconds: number;
-            singlePageSessions: number;
-            conversionRate: number;
-            singlePageRate: number;
-        };
-        daily: Array<{ date: string; sessions: number; pageViews: number; orders: number; revenue: number }>;
-        sources: Array<{
-            source: string;
-            medium: string;
-            sessions: number;
-            convertedSessions: number;
-            orders: number;
-            revenue: number;
-            conversionRate: number;
-        }>;
-        campaigns: Array<{
-            source: string;
-            medium: string;
-            campaign: string;
-            sessions: number;
-            convertedSessions: number;
-            orders: number;
-            revenue: number;
-            conversionRate: number;
-        }>;
-        pages: Array<{ page: string; views: number; sessions: number; averageSeconds: number }>;
-        devices: Array<{ device: string; sessions: number }>;
-        funnel: {
-            visitors: number;
-            productViewers: number;
-            cartSessions: number;
-            checkoutSessions: number;
-            purchasers: number;
-        };
-    };
-}
-
 interface HeatmapClick {
     x: number;
     y: number;
@@ -120,15 +72,8 @@ export default function AdminAnalyticsPage() {
     const [heatmapDevice, setHeatmapDevice] = React.useState<'mobile' | 'desktop'>('mobile');
     const [heatmapCoordinateSpace, setHeatmapCoordinateSpace] = React.useState<'page' | 'floating'>('page');
     const [heatmapSampleInfo, setHeatmapSampleInfo] = React.useState({ total: 0, sampled: 0, truncated: false });
-    const [performanceDays, setPerformanceDays] = React.useState(30);
-    const [performanceReport, setPerformanceReport] = React.useState<PerformanceReport | null>(null);
-    const [performanceLoading, setPerformanceLoading] = React.useState(false);
-    const [performanceError, setPerformanceError] = React.useState<string | null>(null);
     const displayCount = (value: number | null) => value === null ? 'Unavailable' : value.toLocaleString();
     const displayPrice = (value: number | null) => value === null ? 'Unavailable' : formatPrice(value);
-    const formatDuration = (seconds: number) => seconds < 60
-        ? `${Math.round(seconds)} sec`
-        : `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} sec`;
 
     React.useEffect(() => {
         if (new URLSearchParams(window.location.search).get('tab') === 'ux_heatmaps') {
@@ -252,58 +197,18 @@ export default function AdminAnalyticsPage() {
         return () => { active = false; };
     }, []);
 
-    React.useEffect(() => {
-        let active = true;
-        setPerformanceLoading(true);
-        setPerformanceError(null);
-        fetch(`/api/admin/analytics/performance?days=${performanceDays}`, { cache: 'no-store' })
-            .then(async response => {
-                const result = await response.json() as { data?: PerformanceReport['data']; periodDays?: number; error?: string };
-                if (!response.ok) throw new Error(result.error || 'Unable to load traffic and conversion analytics.');
-                if (!result.data || !result.periodDays) throw new Error('Analytics response did not include traffic metrics.');
-                if (active) setPerformanceReport({ data: result.data, periodDays: result.periodDays });
-            })
-            .catch(error => {
-                if (!active) return;
-                console.error('[StorefrontAnalytics] Could not load traffic metrics:', error);
-                setPerformanceReport(null);
-                setPerformanceError(error instanceof Error ? error.message : 'Unable to load traffic and conversion analytics.');
-            })
-            .finally(() => {
-                if (active) setPerformanceLoading(false);
-            });
-        return () => { active = false; };
-    }, [performanceDays]);
-
     const handleDownloadReport = () => {
         const headers = ['Metric', 'Value'];
-        const rows: Array<[string, string | number | null | undefined]> = [
-            ['Traffic reporting period', performanceReport ? `Last ${performanceReport.periodDays} days` : 'Unavailable'],
+        const rows = [
             ['Completed Order Revenue (All Time)', liveStats.totalRevenue],
             ['Registered Members', liveStats.activeUsers],
-            ['Consented Session Conversion Rate', performanceReport ? `${performanceReport.data.summary.conversionRate}%` : null],
-            ['Consented Unique Visitors', performanceReport?.data.summary.visitors],
-            ['Consented Sessions', performanceReport?.data.summary.sessions],
-            ['Consented Page Views', performanceReport?.data.summary.pageViews],
-            ['Average Engaged Time (seconds)', performanceReport?.data.summary.averageActiveSeconds],
+            ['Conversion Rate', liveStats.conversionRate],
             ['Average Order Value', liveStats.avgOrderValue],
             ['Listed-Price Stock Value', liveStats.inventoryValue],
             ['Support Tickets', liveStats.supportTickets]
         ];
-        performanceReport?.data.sources.forEach(row => {
-            rows.push([`Source ${row.source} / ${row.medium} · sessions`, row.sessions]);
-            rows.push([`Source ${row.source} / ${row.medium} · orders`, row.orders]);
-            rows.push([`Source ${row.source} / ${row.medium} · revenue`, row.revenue]);
-        });
-        performanceReport?.data.campaigns.forEach(row => {
-            rows.push([`Campaign ${row.campaign} (${row.source} / ${row.medium}) · sessions`, row.sessions]);
-            rows.push([`Campaign ${row.campaign} (${row.source} / ${row.medium}) · orders`, row.orders]);
-            rows.push([`Campaign ${row.campaign} (${row.source} / ${row.medium}) · revenue`, row.revenue]);
-        });
-        const encodeCsv = (value: string | number | null | undefined) =>
-            `"${String(value == null ? 'Unavailable' : value).replaceAll('"', '""')}"`;
         const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows]
-            .map(row => row.map(encodeCsv).join(","))
+            .map(row => row.map(value => value == null ? 'Unavailable' : String(value)).join(","))
             .join("\n");
         const link = document.createElement("a");
         link.setAttribute("href", encodeURI(csvContent));
@@ -361,7 +266,7 @@ export default function AdminAnalyticsPage() {
                 {[
                     { id: 'overview', label: '1. Executive Overview', icon: Sparkles },
                     { id: 'roi', label: '2. Completed Sales', icon: DollarSign },
-                    { id: 'performance', label: '3. Traffic & Conversion', icon: BarChart3 },
+                    { id: 'performance', label: '3. Channel Attribution', icon: BarChart3 },
                     { id: 'ab_testing', label: '4. Experiment Tracking', icon: Zap },
                     { id: 'dispatch', label: '5. Dispatch Fleet', icon: Truck },
                     { id: 'kitchen', label: '6. Kitchen KDS', icon: Flame },
@@ -404,11 +309,9 @@ export default function AdminAnalyticsPage() {
                         </Card>
                         <Card className="min-w-0 p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
                             <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Conversion Rate</p>
-                            <p className="text-3xl font-black text-foreground">
-                                {performanceReport ? `${performanceReport.data.summary.conversionRate}%` : performanceLoading ? 'Loading…' : 'Unavailable'}
-                            </p>
+                            <p className="text-3xl font-black text-foreground">{liveStats.conversionRate ?? 'Unavailable'}</p>
                             <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                {performanceReport ? `Consented sessions · ${performanceReport.periodDays} days` : 'Apply analytics migration to enable'}
+                                Requires session conversion data
                             </span>
                         </Card>
                         <Card className="min-w-0 p-4 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-white border border-slate-200/80 shadow-md space-y-2">
@@ -437,7 +340,7 @@ export default function AdminAnalyticsPage() {
                         <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                             <h4 className="text-sm font-black uppercase text-foreground">Current snapshot</h4>
                             <p className="text-xs font-medium text-slate-600 leading-relaxed">
-                                Completed-order revenue: {displayPrice(liveStats.totalRevenue)}; registered profiles: {displayCount(liveStats.activeUsers)}; listed-price stock value: {displayPrice(liveStats.inventoryValue)}. The traffic report counts only analytics-consented visits; visitors who decline are excluded.
+                                Completed-order revenue: {displayPrice(liveStats.totalRevenue)}; registered profiles: {displayCount(liveStats.activeUsers)}; listed-price stock value: {displayPrice(liveStats.inventoryValue)}. Conversion rate is unavailable because session conversion tracking is not configured.
                             </p>
                         </div>
                     </Card>
@@ -460,10 +363,8 @@ export default function AdminAnalyticsPage() {
                         </Card>
                         <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-md space-y-1">
                             <p className="text-[9px] font-black uppercase text-slate-400">Conversion Rate</p>
-                            <p className="text-3xl font-black text-foreground">
-                                {performanceReport ? `${performanceReport.data.summary.conversionRate}%` : performanceLoading ? 'Loading…' : 'Unavailable'}
-                            </p>
-                            <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Consented sessions · period selected</span>
+                            <p className="text-3xl font-black text-foreground">{liveStats.conversionRate ?? 'Unavailable'}</p>
+                            <span className="text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Live DB</span>
                         </Card>
                         <Card className="p-6 rounded-[2.5rem] bg-white border border-slate-200/80 shadow-md space-y-1">
                             <p className="text-[9px] font-black uppercase text-slate-400">Completed Revenue · All Time</p>
@@ -474,188 +375,38 @@ export default function AdminAnalyticsPage() {
                 </div>
             )}
 
-            {/* TAB 3: TRAFFIC & CONVERSION */}
+            {/* TAB 3: CHANNEL MIX */}
             {activeTab === 'performance' && (
                 <div className="space-y-8 text-left animate-in fade-in duration-500">
-                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-                        <div>
-                            <h2 className="text-2xl font-black uppercase tracking-tight text-foreground">Traffic & conversion</h2>
-                            <p className="mt-1 text-xs font-medium text-slate-500">Visits, engagement, campaign attribution, and completed orders from opted-in visitors.</p>
+                    <Card className="p-8 rounded-[3.5rem] bg-white border border-slate-200/80 shadow-md space-y-6">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                            <h3 className="text-2xl font-black uppercase tracking-tight text-foreground">Marketing Performance & Channel Mix</h3>
+                            <span className="text-2xl font-black text-primary">{displayPrice(liveStats.totalRevenue)} Revenue Volume</span>
                         </div>
-                        <label className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                            Reporting period
-                            <select
-                                aria-label="Analytics reporting period"
-                                value={performanceDays}
-                                onChange={event => setPerformanceDays(Number(event.target.value))}
-                                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700"
-                            >
-                                {[7, 30, 90, 365].map(days => <option key={days} value={days}>Last {days} days</option>)}
-                            </select>
-                        </label>
-                    </div>
 
-                    <p className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-relaxed text-sky-900">
-                        Privacy note: counts include only sessions with analytics consent. “Unique visitors” is an estimate based on consented account or browser IDs. Campaign revenue is attributed to the session source; ad spend is not connected, so this is not profit or ad ROI.
-                    </p>
-
-                    {performanceError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{performanceError}</p>}
-                    {performanceLoading && <div className="flex items-center gap-2 text-sm font-bold text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading traffic report…</div>}
-                    {performanceReport && (
-                        <>
-                            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-5">
-                                {[
-                                    ['Unique visitors', performanceReport.data.summary.visitors.toLocaleString(), 'Consented browsers/accounts'],
-                                    ['Visits / sessions', performanceReport.data.summary.sessions.toLocaleString(), 'New session after 30 min idle'],
-                                    ['Page views', performanceReport.data.summary.pageViews.toLocaleString(), 'Public pages only'],
-                                    ['Average time on site', formatDuration(performanceReport.data.summary.averageSessionSeconds), 'Page dwell; heartbeat fallback'],
-                                    ['Average engaged time', formatDuration(performanceReport.data.summary.averageActiveSeconds), 'Active time from session heartbeats'],
-                                    ['Completed orders', performanceReport.data.summary.orders.toLocaleString(), 'Paid or delivered'],
-                                    ['Session conversion', `${performanceReport.data.summary.conversionRate}%`, `${performanceReport.data.summary.convertedSessions.toLocaleString()} converted sessions`],
-                                    ['Completed revenue', displayPrice(performanceReport.data.summary.revenue), 'From consented attributed sessions'],
-                                    ['Single-page sessions', `${performanceReport.data.summary.singlePageRate}%`, `${performanceReport.data.summary.singlePageSessions.toLocaleString()} sessions`]
-                                ].map(([label, value, note]) => (
-                                    <Card key={label} className="min-w-0 p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                                        <p className="break-words text-2xl font-black text-foreground">{value}</p>
-                                        <p className="text-[9px] font-bold text-slate-500">{note}</p>
-                                    </Card>
-                                ))}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Direct Traffic</p>
+                                <p className="text-3xl font-black text-foreground">Unavailable</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase">No attribution data</p>
                             </div>
-
-                            <Card className="p-5 sm:p-7 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-5">
-                                <div>
-                                    <h3 className="text-lg font-black uppercase text-foreground">Conversion funnel</h3>
-                                    <p className="text-xs text-slate-500">Distinct consented sessions at each tracked stage.</p>
-                                </div>
-                                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                                    {[
-                                        ['Visited', performanceReport.data.funnel.visitors],
-                                        ['Viewed product', performanceReport.data.funnel.productViewers],
-                                        ['Added to cart', performanceReport.data.funnel.cartSessions],
-                                        ['Started checkout', performanceReport.data.funnel.checkoutSessions],
-                                        ['Completed order', performanceReport.data.funnel.purchasers]
-                                    ].map(([label, value], index) => (
-                                        <div key={label} className="relative rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-                                            <p className="mt-2 text-2xl font-black text-foreground">{Number(value).toLocaleString()}</p>
-                                            {index > 0 && <p className="mt-1 text-[9px] text-slate-400">{performanceReport.data.funnel.visitors ? `${(Number(value) / performanceReport.data.funnel.visitors * 100).toFixed(1)}% of visitors` : '—'}</p>}
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-
-                            <Card className="overflow-hidden rounded-3xl bg-white border border-slate-200 shadow-sm">
-                                <div className="p-5 sm:p-7 border-b border-slate-100">
-                                    <h3 className="text-lg font-black uppercase text-foreground">Traffic sources</h3>
-                                    <p className="text-xs text-slate-500">UTM source and medium, or referring domain. Revenue includes paid/delivered orders only.</p>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full min-w-[700px] text-left text-xs">
-                                        <thead className="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-500">
-                                            <tr>{['Source', 'Medium', 'Sessions', 'Orders', 'Conversion', 'Revenue'].map(label => <th key={label} className="px-5 py-3">{label}</th>)}</tr>
-                                        </thead>
-                                        <tbody>
-                                            {performanceReport.data.sources.map((row, index) => (
-                                                <tr key={`${row.source}-${row.medium}-${index}`} className="border-t border-slate-100">
-                                                    <td className="px-5 py-4 font-bold text-foreground">{row.source}</td>
-                                                    <td className="px-5 py-4 text-slate-600">{row.medium}</td>
-                                                    <td className="px-5 py-4">{row.sessions.toLocaleString()}</td>
-                                                    <td className="px-5 py-4">{row.orders.toLocaleString()}</td>
-                                                    <td className="px-5 py-4">{row.conversionRate}%</td>
-                                                    <td className="px-5 py-4 font-bold">{displayPrice(row.revenue)}</td>
-                                                </tr>
-                                            ))}
-                                            {performanceReport.data.sources.length === 0 && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-500">No consented sessions recorded in this period.</td></tr>}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
-
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                                <Card className="overflow-hidden rounded-3xl bg-white border border-slate-200 shadow-sm">
-                                    <div className="p-5 border-b border-slate-100">
-                                        <h3 className="text-lg font-black uppercase text-foreground">Campaigns</h3>
-                                        <p className="text-xs text-slate-500">
-                                            Tag ad links, for example <code className="rounded bg-slate-100 px-1 py-0.5">?utm_source=instagram&amp;utm_medium=paid_social&amp;utm_campaign=launch</code>.
-                                        </p>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full min-w-[560px] text-left text-xs">
-                                            <thead className="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-500"><tr>{['Campaign', 'Source / medium', 'Sessions', 'Orders', 'Revenue'].map(label => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
-                                            <tbody>
-                                                {performanceReport.data.campaigns.map((row, index) => (
-                                                    <tr key={`${row.campaign}-${row.source}-${index}`} className="border-t border-slate-100">
-                                                        <td className="px-4 py-3 font-bold">{row.campaign}</td>
-                                                        <td className="px-4 py-3 text-slate-600">{row.source} / {row.medium}</td>
-                                                        <td className="px-4 py-3">{row.sessions.toLocaleString()}</td>
-                                                        <td className="px-4 py-3">{row.orders.toLocaleString()} · {row.conversionRate}%</td>
-                                                        <td className="px-4 py-3 font-bold">{displayPrice(row.revenue)}</td>
-                                                    </tr>
-                                                ))}
-                                                {performanceReport.data.campaigns.length === 0 && <tr><td colSpan={5} className="px-4 py-7 text-center text-slate-500">No tagged campaigns recorded in this period.</td></tr>}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </Card>
-
-                                <Card className="overflow-hidden rounded-3xl bg-white border border-slate-200 shadow-sm">
-                                    <div className="p-5 border-b border-slate-100">
-                                        <h3 className="text-lg font-black uppercase text-foreground">Top pages</h3>
-                                        <p className="text-xs text-slate-500">Page-view counts and average time before leaving each page.</p>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full min-w-[420px] text-left text-xs">
-                                            <thead className="bg-slate-50 text-[9px] uppercase tracking-widest text-slate-500"><tr>{['Page', 'Views', 'Sessions', 'Avg. time'].map(label => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
-                                            <tbody>
-                                                {performanceReport.data.pages.map((row, index) => (
-                                                    <tr key={`${row.page}-${index}`} className="border-t border-slate-100">
-                                                        <td className="max-w-[200px] truncate px-4 py-3 font-bold" title={row.page}>{row.page}</td>
-                                                        <td className="px-4 py-3">{row.views.toLocaleString()}</td>
-                                                        <td className="px-4 py-3">{row.sessions.toLocaleString()}</td>
-                                                        <td className="px-4 py-3">{formatDuration(row.averageSeconds)}</td>
-                                                    </tr>
-                                                ))}
-                                                {performanceReport.data.pages.length === 0 && <tr><td colSpan={4} className="px-4 py-7 text-center text-slate-500">No page views recorded in this period.</td></tr>}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </Card>
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Referral Network</p>
+                                <p className="text-3xl font-black text-foreground">Unavailable</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase">No attribution data</p>
                             </div>
-
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                                <Card className="p-5 sm:p-7 rounded-3xl bg-white border border-slate-200 shadow-sm">
-                                    <h3 className="text-lg font-black uppercase text-foreground">Daily visits</h3>
-                                    <p className="mb-5 text-xs text-slate-500">Daily session counts in East Africa Time.</p>
-                                    <div className="space-y-2">
-                                        {performanceReport.data.daily.map(day => {
-                                            const maximum = Math.max(1, ...performanceReport.data.daily.map(item => item.sessions));
-                                            return (
-                                                <div key={day.date} className="grid grid-cols-[76px_1fr_42px] items-center gap-3 text-[10px]">
-                                                    <span className="text-slate-500">{new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                                                    <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-primary" style={{ width: `${day.sessions / maximum * 100}%` }} /></div>
-                                                    <span className="text-right font-bold text-slate-700">{day.sessions}</span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </Card>
-                                <Card className="p-5 sm:p-7 rounded-3xl bg-white border border-slate-200 shadow-sm">
-                                    <h3 className="text-lg font-black uppercase text-foreground">Device mix</h3>
-                                    <p className="mb-5 text-xs text-slate-500">Visitor sessions by broad device type.</p>
-                                    <div className="space-y-3">
-                                        {performanceReport.data.devices.map(row => (
-                                            <div key={row.device} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
-                                                <span className="text-xs font-bold text-slate-700">{row.device}</span>
-                                                <span className="text-sm font-black text-foreground">{row.sessions.toLocaleString()} sessions</span>
-                                            </div>
-                                        ))}
-                                        {performanceReport.data.devices.length === 0 && <p className="text-xs text-slate-500">No device data recorded yet.</p>}
-                                    </div>
-                                </Card>
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">Social Channels</p>
+                                <p className="text-3xl font-black text-foreground">Unavailable</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase">No attribution data</p>
                             </div>
-                        </>
-                    )}
+                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                                <p className="text-[9px] font-black uppercase text-slate-400">WhatsApp Dispatch</p>
+                                <p className="text-3xl font-black text-foreground">Unavailable</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase">No attribution data</p>
+                            </div>
+                        </div>
+                    </Card>
                 </div>
             )}
 
@@ -895,7 +646,7 @@ export default function AdminAnalyticsPage() {
                             <ul className="space-y-2 leading-relaxed">
                                 <li>Completed-order revenue (paid or delivered): {displayPrice(liveStats.totalRevenue)}.</li>
                                 <li>Registered member profiles: {displayCount(liveStats.activeUsers)}.</li>
-                                <li>Average completed-order value: {displayPrice(liveStats.avgOrderValue)}; consented-session conversion: {performanceReport ? `${performanceReport.data.summary.conversionRate}%` : 'Unavailable'}.</li>
+                                <li>Average completed-order value: {displayPrice(liveStats.avgOrderValue)}; conversion rate: {liveStats.conversionRate ?? 'Unavailable'}.</li>
                                 <li>Listed-price stock value (not cost valuation): {displayPrice(liveStats.inventoryValue)}.</li>
                                 <li>Support tickets recorded: {displayCount(liveStats.supportTickets)}.</li>
                             </ul>

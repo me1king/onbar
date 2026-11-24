@@ -1,122 +1,26 @@
 # Supabase migrations
 
-## Merchant partner workspace additions
+## Growth calendar and publishing queue
 
-The merchant partner workspace includes review replies, support-ticket history,
-weekly email summaries, and CSV-based stock counts. Apply these additive
-migrations in Supabase after their prerequisites:
+If the Admin Growth Calendar reports that it cannot load the publishing queue,
+apply `CONTENT_CALENDAR_QUEUE_MIGRATION.sql` in the Supabase SQL Editor. The
+migration installs the content master, variants, social account, compliance
+rule, and publishing queue tables used by the calendar and publishing engine.
+Calendar reads and writes go through the protected admin API, so the migration
+keeps direct browser access revoked. The API also reports an actionable setup
+message until this migration has been applied.
 
-- `MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql` requires
-  `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It adds
-  compatible products to approved merchant offers, including legacy
-  `image_gallery` photos, refreshes existing offer details when catalog fields
-  change, and creates a pending merchant review notification. Hidden and draft
-  products can be sent for merchant price review without making them visible to
-  customers. The bulk action runs as one atomic database operation, so a failed
-  product does not leave a partial catalog sync. Apply or re-apply it before
-  using **Send all products to merchants** in Beverage Vault to sync the full
-  beverage catalog.
-- `MERCHANT_CATALOG_PRICE_REVIEW_MIGRATION.sql` requires
-  `MERCHANT_OPERATIONS_MIGRATION.sql` and the product catalog schema. It
-  enables merchant price requests and Admin approval or rejection. Approval
-  currently changes the shared catalog price for every merchant and customer
-  using that product.
-- `MERCHANT_REVIEW_REPLIES_MIGRATION.sql` requires
-  `SECURITY_HARDENING_MIGRATION.sql`, `VERIFIED_PRODUCT_REVIEWS_MIGRATION.sql`,
-  `MERCHANT_OPERATIONS_MIGRATION.sql`, and `DISPATCH_MIGRATION.sql`.
-- `MERCHANT_SUPPORT_HISTORY_MIGRATION.sql` requires
-  `MERCHANT_OPERATIONS_MIGRATION.sql` and the existing `support_tickets` table
-  from `OPERATIONAL_FEATURES_MIGRATION.sql` or the equivalent core-schema
-  script. Its private merchant/admin conversation table matches the installed
-  support-ticket ID type, including UUID and numeric schemas.
-- `MERCHANT_WEEKLY_DIGEST_MIGRATION.sql` requires
-  `MERCHANT_OPERATIONS_MIGRATION.sql`.
+## Game Night analytics
 
-The reply, ticket-history, and digest preference features remain unavailable
-until their corresponding migrations are applied.
-
-If a merchant cannot see a catalog product, apply or re-apply
-`MERCHANT_CATALOG_UPDATE_NOTIFICATIONS_MIGRATION.sql`, then use **Send all
-products to merchants** in Beverage Vault. The action sends catalog items
-regardless of customer-facing hidden/draft status, and reports the number of
-products and eligible merchant-product listings processed.
-Re-applying the migration also fixes the JSONB/text-array type mismatch in older
-versions of the catalog function. Beverage classification includes alcohol,
-liquor, spirits, beer, wine, cider, and the other drink categories; retrying
-publication restores missing offers and refreshes existing product details.
-
-Merchant support tickets and follow-up messages notify the configured admin
-contact by email. Admin replies notify the merchant and appear in the same
-conversation; the merchant workspace refreshes the thread every 15 seconds.
-Messages remain saved if an email alert fails, and the sender sees a warning.
-The alert recipient uses `ADMIN_EMAIL` or the published contact email; a
-transactional email sender must also be configured.
-
-The weekly email summary is opt-in and runs on Mondays after 09:00
-Africa/Nairobi when the persistent `merchant-alerts` worker is running. It
-requires `INTERNAL_API_SECRET`, an HTTPS `INTERNAL_API_BASE_URL` or
-`NEXT_PUBLIC_BASE_URL`, and a configured transactional email sender. Paid
-payout totals appear only when the verified settlement ledger migration exists;
-tips are explicitly reported as unavailable because they are not recorded in
-that ledger. Delivered item values are order-record values, not seller earnings
-or a payout promise.
-
-## Merchant settlements and M-Pesa payouts
-
-The merchant settlement workflow is fail-closed and is not live merely because
-the UI or API is deployed. In Supabase, apply `MERCHANT_OPERATIONS_MIGRATION.sql`,
-`DISPATCH_MIGRATION.sql`, and `DARAJA_CHECKOUT_MIGRATION.sql` before
-`MERCHANT_SETTLEMENTS_MIGRATION.sql`. Confirm that all migrations completed
-successfully before configuring any merchant terms.
-
-The current ledger calculates a configured merchant-share percentage against
-traced, paid-and-delivered item value. Returned quantities reduce eligible
-quantities only when the return is recorded as a merchant inventory movement.
-It does not separately calculate tax, platform-fee, or cash-refund deductions.
-Finance must approve rules compatible with this calculation or extend the
-ledger before enabling real transfers; do not infer a merchant's earnings from
-order values.
-
-After finance approval, use **Lord → Merchant Settlements** to record the
-merchant share and minimum payout, verify the submitted M-Pesa destination
-through the approved out-of-band finance procedure, and reconcile eligible
-deliveries. A merchant can then request an available payout; Finance reviews
-the request before a provider transfer is attempted. Each attempt requires a
-verified current destination and is reconciled from the HTTPS
-`/api/mpesa/merchant-payouts/[token]` callback. Do not manually retry an
-uncertain provider result until it has been reconciled with Safaricom.
-
-Configure these server-side values in the deployment environment:
-
-- `MERCHANT_PAYOUT_DATA_ENCRYPTION_KEY`: base64-encoded 32-byte key used to
-  encrypt payout destination numbers.
-- `DARAJA_B2C_ENABLED=true`, `DARAJA_B2C_INITIATOR_NAME`,
-  `DARAJA_B2C_SECURITY_CREDENTIAL`, and `DARAJA_B2C_MAX_AMOUNT_KES` (an integer
-  from 1 to 250000).
-- Daraja checkout credentials and their selected environment through **Admin
-  Settings → Integrations**. `PAYMENT_CREDENTIAL_ENCRYPTION_KEY` must be
-  configured to store those credentials.
-- A public HTTPS application URL so Safaricom can reach the payout result and
-  timeout callbacks.
-
-Keep the payout feature disabled while configuring and testing Daraja sandbox
-credentials. Complete a full sandbox request, callback, failure, and
-reconciliation test before enabling production transfers. Never put provider
-secrets in client-side environment variables or source control.
-
-The CSV importer is stock-only. It previews rows, checks the merchant's current
-stock count, and submits each change through the existing authenticated,
-audited stock-ledger operation. Stock increases still require lot details and,
-for alcohol, the merchant's excise-stamp attestation. Price proposals in the
-legacy Partner Workspace still target the shared catalog price; they are not
-merchant-specific checkout prices. Do not enable CSV price imports until
-merchant-specific pricing is connected to browse, checkout, order allocation,
-and fulfillment.
-
-Liquor licence review remains manual; document upload and licence-number format
-checks do not independently verify a licence. Alcohol delivery still requires
-an in-person age/ID check at handoff. The current rider confirmation records an
-attestation and is not an independent age-verification provider.
+After `FINAL_ESTABLISHMENT_SQL.sql` and
+`SECURITY_HARDENING_MIGRATION.sql` are installed, apply
+`GAME_NIGHT_ANALYTICS_MIGRATION.sql` in the Supabase SQL Editor. It adds an
+indexed, service-role-only aggregation function for page opens, game starts,
+open-to-play conversion, mode selection, online-room activity, and gameplay
+moves. The Admin dashboard is under **Growth → Game Night Analytics**.
+Tracking uses the existing consent-gated analytics pipeline; visitors who
+decline analytics are not counted, and player names and room invite codes are
+not recorded.
 
 ## Email Command Center
 
@@ -134,24 +38,6 @@ provider callback URL to `/api/webhooks/jmsurf-mail`. The admin interface is
 available under **Patrons → Email Command Center**. Marketing sends stay limited
 to consented lists. Inbound email parsing requires a separate inbound provider
 and is not included in this outbound setup.
-
-## Abandoned checkout email recovery
-
-After applying `FINAL_ESTABLISHMENT_SQL.sql`, `CRM_CONSENT_MESSAGING_MIGRATION.sql`,
-and `CHECKOUT_EMAIL_MARKETING_OPTIN_MIGRATION.sql`, apply
-`ABANDONED_CHECKOUT_EMAIL_RECOVERY_MIGRATION.sql`. Checkout recovery records are
-created only when the customer explicitly opts in to marketing email. The
-Marketing → Abandoned Checkouts screen makes records eligible after 60 minutes
-of inactivity and provides **Preview & edit → Send** for one email reminder.
-The send endpoint rechecks consent, recent orders, and product availability,
-adds the existing marketing unsubscribe link, and uses an expiring recovery
-link to restore the saved cart. Recovered order attribution is recorded when
-that restored checkout is placed.
-
-This is an admin-triggered queue, not a scheduled campaign. Configure and run a
-trusted scheduler before enabling automatic sends; no cron job is created by
-this migration. Visitors without marketing consent remain outside the
-recoverable email queue.
 
 ## Multi-level member referrals
 
@@ -204,30 +90,27 @@ The admin APIs use the server-side `SUPABASE_SERVICE_ROLE_KEY`. Keep that key
 server-only; the recovery migration denies direct browser access to its finance
 tables.
 
-The Owner/Admin growth calendar uses `/api/admin/growth-calendar` for queue
-reads and writes and requires the `can_manage_marketing` permission; it does not
-depend on browser access to `publishing_queue` or `content_master`.
+## Customer visit and order peak hours
 
-The Owner/Admin audience builder uses `/api/admin/marketing/audiences` for
-segment reads, reach estimates, creation, and deletion. It requires the
-`can_manage_marketing` permission, the server-side service-role key, and the
-audience and CRM schema from `FINAL_ESTABLISHMENT_SQL.sql` and
-`CRM_CONSENT_MESSAGING_MIGRATION.sql`.
-
-The Tactical Camera currently publishes Instagram posts only. Connect an
-Instagram professional account in Social Accounts and apply
-`FOOD_ADDONS_MIGRATION.sql` to provide the public `onlinebar-assets` image
-bucket used for uploaded photos. Other social channels remain unavailable until
-their publishing integrations are configured.
-
-## Private document vault
-
-Run `ADMIN_VAULT_MIGRATION.sql` in the Supabase SQL Editor before using the
-Owner/Admin Ledger Audit vault. It creates the private `admin_vault` table and
-`admin-vault` storage bucket, disables direct browser access, and sets a 25 MB
-file limit. The vault API requires an admin session with
-`can_view_sensitive_data` and the server-side `SUPABASE_SERVICE_ROLE_KEY`.
-Uploads use short-lived signed URLs; downloads use expiring signed links.
+After applying `FINAL_ESTABLISHMENT_SQL.sql`,
+`MERCHANT_OPERATIONS_MIGRATION.sql`, `SECURITY_HARDENING_MIGRATION.sql`, and
+`LIVE_CUSTOMER_JOURNEY_MIGRATION.sql`, apply
+`CUSTOMER_TIME_ANALYTICS_MIGRATION.sql`. It adds a service-role-only analytics
+function for the last 30 or 90 complete days. The Admin **Analytics → Peak
+Hours** tab shows a weekday/hour heatmap, average hourly/weekday activity,
+storefront-to-purchase funnel, recorded consented-session traffic sources, and
+approved merchants' configured weekly schedules in Africa/Nairobi time.
+Visitors are distinct, currently-consented sessions per local day/hour; sessions
+whose analytics consent is false are excluded. Orders exclude cancelled/failed
+statuses, and revenue includes only orders marked paid or delivered. The report
+does not infer optimal email timing because email opens and clicks are not part
+of this data source. Merchant hours are configured schedules, not proof that a
+location is physically open. New source labels use campaign `utm_source` values
+or the recorded referrer host; old generic “Direct” values are reported as
+unattributed because their original referrer was not saved. Keep
+`SUPABASE_SERVICE_ROLE_KEY` server-only. Traffic insights will be sparse when
+customers have not opted in to analytics or the store has little visit/order
+history.
 
 ## Consent-based live customer journeys
 
@@ -242,22 +125,6 @@ customers who decline or revoke analytics consent are not included.
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Existing sessions default to no
 analytics consent and therefore stay hidden unless the visitor opts in again.
-
-## Storefront traffic and conversion analytics
-
-After applying `FINAL_ESTABLISHMENT_SQL.sql` and
-`LIVE_CUSTOMER_JOURNEY_MIGRATION.sql`, apply
-`STOREFRONT_ANALYTICS_MIGRATION.sql`. The owner Analytics → Traffic & Conversion
-report then shows consented visitors and sessions, page views, engaged time,
-source/medium and UTM campaign performance, page activity, devices, and the
-cart-to-paid-order funnel. Session attribution includes only allow-listed UTM
-values and the referring hostname; query strings and contact details are not
-stored. Sessions expire after 30 minutes of inactivity.
-
-These are consented-traffic estimates, not total site visitors. Use UTM tags on
-ad links to identify campaigns. Ad spend is not imported, so attributed revenue
-is not ad ROI or profit. The migration grants report access only to
-`service_role`; the dashboard API also checks the admin revenue permission.
 
 ## Merchant order alerts
 
@@ -390,41 +257,6 @@ one-minute retries, the order remains available for manual dispatch review.
 Assignment notifications do not mean the rider accepted the mission; rider
 delivery status and the existing secure handover checks remain authoritative.
 
-## Operations order recovery and rider contacts
-
-After applying `DISPATCH_MIGRATION.sql` and
-`COD_RIDER_DISPATCH_MIGRATION.sql`, apply
-`ORDER_RIDER_REASSIGNMENT_MIGRATION.sql`. The Operations control room can retry
-failed customer notifications only for the order's current status and through
-the selected channel's existing consent and notification rules. Failed
-merchant alerts can be retried while the order remains eligible for merchant
-fulfillment. Supplier reallocation is available only before rider dispatch.
-Rider replacement is limited to `Dispatched` orders before pickup; it rechecks
-merchant readiness, rider verification, heartbeat, capacity, and route
-eligibility, records the admin reason in dispatch history, and notifies the
-customer and replacement rider. Contact the previous rider directly to prevent
-a duplicate pickup. Orders already picked up, out for delivery, or completed
-must be resolved through the delivery incident process instead.
-
-After applying `DISPATCH_MIGRATION.sql`, apply
-`RIDER_PROFILE_DETAILS_MIGRATION.sql` to enable the rider terminal's Emergency
-Contact and Payments sections. Riders can save their emergency contact and
-M-Pesa payout number/name themselves. The saved payout details are preferences,
-not proof of name verification or a live payout transaction; name checks remain
-an admin responsibility.
-
-After applying `DISPATCH_MIGRATION.sql` and
-`RIDER_ORDER_ALERTS_MIGRATION.sql`, apply
-`RIDER_OFFLINE_LOCATION_AND_BUZZ_MIGRATION.sql`. When a verified rider goes
-offline, the server atomically records the last saved GPS coordinates and GPS
-timestamp in a private, service-role-only audit table before changing the
-online state. Admins with rider-management access can view the latest snapshot
-on the rider profile. If the rider had no valid GPS fix, the offline event is
-still recorded without coordinates. Operations can also send an assigned,
-not-yet-collected rider a push buzz that vibrates on supported devices and
-opens Rider Command; an SMS fallback is queued through the existing Redis/Twilio
-worker. Keep web push, Redis, Twilio, and the worker configured for delivery.
-
 ## Rider verification onboarding
 
 After applying `DISPATCH_MIGRATION.sql` and
@@ -525,15 +357,6 @@ single and bulk admin updates and verified-rider assignment. The API does not
 fall back to direct status writes if those functions are missing: apply the
 migration rather than bypassing the state machine. Payment callbacks remain
 the authority for online payment confirmation.
-
-The customer `/track` page shows the latest recorded order-status events from
-this same migration. The Admin finance page also includes a read-only payment
-review queue; it requires `FINAL_ESTABLISHMENT_SQL.sql` and
-`DISPATCH_MIGRATION.sql` for orders and verified payment confirmations.
-`PAYHERO_DRINK_ORDERS_MIGRATION.sql` and `DARAJA_CHECKOUT_MIGRATION.sql` extend
-the supported payment providers when those gateways are enabled. The queue
-flags stale online checkouts and payment/order mismatches for manual review; it
-does not mark payments paid, issue refunds, or replace provider reconciliation.
 
 After merchant operations and dispatch are installed, apply
 `ORDER_DISPATCH_AUTOMATION_MIGRATION.sql` to create the service-role-only
@@ -733,25 +556,3 @@ projects where the original commerce migration is already installed.
 Payment verification and ticket issuance are implemented; complete the
 documented production configuration and sandbox acceptance before accepting
 customer payments.
-
-## Growth calendar and publishing queue
-
-If the Admin Growth Calendar reports that it cannot load the publishing queue,
-apply `CONTENT_CALENDAR_QUEUE_MIGRATION.sql` in the Supabase SQL Editor. The
-migration installs the content master, variants, social account, compliance
-rule, and publishing queue tables used by the calendar and publishing engine.
-Calendar reads and writes go through the protected admin API, so the migration
-keeps direct browser access revoked. The API also reports an actionable setup
-message until this migration has been applied.
-
-## Game Night analytics
-
-After `FINAL_ESTABLISHMENT_SQL.sql` and
-`SECURITY_HARDENING_MIGRATION.sql` are installed, apply
-`GAME_NIGHT_ANALYTICS_MIGRATION.sql` in the Supabase SQL Editor. It adds an
-indexed, service-role-only aggregation function for page opens, game starts,
-open-to-play conversion, mode selection, online-room activity, and gameplay
-moves. The Admin dashboard is under **Growth → Game Night Analytics**.
-Tracking uses the existing consent-gated analytics pipeline; visitors who
-decline analytics are not counted, and player names and room invite codes are
-not recorded.

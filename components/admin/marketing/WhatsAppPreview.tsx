@@ -26,7 +26,7 @@ export default function WhatsAppPreview({ imageUrl, body }: WhatsAppPreviewProps
                 <div className="bg-white rounded-2xl p-2 pb-1 shadow-sm max-w-[90%] animate-in slide-in-from-left-4 duration-700">
                     {imageUrl && (
                         <div className="aspect-video bg-slate-50 rounded-xl mb-2 relative overflow-hidden flex items-center justify-center p-4">
-                            <Image src={imageUrl} fill unoptimized className="object-contain" alt="Preview" />
+                            <Image src={imageUrl} fill className="object-contain" alt="Preview" />
                         </div>
                     )}
                     <div className="px-2 py-1 space-y-2">

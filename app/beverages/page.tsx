@@ -134,11 +134,13 @@ export default function BeverageCommandPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 text-foreground text-left selection:bg-primary/20 pb-40">
+        <div className="min-h-screen bg-white text-foreground text-left selection:bg-primary/20 pb-40">
             {/* HERO SECTION */}
-            <header className="py-16 px-4 sm:px-6 lg:px-8 relative overflow-hidden bg-white border-b border-slate-200/80 shadow-sm">
+            <header className="relative isolate overflow-hidden border-b border-amber-100 bg-[#fff8ec] px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+                <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-24 h-80 w-80 rounded-full bg-amber-300/40 blur-3xl" />
+                <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 left-0 h-72 w-72 rounded-full bg-orange-200/50 blur-3xl" />
                 <div className="max-w-7xl mx-auto relative z-10 space-y-6">
-                    <Link href="/shop" className="inline-flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 hover:text-primary transition-colors">
+                    <Link href="/shop" className="inline-flex items-center gap-2 text-[10px] font-black uppercase text-slate-600 hover:text-primary transition-colors">
                         <ArrowLeft size={16} /> Return to Main Menu
                     </Link>
 
@@ -146,11 +148,12 @@ export default function BeverageCommandPage() {
                         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 text-[9px] font-black uppercase tracking-[0.3em]">
                             <Snowflake size={14} className="text-amber-500" /> Beverages
                         </div>
-                        <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tighter leading-none italic text-foreground">
-                            Beverage <span className="text-primary italic">Command.</span>
+                        <h1 className="text-5xl font-black uppercase leading-[0.94] tracking-[-0.055em] text-slate-950 sm:text-6xl md:text-7xl">
+                            Beverages
+                            <span className="mt-1 block text-primary">for the night.</span>
                         </h1>
-                        <p className="text-slate-500 font-medium text-base sm:text-lg italic leading-relaxed">
-                            &quot;Order online 24/7. Estimated {LOCAL_DELIVERY_ESTIMATE} local delivery in eligible Nairobi areas; confirm address and availability at checkout.&quot;
+                        <p className="text-slate-600 font-medium text-base sm:text-lg leading-relaxed">
+                            Order online 24/7. Estimated {LOCAL_DELIVERY_ESTIMATE} local delivery in eligible Nairobi areas; confirm address and availability at checkout.
                         </p>
                     </div>
                 </div>

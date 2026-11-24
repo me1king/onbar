@@ -117,6 +117,11 @@ async function processEvent(event: { id: string, event_type: SystemEventType, pa
             predictiveEngine.scanForReplenishment().catch(e => console.warn("Predictive Node Failure:", e));
 
             // 💰 Trigger Ledger (Payouts, Settlements) - Pillar 3
+            // 🔔 Trigger Notifications - Pillar 5
+            if (user_id) {
+                triggerNotificationByEvent('ORDER_DELIVERED', { userId: user_id, orderId: Number(payload.orderId) })
+                    .catch(e => console.warn("Notification Node Failure:", e));
+            }
             break;
 
         case 'REVIEW_CREATED':

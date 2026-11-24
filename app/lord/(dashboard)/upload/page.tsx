@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useMemo, useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import TacticalEventFeed from '@/components/admin/TacticalEventFeed';
@@ -183,11 +183,6 @@ function UploadContent() {
   const { settings } = useSettings();
   const searchParams = useSearchParams();
   const categoryScope = searchParams.get('category')?.trim().toLowerCase() || '';
-  const productIdParam = searchParams.get('productId');
-  const requestedProductId = productIdParam && /^\d+$/.test(productIdParam)
-      ? Number(productIdParam)
-      : null;
-  const handledProductId = useRef<number | null>(null);
   const isExtrasPage = categoryScope === 'extras';
   const scopedInitialForm = { ...initialForm, category: categoryScope || initialForm.category };
   const [form, setForm] = useState(scopedInitialForm);
@@ -204,8 +199,7 @@ function UploadContent() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formSession, setFormSession] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
-  const [notificationRetryProductId, setNotificationRetryProductId] = useState<number | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isVisionScanning, setIsVisionScanning] = useState(false);
   const [imageAudits, setImageAudits] = useState<Record<string, ImageAuditResult>>({});
   const visibleProducts = useMemo(
@@ -422,7 +416,7 @@ function UploadContent() {
     }
   };
 
-  const startEditing = useCallback((product: Product) => {
+  const startEditing = (product: Product) => {
     const vStock: Record<string, string> = {};
     if (product.variant_stock) Object.entries(product.variant_stock).forEach(([k, v]) => vStock[k] = v.toString());
     const vPrices: Record<string, string> = {};
@@ -486,24 +480,7 @@ function UploadContent() {
     }
     fetchHubStock();
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
-
-  useEffect(() => {
-    if (
-      requestedProductId === null
-      || products.length === 0
-      || handledProductId.current === requestedProductId
-    ) return;
-
-    handledProductId.current = requestedProductId;
-    const product = products.find(item => item.id === requestedProductId);
-    if (!product) {
-      setMessage({ type: 'error', text: `Product #${requestedProductId} could not be found in inventory.` });
-      return;
-    }
-
-    startEditing(product);
-  }, [products, requestedProductId, startEditing]);
+  };
 
   const cancelEditing = () => {
     selectedImagePreviews.forEach(URL.revokeObjectURL);
@@ -616,12 +593,7 @@ function UploadContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(editingId ? { id: editingId, product: currentPayload } : { product: currentPayload })
       });
-      const saveResult = await saveResponse.json() as {
-          id?: number;
-          error?: string;
-          merchantNotificationCount?: number | null;
-          merchantNotificationWarning?: string | null;
-      };
+      const saveResult = await saveResponse.json() as { id?: number; error?: string };
       if (!saveResponse.ok || typeof saveResult.id !== 'number') {
           throw new Error(saveResult.error || 'Product could not be saved.');
       }
@@ -629,18 +601,13 @@ function UploadContent() {
       productSaved = true;
 
       await logAuditAction(email || 'admin', editingId ? 'UPDATE_PRODUCT' : 'CREATE_PRODUCT', { id: savedId, name: productData.name });
-      setNotificationRetryProductId(saveResult.merchantNotificationWarning ? savedId : null);
-      setMessage({
-          type: saveResult.merchantNotificationWarning ? 'warning' : 'success',
-          text: saveResult.merchantNotificationWarning
-              ? `Product #${savedId} saved. ${saveResult.merchantNotificationWarning}`
-              : editingId
-                  ? `Product #${savedId} saved. ${saveResult.merchantNotificationCount || 0} new merchant update notifications sent.`
-                  : `Product #${savedId} created. ${saveResult.merchantNotificationCount || 0} compatible approved merchants notified to review price and stock.`
-      });
-      if (!saveResult.merchantNotificationWarning) setTimeout(() => setMessage(null), 4000);
+      setMessage({ type: 'success', text: editingId ? `Product #${savedId} Refined & Saved!` : `Product #${savedId} Ingested to Cellar Hub!` });
+      setTimeout(() => setMessage(null), 4000);
       cancelEditing();
       fetchProducts();
+      fetchProducts();
+      setMessage({ type: 'success', text: 'Grid Node Synchronized!' });
+      setTimeout(() => setMessage(null), 3000);
     } catch (err: unknown) {
         const error = err as Error;
         if (!productSaved && uploadedPaths.length > 0) {
@@ -672,27 +639,6 @@ function UploadContent() {
         setMessage({ type: 'error', text: error.message });
     } finally {
         setIsSubmitting(false);
-    }
-  };
-
-  const retryMerchantNotifications = async () => {
-    if (!notificationRetryProductId) return;
-    try {
-      const response = await fetch('/api/admin/products', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'notify_merchants', id: notificationRetryProductId })
-      });
-      const result = await response.json() as { merchantNotificationCount?: number; error?: string };
-      if (!response.ok) throw new Error(result.error || 'Merchant notifications could not be retried.');
-      setNotificationRetryProductId(null);
-      setMessage({
-        type: 'success',
-        text: `Product #${notificationRetryProductId}: ${result.merchantNotificationCount || 0} compatible approved merchants notified.`
-      });
-      setTimeout(() => setMessage(null), 4000);
-    } catch (error) {
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Merchant notifications could not be retried.' });
     }
   };
 
@@ -730,95 +676,86 @@ function UploadContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50/50 via-slate-50 to-white px-4 py-8 text-left selection:bg-primary/20 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 sm:gap-8">
+    <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8 text-left selection:bg-primary/20">
+      <div className="mx-auto flex max-w-7xl flex-col gap-8">
 
         {/* HEADER HUB */}
-        <div className="group relative flex flex-col items-start justify-between gap-6 overflow-hidden rounded-[2rem] border border-white bg-gradient-to-r from-white via-white to-amber-50/80 p-6 shadow-[0_20px_70px_-45px_rgba(15,23,42,0.35)] sm:p-8 lg:flex-row lg:items-center">
-            <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-amber-300/20 blur-3xl transition-transform duration-700 group-hover:scale-125 motion-reduce:transition-none" />
-            <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-1/3 h-48 w-48 rounded-full bg-orange-200/20 blur-3xl" />
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
             <div className="relative z-10 space-y-2 text-left">
                 <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-primary/10 bg-primary/[0.06] px-3 py-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                      <span className="text-[10px] font-black uppercase tracking-[0.22em] text-primary">{isExtrasPage ? 'Extras Studio' : 'Cellar Master'}</span>
-                    </span>
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{isExtrasPage ? 'Extras Studio' : 'Cellar Master'}</span>
                 </div>
-                <h1 className="text-3xl font-black leading-tight tracking-tight text-slate-950 uppercase sm:text-4xl">
+                <h1 className="text-4xl font-black tracking-tighter text-foreground uppercase leading-none">
                   {editingId ? 'Refine Product' : isExtrasPage ? 'Extras Inventory' : 'Inventory Master'}
                 </h1>
-                <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-600">
+                <p className="text-slate-500 text-sm font-medium italic">
                     {isExtrasPage ? 'Upload and manage extras, add product photos, and organize them by storefront type.' : 'Deploy premium beverage inventory to the online bar.'}
                 </p>
             </div>
 
             {message && (
                 <div className={cn(
-                    "relative z-10 flex items-center gap-3 rounded-2xl border p-4 animate-in fade-in slide-in-from-top-2",
-                    message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                        : message.type === 'warning' ? "bg-amber-50 border-amber-200 text-amber-900"
-                            : "bg-rose-50 border-rose-100 text-rose-600"
+                    "p-4 rounded-[1.5rem] border flex items-center gap-3 animate-in fade-in slide-in-from-top-2",
+                    message.type === 'success' ? "bg-primary/10 border-primary/20 text-primary" : "bg-rose-50 border-rose-100 text-rose-600"
                 )}>
                     <Layers className="h-5 w-5" />
                     <p className="text-xs font-black uppercase tracking-widest">{message.text}</p>
-                    {notificationRetryProductId && <Button type="button" variant="outline" onClick={() => void retryMerchantNotifications()} className="shrink-0 rounded-xl border-amber-300 bg-white text-amber-950">
-                        Retry merchant notifications
-                    </Button>}
                 </div>
             )}
 
-            <div className="relative z-10 flex items-center gap-3">
-                <Button variant="outline" onClick={generateSupplierPO} className="h-12 rounded-2xl border-primary/20 bg-white px-5 text-[10px] font-black uppercase tracking-widest text-slate-700 shadow-sm transition-all hover:border-primary/40 hover:bg-amber-50">
+            <div className="flex items-center gap-4 relative z-10">
+                <Button variant="outline" onClick={generateSupplierPO} className="h-12 px-6 rounded-xl border-slate-200 bg-white font-black uppercase text-[9px] tracking-widest">
                     <Download className="h-3 w-3 mr-2" /> PO
                 </Button>
                 {editingId && (
-                    <Button onClick={cancelEditing} variant="outline" className="h-12 rounded-2xl border-rose-200 px-5 text-[10px] font-black uppercase text-rose-600 hover:bg-rose-50">Cancel editing</Button>
+                    <Button onClick={cancelEditing} variant="outline" className="h-12 px-6 rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 font-black uppercase text-[9px]">Abort</Button>
                 )}
             </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
-          <div className="space-y-6 lg:col-span-7">
-            <form key={`form-${editingId || 'new'}-${formSession}`} onSubmit={handleSubmit} className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+          <div className="lg:col-span-7 space-y-8">
+            <form key={`form-${editingId || 'new'}-${formSession}`} onSubmit={handleSubmit} className="space-y-8">
 
-              <Card className="overflow-visible rounded-[2rem] border border-slate-200/70 bg-white/95 shadow-[0_16px_50px_-38px_rgba(15,23,42,0.35)]">
-                  <button type="button" onClick={() => toggleSection('basic')} className="flex w-full items-center justify-between rounded-t-[2rem] p-6 transition-colors hover:bg-amber-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:p-7">
+              <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
+                  <button type="button" onClick={() => toggleSection('basic')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
                       <div className="flex items-center gap-4">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/10 bg-gradient-to-br from-amber-100 to-orange-50 text-primary shadow-sm"><Info className="h-5 w-5" /></div>
+                          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Info className="h-5 w-5" /></div>
                           <div className="text-left">
-                              <h2 className="text-base font-black tracking-tight text-slate-900 uppercase sm:text-lg">Basic Information</h2>
-                              <p className="mt-1 text-[10px] font-bold tracking-[0.12em] text-slate-500 uppercase">Identify beverage specs</p>
+                              <h2 className="text-lg font-black text-foreground uppercase tracking-tighter">Basic Information</h2>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Identify beverage specs</p>
                           </div>
                       </div>
                       {openSections.basic ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
                   </button>
                   {openSections.basic && (
-                      <CardContent className="space-y-6 p-6 pt-0 text-left sm:p-8 sm:pt-0">
+                      <CardContent className="p-10 pt-0 space-y-6 text-left">
                           <div className="grid sm:grid-cols-2 gap-6">
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Product Name</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Product Name</label>
                                   <Input name="name" value={form.name} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" required />
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Brand</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Brand</label>
                                   <Input name="brand" value={form.brand} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50" />
                               </div>
                           </div>
                           <div className="grid sm:grid-cols-2 gap-6">
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Category</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Category</label>
                                 <select name="category" value={form.category} onChange={handleInputChange} disabled={isExtrasPage} className="w-full h-14 rounded-2xl border border-slate-100 bg-slate-50 px-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-70">
                                     {categoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.label}</option>)}
                                 </select>
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Storefront Type / Subcategory</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Storefront Type / Subcategory</label>
                                   <Input name="sub_category" value={form.sub_category} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50" placeholder="e.g. Corkscrews & Bottle Openers" />
                                   <p className="px-1 text-xs text-slate-400">This creates the type filter on the Extras storefront page.</p>
                               </div>
                               <div className="space-y-2 text-left flex items-end gap-2">
                                   <div className="flex-1 space-y-2">
-                                      <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">SKU</label>
+                                      <label className="text-[9px] font-black uppercase text-slate-400 ml-1">SKU</label>
                                       <Input name="sku" value={form.sku} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-mono" />
                                   </div>
                                   <Button type="button" onClick={triggerBarScanner} variant="outline" className="h-14 w-14 rounded-2xl border-slate-100 bg-slate-50 text-slate-400 hover:text-primary">
@@ -845,8 +782,8 @@ function UploadContent() {
 
               {!isExtrasPage && <>
               {/* BEVERAGE SPECS & ORIGIN NODE */}
-              <Card className="overflow-visible rounded-[2rem] border border-slate-200/70 bg-white/95 shadow-[0_16px_50px_-38px_rgba(15,23,42,0.35)]">
-                  <button type="button" onClick={() => toggleSection('beverageSpecs')} className="flex w-full items-center justify-between rounded-t-[2rem] p-6 transition-colors hover:bg-amber-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:p-7">
+              <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
+                  <button type="button" onClick={() => toggleSection('beverageSpecs')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
                       <div className="flex items-center gap-4">
                           <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shadow-sm"><Wine className="h-5 w-5" /></div>
                           <div className="text-left">
@@ -857,30 +794,30 @@ function UploadContent() {
                       {openSections.beverageSpecs ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
                   </button>
                   {openSections.beverageSpecs && (
-                      <CardContent className="space-y-6 p-6 pt-0 text-left sm:p-8 sm:pt-0">
+                      <CardContent className="p-10 pt-0 space-y-6 text-left">
                           <div className="grid sm:grid-cols-3 gap-6">
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Alcohol Content (% ABV)</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Alcohol Content (% ABV)</label>
                                   <Input name="abv_label" value={form.abv_label} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-black text-amber-600" placeholder="e.g. 40% ABV" />
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Place / Country of Origin</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Place / Country of Origin</label>
                                   <Input name="origin" value={form.origin} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. Ireland, Scotland, France, SA" />
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Region / Terroir</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Region / Terroir</label>
                                   <Input name="region" value={form.region} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" placeholder="e.g. Highlands, Bordeaux, Stellenbosch" />
                               </div>
                           </div>
 
                           <div className="grid sm:grid-cols-3 gap-6">
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Main / First Bottle Size</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Main / First Bottle Size</label>
                                   <Input name="size_label" value={currentVariants[0] || form.size_label} readOnly className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold" />
                                   <p className="px-1 text-xs text-slate-500">Set bottle sizes and prices in Economic Hub below.</p>
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Beverage Body Profile</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Beverage Body Profile</label>
                                   <select name="body" value={form.body} onChange={handleInputChange} className="w-full h-14 rounded-2xl border border-slate-100 bg-slate-50 px-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-primary">
                                       <option value="Light">Light</option>
                                       <option value="Medium">Medium</option>
@@ -889,7 +826,7 @@ function UploadContent() {
                                   </select>
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Sweetness Profile</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Sweetness Profile</label>
                                   <select name="sweetness" value={form.sweetness} onChange={handleInputChange} className="w-full h-14 rounded-2xl border border-slate-100 bg-slate-50 px-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-primary">
                                       <option value="Dry">Dry</option>
                                       <option value="Off-dry">Off-dry</option>
@@ -901,11 +838,11 @@ function UploadContent() {
 
                           <div className="grid sm:grid-cols-2 gap-6">
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Distillery / Manufacturer</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Distillery / Manufacturer</label>
                                   <Input name="manufacturer" value={form.manufacturer} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-medium" placeholder="e.g. Midleton Distillery" />
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Perfect Serve Glassware</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Perfect Serve Glassware</label>
                                   <Input name="glassware" value={form.glassware} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-medium" placeholder="e.g. Highball Glass, Tumbler, Flute" />
                               </div>
                           </div>
@@ -915,8 +852,8 @@ function UploadContent() {
               </>}
 
               {/* PRICING & ECONOMICS */}
-              <Card className="overflow-visible rounded-[2rem] border border-slate-200/70 bg-white/95 shadow-[0_16px_50px_-38px_rgba(15,23,42,0.35)]">
-                  <button type="button" onClick={() => toggleSection('pricing')} className="flex w-full items-center justify-between rounded-t-[2rem] p-6 transition-colors hover:bg-amber-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:p-7">
+              <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
+                  <button type="button" onClick={() => toggleSection('pricing')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
                       <div className="flex items-center gap-4">
                           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><ProfitIcon className="h-5 w-5" /></div>
                           <div className="text-left">
@@ -927,18 +864,18 @@ function UploadContent() {
                       {openSections.pricing ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
                   </button>
                   {openSections.pricing && (
-                      <CardContent className="space-y-8 p-6 pt-0 sm:p-8 sm:pt-0">
+                      <CardContent className="p-10 pt-0 space-y-8">
                           <div className="grid sm:grid-cols-3 gap-6">
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Sell Price / Fallback (Ksh)</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Sell Price / Fallback (Ksh)</label>
                                   <Input type="number" name="price" value={form.price} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-black text-xl text-primary" required />
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Original Price (Before Discount)</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Original Price (Before Discount)</label>
                                   <Input type="number" name="old_price" value={form.old_price} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold text-slate-400 line-through" placeholder="e.g. 2800" />
                               </div>
                               <div className="space-y-2 text-left">
-                                  <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Unit Cost</label>
+                                  <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Unit Cost</label>
                                   <Input type="number" name="cost_price" value={form.cost_price} onChange={handleInputChange} className="h-14 rounded-2xl border-slate-100 bg-slate-50 font-bold text-slate-500" />
                               </div>
                           </div>
@@ -1042,8 +979,8 @@ function UploadContent() {
               </Card>
 
               {/* INVENTORY & VARIANTS */}
-              <Card className="overflow-visible rounded-[2rem] border border-slate-200/70 bg-white/95 shadow-[0_16px_50px_-38px_rgba(15,23,42,0.35)]">
-                  <button type="button" onClick={() => toggleSection('inventory')} className="flex w-full items-center justify-between rounded-t-[2rem] p-6 transition-colors hover:bg-amber-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:p-7">
+              <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
+                  <button type="button" onClick={() => toggleSection('inventory')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
                       <div className="flex items-center gap-4">
                           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Layers className="h-5 w-5" /></div>
                           <div className="text-left">
@@ -1054,7 +991,7 @@ function UploadContent() {
                       {openSections.inventory ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
                   </button>
                   {openSections.inventory && (
-                      <CardContent className="space-y-10 p-6 pt-0 sm:p-8 sm:pt-0">
+                      <CardContent className="p-10 pt-0 space-y-10">
                           {currentVariants.length > 0 && (
                               <div className="space-y-3 text-left">
                                   <div>
@@ -1098,8 +1035,8 @@ function UploadContent() {
               </Card>
 
               {/* MEDIA HUB */}
-              <Card className="overflow-visible rounded-[2rem] border border-slate-200/70 bg-white/95 shadow-[0_16px_50px_-38px_rgba(15,23,42,0.35)]">
-                  <button type="button" onClick={() => toggleSection('media')} className="flex w-full items-center justify-between rounded-t-[2rem] p-6 transition-colors hover:bg-amber-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:p-7">
+              <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
+                  <button type="button" onClick={() => toggleSection('media')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
                       <div className="flex items-center gap-4">
                           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><ImageIcon className="h-5 w-5" /></div>
                           <div className="text-left">
@@ -1110,7 +1047,7 @@ function UploadContent() {
                       {openSections.media ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
                   </button>
                   {openSections.media && (
-                      <CardContent className="space-y-10 p-6 pt-0 sm:p-8 sm:pt-0">
+                      <CardContent className="p-10 pt-0 space-y-10">
                           {/* Master Media Audit Summary */}
                           {Object.keys(imageAudits).length > 0 && (
                               <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex items-center justify-between">
@@ -1198,8 +1135,8 @@ function UploadContent() {
               </Card>
 
               {/* NARRATIVE & SPECS */}
-              <Card className="overflow-visible rounded-[2rem] border border-slate-200/70 bg-white/95 shadow-[0_16px_50px_-38px_rgba(15,23,42,0.35)]">
-                  <button type="button" onClick={() => toggleSection('description')} className="flex w-full items-center justify-between rounded-t-[2rem] p-6 transition-colors hover:bg-amber-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:p-7">
+              <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
+                  <button type="button" onClick={() => toggleSection('description')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
                       <div className="flex items-center gap-4">
                           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><Zap className="h-5 w-5" /></div>
                           <div className="text-left">
@@ -1210,7 +1147,7 @@ function UploadContent() {
                       {openSections.description ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
                   </button>
                   {openSections.description && (
-                      <CardContent className="space-y-8 p-6 pt-0 text-left sm:p-8 sm:pt-0">
+                      <CardContent className="p-10 pt-0 space-y-8 text-left">
                           <div className="space-y-4 text-left">
                               <div className="flex justify-between items-center text-left">
                                   <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Main Narrative</label>
@@ -1265,7 +1202,7 @@ function UploadContent() {
                                 {/* PAIRING CHIPS */}
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center">
-                                        <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Goes well with · shown on the customer product page</label>
+                                        <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Goes well with · shown on the customer product page</label>
                                         <span className="text-[8px] font-bold text-slate-400 uppercase">Tap chip to toggle</span>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -1299,7 +1236,7 @@ function UploadContent() {
                                 {/* VISUAL BUNDLE UPSELL SELECTOR */}
                                 <div className="space-y-3 pt-4 border-t border-slate-100">
                                     <div className="flex justify-between items-center">
-                                        <label className="ml-1 text-[10px] font-bold tracking-wide text-slate-500 uppercase">Bundle Upsell Products (&quot;Frequently Bought Together&quot;)</label>
+                                        <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Bundle Upsell Products (&quot;Frequently Bought Together&quot;)</label>
                                         <span className="text-[8px] font-bold text-primary uppercase">Select products to offer in bundle</span>
                                     </div>
 
@@ -1378,8 +1315,8 @@ function UploadContent() {
               </Card>
 
               {/* LOGISTICS NODE SYNC */}
-              <Card className="overflow-visible rounded-[2rem] border border-slate-200/70 bg-white/95 shadow-[0_16px_50px_-38px_rgba(15,23,42,0.35)]">
-                  <button type="button" onClick={() => toggleSection('status')} className="flex w-full items-center justify-between rounded-t-[2rem] p-6 transition-colors hover:bg-amber-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:p-7">
+              <Card className="rounded-[3rem] border border-slate-100 shadow-sm overflow-visible bg-white">
+                  <button type="button" onClick={() => toggleSection('status')} className="w-full p-8 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-t-[3rem]">
                       <div className="flex items-center gap-4">
                           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm"><RefreshCcw className="h-5 w-5" /></div>
                           <div className="text-left">
@@ -1390,7 +1327,7 @@ function UploadContent() {
                       {openSections.status ? <ChevronUp className="h-5 w-5 text-slate-300" /> : <ChevronDown className="h-5 w-5 text-slate-300" />}
                   </button>
                   {openSections.status && (
-                      <CardContent className="space-y-6 p-6 pt-0 text-left sm:p-8 sm:pt-0">
+                      <CardContent className="p-10 pt-0 space-y-6 text-left">
                           <div className="grid gap-4">
                               {hubs.map(hub => (
                                   <div key={hub.id} className="p-5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between text-left">
@@ -1430,26 +1367,26 @@ function UploadContent() {
           </div>
 
           <div className="lg:col-span-5 space-y-8">
-              <div className="flex h-[36rem] flex-col overflow-hidden rounded-[2rem] border border-slate-200/70 bg-white/95 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.35)] sm:h-[42rem] lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)] lg:min-h-[32rem]">
-                  <div className="flex items-center justify-between border-b border-slate-100/80 p-6 sm:p-7">
+              <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[800px] sticky top-8">
+                  <div className="p-8 border-b border-slate-50 flex items-center justify-between">
                       <div>
-                          <h2 className="text-lg font-black leading-tight tracking-tight text-slate-900 uppercase sm:text-xl">{isExtrasPage ? 'Extras Inventory' : 'Cellar Inventory'}</h2>
-                          <p className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold tracking-wide text-slate-600 uppercase">{visibleProducts.length} products</p>
+                          <h2 className="text-xl font-black text-foreground uppercase tracking-tighter leading-none">{isExtrasPage ? 'Extras Inventory' : 'Cellar Inventory'}</h2>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2">{visibleProducts.length} Products</p>
                       </div>
-                      <button type="button" onClick={fetchProducts} aria-label="Refresh inventory" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-primary/30 hover:bg-amber-50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"><RefreshCcw size={16} /></button>
+                      <button onClick={fetchProducts} className="text-slate-300 hover:text-primary transition-colors"><RefreshCcw size={16} /></button>
                   </div>
                   <div className="flex-1 overflow-y-auto divide-y divide-slate-50 no-scrollbar">
                       {visibleProducts.map(p => (
-                          <div key={p.id} onClick={() => startEditing(p)} className={cn("group flex cursor-pointer items-center justify-between p-4 transition-all hover:bg-amber-50/50 sm:p-5", editingId === p.id && "border-l-4 border-primary bg-primary/5 shadow-inner")}>
+                          <div key={p.id} onClick={() => startEditing(p)} className={cn("p-6 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-all group", editingId === p.id && "bg-primary/5 border-l-4 border-primary shadow-inner")}>
                               <div className="flex items-center gap-4 min-w-0">
-                                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-1 shadow-sm transition-colors group-hover:border-primary/20">
+                                  <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-100 p-1 flex items-center justify-center shrink-0">
                                       <Image src={normalizeImage(p.image_url)} width={100} height={100} className="max-h-full w-auto object-contain" alt="" />
                                   </div>
                                   <div className="min-w-0">
-                                      <p className="truncate text-xs font-black uppercase text-slate-900 transition-colors group-hover:text-primary">{p.name}</p>
+                                      <p className="text-xs font-black uppercase truncate text-foreground group-hover:text-primary transition-colors">{p.name}</p>
                                       <div className="flex items-center gap-2">
-                                          <p className="overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-semibold tracking-wide text-slate-500 uppercase">{p.stock} Units · {p.sub_category || p.category}</p>
-                                          {p.is_snack && <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[8px] font-black uppercase text-indigo-600">Munchie</span>}
+                                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">{p.stock} Units • {p.sub_category || p.category}</p>
+                                          {p.is_snack && <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-500 text-[7px] font-black uppercase">Munchie</span>}
                                       </div>
                                   </div>
                               </div>

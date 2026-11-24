@@ -26,6 +26,8 @@ export default function RewardInteractive() {
         }
         setStatus(type === 'spin' ? 'spinning' : 'opening');
         setError(null);
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 15_000);
 
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -37,21 +39,32 @@ export default function RewardInteractive() {
                     Authorization: `Bearer ${session.access_token}`
                 },
                 body: JSON.stringify({ action: 'claim-daily-reward', rewardType: type }),
+                signal: controller.signal,
             });
-            const data = await res.json();
+            const data = await res.json() as { ok?: boolean; prize?: Prize; error?: string };
 
-            if (data.ok) {
+            if (res.ok && data.ok && data.prize) {
+                const claimedPrize = data.prize;
                 // Delay for animation
                 setTimeout(() => {
-                    setPrize(data.prize);
+                    setPrize(claimedPrize);
                     setStatus('won');
                 }, type === 'spin' ? 3000 : 1500);
             } else {
-                throw new Error(data.error);
+                throw new Error(data.error || 'Could not claim the reward.');
             }
         } catch (error) {
-            setError(error instanceof Error ? error.message : 'Could not claim the reward.');
+            setError(
+                error instanceof Error && error.name === 'AbortError'
+                    ? 'The reward server took too long to respond. Check your connection and try again.'
+                    : error instanceof Error
+                        ? error.message
+                        : 'Could not claim the reward.'
+            );
             setStatus('idle');
+        } finally {
+            window.clearTimeout(timeout);
+            controller.abort();
         }
     };
 
@@ -60,7 +73,10 @@ export default function RewardInteractive() {
             {/* Header Tabs */}
             <div className="absolute top-8 left-1/2 -translate-x-1/2 flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100 z-20">
                 <button
-                    onClick={() => setActiveTab('box')}
+                    onClick={() => {
+                        setActiveTab('box');
+                        setError(null);
+                    }}
                     className={cn(
                         "px-6 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all",
                         activeTab === 'box' ? "bg-primary text-white shadow-lg" : "text-slate-400 hover:text-slate-600"
@@ -69,7 +85,10 @@ export default function RewardInteractive() {
                     Daily Crate
                 </button>
                 <button
-                    onClick={() => setActiveTab('spin')}
+                    onClick={() => {
+                        setActiveTab('spin');
+                        setError(null);
+                    }}
                     className={cn(
                         "px-6 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all",
                         activeTab === 'spin' ? "bg-primary text-white shadow-lg" : "text-slate-400 hover:text-slate-600"
@@ -123,7 +142,16 @@ export default function RewardInteractive() {
                                 Contains points or store-credit vouchers. Refreshes every 24 hours.
                             </p>
                             {error ? (
-                                <p className="text-primary font-black text-[9px] uppercase tracking-widest bg-primary/5 py-3 rounded-xl border border-primary/10 px-6">⚠️ {error}</p>
+                                <div aria-live="polite" className="space-y-3">
+                                    <p className="text-primary font-black text-[9px] uppercase tracking-widest bg-primary/5 py-3 rounded-xl border border-primary/10 px-6">⚠️ {error}</p>
+                                    <Button
+                                        onClick={() => void handleClaim('box')}
+                                        disabled={status !== 'idle'}
+                                        className="h-12 w-full rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-[10px]"
+                                    >
+                                        Try again
+                                    </Button>
+                                </div>
                             ) : (
                                 <Button
                                     onClick={() => handleClaim('box')}
@@ -156,7 +184,16 @@ export default function RewardInteractive() {
                                 One spin, total power. High probability of XP, low probability of vouchers.
                             </p>
                             {error ? (
-                                <p className="text-primary font-black text-[9px] uppercase tracking-widest bg-primary/5 py-3 rounded-xl border border-primary/10 px-6">⚠️ {error}</p>
+                                <div aria-live="polite" className="space-y-3">
+                                    <p className="text-primary font-black text-[9px] uppercase tracking-widest bg-primary/5 py-3 rounded-xl border border-primary/10 px-6">⚠️ {error}</p>
+                                    <Button
+                                        onClick={() => void handleClaim('spin')}
+                                        disabled={status !== 'idle'}
+                                        className="h-12 w-full rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-[10px]"
+                                    >
+                                        Try again
+                                    </Button>
+                                </div>
                             ) : (
                                 <Button
                                     onClick={() => handleClaim('spin')}

@@ -14,9 +14,8 @@ import { getPublicBaseUrl } from '@/lib/utils';
 import { getTransactionalEmailConfig, sendTransactionalEmail, withTransactionalEmailSenderName } from '@/lib/jmsurfMail.server';
 import { getCustomerOrderEmailDesign, renderCustomerOrderEmail, renderCustomerOrderEmailText } from '@/lib/customerOrderEmail';
 import { isWebPushConfigured, sendWebPush } from '@/lib/webPush.server';
-import { getWhatsAppCredentials } from '@/lib/whatsappCredentials';
 
-type NotificationBody = { orderId?: unknown; status?: unknown; retryChannel?: unknown; forceResend?: unknown };
+type NotificationBody = { orderId?: unknown; status?: unknown; retryChannel?: unknown };
 
 const SUPPORTED_TEMPLATE_VARIABLES = new Set([
   'name',
@@ -135,7 +134,8 @@ async function sendEmail(
 }
 
 async function sendWhatsApp(phone: string, message: string) {
-  const { token, phoneId } = getWhatsAppCredentials();
+  const token = process.env.WHATSAPP_TOKEN?.trim();
+  const phoneId = process.env.WHATSAPP_PHONE_ID?.trim();
   if (!token || !phoneId) throw new Error('WhatsApp is not configured (WHATSAPP_TOKEN and WHATSAPP_PHONE_ID are required).');
   const recipient = toInternationalPhone(phone);
   if (!/^\d{8,15}$/.test(recipient)) throw new Error('Customer phone number is not valid for WhatsApp.');
@@ -186,8 +186,7 @@ async function claimDelivery(
   database: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
   orderId: number,
   status: CustomerNotificationStatus,
-  channel: CustomerNotificationChannel,
-  forceResend = false
+  channel: CustomerNotificationChannel
 ) {
   const identity = { order_id: orderId, notification_status: status, channel };
   const { data: inserted, error: insertError } = await database
@@ -208,14 +207,11 @@ async function claimDelivery(
     .maybeSingle();
   if (lookupError) throw lookupError;
   if (!existing) throw new Error('Could not claim the customer notification delivery.');
-  if (existing.delivery_status === 'sent' && !forceResend) return { claimed: false, id: existing.id };
+  if (existing.delivery_status === 'sent') return { claimed: false, id: existing.id };
 
   const staleSending = existing.delivery_status === 'sending'
     && Date.now() - new Date(existing.updated_at).getTime() > 10 * 60 * 1000;
-  if (existing.delivery_status !== 'failed' && !staleSending
-    && !(forceResend && existing.delivery_status === 'sent')) {
-    return { claimed: false, id: existing.id };
-  }
+  if (existing.delivery_status !== 'failed' && !staleSending) return { claimed: false, id: existing.id };
 
   const { data: reclaimed, error: reclaimError } = await database
     .from('customer_notification_deliveries')
@@ -236,10 +232,8 @@ export async function POST(request: Request) {
   if (!internal && !session) {
     return NextResponse.json({ error: 'Admin access required.' }, { status: 401 });
   }
-  if (!internal
-    && !hasAdminPermission(session, 'can_manage_communications')
-    && !hasAdminPermission(session, 'can_manage_orders')) {
-    return NextResponse.json({ error: 'Order or communications permission required.' }, { status: 403 });
+  if (!internal && !hasAdminPermission(session, 'can_manage_communications')) {
+    return NextResponse.json({ error: 'Communications permission required.' }, { status: 403 });
   }
   if (!internal && !isSameOriginRequest(request)) {
     return NextResponse.json({ error: 'Request origin could not be verified.' }, { status: 403 });
@@ -260,10 +254,6 @@ export async function POST(request: Request) {
   }
   const status = body.status as CustomerNotificationStatus;
   const retryChannel = body.retryChannel;
-  const forceResend = body.forceResend === true;
-  if (forceResend && !internal) {
-    return NextResponse.json({ error: 'Forced notification resend is limited to internal order workflows.' }, { status: 403 });
-  }
   if (retryChannel !== undefined && !CUSTOMER_NOTIFICATION_CHANNELS.includes(retryChannel as CustomerNotificationChannel)) {
     return NextResponse.json({ error: 'Choose a valid notification channel to retry.' }, { status: 400 });
   }
@@ -439,7 +429,7 @@ export async function POST(request: Request) {
         }
       }
 
-      const claim = await claimDelivery(database, orderId, status as CustomerNotificationStatus, channel, forceResend);
+      const claim = await claimDelivery(database, orderId, status as CustomerNotificationStatus, channel);
       if (!claim.claimed) {
         results.push({ channel, status: 'already_sent_or_in_progress' });
         continue;

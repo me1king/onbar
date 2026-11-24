@@ -21,8 +21,6 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import CustomerCrmPanel from '@/components/admin/customers/CustomerCrmPanel';
-import CustomerDrinkTargeting from '@/components/admin/customers/CustomerDrinkTargeting';
-import CustomerDrinkOfDayEmail from '@/components/admin/customers/CustomerDrinkOfDayEmail';
 
 const SessionForensics = dynamic(() => import('@/components/admin/SessionForensics'), { ssr: false });
 
@@ -119,7 +117,7 @@ interface Customer360 {
         checkout_drop_off_step: string | null;
         preferred_payment_method: string | null;
         payment_failure_count: number;
-        consent: { analytics: boolean; marketing: boolean; in_app_marketing: boolean; personalization: boolean; updated_at: string | null } | null;
+        consent: { analytics: boolean; marketing: boolean; personalization: boolean; updated_at: string | null } | null;
         age_verification_status: string;
         last_id_check_at: string | null;
         rider_rating_given: number | null;
@@ -269,18 +267,6 @@ export default function CustomerProfilePage() {
                     {data.warnings.join(' ')} Order and customer records are still available.
                 </p>
             )}
-
-            <CustomerDrinkTargeting
-                preferences={preferences}
-                topItems={data.summary.top_items}
-                consent={data.experience.consent ? {
-                    marketing: data.experience.consent.marketing,
-                    in_app_marketing: data.experience.consent.in_app_marketing,
-                    personalization: data.experience.consent.personalization
-                } : null}
-                ageVerificationStatus={data.experience.age_verification_status}
-            />
-            <CustomerDrinkOfDayEmail phone={profile.phone_number || phone} />
 
             <div className="grid lg:grid-cols-12 gap-10">
 

@@ -27,6 +27,7 @@ import { cn, formatPrice, normalizeImage } from '@/lib/utils';
 import { useAdmin } from '@/context/AdminContext';
 import { logAuditAction } from '@/lib/auditService';
 import { isBeverageInventoryProduct } from '@/lib/productDepartment';
+import { getStorefrontProductVisibilityReasons, isStorefrontProductVisible } from '@/lib/productVisibility';
 import Image from 'next/image';
 
 interface BeverageNode {
@@ -44,6 +45,8 @@ interface BeverageNode {
     is_ice_cold?: boolean;
     temperature_celsius?: number;
     is_available_now?: boolean;
+    hide_product?: boolean;
+    status?: string | null;
     is_bite?: boolean;
     is_snack?: boolean;
     is_souvenir?: boolean;
@@ -401,8 +404,8 @@ export default function BeverageCommandAdmin() {
                     <p className="text-3xl font-black text-amber-600">{beverages.filter(beverage => Number(beverage.stock) > 0).length}</p>
                 </Card>
                 <Card className="p-8 rounded-[2.5rem] bg-white border border-slate-100 shadow-sm space-y-2">
-                    <p className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Available Now</p>
-                    <p className="text-xl font-black text-emerald-600 uppercase italic mt-1">{beverages.filter(beverage => beverage.is_available_now !== false && Number(beverage.stock) > 0).length}</p>
+                    <p className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Visible on Storefront</p>
+                    <p className="text-xl font-black text-emerald-600 uppercase italic mt-1">{beverages.filter(isStorefrontProductVisible).length}</p>
                 </Card>
             </div>
 
@@ -436,7 +439,10 @@ export default function BeverageCommandAdmin() {
                     <div className="divide-y divide-slate-50">
                         {filteredBeverages.map(bev => {
                             const img = bev.image_url || bev.image || '';
-                            const isLive = bev.is_available_now !== false && Number(bev.stock) > 0;
+                            const visibilityReasons = getStorefrontProductVisibilityReasons(bev);
+                            const isLive = visibilityReasons.length === 0;
+                            const visibilityBlockedByListing = bev.hide_product === true
+                                || (typeof bev.status === 'string' && ['draft', 'hidden', 'inactive', 'archived', 'deleted'].includes(bev.status.trim().toLowerCase()));
                             const sizes = bev.sizes?.length ? bev.sizes : [bev.size_label || '500ml'];
                             const pricesBySize = bev.variant_prices ?? bev.beverage_specs?.variant_prices;
 
@@ -457,9 +463,18 @@ export default function BeverageCommandAdmin() {
                                                     "px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase border",
                                                     isLive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
                                                 )}>
-                                                    {isLive ? 'Live Storefront' : 'Deactivated'}
+                                                    {isLive ? 'Visible on storefront' : 'Hidden from storefront'}
                                                 </span>
                                             </div>
+                                            {!isLive && (
+                                                <p role="status" className="text-xs font-semibold text-rose-700">
+                                                    {visibilityReasons.join(' ')}
+                                                    {visibilityBlockedByListing && ' Edit the product listing to publish it.'}
+                                                </p>
+                                            )}
+                                            {isLive && Number(bev.stock) < 1 && (
+                                                <p role="status" className="text-xs font-semibold text-amber-700">Visible, but out of stock; customers cannot purchase it.</p>
+                                            )}
                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                                 {bev.brand || 'BAR OS'} &bull; {bev.category} &bull; Sizes: <span className="text-foreground font-black">{sizes.join(', ')}</span> &bull; Stock: <span className="text-foreground font-black">{bev.stock ?? 50} units</span>
                                             </p>
@@ -491,9 +506,9 @@ export default function BeverageCommandAdmin() {
                                                 "h-10 px-4 rounded-xl font-black uppercase text-[8px] tracking-widest",
                                                 isLive ? "border-slate-200 text-slate-700" : "bg-emerald-500 text-white border-none"
                                             )}
-                                            disabled={!isLive && Number(bev.stock || 0) < 1}
+                                            disabled={visibilityBlockedByListing || (!isLive && Number(bev.stock || 0) < 1)}
                                         >
-                                            {isLive ? 'Deactivate' : 'Activate'}
+                                            {bev.is_available_now === false ? 'Enable availability' : 'Deactivate'}
                                         </Button>
                                         <Button onClick={() => handleDelete(bev.id)} variant="ghost" size="icon" className="h-10 w-10 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl">
                                             <Trash2 size={16} />
