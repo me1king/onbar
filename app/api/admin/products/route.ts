@@ -3,8 +3,20 @@ import { revalidatePath } from 'next/cache';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { verifySessionCookie } from '@/lib/adminAuth';
+import { getProductCreateVisibilityDefaults } from '@/lib/productVisibility';
 
 export const dynamic = 'force-dynamic';
+
+function revalidateProductStorefront() {
+    revalidatePath('/');
+    revalidatePath('/shop');
+    revalidatePath('/beverages');
+    revalidatePath('/bites');
+    revalidatePath('/shop/snacks');
+    revalidatePath('/souvenirs');
+    revalidatePath('/shop/category/[slug]', 'page');
+    revalidatePath('/shop/[id]', 'page');
+}
 
 type ProductPayload = Record<string, unknown>;
 type AuthorizedDatabase = { database: SupabaseClient } | { response: NextResponse };
@@ -135,6 +147,9 @@ export async function GET(request: Request) {
 
 async function saveProduct(database: SupabaseClient, id: number | null, product: ProductPayload) {
     const payload = { ...product };
+    if (id === null) {
+        Object.assign(payload, getProductCreateVisibilityDefaults(payload));
+    }
     let variantPricesStoredInSpecs = false;
     if (typeof payload.category === 'string' && /\b(souvenir|souvenirs|merchandise)\b/i.test(payload.category)) {
         payload.is_souvenir = true;
@@ -263,7 +278,7 @@ export async function POST(request: Request) {
     try {
         await synchronizeSingleVariantStock(access.database, null, body.product);
         const result = await saveProduct(access.database, null, body.product);
-        revalidatePath('/');
+        revalidateProductStorefront();
         return NextResponse.json(result, { status: 201 });
     } catch (error) {
         console.error('[ProductAdmin] Could not create product:', error);
@@ -290,7 +305,7 @@ export async function PATCH(request: Request) {
     try {
         await synchronizeSingleVariantStock(access.database, Number(body.id), body.product);
         const result = await saveProduct(access.database, Number(body.id), body.product);
-        revalidatePath('/');
+        revalidateProductStorefront();
         return NextResponse.json(result);
     } catch (error) {
         console.error('[ProductAdmin] Could not update product:', error);
@@ -323,6 +338,6 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: `Product could not be deleted: ${error.message}` }, { status: 500 });
     }
     if (!data) return NextResponse.json({ error: 'Product not found.' }, { status: 404 });
-    revalidatePath('/');
+    revalidateProductStorefront();
     return NextResponse.json({ success: true });
 }

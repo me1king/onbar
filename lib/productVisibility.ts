@@ -1,5 +1,12 @@
 const unpublishedStatuses = new Set(['draft', 'hidden', 'inactive', 'archived', 'deleted']);
 
+export function getProductCreateVisibilityDefaults(product: { status?: unknown; hide_product?: unknown }) {
+  return {
+    status: typeof product.status === 'string' && product.status.trim() ? product.status : 'active',
+    hide_product: typeof product.hide_product === 'boolean' ? product.hide_product : false
+  };
+}
+
 export function getStorefrontProductVisibilityReasons(product: object): string[] {
   const reasons: string[] = [];
 

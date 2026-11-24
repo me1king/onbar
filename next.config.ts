@@ -9,7 +9,7 @@ const nextConfig = (phase: string): NextConfig => ({
   async headers() {
     return [
       {
-        source: '/:path((?!(?:track|rider/dashboard|card-games)(?:/|$)).*)',
+        source: '/:path((?!(?:track|rider/dashboard|card-games|games/(?:do-or-drink|hot-seat-18-plus|spin-the-bottle-live)\\.html)(?:/|$)).*)',
         headers: [
           { key: 'Strict-Transport-Security', value: 'max-age=31536000' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -25,6 +25,17 @@ const nextConfig = (phase: string): NextConfig => ({
           { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
         ],
       },
+      ...[
+        '/games/do-or-drink.html',
+        '/games/hot-seat-18-plus.html',
+        '/games/spin-the-bottle-live.html',
+      ].map(source => ({
+        source,
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+        ],
+      })),
       {
         source: '/track',
         headers: [

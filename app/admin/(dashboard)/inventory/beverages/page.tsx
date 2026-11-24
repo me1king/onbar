@@ -75,7 +75,7 @@ export default function BeverageCommandAdmin() {
         category: 'Soft Drinks',
         sizes: '500ml',
         price: '',
-        stock: '0',
+        stock: '',
         temperature: '',
         image_url: '',
         pairings: ''
@@ -149,8 +149,8 @@ export default function BeverageCommandAdmin() {
         }
         const price = Math.min(...Object.values(parsedVariantPrices));
         const stock = Number(form.stock);
-        if (!form.name.trim() || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
-            setFormFeedback({ type: 'error', text: 'Enter a beverage name, a valid price for every size, and a whole-number stock quantity of zero or more.' });
+        if (!form.name.trim() || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 1) {
+            setFormFeedback({ type: 'error', text: 'Enter a beverage name, a valid price for every size, and at least one unit of stock to publish.' });
             return;
         }
         if (form.temperature !== '' && (!Number.isFinite(Number(form.temperature)) || Number(form.temperature) < -20 || Number(form.temperature) > 30)) {
@@ -221,7 +221,7 @@ export default function BeverageCommandAdmin() {
                 category: 'Soft Drinks',
                 sizes: '500ml',
                 price: '',
-                stock: '0',
+                stock: '',
                 temperature: '',
                 image_url: '',
                 pairings: ''
@@ -253,24 +253,39 @@ export default function BeverageCommandAdmin() {
         }
     };
 
-    const toggleAvailability = async (id: string | number, current?: boolean) => {
+    const toggleAvailability = async (id: string | number, nextState: boolean) => {
         if (!supabase) return;
-        const nextState = current === false;
         const product = beverages.find(beverage => beverage.id === id);
         if (nextState && Number(product?.stock || 0) < 1) {
-            setFormFeedback({ type: 'error', text: 'Add stock before making this beverage available to customers.' });
+            setFormFeedback({ type: 'error', text: 'Add at least one unit of stock before publishing this beverage.' });
             return;
         }
         try {
             const response = await fetch('/api/admin/products', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: Number(id), product: { is_available_now: nextState } })
+                body: JSON.stringify({
+                    id: Number(id),
+                    product: nextState
+                        ? { is_available_now: true, status: 'active', hide_product: false }
+                        : { is_available_now: false }
+                })
             });
             const result = await response.json() as { error?: string };
             if (!response.ok) throw new Error(result.error || 'Availability could not be changed.');
-            setBeverages(prev => prev.map(b => b.id === id ? { ...b, is_available_now: nextState } : b));
-            setFormFeedback({ type: 'success', text: `${product?.name || 'Beverage'} is ${nextState ? 'available' : 'hidden'} in the store.` });
+            setBeverages(prev => prev.map(b => b.id === id
+                ? {
+                    ...b,
+                    is_available_now: nextState,
+                    ...(nextState ? { status: 'active', hide_product: false } : {})
+                }
+                : b));
+            setFormFeedback({
+                type: 'success',
+                text: nextState
+                    ? `${product?.name || 'Beverage'} is published and available in the store.`
+                    : `${product?.name || 'Beverage'} is hidden from the store.`
+            });
         } catch (error) {
             console.error('Could not update beverage availability:', error);
             setFormFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Availability could not be changed.' });
@@ -340,7 +355,7 @@ export default function BeverageCommandAdmin() {
             const price = value ? Number(value) : Number(form.price);
             return Number.isFinite(price) && price > 0;
         }),
-        Number.isInteger(Number(form.stock)) && Number(form.stock) >= 0,
+        Number.isInteger(Number(form.stock)) && Number(form.stock) >= 1,
         Boolean(form.category)
     ];
     const completedListingChecks = listingChecks.filter(Boolean).length;
@@ -469,7 +484,8 @@ export default function BeverageCommandAdmin() {
                                             {!isLive && (
                                                 <p role="status" className="text-xs font-semibold text-rose-700">
                                                     {visibilityReasons.join(' ')}
-                                                    {visibilityBlockedByListing && ' Edit the product listing to publish it.'}
+                                                    {Number(bev.stock || 0) < 1 && ' Add at least one unit of stock before publishing it.'}
+                                                    {visibilityBlockedByListing && Number(bev.stock || 0) > 0 && ' Select Publish to storefront to make it available.'}
                                                 </p>
                                             )}
                                             {isLive && Number(bev.stock) < 1 && (
@@ -500,15 +516,15 @@ export default function BeverageCommandAdmin() {
                                             <Button onClick={() => void updateStock(bev)} variant="outline" className="h-8 rounded-lg px-2.5 text-[9px] font-black uppercase">Save stock</Button>
                                         </div>
                                         <Button
-                                            onClick={() => toggleAvailability(bev.id, bev.is_available_now)}
+                                            onClick={() => void toggleAvailability(bev.id, !isLive)}
                                             variant="outline"
                                             className={cn(
                                                 "h-10 px-4 rounded-xl font-black uppercase text-[8px] tracking-widest",
                                                 isLive ? "border-slate-200 text-slate-700" : "bg-emerald-500 text-white border-none"
                                             )}
-                                            disabled={visibilityBlockedByListing || (!isLive && Number(bev.stock || 0) < 1)}
+                                            disabled={!isLive && Number(bev.stock || 0) < 1}
                                         >
-                                            {bev.is_available_now === false ? 'Enable availability' : 'Deactivate'}
+                                            {isLive ? 'Deactivate' : visibilityBlockedByListing ? 'Publish to storefront' : 'Enable availability'}
                                         </Button>
                                         <Button onClick={() => handleDelete(bev.id)} variant="ghost" size="icon" className="h-10 w-10 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl">
                                             <Trash2 size={16} />
@@ -638,7 +654,7 @@ export default function BeverageCommandAdmin() {
                                             <Input maxLength={240} value={form.sizes} onChange={e => setForm({ ...form, sizes: e.target.value })} placeholder="250ml, 350ml, 750ml, 1L" className="h-12 rounded-xl border-slate-200 bg-slate-50/80 font-semibold shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100" />
                                         </Field>
                                         <Field label="Units in stock">
-                                            <Input type="number" min="0" step="1" required value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} placeholder="100" className="col-span-2 h-12 rounded-xl border-slate-200 bg-slate-50/80 font-semibold shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100 sm:col-span-1" />
+                                            <Input type="number" min="1" step="1" required value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} placeholder="Units available to customers" className="col-span-2 h-12 rounded-xl border-slate-200 bg-slate-50/80 font-semibold shadow-none focus-visible:border-orange-300 focus-visible:ring-4 focus-visible:ring-orange-100 sm:col-span-1" />
                                         </Field>
                                     </div>
                                     <div className="space-y-3">
