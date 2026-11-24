@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Date-night Card Game for Adults (18+)',
-  description: 'A two-player date-night card game with flirty, intimate prompts, clear consent, and an always-available pass.',
+  title: 'Game Night: Spin the Bottle and Truth or Dare (18+)',
+  description: 'Play Spin the Bottle, Truth or Dare, or date-night prompt cards locally or with friends in a synced online room.',
   robots: { index: false, follow: false }
 };
 

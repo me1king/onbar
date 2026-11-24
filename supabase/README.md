@@ -733,3 +733,25 @@ projects where the original commerce migration is already installed.
 Payment verification and ticket issuance are implemented; complete the
 documented production configuration and sandbox acceptance before accepting
 customer payments.
+
+## Growth calendar and publishing queue
+
+If the Admin Growth Calendar reports that it cannot load the publishing queue,
+apply `CONTENT_CALENDAR_QUEUE_MIGRATION.sql` in the Supabase SQL Editor. The
+migration installs the content master, variants, social account, compliance
+rule, and publishing queue tables used by the calendar and publishing engine.
+Calendar reads and writes go through the protected admin API, so the migration
+keeps direct browser access revoked. The API also reports an actionable setup
+message until this migration has been applied.
+
+## Game Night analytics
+
+After `FINAL_ESTABLISHMENT_SQL.sql` and
+`SECURITY_HARDENING_MIGRATION.sql` are installed, apply
+`GAME_NIGHT_ANALYTICS_MIGRATION.sql` in the Supabase SQL Editor. It adds an
+indexed, service-role-only aggregation function for page opens, game starts,
+open-to-play conversion, mode selection, online-room activity, and gameplay
+moves. The Admin dashboard is under **Growth → Game Night Analytics**.
+Tracking uses the existing consent-gated analytics pipeline; visitors who
+decline analytics are not counted, and player names and room invite codes are
+not recorded.

@@ -668,7 +668,9 @@ class OnlineBarOS {
         const context = typeof window !== 'undefined' ? {
             url: window.location.pathname,
             title: document.title,
-            referrer: document.referrer
+            referrer: window.location.pathname === '/card-games'
+                ? document.referrer.split(/[?#]/, 1)[0]
+                : document.referrer
         } : {};
 
         try {
