@@ -84,7 +84,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Upload a valid JPG, PNG, or PDF no larger than 5 MB.' }, { status: 400 });
   }
 
-  let applicationQuery = clients.database.from('merchant_applications')
+  const applicationQuery = clients.database.from('merchant_applications')
     .select('id,status,email,account_user_id,documents')
     .eq('id', applicationId)
     .eq('account_user_id', user.id);

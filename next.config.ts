@@ -6,6 +6,9 @@ const nextConfig = (phase: string): NextConfig => ({
   outputFileTracingRoot: process.cwd(),
   deploymentId: process.env.RENDER_GIT_COMMIT || process.env.VERCEL_DEPLOYMENT_ID || undefined,
   poweredByHeader: false,
+  experimental: {
+    parallelServerCompiles: true,
+  },
   async headers() {
     return [
       {

@@ -25,6 +25,33 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@components/*": [
+        "./context/nova-astro-v1.0.0/src/components/*"
+      ],
+      "@config/*": [
+        "./context/nova-astro-v1.0.0/src/config/*"
+      ],
+      "@data/*": [
+        "./context/nova-astro-v1.0.0/src/data/*"
+      ],
+      "@layouts/*": [
+        "./context/nova-astro-v1.0.0/src/layouts/*"
+      ],
+      "@utils/*": [
+        "./context/nova-astro-v1.0.0/src/utils/*"
+      ],
+      "@styles/*": [
+        "./context/nova-astro-v1.0.0/src/styles/*"
+      ],
+      "@content/*": [
+        "./context/nova-astro-v1.0.0/src/content/*"
+      ],
+      "@lib/*": [
+        "./context/nova-astro-v1.0.0/src/lib/*"
+      ],
+      "@hooks/*": [
+        "./context/nova-astro-v1.0.0/src/hooks/*"
       ]
     }
   },
