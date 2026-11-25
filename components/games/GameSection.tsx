@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import SpinBottleRoomFrame from '@/components/games/SpinBottleRoomFrame';
 
 type Game = {
   id: string;
@@ -42,7 +43,7 @@ const GAMES: Game[] = [
     src: '/games/spin-the-bottle-live.html',
     minimumAge: 20,
     consentRequired: true,
-    note: 'Online multiplayer rooms are not connected in this app; choose One phone for local play.',
+    note: 'Host or join a live room from separate phones, or choose One phone for local play. Alcohol-free play is welcome.',
   },
 ];
 
@@ -111,14 +112,18 @@ export default function GameSection() {
             </div>
           ) : (
             <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl">
-              <iframe
-                key={selectedGame.id}
-                title={selectedGame.title}
-                src={selectedGame.src}
-                className="block h-[min(1000px,calc(100dvh-180px))] min-h-[720px] w-full border-0"
-                sandbox="allow-scripts"
-                referrerPolicy="no-referrer"
-              />
+              {selectedGame.id === 'spin-the-bottle' ? (
+                <SpinBottleRoomFrame className="h-[min(1000px,calc(100dvh-180px))]" />
+              ) : (
+                <iframe
+                  key={selectedGame.id}
+                  title={selectedGame.title}
+                  src={selectedGame.src}
+                  className="block h-[min(1000px,calc(100dvh-180px))] min-h-[720px] w-full border-0"
+                  sandbox="allow-scripts"
+                  referrerPolicy="no-referrer"
+                />
+              )}
             </div>
           )}
 

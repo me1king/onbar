@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 
 interface Notification {
     id: string;
+    source: 'audit' | 'waitlist';
     type: 'critical' | 'warning' | 'info' | 'success';
     label: string;
     meta: string;
@@ -32,40 +33,97 @@ export default function NotificationCenter({
 
     const fetchNotifications = React.useCallback(async () => {
         if (!supabase) return;
+        const nextNotifications: Notification[] = [];
+        try {
+            const response = await fetch('/api/admin/waitlist/lifecycle-events', { cache: 'no-store' });
+            if (!response.ok) {
+                const result = await response.json() as { error?: string };
+                throw new Error(result.error || 'Waitlist lifecycle notifications are not available.');
+            }
+            const result = await response.json() as {
+                events?: Array<{
+                    id: string;
+                    event_type: 'account_created' | 'first_purchase';
+                    order_id: number | null;
+                    created_at: string;
+                    read_at: string | null;
+                    market_waitlist: { full_name: string | null; email: string } | Array<{ full_name: string | null; email: string }> | null;
+                }>;
+            };
+            for (const event of result.events || []) {
+                const member = Array.isArray(event.market_waitlist) ? event.market_waitlist[0] : event.market_waitlist;
+                const isPurchase = event.event_type === 'first_purchase';
+                nextNotifications.push({
+                    id: event.id,
+                    source: 'waitlist',
+                    type: 'success',
+                    label: isPurchase
+                        ? 'Waitlist member made a first purchase — mystery gift added'
+                        : 'Waitlist member created an account',
+                    meta: `${member?.full_name || 'Waitlist member'} · ${member?.email || 'Email unavailable'}${event.order_id ? ` · Order #${event.order_id}` : ''}`,
+                    time: new Date(event.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    url: isPurchase ? '/lord/orders' : '/lord/waitlist',
+                    isRead: Boolean(event.read_at)
+                });
+            }
+        } catch (err) {
+            console.error('[NotificationCenter] Waitlist lifecycle notifications could not be loaded:', err);
+        }
+
         try {
             const response = await fetch('/api/admin/audit-logs', { cache: 'no-store' });
             if (!response.ok) throw new Error('Audit notifications are not available to this admin role.');
             const result = await response.json() as {
                 logs?: Array<{ id: string; action: string; staff_email: string | null; created_at: string }>;
             };
-
-            if (result.logs) {
-                setNotifications(result.logs.slice(0, 10).map(log => ({
-                    id: String(log.id),
-                    type: log.action.includes('CRITICAL') ? 'critical' : log.action.includes('UPDATE') ? 'info' : 'info',
-                    label: log.action.replace(/_/g, ' '),
-                    meta: log.staff_email || 'System Action',
-                    time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    url: '/lord/audit',
-                    isRead: true
-                })));
-            }
+            nextNotifications.push(...(result.logs || []).slice(0, 10).map(log => ({
+                id: String(log.id),
+                source: 'audit' as const,
+                type: log.action.includes('CRITICAL') ? 'critical' as const : 'info' as const,
+                label: log.action.replace(/_/g, ' '),
+                meta: log.staff_email || 'System Action',
+                time: new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                url: '/lord/audit',
+                isRead: true
+            })));
         } catch (err) {
-            console.error("Alert Node Failure:", err);
+            console.error('[NotificationCenter] Audit notifications could not be loaded:', err);
         }
+        setNotifications(nextNotifications);
     }, []);
 
     React.useEffect(() => {
-        if (isOpen) fetchNotifications();
-    }, [isOpen, fetchNotifications]);
+        void fetchNotifications();
+        const interval = window.setInterval(() => void fetchNotifications(), 30_000);
+        return () => window.clearInterval(interval);
+    }, [fetchNotifications]);
 
-    const markAllRead = () => {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    const markAllRead = async () => {
+        const ids = notifications.filter(notification => notification.source === 'waitlist' && !notification.isRead)
+            .map(notification => notification.id);
+        if (ids.length) {
+            try {
+                const response = await fetch('/api/admin/waitlist/lifecycle-events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                });
+                if (!response.ok) {
+                    const result = await response.json() as { error?: string };
+                    throw new Error(result.error || 'Waitlist notifications could not be marked as read.');
+                }
+            } catch (error) {
+                console.error('[NotificationCenter] Could not mark waitlist notifications as read:', error);
+                return;
+            }
+        }
+        setNotifications(prev => prev.map(notification => ({ ...notification, isRead: true })));
     };
 
     const liveNotifications: Notification[] = [
         ...(pendingSubmissions > 0 ? [{
             id: 'merchant-submissions',
+            source: 'audit' as const,
             type: 'warning' as const,
             label: `${pendingSubmissions} OnBar partner application${pendingSubmissions === 1 ? '' : 's'} awaiting review`,
             meta: 'Review business details, documents, and offered prices.',
@@ -75,6 +133,7 @@ export default function NotificationCenter({
         }] : []),
         ...(pendingMarketSubmissions > 0 ? [{
             id: 'market-seller-submissions',
+            source: 'audit' as const,
             type: 'warning' as const,
             label: `${pendingMarketSubmissions} Market seller application${pendingMarketSubmissions === 1 ? '' : 's'} awaiting review`,
             meta: 'Review boutique requests, verify seller contacts, and approve or request information.',

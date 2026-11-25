@@ -111,7 +111,7 @@ export async function GET() {
   if ('response' in access) return access.response;
 
   const { database } = access;
-  const [ordersResult, newsletterResult, waitlistResult, riderEmailResult, messagesResult, webhookResult, suppressionResult, orderEmailResult, campaignEmailResult, ticketEmailResult, domainHealth] = await Promise.all([
+  const [ordersResult, newsletterResult, waitlistResult, riderEmailResult, messagesResult, webhookResult, suppressionResult, orderEmailResult, campaignEmailResult, ticketEmailResult, waitlistInvitationResult, waitlistLifecycleResult, domainHealth] = await Promise.all([
     (async () => {
       const rows: { id: number; customer_name: string | null; customer_email: string | null }[] = [];
       for (let offset = 0; ; offset += 1000) {
@@ -186,6 +186,17 @@ export async function GET() {
       .select('order_id,status,last_error,provider_delivery_status,updated_at')
       .order('updated_at', { ascending: false })
       .limit(100),
+    database.from('waitlist_invitation_deliveries')
+      .select('id,waitlist_id,channel,delivery_status,subject,error_message,created_at,market_waitlist(full_name,email)')
+      .eq('channel', 'email')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    database.from('waitlist_lifecycle_events')
+      .select('id,waitlist_id,event_type,welcome_email_status,welcome_email_sent_at,welcome_email_error,created_at,market_waitlist(full_name,email)')
+      .eq('event_type', 'account_created')
+      .in('welcome_email_status', ['pending', 'sent', 'failed'])
+      .order('created_at', { ascending: false })
+      .limit(100),
     getDomainHealth()
   ]);
 
@@ -209,6 +220,8 @@ export async function GET() {
     : { data: [], error: null };
   const orderById = new Map((ordersResult.data || []).map(order => [order.id, order]));
   const ticketOrderById = new Map((ticketOrdersResult.data || []).map(order => [order.id, order]));
+  const getWaitlistMember = (member: unknown) =>
+    Array.isArray(member) ? member[0] : member;
   const automatedMessages = [
     ...(orderEmailResult.data || []).map(item => {
       const order = orderById.get(item.order_id);
@@ -248,6 +261,34 @@ export async function GET() {
         sent_by: null,
         created_at: item.updated_at
       };
+    }),
+    ...(waitlistInvitationResult.data || []).map(item => {
+      const member = getWaitlistMember(item.market_waitlist) as { full_name?: string | null; email?: string } | null;
+      return {
+        id: `waitlist-invitation-${item.id}`,
+        recipient_email: member?.email || '',
+        recipient_name: member?.full_name || null,
+        subject: item.subject || 'Online Bar waitlist join invitation',
+        category: 'waitlist_invitation',
+        status: item.delivery_status,
+        error_message: item.error_message,
+        sent_by: null,
+        created_at: item.created_at
+      };
+    }),
+    ...(waitlistLifecycleResult.data || []).map(item => {
+      const member = getWaitlistMember(item.market_waitlist) as { full_name?: string | null; email?: string } | null;
+      return {
+        id: `waitlist-welcome-${item.id}`,
+        recipient_email: member?.email || '',
+        recipient_name: member?.full_name || null,
+        subject: 'Your Online Bar account and mystery gift',
+        category: 'waitlist_welcome',
+        status: item.welcome_email_status,
+        error_message: item.welcome_email_error,
+        sent_by: 'System',
+        created_at: item.welcome_email_sent_at || item.created_at
+      };
     })
   ];
   const messageLogs = [
@@ -271,6 +312,8 @@ export async function GET() {
     ticketEmailResult.error && (/provider_(?:delivery_status|updated_at|message_id)/i.test(ticketEmailResult.error.message || '')
       ? 'Ticket email status fields are missing; check JMSURF_EMAIL_WEBHOOK_MIGRATION.sql.'
       : 'Ticket email history could not be loaded; check TICKETING_EMAIL_DELIVERY_MIGRATION.sql.'),
+    waitlistInvitationResult.error && 'Waitlist invitation history could not be loaded; check WAITLIST_INVITATION_DELIVERIES_MIGRATION.sql.',
+    waitlistLifecycleResult.error && 'Waitlist account and gift email history could not be loaded; check WAITLIST_ACCOUNT_GIFT_MIGRATION.sql.',
     ticketOrdersResult.error && 'Ticket email recipients could not be resolved.'
   ].filter(Boolean);
   const migrationFiles = new Set<string>();
@@ -288,6 +331,12 @@ export async function GET() {
   ].some(error => Boolean(error && /provider_(?:delivery_status|updated_at|message_id)|jmsurf_email_webhook_events/i.test(error.message || '')));
   if (isMissingTable(webhookResult.error) || providerSchemaError) {
     migrationFiles.add('supabase/JMSURF_EMAIL_WEBHOOK_MIGRATION.sql');
+  }
+  if (waitlistInvitationResult.error) {
+    migrationFiles.add('supabase/WAITLIST_INVITATION_DELIVERIES_MIGRATION.sql');
+  }
+  if (waitlistLifecycleResult.error) {
+    migrationFiles.add('supabase/WAITLIST_ACCOUNT_GIFT_MIGRATION.sql');
   }
   const missingCommandCenterMigration = migrationFiles.size > 0;
   const canSend = !isMissingTable(messagesResult.error) && !isMissingTable(suppressionResult.error);

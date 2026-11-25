@@ -3,6 +3,8 @@ interface OrderItemSummary {
     product_id: number | null;
     quantity: number;
     size?: string;
+    product_name_snapshot?: string | null;
+    is_mystery_gift?: boolean;
 }
 
 interface OrderItemsSummaryProps {
@@ -19,11 +21,13 @@ export default function OrderItemsSummary({ items, productNameMap, warehouseLoca
     return (
         <ul className="min-w-0 space-y-1">
             {items.map(item => {
-                const name = item.product_id === null
-                    ? `Unlinked order item #${item.id}`
-                    : productNameMap.get(item.product_id) || `Item #${item.product_id}`;
+                const name = item.product_name_snapshot
+                    || (item.product_id === null
+                        ? `Unlinked order item #${item.id}`
+                        : productNameMap.get(item.product_id) || `Item #${item.product_id}`);
                 const normalizedName = name.toLowerCase();
-                const isChilled = ['wine', 'beer', 'juice', 'soda'].some(word => normalizedName.includes(word));
+                const isChilled = !item.is_mystery_gift
+                    && ['wine', 'beer', 'juice', 'soda'].some(word => normalizedName.includes(word));
 
                 return (
                     <li key={item.id} className="flex min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-1.5 odd:bg-slate-50/80">
@@ -31,7 +35,7 @@ export default function OrderItemsSummary({ items, productNameMap, warehouseLoca
                             <p title={name} className="truncate text-[11px] font-bold text-slate-800">{name}</p>
                             <p className="mt-0.5 truncate text-[9px] font-medium text-slate-400">
                                 <span className={isChilled ? 'text-sky-600' : 'text-amber-600'}>
-                                    {isChilled ? 'Chilled' : 'Dry shelf'}
+                                    {item.is_mystery_gift ? 'Add during packing' : isChilled ? 'Chilled' : 'Dry shelf'}
                                 </span>
                                 {item.size ? ` · ${item.size}` : ''}
                                 {warehouseLocation ? ` · ${warehouseLocation.split(' ')[0]}` : ''}

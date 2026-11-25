@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { recordWaitlistAccountConversion } from '@/lib/waitlistLifecycle.server'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -29,6 +30,13 @@ export async function GET(request: Request) {
         const supabase = createClient(supabaseUrl, supabaseKey)
         const { data, error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
+            if (data.user) {
+                try {
+                    await recordWaitlistAccountConversion(data.user, origin)
+                } catch (conversionError) {
+                    console.error('[AuthCallback] Account is ready, but waitlist conversion could not be recorded:', conversionError)
+                }
+            }
             const referralCode = data.user?.user_metadata?.referred_by_code || searchParams.get('ref');
             const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
             if (typeof referralCode === 'string' && referralCode.trim() && !serviceKey) {

@@ -67,11 +67,18 @@ export async function GET(request: Request) {
     paymentReceipt = paymentAttempt?.mpesa_receipt || null;
   }
 
-  let orderItems: Array<{ product_id: number | null; quantity: number; unit_price: number; size: string | null }> = [];
+  let orderItems: Array<{
+    product_id: number | null;
+    quantity: number;
+    unit_price: number;
+    size: string | null;
+    product_name_snapshot: string | null;
+    is_mystery_gift: boolean;
+  }> = [];
   if (['Paid', 'Delivered', 'Completed'].includes(order.status)) {
     const { data, error } = await database
       .from('order_items')
-      .select('product_id, quantity, unit_price, size')
+      .select('product_id, quantity, unit_price, size, product_name_snapshot, is_mystery_gift')
       .eq('order_id', orderId);
     if (error) {
       console.error('[OrderStatus] Could not load order items for receipt:', error);
@@ -111,10 +118,12 @@ export async function GET(request: Request) {
       note: order.note,
       order_items: (orderItems || []).map((item) => ({
         product_id: item.product_id,
-        product_name: item.product_id ? productNames.get(item.product_id) : undefined,
+        product_name: item.product_name_snapshot
+          || (item.product_id ? productNames.get(item.product_id) : undefined),
         quantity: item.quantity,
         unit_price: item.unit_price,
-        size: item.size
+        size: item.size,
+        is_mystery_gift: item.is_mystery_gift
       })),
       isAccountOrder: Boolean(authenticatedUserId && order.user_id === authenticatedUserId)
     }

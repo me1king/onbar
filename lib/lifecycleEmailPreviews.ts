@@ -18,7 +18,7 @@ export const LIFECYCLE_EMAIL_PREVIEWS = [
 export type LifecycleEmailPreviewId = typeof LIFECYCLE_EMAIL_PREVIEWS[number]['id'];
 export const WAITLIST_LAUNCH_SUBJECT = 'You’re in. Online Bar is open 🎉';
 export const WAITLIST_LAUNCH_MESSAGE = 'It’s finally here. Thank you for waiting. Online Bar is open, and you’re one of the first to order. Drinks, snacks and street food, delivered to your door.';
-export const WAITLIST_LAUNCH_GIFT_MESSAGE = 'Place your first order within the first week of launch and a mystery gift will arrive with it. The gift is a surprise—we’re keeping it under wraps for now.';
+export const WAITLIST_LAUNCH_GIFT_MESSAGE = 'Your first paid order comes with a mystery gift, included at no extra charge. The gift is a surprise—we’re keeping it under wraps for now.';
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({
@@ -77,16 +77,16 @@ function renderOnboardingPreview(input: {
 export function renderWaitlistCampaignEmail(input: {
   subject: string;
   message: string;
-  ticketUrl: string;
+  signupUrl: string;
   unsubscribeUrl: string;
   buttonLabel?: string;
 }) {
-  const escapedTicketUrl = escapeHtml(input.ticketUrl);
+  const escapedSignupUrl = escapeHtml(input.signupUrl);
   const paragraphs = input.message.split(/\n{2,}/).map(paragraph => {
     const escaped = escapeHtml(paragraph).replace(/\n/g, '<br>');
-    return `<p style="margin:0 0 16px;color:#344054;font:16px/1.65 Arial,sans-serif">${escaped.replaceAll(escapedTicketUrl, `<a href="${escapedTicketUrl}" style="color:#9a5c00;text-decoration:underline">${escapeHtml(input.buttonLabel || 'Get your tickets')}</a>`)}</p>`;
+    return `<p style="margin:0 0 16px;color:#344054;font:16px/1.65 Arial,sans-serif">${escaped.replaceAll(escapedSignupUrl, `<a href="${escapedSignupUrl}" style="color:#9a5c00;text-decoration:underline">${escapeHtml(input.buttonLabel || 'Create your account')}</a>`)}</p>`;
   }).join('');
-  const hasCallToAction = input.message.includes(input.ticketUrl);
+  const hasCallToAction = input.message.includes(input.signupUrl);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${escapeHtml(input.subject)}</title></head>
 <body style="margin:0;background:#eef0f4;font-family:Arial,Helvetica,sans-serif;color:#141a2b">
@@ -99,7 +99,7 @@ export function renderWaitlistCampaignEmail(input: {
         <h1 style="margin:10px 0 20px;color:#111827;font-size:30px;line-height:1.2">${escapeHtml(input.subject)}</h1>
         ${paragraphs}
       </td></tr>
-      ${hasCallToAction ? `<tr><td align="center" style="padding:8px 28px 24px"><a href="${escapedTicketUrl}" style="display:inline-block;background:#f59e0b;color:#1b1300;font:bold 15px Arial,sans-serif;text-decoration:none;padding:15px 28px;border-radius:12px">${escapeHtml(input.buttonLabel || 'Get your tickets')}</a></td></tr>` : ''}
+      ${hasCallToAction ? `<tr><td align="center" style="padding:8px 28px 24px"><a href="${escapedSignupUrl}" style="display:inline-block;background:#f59e0b;color:#1b1300;font:bold 15px Arial,sans-serif;text-decoration:none;padding:15px 28px;border-radius:12px">${escapeHtml(input.buttonLabel || 'Create your account')}</a></td></tr>` : ''}
       <tr><td style="padding:0 28px 22px;color:#667085;font:12px/1.65 Arial,sans-serif">You’re receiving this because you opted in to Online Bar email updates. 18+ only for alcohol products. Please drink responsibly.</td></tr>
       <tr><td style="background:#f3f4f6;padding:18px 28px;color:#667085;font:12px/1.65 Arial,sans-serif">Online Bar · Nairobi, Kenya<br><a href="${escapeHtml(input.unsubscribeUrl)}" style="color:#667085">Unsubscribe from marketing emails</a></td></tr>
     </table>

@@ -198,6 +198,7 @@ export default function EmailCommandCenter() {
             <Workflow title="Driver onboarding one-time link" detail="Issue a secure Supabase invitation and email the sign-in link" href="#compose" />
             <Workflow title="Abandoned-cart recovery" detail="Review carts and trigger recovery emails from the recovery workspace" href="/lord/abandoned" />
             <Workflow title="Offers and newsletters" detail="Only send to active newsletter or waitlist email-consent audiences" href="/lord/broadcast" />
+            <Workflow title="Waitlist join invites and gift onboarding" detail="Send a personalized join email to existing consented waitlist contacts, then track account and first-order gift events" href="/lord/waitlist/invitations" />
             <Workflow title="Customer support" detail="Website support requests are available in the support inbox; inbound email forwarding is not connected here." href="/lord/messages" />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">

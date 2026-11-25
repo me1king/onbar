@@ -1,4 +1,15 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<script>
+{
+  const params = new URLSearchParams(location.search);
+  if (params.get('embedded') !== '1') {
+    params.delete('embedded');
+    const destination = new URL('/games/spin-the-bottle', location.origin);
+    destination.search = params.toString();
+    location.replace(destination.toString());
+  }
+}
+</script>
 <title>Spin the Bottle Live</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -191,14 +202,14 @@ h2{font-family:var(--f-display);font-weight:700;font-size:18px;margin:0}
   <section id="home" class="screen">
     <div style="display:flex;flex-direction:column;gap:6px">
       <h1 class="wordmark">Spin the <span>Bottle</span></h1>
-      <p class="sub">Spin the bottle, then choose truth or dare. Play locally on one phone.</p>
+      <p class="sub">Spin the bottle, then choose truth or dare. Host or join a room across phones, or play locally on one phone.</p>
     </div>
     <div class="modes">
-      <button class="mode" id="m-host"><b>Host a room</b><span>Get a 4 letter code. Friends join on their own phones.</span></button>
-      <button class="mode" id="m-join"><b>Join a room</b><span>Type the code from the host's screen.</span></button>
+      <button class="mode" id="m-host" disabled><b>Host a room</b><span>Get a 6 character code. Friends join on their own phones.</span></button>
+      <button class="mode" id="m-join" disabled><b>Join a room</b><span>Type the code from the host's screen.</span></button>
       <button class="mode" id="m-local"><b>One phone</b><span>Pass a single phone around the circle.</span></button>
     </div>
-    <div class="warn" id="roomnote" hidden><b>Online multiplayer rooms are not available in this app yet.</b> Choose One phone to play locally.</div>
+    <div class="warn" id="roomnote" hidden><b>Online rooms need a Supabase Realtime connection.</b> Check the connection or choose One phone to play locally.</div>
     <div class="warn">Truths and dares are optional. Shots are optional and limited to two per player. Soft drinks appear only if selected before the game starts. Anyone can pass or stop at any time.</div>
     <p class="foot">Adults 20+. Anyone can pass. Never drive after drinking.</p>
   </section>
@@ -217,7 +228,7 @@ h2{font-family:var(--f-display);font-weight:700;font-size:18px;margin:0}
   <section id="joinf" class="screen" hidden>
     <div class="topbar"><h2>Join a room</h2><button class="btn btn-ghost btn-sm" data-back>Back</button></div>
     <div class="panel">
-      <div class="field"><label class="lbl" for="jcode">Room code</label><input class="input" id="jcode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" style="font-family:var(--f-display);font-size:28px;letter-spacing:.2em;text-transform:uppercase"></div>
+      <div class="field"><label class="lbl" for="jcode">Room code</label><input class="input" id="jcode" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABCDEF" style="font-family:var(--f-display);font-size:28px;letter-spacing:.2em;text-transform:uppercase"></div>
       <div class="field"><label class="lbl" for="jname">Your name</label><input class="input" id="jname" maxlength="12" autocomplete="off" placeholder="e.g. Sam"></div>
       <p class="err" id="jerr"></p>
       <button class="btn btn-amber" id="jgo">Join</button>
@@ -489,7 +500,8 @@ let adminGroupVoteEnabled=false,groupVoteSettingsLoaded=false,groupVoteSettingsE
 
 /* ---------- state ---------- */
 let mode='home';       // home | local | host | joining | client
-let room=null,S=null,H=null,code='';
+let room=null,S=null,H=null,code='',roomPeers=[],roomConnected=false;
+const peerListeners=[],connectionListeners=[];
 let curScreen='',actN=0,hostGoneT=null,joinT=null;
 let angle=0,raf=0,anim=false,lastSpinId=0,seatKey='',timer=null;
 
@@ -608,16 +620,48 @@ document.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>show('home'));
 /* ---------- room plumbing ---------- */
 const myPeer=()=>{try{const p=room&&room.peers().find(p=>p.isMe&&p.sameTab);return p?p.peer:null}catch(e){return null}};
 const myIdx=()=>{if(mode==='local')return -1;const id=myPeer();return id?S.ps.findIndex(p=>p.id===id):-1};
-function genCode(){const a='ACDEFGHJKLMNPQRTUVWXY34679';let s='';for(let i=0;i<4;i++)s+=a[rnd(a.length)];return s}
+function genCode(){const a='ACDEFGHJKLMNPQRTUVWXY34679',bytes=new Uint8Array(6);if(window.crypto&&window.crypto.getRandomValues)window.crypto.getRandomValues(bytes);else bytes.forEach((_,i)=>bytes[i]=rnd(a.length));return Array.from(bytes,v=>a[v%a.length]).join('')}
 
-async function initRoom(){
-  try{if(window.claude&&window.claude.use)room=await window.claude.use('room')}catch(e){room=null}
-  if(room){
-    try{room.onPeers(onPeers,()=>{})}catch(e){}
-    try{room.onConnection(()=>{if(S)renderConn()},()=>{})}catch(e){}
-  }
-  $('#roomnote').hidden=!!room;
-  $('#m-host').disabled=!room;$('#m-join').disabled=!room;
+function notifyRoomPeers(){
+  const change={joined:roomPeers,updated:[],left:[],peers:()=>roomPeers};
+  peerListeners.forEach(listener=>{try{listener(change)}catch(error){console.error('[SpinBottle] Room listener failed:',error)}});
+}
+function setRoomConnection(connected){
+  roomConnected=connected;
+  connectionListeners.forEach(listener=>{try{listener(connected)}catch(error){console.error('[SpinBottle] Connection listener failed:',error)}});
+  if(S)renderConn();
+}
+function initRoom(){
+  room={
+    peers:()=>roomPeers,
+    connected:()=>roomConnected,
+    presence:patch=>{
+      window.parent.postMessage({source:'onlinebar-spin-bottle',type:'presence',patch},'*');
+      return Promise.resolve();
+    },
+    onPeers:listener=>{peerListeners.push(listener);if(roomPeers.length)listener({joined:roomPeers,updated:[],left:[],peers:()=>roomPeers})},
+    onConnection:listener=>{connectionListeners.push(listener);listener(roomConnected)}
+  };
+  window.addEventListener('message',event=>{
+    if(event.source!==window.parent||!event.data||event.data.source!=='onlinebar-spin-bottle')return;
+    if(event.data.type==='available'){
+      $('#roomnote').hidden=true;$('#m-host').disabled=false;$('#m-join').disabled=false;
+    }else if(event.data.type==='unavailable'){
+      $('#roomnote').hidden=false;$('#m-host').disabled=true;$('#m-join').disabled=true;
+    }else if(event.data.type==='connection'){
+      setRoomConnection(event.data.connected===true);
+      if(event.data.connected===true){$('#roomnote').hidden=true;$('#herr').textContent='';$('#jerr').textContent=''}
+    }else if(event.data.type==='peers'){
+      roomPeers=Array.isArray(event.data.peers)?event.data.peers:[];
+      notifyRoomPeers();
+    }else if(event.data.type==='room-error'){
+      $('#roomnote').hidden=false;
+      $('#roomnote').textContent=String(event.data.message||'Online room connection failed. Choose One phone to play locally.');
+      if(mode==='host')$('#herr').textContent=String(event.data.message||'Online room connection failed.');
+      if(mode==='joining')$('#jerr').textContent=String(event.data.message||'Online room connection failed.');
+    }
+  });
+  window.parent.postMessage({source:'onlinebar-spin-bottle',type:'ready'},'*');
 }
 function onPeers(ch){
   if(mode==='host'&&S){processActs(ch);syncRoster()}
@@ -705,7 +749,7 @@ $('#hgo').onclick=async()=>{
 $('#jcode').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')});
 $('#jgo').onclick=()=>{
   const c=$('#jcode').value.trim().toUpperCase(),nm=clean($('#jname').value);
-  if(c.length!==4){$('#jerr').textContent='The code has 4 characters.';return}
+  if(c.length!==6){$('#jerr').textContent='The code has 6 characters.';return}
   if(!nm){$('#jerr').textContent='Type your name first.';return}
   if(!room){$('#jerr').textContent='Phone rooms are not available in this view.';return}
   unlock();cfg.name=nm;save();
@@ -718,7 +762,7 @@ $('#jgo').onclick=()=>{
       mode='home';pres({g:null,n:null,c:null,h:null,act:null,S:null});
       $('#jerr').textContent="No room with that code. Check the code, and that you opened the shared link while signed in.";
     }
-  },7000);
+  },15000);
   followHost(room.peers());
 };
 function leave(){

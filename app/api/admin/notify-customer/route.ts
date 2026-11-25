@@ -340,7 +340,7 @@ export async function POST(request: Request) {
   let emailItems: Array<{ name: string; quantity: number; unitPrice: number; size?: string | null }> = [];
   if (channels.includes('email')) {
     const { data: orderItems, error: orderItemsError } = await database.from('order_items')
-      .select('product_id,quantity,unit_price,size,products(name)')
+      .select('product_id,quantity,unit_price,size,product_name_snapshot,is_mystery_gift,products(name)')
       .eq('order_id', orderId);
     if (orderItemsError) {
       console.error('[CustomerNotification] Could not load itemized email receipt:', orderItemsError);
@@ -350,7 +350,8 @@ export async function POST(request: Request) {
       const product = Array.isArray(item.products) ? item.products[0] : item.products;
       const productName = typeof product?.name === 'string' && product.name.trim()
         ? product.name.trim()
-        : `Product #${item.product_id}`;
+        : item.product_name_snapshot
+          || (item.is_mystery_gift ? 'Mystery Gift' : `Product #${item.product_id}`);
       return {
         name: productName,
         quantity: Math.max(1, Number(item.quantity) || 1),

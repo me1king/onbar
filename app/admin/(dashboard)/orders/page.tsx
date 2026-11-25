@@ -39,6 +39,8 @@ import { OrderStatus as MachineStatus, getAvailableActions, isValidTransition } 
 interface OrderItem {
     id: number;
     product_id: number | null;
+    is_mystery_gift?: boolean;
+    product_name_snapshot?: string | null;
     quantity: number;
     unit_price: number;
     unit_cost: number;
@@ -829,7 +831,7 @@ export default function AdminOrdersPage() {
                                 </td>
                                 <td className="px-5 py-5">
                                 <OrderItemsSummary items={order.order_items} productNameMap={productNameMap} warehouseLocation={order.warehouse_location} />
-                                {order.order_items?.filter(item => item.product_id === null).map(item => (
+                                {order.order_items?.filter(item => item.product_id === null && !item.is_mystery_gift).map(item => (
                                     <UnlinkedOrderItemRepair
                                         key={item.id}
                                         orderItem={item}
@@ -968,7 +970,7 @@ export default function AdminOrdersPage() {
                                 </div>
 
                                 <OrderItemsSummary items={order.order_items} productNameMap={productNameMap} warehouseLocation={order.warehouse_location} />
-                                {order.order_items?.filter(item => item.product_id === null).map(item => (
+                                {order.order_items?.filter(item => item.product_id === null && !item.is_mystery_gift).map(item => (
                                     <UnlinkedOrderItemRepair
                                         key={item.id}
                                         orderItem={item}

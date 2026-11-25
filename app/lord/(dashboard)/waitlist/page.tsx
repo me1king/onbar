@@ -1195,17 +1195,15 @@ export default function WaitlistPage() {
                       : <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">No account linked</span>}
                   </td>
                   <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value} disabled={value === 'INVITED' && contact.status === 'WAITLIST'}>{label}</option>)}</select></td>
-                  <td className="px-3 py-4">{contact.status !== 'UNSUBSCRIBED' && (contact.email_updates_consent || contact.sms_consent || contact.whatsapp_consent)
+                  <td className="px-3 py-4">{contact.status !== 'UNSUBSCRIBED' && contact.email_updates_consent && !contact.unsubscribed_at
                     ? <WaitlistContactInviteButton
                       contactId={contact.id}
                       contactName={contact.full_name}
                       contactEmail={contact.email}
-                      hasEmailConsent={contact.email_updates_consent && !contact.unsubscribed_at}
-                      hasSmsConsent={contact.sms_consent}
-                      hasWhatsappConsent={contact.whatsapp_consent}
+                      hasEmailConsent
                       onSent={() => void load()}
                     />
-                    : <span className="text-[10px] text-slate-400">No active channel opt-in</span>}</td>
+                    : <span className="text-[10px] text-slate-400">No active email consent</span>}</td>
                 </tr>
               ))}</tbody>
             </table></div>}

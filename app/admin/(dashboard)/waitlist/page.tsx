@@ -48,6 +48,10 @@ interface WaitlistContact {
   status: WaitlistStatus;
   user_id: string | null;
   converted_to_user: string | null;
+  account_created_at: string | null;
+  first_order_id: number | null;
+  first_order_at: string | null;
+  gift_order_item_id: number | null;
   created_at: string;
   unsubscribed_at: string | null;
 }
@@ -1214,21 +1218,24 @@ export default function WaitlistPage() {
                     <td className="whitespace-nowrap px-3 py-4 text-slate-600">{date(contact.created_at)}</td>
                     <td className="px-3 py-4">
                       {(contact.user_id || contact.converted_to_user)
-                        ? <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-800">{contact.converted_to_user ? 'Account matched at checkout' : 'Joined while signed in'}</span>
+                        ? <div className="space-y-1">
+                          <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-800">Account created</span>
+                          {contact.account_created_at && <p className="text-[10px] text-slate-500">{date(contact.account_created_at)}</p>}
+                          {contact.first_order_id && <p className="text-[10px] font-bold text-emerald-700">First paid order #{contact.first_order_id} · Mystery Gift {contact.gift_order_item_id ? 'added' : 'due'}</p>}
+                          {contact.first_order_at && <p className="text-[10px] text-slate-500">{date(contact.first_order_at)}</p>}
+                        </div>
                         : <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">No account linked</span>}
                     </td>
                     <td className="px-3 py-4"><select aria-label={`Status for ${contact.email}`} disabled={savingId === contact.id} value={contact.status} onChange={event => void updateStatus(contact, event.target.value as WaitlistStatus)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px] font-bold disabled:opacity-50">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value} disabled={value === 'INVITED' && contact.status === 'WAITLIST'}>{label}</option>)}</select></td>
-                    <td className="px-3 py-4">{contact.status !== 'UNSUBSCRIBED' && (contact.email_updates_consent || contact.sms_consent || contact.whatsapp_consent)
+                    <td className="px-3 py-4">{contact.status !== 'UNSUBSCRIBED' && contact.status !== 'CONVERTED' && !contact.user_id && !contact.converted_to_user && contact.email_updates_consent && !contact.unsubscribed_at
                       ? <WaitlistContactInviteButton
                         contactId={contact.id}
                         contactName={contact.full_name}
                         contactEmail={contact.email}
                         hasEmailConsent={contact.email_updates_consent && !contact.unsubscribed_at}
-                        hasSmsConsent={contact.sms_consent}
-                        hasWhatsappConsent={contact.whatsapp_consent}
                         onSent={() => void load()}
                       />
-                      : <span className="text-[10px] text-slate-400">No active channel opt-in</span>}</td>
+                      : <span className="text-[10px] text-slate-400">{contact.status === 'CONVERTED' || contact.user_id || contact.converted_to_user ? 'Account already linked' : 'No active email opt-in'}</span>}</td>
                   </tr>
                 );
               })}</tbody>

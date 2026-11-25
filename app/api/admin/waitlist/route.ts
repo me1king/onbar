@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 const statuses = ['WAITLIST', 'INVITED', 'NOTIFIED', 'CONVERTED', 'UNSUBSCRIBED'] as const;
 const rewardPaths = ['wine', 'adventure', 'music'] as const;
-const fields = 'id,full_name,email,phone,country,county,city,area,landmark,location_verified,location_accuracy_m,service_area_status,email_updates_consent,email_updates_consent_at,sms_consent,sms_consent_at,whatsapp_consent,whatsapp_consent_at,preferred_contact_method,product_interests,reward_path,order_frequency,age_group,age_confirmed,age_confirmed_at,referral_code,referred_by_code,campaign,landing_page,consent_version,source,status,user_id,converted_to_user,notified_at,created_at,updated_at,unsubscribed_at';
+const fields = 'id,full_name,email,phone,country,county,city,area,landmark,location_verified,location_accuracy_m,service_area_status,email_updates_consent,email_updates_consent_at,sms_consent,sms_consent_at,whatsapp_consent,whatsapp_consent_at,preferred_contact_method,product_interests,reward_path,order_frequency,age_group,age_confirmed,age_confirmed_at,referral_code,referred_by_code,campaign,landing_page,consent_version,source,status,user_id,converted_to_user,account_created_at,first_order_id,first_order_at,gift_order_item_id,notified_at,created_at,updated_at,unsubscribed_at';
 
 async function loadReferralAnalytics(database: ReturnType<typeof getDatabase>) {
   if (!database) throw new Error('Waitlist database access is not configured.');
@@ -323,18 +323,18 @@ function getDatabase() {
     : null;
 }
 
-function renderHalloweenInvitation(message: string, name: string, ticketUrl: string) {
+function renderWaitlistJoinInvitation(message: string, name: string, signupUrl: string) {
   const personalizedMessage = message
     .replaceAll('{{name}}', name || 'there')
-    .replaceAll('{{tickets_link}}', ticketUrl)
+    .replaceAll('{{signup_link}}', signupUrl)
     .replace(/\bADD DATE\b|\bADD TIME\b|ADD PRIVATE VENUE DETAILS/gi, '');
   const cleanedMessage = personalizedMessage.trim();
-  return cleanedMessage.includes(ticketUrl)
+  return cleanedMessage.includes(signupUrl)
     ? cleanedMessage
-    : `${cleanedMessage}\n\nGet your tickets: ${ticketUrl}`;
+    : `${cleanedMessage}\n\nCreate your Online Bar account: ${signupUrl}`;
 }
 
-async function sendHalloweenInvitation(input: {
+async function sendWaitlistJoinInvitation(input: {
   member: { id: string; full_name: string | null; email: string };
   subject: string;
   message: string;
@@ -346,8 +346,11 @@ async function sendHalloweenInvitation(input: {
     throw new Error('Email delivery is not configured. Set up a verified sender before inviting waitlist members.');
   }
 
-  const ticketUrl = `${input.origin}/tickets`;
-  const personalizedMessage = renderHalloweenInvitation(input.message, input.member.full_name || '', ticketUrl);
+  const signup = new URL('/auth', input.origin);
+  signup.searchParams.set('mode', 'signup');
+  signup.searchParams.set('email', input.member.email);
+  const signupUrl = signup.toString();
+  const personalizedMessage = renderWaitlistJoinInvitation(input.message, input.member.full_name || '', signupUrl);
   const deliveredMessage = personalizedMessage;
   const unsubscribeUrl = `${input.origin}/newsletter/unsubscribe?token=${encodeURIComponent(createMarketingUnsubscribeToken(input.member.email))}`;
   const emailResult = await sendTransactionalEmail({
@@ -358,7 +361,7 @@ async function sendHalloweenInvitation(input: {
     html: renderWaitlistCampaignEmail({
       subject: input.subject,
       message: deliveredMessage,
-      ticketUrl,
+      signupUrl,
       unsubscribeUrl
     }),
     idempotencyKey: `waitlist-invite-${input.campaignId}-${input.member.id}`
@@ -456,13 +459,14 @@ type WaitlistInviteMember = {
 
 async function recordWaitlistInvitation(
   database: NonNullable<ReturnType<typeof getDatabase>>,
-  input: { campaignId: string; memberId: string; channel: CustomerNotificationChannel; sent: boolean; error?: string }
+  input: { campaignId: string; memberId: string; channel: CustomerNotificationChannel; sent: boolean; subject: string; error?: string }
 ) {
   const { error } = await database.from('waitlist_invitation_deliveries').insert({
     campaign_id: input.campaignId,
     waitlist_id: input.memberId,
     channel: input.channel,
     delivery_status: input.sent ? 'sent' : 'failed',
+    subject: input.subject,
     error_message: input.error?.slice(0, 500) || null
   });
   if (error) throw error;
@@ -477,7 +481,13 @@ async function sendWaitlistInvitationToMember(input: {
   campaignId: string;
 }) {
   const { database, member } = input;
-  const emailAllowed = Boolean(member.email && member.email.includes('@') && !member.unsubscribed_at);
+  const emailAllowed = Boolean(
+    member.email
+    && member.email.includes('@')
+    && member.email_updates_consent
+    && member.status !== 'UNSUBSCRIBED'
+    && !member.unsubscribed_at
+  );
   const channels: CustomerNotificationChannel[] = [
     ...(emailAllowed ? ['email' as const] : [])
   ];
@@ -486,8 +496,8 @@ async function sendWaitlistInvitationToMember(input: {
     failed: [] as CustomerNotificationChannel[],
     trackingFailed: [] as CustomerNotificationChannel[]
   };
-  const ticketUrl = `${input.origin}/tickets`;
-  const renderedMessage = renderHalloweenInvitation(input.message, member.full_name || '', ticketUrl);
+  const signupUrl = `${input.origin}/auth?mode=signup`;
+  const renderedMessage = renderWaitlistJoinInvitation(input.message, member.full_name || '', signupUrl);
   const channelNotice = '\n\nWe’re sending this through Gmail for now while we finish setting up SMS and WhatsApp. Thanks for your patience.';
   const smsMessage = `${renderedMessage}${channelNotice}\n\nReply STOP to opt out of SMS updates.`;
   const whatsappMessage = `${renderedMessage}${channelNotice}`;
@@ -495,7 +505,15 @@ async function sendWaitlistInvitationToMember(input: {
   for (const channel of channels) {
     try {
       if (channel === 'email') {
-        await sendHalloweenInvitation({
+        const { data: suppression, error: suppressionError } = await database.from('email_suppressions')
+          .select('email')
+          .eq('email', member.email.trim().toLowerCase())
+          .maybeSingle();
+        if (suppressionError) {
+          throw new Error('Email suppression status could not be verified. Check Email Command Center setup.');
+        }
+        if (suppression) throw new Error('This address is suppressed and cannot receive email.');
+        await sendWaitlistJoinInvitation({
           member,
           subject: input.subject,
           message: input.message,
@@ -519,6 +537,7 @@ async function sendWaitlistInvitationToMember(input: {
           memberId: member.id,
           channel,
           sent: false,
+          subject: input.subject,
           error: detail
         });
       } catch (trackingError) {
@@ -534,7 +553,8 @@ async function sendWaitlistInvitationToMember(input: {
         campaignId: input.campaignId,
         memberId: member.id,
         channel,
-        sent: true
+        sent: true,
+        subject: input.subject
       });
     } catch (trackingError) {
       console.error(`[AdminWaitlist] ${channel} invitation was sent but its result could not be recorded for signup ${member.id}:`, trackingError);
@@ -600,12 +620,24 @@ export async function GET(request: Request) {
   if (invitationCountError) {
     console.error('[AdminWaitlist] Could not load invitation delivery count:', invitationCountError);
   }
+  const { count: eligibleInvitationCount, error: eligibleInvitationCountError } = await database
+    .from('market_waitlist')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'WAITLIST')
+    .eq('email_updates_consent', true)
+    .is('unsubscribed_at', null);
+  if (eligibleInvitationCountError) {
+    console.error('[AdminWaitlist] Could not count eligible invitation recipients:', eligibleInvitationCountError);
+  }
   if (list.error || statsResult.error) {
     const error = list.error || statsResult.error;
     console.error('[AdminWaitlist] Could not load waitlist data:', error);
+    const migrationInstructions = /account_created_at|first_order_id|first_order_at|gift_order_item_id/i.test(error.message || '')
+      ? 'Apply supabase/WAITLIST_ACCOUNT_GIFT_MIGRATION.sql to the shared Supabase project, then refresh.'
+      : 'Run supabase/WAITLIST_SITE_MIGRATION.sql from the WAITLIST repository after DEMAND_INTELLIGENCE_MIGRATION.sql, then refresh.';
     return NextResponse.json({
       error: missingMigration(error)
-        ? 'Run supabase/WAITLIST_SITE_MIGRATION.sql from the WAITLIST repository after DEMAND_INTELLIGENCE_MIGRATION.sql, then refresh.'
+        ? migrationInstructions
         : 'Waitlist data could not be loaded. Check Supabase connectivity and permissions.'
     }, { status: 503 });
   }
@@ -633,6 +665,7 @@ export async function GET(request: Request) {
     preciseLocationOptIns: demandLocations.preciseLocationOptIns,
     demandLocationSetupRequired: demandLocations.setupRequired,
     invitationsSent: invitationCountError ? null : invitationsSent || 0,
+    eligibleInvitationCount: eligibleInvitationCountError ? null : eligibleInvitationCount || 0,
     invitationTrackingSetupRequired: Boolean(invitationCountError),
     page,
     pageSize,
@@ -699,7 +732,11 @@ export async function POST(request: Request) {
   }
   const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
   const message = typeof body.message === 'string' ? body.message.trim() : '';
-  if ((body.action !== 'send_halloween_invitations' && body.action !== 'send_halloween_invitation')
+  const isSingleInvitation = body.action === 'send_waitlist_invitation'
+    || body.action === 'send_halloween_invitation';
+  const isBulkInvitation = body.action === 'send_waitlist_invitations'
+    || body.action === 'send_halloween_invitations';
+  if ((!isSingleInvitation && !isBulkInvitation)
     || !subject || subject.length > 200 || !message || message.length > 5000) {
     return NextResponse.json({ error: 'Enter an invitation subject and message under 5,000 characters.' }, { status: 400 });
   }
@@ -708,7 +745,7 @@ export async function POST(request: Request) {
   if (!database) return NextResponse.json({ error: 'Waitlist database access is not configured.' }, { status: 503 });
   const { error: trackingSetupError } = await database
     .from('waitlist_invitation_deliveries')
-    .select('id', { head: true, count: 'exact' })
+    .select('id,subject', { head: true, count: 'exact' })
     .limit(0);
   if (trackingSetupError) {
     console.error('[AdminWaitlist] Invitation delivery tracking is not ready:', trackingSetupError);
@@ -717,12 +754,12 @@ export async function POST(request: Request) {
     }, { status: 503 });
   }
 
-  if (body.action === 'send_halloween_invitation') {
+  if (isSingleInvitation) {
     if (typeof body.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.id)) {
       return NextResponse.json({ error: 'Choose a valid waitlist member to invite.' }, { status: 400 });
     }
     const { data: member, error } = await database.from('market_waitlist')
-      .select('id,full_name,email,phone,country,status,email_updates_consent,sms_consent,whatsapp_consent,unsubscribed_at')
+      .select('id,full_name,email,phone,country,status,email_updates_consent,sms_consent,whatsapp_consent,unsubscribed_at,user_id,converted_to_user')
       .eq('id', body.id)
       .maybeSingle();
     if (error) {
@@ -730,12 +767,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The selected waitlist member could not be loaded.' }, { status: 503 });
     }
     if (!member) return NextResponse.json({ error: 'That waitlist member was not found.' }, { status: 404 });
-    if (member.status === 'UNSUBSCRIBED') {
-      return NextResponse.json({ error: 'This member has unsubscribed from waitlist contact, so no invitation was sent.' }, { status: 409 });
+    if (member.status === 'CONVERTED' || member.user_id || member.converted_to_user) {
+      return NextResponse.json({ error: 'This waitlist member already has a linked account.' }, { status: 409 });
+    }
+    if (member.status === 'UNSUBSCRIBED' || member.unsubscribed_at || !member.email_updates_consent) {
+      return NextResponse.json({ error: 'This member has no active email consent, so no invitation was sent.' }, { status: 409 });
     }
     const hasValidEmail = Boolean(member.email && member.email.includes('@'));
     if (!hasValidEmail) {
-      return NextResponse.json({ error: 'This waitlist member does not have a valid email address saved, so no Gmail invite was sent.' }, { status: 409 });
+      return NextResponse.json({ error: 'This waitlist member does not have a valid email address saved, so no invitation was sent.' }, { status: 409 });
     }
     const delivery = await sendWaitlistInvitationToMember({
       database,
@@ -778,11 +818,17 @@ export async function POST(request: Request) {
       console.error('[AdminWaitlist] Could not load eligible Halloween invitees:', error);
       return NextResponse.json({ error: 'Eligible waitlist members could not be loaded.' }, { status: 503 });
     }
-    members.push(...(data || []).filter(member => Boolean(member.email && member.email.includes('@') && !member.unsubscribed_at)));
+    members.push(...(data || []).filter(member => Boolean(
+      member.email
+      && member.email.includes('@')
+      && member.email_updates_consent
+      && member.status !== 'UNSUBSCRIBED'
+      && !member.unsubscribed_at
+    )));
     if (!data || data.length < 500) break;
   }
   if (!members.length) {
-    return NextResponse.json({ error: 'There are no New waitlist members with a valid Gmail address ready to receive an invite.' }, { status: 409 });
+    return NextResponse.json({ error: 'There are no New waitlist members with active email consent ready to receive an invite.' }, { status: 409 });
   }
 
   const campaignId = crypto.randomUUID();

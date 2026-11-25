@@ -31,6 +31,7 @@ type OrderItem = {
   id: number;
   order_id: number;
   product_id: number | null;
+  is_mystery_gift: boolean;
   quantity: number | null;
   unit_price: number | string | null;
   product?: { id: number; name: string; price: number | string } | null;
@@ -726,7 +727,7 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
   const orderIds = orders.map(order => order.id);
   const { data: itemData, error: itemError } = orderIds.length
     ? await database.from('order_items')
-      .select('id, order_id, product_id, quantity, unit_price, product:products(id, name, price)')
+      .select('id, order_id, product_id, quantity, unit_price, is_mystery_gift, product:products(id, name, price)')
       .in('order_id', orderIds)
     : { data: [], error: null };
   if (itemError) throw itemError;
@@ -738,6 +739,7 @@ async function loadDispatchData(database: SupabaseClient, includeSensitiveRiderD
 
   const itemsByOrder = new Map<number, OrderItem[]>();
   for (const item of (itemData || []) as OrderItem[]) {
+    if (item.is_mystery_gift) continue;
     const lines = itemsByOrder.get(item.order_id) || [];
     lines.push(item);
     itemsByOrder.set(item.order_id, lines);

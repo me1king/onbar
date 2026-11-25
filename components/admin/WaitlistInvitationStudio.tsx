@@ -17,15 +17,17 @@ export default function WaitlistInvitationStudio() {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const [eligibleCount, setEligibleCount] = useState<number | null>(null);
+  const [audienceError, setAudienceError] = useState('');
 
   const canSend = role === 'owner' || role === 'admin'
     || permissions.can_manage_communications === true
     || permissions.can_manage_customer_care === true;
   const ready = Boolean(subject.trim() && message.trim());
-  const previewTicketUrl = 'https://onlinebar.co.ke/tickets';
+  const previewSignupUrl = 'https://www.onlinebar.co.ke/auth?mode=signup';
   const previewMessage = `${message
     .replaceAll('{{name}}', 'Alex')
-    .replaceAll('{{tickets_link}}', previewTicketUrl)}${message.includes('{{tickets_link}}') || message.includes(previewTicketUrl) ? '' : `\n\nGet your tickets: ${previewTicketUrl}`}\n\nWe’re sending this through Gmail for now while we finish setting up SMS and WhatsApp. Thanks for your patience.`;
+    .replaceAll('{{signup_link}}', previewSignupUrl)}${message.includes('{{signup_link}}') || message.includes(previewSignupUrl) ? '' : `\n\nCreate your Online Bar account: ${previewSignupUrl}`}`;
 
   useEffect(() => {
     try {
@@ -57,10 +59,25 @@ export default function WaitlistInvitationStudio() {
     }
   }, [draftLoaded, message, subject]);
 
+  useEffect(() => {
+    let active = true;
+    fetch('/api/admin/waitlist?status=WAITLIST&page=0', { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json() as { eligibleInvitationCount?: number | null; error?: string };
+        if (!response.ok) throw new Error(data.error || 'Eligible waitlist contacts could not be counted.');
+        if (active) setEligibleCount(data.eligibleInvitationCount ?? 0);
+      })
+      .catch(error => {
+        console.error('[WaitlistInvitationStudio] Could not load the eligible email audience:', error);
+        if (active) setAudienceError(error instanceof Error ? error.message : 'Eligible waitlist contacts could not be counted.');
+      });
+    return () => { active = false; };
+  }, []);
+
   async function sendInvitations(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!ready || sending) return;
-    if (!window.confirm('Send the invitation to all New waitlist members with active consent for email, SMS and/or WhatsApp? Each person will only be contacted through channels they opted into.')) return;
+    if (!ready || sending || !eligibleCount) return;
+    if (!window.confirm(`Send this customized invitation to ${eligibleCount} waitlist contacts with active email consent?`)) return;
 
     setSending(true);
     setResult(null);
@@ -69,7 +86,7 @@ export default function WaitlistInvitationStudio() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'send_halloween_invitations',
+          action: 'send_waitlist_invitations',
           subject,
           message
         })
@@ -82,8 +99,8 @@ export default function WaitlistInvitationStudio() {
       setResult({
         type: data.failed || data.trackingFailed ? 'error' : 'success',
         message: data.failed
-          ? `Invited ${data.invited || 0} of ${data.eligible || 0} people (${data.sent || 0} messages sent across opted-in channels). ${data.failed} channel deliveries failed.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}`
-          : `Invited ${data.invited || 0} people with active channel consent; ${data.sent || 0} messages sent across email, SMS and WhatsApp.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}`
+          ? `Invited ${data.invited || 0} of ${data.eligible || 0} people. ${data.failed} email deliveries failed.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}`
+          : `Invited ${data.invited || 0} people with active email consent.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}`
       });
     } catch (error) {
       console.error('[WaitlistInvitationStudio] Could not send invitation campaign:', error);
@@ -115,8 +132,11 @@ export default function WaitlistInvitationStudio() {
             <ArrowLeft size={14} /> Back to waitlist
           </Link>
           <p className="mt-5 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-orange-800"><Mail size={14} /> Waitlist communications</p>
-          <h1 className="mt-2 text-3xl font-black uppercase tracking-tight text-slate-950">Halloween invitation studio 🎃</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Save your personalized invitation here, then use Invite beside a person in the waitlist directory to send it only to them. Each person is contacted through email, SMS and/or WhatsApp only when they opted into that channel. Bulk send reaches all eligible New members with at least one active channel consent.</p>
+          <h1 className="mt-2 text-3xl font-black uppercase tracking-tight text-slate-950">Join Online Bar invitation studio</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Personalize the invitation, then send it to one eligible contact from the waitlist directory or to all New members who actively opted into email updates. Messages use the same configured sender as the Email Command Center; no email is sent until you press a send button.</p>
+          <p className="mt-2 text-xs font-bold text-slate-700" role="status">
+            {audienceError ? audienceError : eligibleCount === null ? 'Counting eligible contacts…' : `${eligibleCount} existing waitlist contact${eligibleCount === 1 ? '' : 's'} eligible for email`}
+          </p>
         </div>
       </header>
 
@@ -146,8 +166,8 @@ export default function WaitlistInvitationStudio() {
           </label>
 
           <div className="rounded-xl bg-orange-50 p-4 text-xs leading-5 text-orange-950">
-            <p className="font-black">Personalization and ticket link</p>
-            <p className="mt-1">Use <code className="rounded bg-white px-1">{'{{name}}'}</code> to personalize the greeting and <code className="rounded bg-white px-1">{'{{tickets_link}}'}</code> for the Online Bar ticket page. If you leave the token out, the Online Bar ticket link is added automatically. Event date, time, and venue are optional—include them when you are ready.</p>
+            <p className="font-black">Personalization and account link</p>
+            <p className="mt-1">Use <code className="rounded bg-white px-1">{'{{name}}'}</code> to personalize the greeting and <code className="rounded bg-white px-1">{'{{signup_link}}'}</code> for account creation. If you leave the link token out, a create-account link is added automatically. Invitations go only to contacts with active email consent.</p>
           </div>
 
           {result && (
@@ -157,9 +177,9 @@ export default function WaitlistInvitationStudio() {
             </div>
           )}
 
-          <button type="submit" disabled={!ready || sending} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-800 px-5 text-sm font-black text-white transition hover:bg-orange-900 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
+          <button type="submit" disabled={!ready || sending || !eligibleCount} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-800 px-5 text-sm font-black text-white transition hover:bg-orange-900 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
             {sending ? <LoaderCircle size={17} className="animate-spin" /> : <Send size={17} />}
-            {sending ? 'Sending invitations…' : 'Send to eligible New waitlist members'}
+            {sending ? 'Sending invitations…' : eligibleCount ? `Send to ${eligibleCount} eligible contacts` : 'No eligible bulk recipients'}
           </button>
         </form>
 
@@ -169,18 +189,18 @@ export default function WaitlistInvitationStudio() {
             <h2 className="mt-2 break-words text-lg font-black text-white">{subject || 'Your subject will appear here'}</h2>
           </div>
           <div className="space-y-4 p-5">
-            <p className="text-[10px] font-semibold text-slate-500">To: One selected member or all eligible New members, using their opted-in channels</p>
+            <p className="text-[10px] font-semibold text-slate-500">To: One selected member or all New members with active email consent</p>
             <div className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-              {previewMessage.split(previewTicketUrl).map((part, index) => (
+              {previewMessage.split(previewSignupUrl).map((part, index) => (
                 <Fragment key={index}>
-                  {index > 0 && <a href={previewTicketUrl} target="_blank" rel="noreferrer" className="break-all font-semibold text-blue-700 underline">{previewTicketUrl}</a>}
+                  {index > 0 && <a href={previewSignupUrl} target="_blank" rel="noreferrer" className="break-all font-semibold text-blue-700 underline">{previewSignupUrl}</a>}
                   {part}
                 </Fragment>
               ))}
             </div>
           </div>
           <div className="border-t border-slate-100 px-5 py-3 text-[10px] leading-5 text-slate-500">
-            The ticket link opens Online Bar tickets. Emails include a marketing opt-out link. SMS and WhatsApp use their respective configured providers; WhatsApp requires an approved template. No invitation is sent until you tap Invite or confirm bulk send.
+            Emails include a marketing opt-out link. Recipients must have active email consent; unsubscribed contacts are excluded. The delivery provider is configured under Email Command Center. No invitation is sent until you tap Invite or confirm bulk send.
           </div>
         </aside>
       </div>

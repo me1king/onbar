@@ -1,13 +1,13 @@
-export const WAITLIST_INVITATION_DRAFT_STORAGE_KEY = 'waitlist-halloween-invitation-draft';
+export const WAITLIST_INVITATION_DRAFT_STORAGE_KEY = 'waitlist-join-invitation-draft';
 
-export const DEFAULT_WAITLIST_INVITATION_SUBJECT = 'You’re invited: Halloween Private House Party 🎃';
+export const DEFAULT_WAITLIST_INVITATION_SUBJECT = 'You’re invited to join Online Bar';
 
 export const DEFAULT_WAITLIST_INVITATION_MESSAGE = [
   'Hi {{name}},',
   '',
-  'You’re invited to our Halloween Private House Party! 🎃',
+  'You joined our waitlist, and the doors are open. Create your Online Bar account to explore the store and place your first order.',
   '',
-  'Get your ticket here: {{tickets_link}}',
+  'There’s a mystery gift waiting for you on your first paid order.',
   '',
-  'We hope to see you there!'
+  'Join here: {{signup_link}}'
 ].join('\n');

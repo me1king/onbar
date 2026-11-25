@@ -9,7 +9,7 @@ const games = [
   {
     id: 'spin-the-bottle',
     name: 'Spin the Bottle Live',
-    detail: 'Truths and dares with a local pass-the-phone mode.',
+    detail: 'Live online rooms across phones, plus a local pass-the-phone mode.',
     age: '20+'
   },
   {
@@ -24,7 +24,7 @@ type GameId = (typeof games)[number]['id'];
 type DrinkMode = 'shots' | 'soft';
 
 const gameUrls: Record<GameId, string> = {
-  'spin-the-bottle': '/games/spin-the-bottle-live.html',
+  'spin-the-bottle': '/games/spin-the-bottle',
   'do-or-drink': '/games/do-or-drink.html'
 };
 

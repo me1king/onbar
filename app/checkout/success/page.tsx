@@ -33,6 +33,7 @@ interface Order {
         quantity: number;
         unit_price: number;
         size?: string;
+        is_mystery_gift?: boolean;
     }>;
     isAccountOrder?: boolean;
 }
@@ -255,7 +256,7 @@ function SuccessContent() {
             payment_method: order.payment_method || 'Not specified',
             order_items: order.order_items?.map((item) => ({
                 product_id: item.product_id ?? 0,
-                product_name: item.product_name || `Product ${item.product_id ?? ''}`.trim(),
+                product_name: item.product_name || (item.is_mystery_gift ? 'Mystery Gift' : `Product ${item.product_id ?? ''}`.trim()),
                 quantity: item.quantity,
                 unit_price: item.unit_price,
                 size: item.size || undefined

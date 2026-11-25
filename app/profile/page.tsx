@@ -118,6 +118,8 @@ interface Order {
     product_id: number | null;
     quantity: number;
     products: { name: string } | null;
+    product_name_snapshot?: string | null;
+    is_mystery_gift?: boolean;
   }>;
 }
 
@@ -423,7 +425,7 @@ export default function ProfilePage() {
             gameConfigResult
         ] = await Promise.all([
             supabase.from('abandoned_carts').select('*').eq('customer_phone', session.user.email || '').maybeSingle().then(result => result.data, () => null),
-            supabase.from('orders').select('*, order_items(id, product_id, quantity, products(name))').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || [], () => []),
+            supabase.from('orders').select('*, order_items(id, product_id, quantity, product_name_snapshot, is_mystery_gift, products(name))').eq('user_id', session.user.id).order('created_at', { ascending: false }).then(result => result.data || [], () => []),
             supabase.from('user_devices').select('*').eq('user_id', session.user.id).then(result => result.data || [], () => []),
             supabase.from('user_achievements').select('*').eq('user_id', session.user.id).then(result => result.data || [], () => []),
             supabase.from('warranties').select('*').eq('user_id', session.user.id).then(result => result.data || [], () => []),
@@ -1240,7 +1242,7 @@ export default function ProfilePage() {
                                                     <option value="">Entire order / not sure</option>
                                                     {(o.order_items || []).map(item => (
                                                         <option key={item.id} value={item.id}>
-                                                            {item.products?.name || `Product #${item.product_id || 'unknown'}`} · Qty {item.quantity}
+                                                            {item.product_name_snapshot || item.products?.name || `Product #${item.product_id || 'unknown'}`} · Qty {item.quantity}
                                                         </option>
                                                     ))}
                                                 </select>

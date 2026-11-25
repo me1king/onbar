@@ -40,6 +40,7 @@ import RootClientWidgets from "@/components/layout/RootClientWidgets";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import RootStabilityGuard from "@/components/layout/RootStabilityGuard";
 import PostHogSessionReplay from "@/components/layout/PostHogSessionReplay";
+import WaitlistGiftExperience from "@/components/waitlist/WaitlistGiftExperience";
 import { Suspense } from "react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -55,6 +56,7 @@ export default function RootLayout({
             <ErrorBoundary>
                 <CartProvider>
                     <WishlistProvider>
+                        <WaitlistGiftExperience />
                         <PublicLayoutShield>{children}</PublicLayoutShield>
 
                         <Suspense fallback={null}>

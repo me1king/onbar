@@ -68,6 +68,30 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
   const [cooldown, setCooldown] = useState(0);
   const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
 
+  useEffect(() => {
+    const invitedEmail = new URLSearchParams(window.location.search).get('email')?.trim();
+    if (invitedEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invitedEmail)) {
+      setEmail(current => current || invitedEmail.toLowerCase());
+    }
+  }, []);
+
+  const syncWaitlistConversion = async (accessToken?: string) => {
+    if (!accessToken) return;
+    try {
+      const response = await fetch('/api/waitlist/account-conversion', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: 'no-store'
+      });
+      if (!response.ok) {
+        const result = await response.json() as { error?: string };
+        throw new Error(result.error || 'Waitlist account conversion could not be recorded.');
+      }
+    } catch (error) {
+      console.error('[AuthForm] Account is ready, but waitlist conversion could not be recorded:', error);
+    }
+  };
+
   const checkNetworkNode = async () => {
     setIsDiagnosticRunning(true);
     try {
@@ -213,6 +237,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
 
             if (data.session) {
                 setMessage({ type: 'success', text: 'Registration Successful! Establishing profile...' });
+                void syncWaitlistConversion(data.session.access_token);
                 void registerReferral(data.session.access_token, data.user.user_metadata?.referred_by_code);
                 if (onSuccess) setTimeout(() => onSuccess(data.user!.id), 500);
             } else {
@@ -237,6 +262,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
             void handleIdentityStitching(data.user.id);
             void OB_OS.track('USER_LOGIN', { userId: data.user.id })
               .catch(trackError => console.warn('[AuthForm] Sign-in analytics could not be recorded:', trackError));
+            void syncWaitlistConversion(data.session?.access_token);
             void registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
             setMessage({ type: 'success', text: 'Signed in. Opening your account...' });
             if (onSuccess) {
@@ -346,6 +372,7 @@ export default function AuthForm({ initialMode = 'signin', onSuccess, returnTo }
                 void handleIdentityStitching(data.user.id);
                 void OB_OS.track('USER_LOGIN', { userId: data.user.id })
                   .catch(trackError => console.warn('[AuthForm] Sign-in analytics could not be recorded:', trackError));
+                void syncWaitlistConversion(data.session?.access_token);
                 void registerReferral(data.session?.access_token, data.user.user_metadata?.referred_by_code);
                 if (!profileSaved) {
                     setMessage({
