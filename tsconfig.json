@@ -37,6 +37,7 @@
     ".next-dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "context/nova-astro-v1.0.0"
   ]
 }
