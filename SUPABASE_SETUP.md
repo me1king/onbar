@@ -124,6 +124,8 @@ Run [`supabase/FOOD_ADDONS_MIGRATION.sql`](./supabase/FOOD_ADDONS_MIGRATION.sql)
 
 Campaigns are stored as drafts and are not sent to external platforms. Delivery, open-rate, attribution, and A/B experiment figures remain unavailable until a publishing provider and the corresponding tracking are connected. Audience reach is calculated from customer profiles and paid/delivered orders.
 
+Spin the Bottle prompts are managed in Admin → Growth → Spin Game Prompts and stored in the existing published `settings` record under `spin_the_bottle_config`; no additional migration is required. Admins need marketing-management or settings-management permission. If the published settings endpoint is unavailable, the game falls back to the built-in prompt deck in `public/games/spin-the-bottle-prompts.json`.
+
 ### Paystack Checkout
 
 Set `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` to your Paystack public key in the deployment environment. Online checkout requires the customer to provide a valid email address; the app no longer substitutes a demo email or an embedded payment key. Cash on Delivery does not require an email address. Payment-confirmed dispatch also requires the server-side `PAYSTACK_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and the dispatch migration described above.

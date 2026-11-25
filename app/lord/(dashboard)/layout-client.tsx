@@ -265,6 +265,7 @@ export default function AdminLayoutClient({
       { name: 'Affiliates', href: '/lord/affiliates', icon: Users, permission: 'can_manage_affiliates' },
       { name: 'Drink Deals', href: '/lord/coupons', icon: Tag, permission: 'can_manage_marketing' },
       { name: 'Spin Campaign', href: '/lord/spin-campaign', icon: Trophy, permission: 'can_manage_marketing' },
+      { name: 'Spin Game Prompts', href: '/lord/spin-game-prompts', icon: Trophy, permission: 'can_manage_marketing' },
     ]},
     { group: 'FINANCE', items: [
       { name: 'Finance Vault', href: '/lord/finance', icon: DollarSign, permission: 'can_view_revenue' },

@@ -350,144 +350,7 @@ const DECREES=["Everyone calls the monarch ‘Your Majesty’.","No saying anyon
 const NAUGHTY_NOTE="Naughty has flirty and sexual dares. Only play it with adults who are comfortable with that. Every card can be passed, and nobody should ever be pressured.";
 
 /* ---------- prompts. {S} = person who spun (asker). The card is for the person the bottle picked. l = level 1 to 4 ---------- */
-const T=(q,l=1)=>({k:'truth',l,q});
-const D=(q,l=1,s=0)=>({k:'dare',l,q,s});
-const PROMPTS=[
-/* level 1 */
-T("What's the most embarrassing song on your playlist?"),
-T("What's the weirdest thing you do when you're home alone?"),
-T("What small lie do you tell all the time?"),
-T("Who here would you want next to you in a zombie apocalypse, and why?"),
-T("What's the worst haircut you've ever had?"),
-T("What's the last thing you searched on your phone?"),
-T("What food combo do you love that other people find disgusting?"),
-T("What's your most awkward memory from school?"),
-T("Who here is the best dancer, and who is the worst?"),
-T("What's the most childish thing you still do?"),
-D("Do your best impression of {S} for 15 seconds."),
-D("Speak in an accent of your choice until your next turn."),
-D("Do 10 jumping jacks."),
-D("Show the last photo you took."),
-D("Let {S} draw a tiny doodle on your hand."),
-D("Sing the chorus of any song, loudly."),
-D("Do your best runway walk across the room."),
-D("Make up a 15 second rap about {S}.",1,15),
-D("Hold a plank for 20 seconds.",1,20),
-D("Talk without moving your lips for 20 seconds.",1,20),
-D("Tell a joke. If nobody laughs, choose another prompt or pass."),
-D("Balance a shoe on your head for 10 seconds.",1,10),
-/* level 2 */
-T("Who here would you swap lives with for a day?",2),
-T("What's the most spontaneous thing you've done for someone you liked?",2),
-T("What's your biggest turn-off?",2),
-T("What's the worst date you've ever been on?",2),
-T("Have you ever texted the wrong person? What happened?",2),
-T("Who here would be the worst roommate?",2),
-T("What do you think is your best feature, and what's {S}'s?",2),
-T("What's the longest you've kept a crush secret?",2),
-T("What's the most embarrassing thing in your camera roll? Describe it.",2),
-T("Who here has the best style, and who has the worst?",2),
-D("Compliment everyone in the group.",2),
-D("Let the group scroll through your camera roll for 20 seconds.",2,20),
-D("Read your last text message in your most dramatic voice.",2),
-D("Hold eye contact with {S} for 30 seconds without laughing.",2,30),
-D("Whisper something in {S}'s ear that makes them laugh.",2),
-D("Let {S} send a text from your phone to a contact they pick. You can veto once.",2),
-D("Slow-dance with {S} for 15 seconds.",2,15),
-D("Do an impression of someone in the room and let everyone guess who.",2),
-D("Give {S} a hug that lasts a full 10 seconds.",2,10),
-D("Tell {S} the first thing you noticed about them, honestly.",2),
-/* level 3 */
-T("Have you ever had a crush on someone in this room?",3),
-T("What's your biggest regret from the last year?",3),
-T("What's the most daring thing you've done at a party?",3),
-T("Who here would you trust least with a secret?",3),
-T("What's the worst thing you've done to a friend?",3),
-T("What's your most embarrassing romantic moment?",3),
-T("Have you ever stalked an ex online? Be honest.",3),
-T("What's something you've never told anyone in this room?",3),
-T("What's the pettiest reason you've ever ended things with someone?",3),
-T("What's the most trouble you've caused someone else?",3),
-T("Which person in this room would you swap phones with for a day, and which would you never?",3),
-T("What's the biggest lie you've told on a date?",3),
-D("Hand your unlocked phone to the person on your left for 60 seconds.",3,60),
-D("Call the last person you texted and say 'I have a confession'. Hold for 10 seconds, then say 'just kidding'.",3,10),
-D("Send a voice note singing happy birthday to a contact {S} picks, even if it's nobody's birthday.",3),
-D("Let the group give you a new nickname. You answer to it for the rest of the game.",3),
-D("Stand on a chair and give a 30 second motivational speech about drinking water.",3,30),
-D("Perform a dramatic 30 second breakup scene with the nearest object.",3,30),
-D("Swap phones with {S} for two rounds and reply to anything that pops up.",3),
-D("Speak only in questions until your next turn. If you slip, start again.",3),
-D("Post a photo of the group on your story with a caption the group writes.",3),
-D("Wear something silly chosen by the group until the game ends.",3),
-D("Beatbox or rap about {S}'s worst habit for 20 seconds.",3,20),
-D("Reveal your screen time for today and defend it.",3),
-/* level 4: naughty, adults who are comfortable. Always passable */
-T("What's the most attractive thing about {S}, honestly?",4),
-T("Describe your best kiss ever.",4),
-T("What's the wildest place you've hooked up?",4),
-T("What's your biggest turn-on?",4),
-T("What's something you've never tried in bed but want to?",4),
-T("Who in this room would you most like to kiss?",4),
-T("What's the most scandalous message you've ever sent?",4),
-T("Is your number closer to 3, 10 or 30? Tell the truth.",4),
-T("What's the most awkward thing that's happened in the bedroom?",4),
-T("What's the first thing you notice about someone you're attracted to?",4),
-T("Who here do you think is the best kisser?",4),
-T("What's your go-to move to impress someone?",4),
-T("Which celebrity would you take home?",4),
-T("Describe your perfect date night, ending included.",4),
-T("What's a secret fantasy you'd only tell this group?",4),
-T("Have you ever sent a risky photo? Would you do it again?",4),
-D("Whisper the most seductive sentence you can into {S}'s ear.",4),
-D("Give {S} a slow 20 second neck massage, if they're up for it.",4,20),
-D("Kiss {S}'s hand, cheek or neck. They choose, and either of you can say no.",4),
-D("Sit on {S}'s lap for the next two rounds, if they say yes.",4),
-D("Give {S} your best bedroom eyes for 20 seconds without breaking.",4,20),
-D("Do a 15 second seductive dance for the whole group.",4,15),
-D("Lose a layer: take off a sock, shoe, hat or jacket.",4),
-D("Describe {S}'s looks like a romance novel narrator for 20 seconds.",4,20),
-D("Tell someone in the room three things you find attractive about them.",4),
-D("Trace a word on {S}'s back with one finger. They have to guess it.",4),
-D("Kiss {S} for 10 seconds if you both agree. Otherwise a cheek kiss.",4,10),
-D("Pass an ice cube to {S} using only your lips, if you both agree.",4),
-D("Read the nearest label, menu or book out loud in your sexiest voice.",4),
-D("Text your latest crush 'Thinking about you' and show the group once they reply.",4),
-D("Choose a snack for the group, or pass.",4),
-D("Slow-dance with {S}, close, for the whole chorus of a song. Their call to stop.",4,30),
-/* more cards */
-D("Do your best celebrity impression until someone guesses who."),
-D("Dance to a song the group picks for 15 seconds, no stopping.",1,15),
-D("Talk like a news anchor until your next turn."),
-D("Act out a movie scene in silence. The group has 30 seconds to guess it.",1,30),
-D("Say the alphabet backwards. If you slip up, laugh it off or pass."),
-T("What skill do you pretend to have?"),
-T("What’s the most ridiculous thing you’ve ever been scared of?"),
-D("Give a dramatic award speech for ‘Most Likely to Text Back Three Days Later’.",2),
-D("Take a selfie with {S} making the face the group picks.",2),
-D("Pitch the nearest object like a TV shopping host, as seductively as you can.",2,20),
-D("Describe your ‘type’ in exactly three words.",2),
-T("What’s the cringiest thing you’ve done to impress someone?",2),
-T("Who here has the best laugh, and who has the worst?",2),
-T("What’s the longest you’ve ignored a text on purpose?",2),
-D("Do 30 seconds of stand-up about the last person who ghosted you.",3,30),
-D("Let {S} choose your next prompt, or pass.",3),
-D("Re-enact your worst first date. The group picks who plays the other person.",3),
-D("Let the group pick an app on your phone. Defend why you use it so much.",3),
-D("Trade an item of clothing with {S} until the next spin.",3),
-T("What’s the last lie you told today?",3),
-T("What’s the most you’ve ever spent on someone you liked?",3),
-T("Which friendship in this room is secretly the most competitive?",3),
-D("Say ‘I want you’ in five different tones. The group rates each from 1 to 10.",4),
-D("Give {S} a 15 second shoulder rub, if they’re up for it.",4,15),
-D("Compliment {S} on something that isn’t their looks, then something that is.",4),
-D("Describe your ideal first kiss in a dramatic movie-trailer voice.",4,20),
-D("Whisper your most outrageous pick-up line to {S}. They rate it out of 10.",4),
-T("What’s the boldest move you’ve ever made on a crush?",4),
-T("What’s your biggest ‘ick’ and your biggest ‘yes please’?",4),
-T("What’s the most flirtatious thing {S} could say to you?",4),
-T("What’s your most irresistible quality, honestly?",4)
-];
+let PROMPTS=[];
 
 /* ---------- local prefs ---------- */
 const KEY='spin-the-bottle-live-v1';
@@ -734,6 +597,7 @@ $('#hgo').onclick=async()=>{
   if(!groupVoteSettingsLoaded)return;
   await loadGroupVoteConfig();
   if(!groupVoteSettingsLoaded)return;
+  if(!PROMPTS.length){$('#herr').textContent='Game prompts are unavailable. Reconnect before starting.';return}
   const nm=clean($('#hname').value);
   if(!nm){$('#herr').textContent='Type your name first.';return}
   if(!room){$('#herr').textContent='Phone rooms are not available in this view.';return}
@@ -747,7 +611,10 @@ $('#hgo').onclick=async()=>{
   setTimeout(()=>{if(mode==='host')syncRoster()},1500);
 };
 $('#jcode').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')});
-$('#jgo').onclick=()=>{
+$('#jgo').onclick=async()=>{
+  if(!groupVoteSettingsLoaded){$('#jerr').textContent='Game settings are still loading. Try again in a moment.';return}
+  await loadGroupVoteConfig();
+  if(!PROMPTS.length){$('#jerr').textContent='Game prompts are unavailable. Reconnect before joining.';return}
   const c=$('#jcode').value.trim().toUpperCase(),nm=clean($('#jname').value);
   if(c.length!==6){$('#jerr').textContent='The code has 6 characters.';return}
   if(!nm){$('#jerr').textContent='Type your name first.';return}
@@ -793,8 +660,8 @@ function renderLocal(){
   $('#lvotecontrol').hidden=!adminGroupVoteEnabled;
   $('#lvote').checked=adminGroupVoteEnabled&&!!cfg.vote;
   $('#vote-config-note').hidden=!groupVoteSettingsError;
-  $('#vote-config-note').textContent='Group-vote settings could not be loaded. Group vote will stay off for this game.';
-  $('#lstart').disabled=cfg.players.length<2||!groupVoteSettingsLoaded;
+  $('#vote-config-note').textContent=PROMPTS.length?'Published settings could not be loaded. Using the built-in prompt deck; group vote is off.':'Game prompts could not be loaded. Reconnect before starting.';
+  $('#lstart').disabled=cfg.players.length<2||!groupVoteSettingsLoaded||!PROMPTS.length;
 }
 $('#addform').addEventListener('submit',e=>{
   e.preventDefault();
@@ -808,7 +675,7 @@ $('#lsoft').onchange=e=>{cfg.soft=e.target.checked;save()};
 $('#lstart').onclick=async()=>{
   if(!groupVoteSettingsLoaded)return;
   await loadGroupVoteConfig();
-  if(!groupVoteSettingsLoaded)return;
+  if(!groupVoteSettingsLoaded||!PROMPTS.length)return;
   unlock();clearTimer();mode='local';
   H={seen:{},used:new Set(),timers:[],hostIdx:0};
   S={code:'',lvl:cfg.lvl,soft:!!cfg.soft,vote:adminGroupVoteEnabled&&!!cfg.vote,ps:cfg.players.map((n,i)=>newPlayer('L'+i,n,i)),phase:'ready',sp:0,pk:-1,spin:null,ci:-1,res:null,seq:1,turns:0};
@@ -828,18 +695,18 @@ function renderLobby(){
   const sf=$('#lobsoft');sf.checked=!!S.soft;sf.disabled=!host;
   $('#lobvotecontrol').hidden=!adminGroupVoteEnabled;
   $('#lobby-vote-config-note').hidden=!groupVoteSettingsError;
-  $('#lobby-vote-config-note').textContent='Group-vote settings could not be loaded. Group vote will stay off for this game.';
+  $('#lobby-vote-config-note').textContent=PROMPTS.length?'Published settings could not be loaded. Using the built-in prompt deck; group vote is off.':'Game prompts could not be loaded. Reconnect before starting.';
   const vf=$('#lobvote');vf.checked=adminGroupVoteEnabled&&!!S.vote;vf.disabled=!host||!adminGroupVoteEnabled;
-  $('#lobstart').hidden=!host;$('#lobstart').disabled=S.ps.length<2;
+  $('#lobstart').hidden=!host;$('#lobstart').disabled=S.ps.length<2||!PROMPTS.length;
   $('#lobwait').hidden=host;
   $('#lleave').textContent=host?'Close room':'Leave';
   renderConn();
 }
 $('#lobsoft').onchange=e=>{if(mode==='host'){S.soft=e.target.checked;cfg.soft=S.soft;save();commit()}};
 $('#lobstart').onclick=async()=>{
-  if(mode!=='host'||S.ps.length<2||!groupVoteSettingsLoaded)return;
+  if(mode!=='host'||S.ps.length<2||!groupVoteSettingsLoaded||!PROMPTS.length)return;
   await loadGroupVoteConfig();
-  if(mode!=='host'||S.ps.length<2||!groupVoteSettingsLoaded)return;
+  if(mode!=='host'||S.ps.length<2||!groupVoteSettingsLoaded||!PROMPTS.length)return;
   S.vote=adminGroupVoteEnabled&&!!S.vote;
   unlock();syncRoster();
   S.phase='ready';S.sp=rnd(S.ps.length);S.turns=0;S.pk=-1;S.ci=-1;S.res=null;
@@ -1101,13 +968,25 @@ async function loadGroupVoteConfig(){
   try{
     const response=await fetch('/api/games/spin-the-bottle/config',{cache:'no-store'});
     const result=await response.json();
-    if(!response.ok||typeof result.groupVoteEnabled!=='boolean')throw new Error(result.error||'Invalid game settings response.');
+    if(!response.ok||typeof result.groupVoteEnabled!=='boolean'||!validPromptDeck(result.prompts))throw new Error(result.error||'Invalid game settings response.');
     adminGroupVoteEnabled=result.groupVoteEnabled;
+    PROMPTS=result.prompts;
   }catch(error){
     groupVoteSettingsError=true;
-    console.error('[SpinBottle] Could not load group-vote settings:',error);
-    $('#vote-config-note').textContent='Group-vote settings could not be loaded. Group vote will stay off for this game.';
-    $('#lobby-vote-config-note').textContent='Group-vote settings could not be loaded. Group vote will stay off for this game.';
+    console.error('[SpinBottle] Could not load published game settings:',error);
+    try{
+      const response=await fetch('/games/spin-the-bottle-prompts.json',{cache:'no-store'});
+      const prompts=await response.json();
+      if(!response.ok||!validPromptDeck(prompts))throw new Error('The built-in prompt deck is invalid.');
+      PROMPTS=prompts;
+      $('#vote-config-note').textContent='Published settings could not be loaded. Using the built-in prompt deck; group vote is off.';
+      $('#lobby-vote-config-note').textContent='Published settings could not be loaded. Using the built-in prompt deck; group vote is off.';
+    }catch(promptError){
+      PROMPTS=[];
+      console.error('[SpinBottle] Could not load the built-in prompt deck:',promptError);
+      $('#vote-config-note').textContent='Game prompts could not be loaded. Reconnect before starting.';
+      $('#lobby-vote-config-note').textContent='Game prompts could not be loaded. Reconnect before starting.';
+    }
   }finally{
     groupVoteSettingsLoaded=true;
     renderLocal();
@@ -1115,6 +994,19 @@ async function loadGroupVoteConfig(){
     $('#lobby-vote-config-note').hidden=!groupVoteSettingsError;
     if(S&&mode==='host')renderLobby();
   }
+}
+function validPromptDeck(value){
+  if(!Array.isArray(value)||value.length<8||value.length>300)return false;
+  const ids=new Set(),coverage=new Set();
+  for(const prompt of value){
+    if(!prompt||typeof prompt!=='object'||typeof prompt.id!=='string'||ids.has(prompt.id)
+      ||(prompt.k!=='truth'&&prompt.k!=='dare')||![1,2,3,4].includes(prompt.l)
+      ||typeof prompt.q!=='string'||!prompt.q.trim()||prompt.q.length>300
+      ||!Number.isInteger(prompt.s)||prompt.s<0||prompt.s>180
+      ||(prompt.k==='truth'&&prompt.s!==0))return false;
+    ids.add(prompt.id);coverage.add(prompt.l+':'+prompt.k);
+  }
+  return [1,2,3,4].every(level=>coverage.has(level+':truth')&&coverage.has(level+':dare'));
 }
 renderLocal();
 show('home');

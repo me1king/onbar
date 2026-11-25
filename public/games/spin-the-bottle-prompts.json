@@ -1,0 +1,905 @@
+[
+  {
+    "id": "base-001",
+    "k": "truth",
+    "l": 1,
+    "q": "What's the most embarrassing song on your playlist?",
+    "s": 0
+  },
+  {
+    "id": "base-002",
+    "k": "truth",
+    "l": 1,
+    "q": "What's the weirdest thing you do when you're home alone?",
+    "s": 0
+  },
+  {
+    "id": "base-003",
+    "k": "truth",
+    "l": 1,
+    "q": "What small lie do you tell all the time?",
+    "s": 0
+  },
+  {
+    "id": "base-004",
+    "k": "truth",
+    "l": 1,
+    "q": "Who here would you want next to you in a zombie apocalypse, and why?",
+    "s": 0
+  },
+  {
+    "id": "base-005",
+    "k": "truth",
+    "l": 1,
+    "q": "What's the worst haircut you've ever had?",
+    "s": 0
+  },
+  {
+    "id": "base-006",
+    "k": "truth",
+    "l": 1,
+    "q": "What's the last thing you searched on your phone?",
+    "s": 0
+  },
+  {
+    "id": "base-007",
+    "k": "truth",
+    "l": 1,
+    "q": "What food combo do you love that other people find disgusting?",
+    "s": 0
+  },
+  {
+    "id": "base-008",
+    "k": "truth",
+    "l": 1,
+    "q": "What's your most awkward memory from school?",
+    "s": 0
+  },
+  {
+    "id": "base-009",
+    "k": "truth",
+    "l": 1,
+    "q": "Who here is the best dancer, and who is the worst?",
+    "s": 0
+  },
+  {
+    "id": "base-010",
+    "k": "truth",
+    "l": 1,
+    "q": "What's the most childish thing you still do?",
+    "s": 0
+  },
+  {
+    "id": "base-011",
+    "k": "dare",
+    "l": 1,
+    "q": "Do your best impression of {S} for 15 seconds.",
+    "s": 0
+  },
+  {
+    "id": "base-012",
+    "k": "dare",
+    "l": 1,
+    "q": "Speak in an accent of your choice until your next turn.",
+    "s": 0
+  },
+  {
+    "id": "base-013",
+    "k": "dare",
+    "l": 1,
+    "q": "Do 10 jumping jacks.",
+    "s": 0
+  },
+  {
+    "id": "base-014",
+    "k": "dare",
+    "l": 1,
+    "q": "Show the last photo you took.",
+    "s": 0
+  },
+  {
+    "id": "base-015",
+    "k": "dare",
+    "l": 1,
+    "q": "Let {S} draw a tiny doodle on your hand.",
+    "s": 0
+  },
+  {
+    "id": "base-016",
+    "k": "dare",
+    "l": 1,
+    "q": "Sing the chorus of any song, loudly.",
+    "s": 0
+  },
+  {
+    "id": "base-017",
+    "k": "dare",
+    "l": 1,
+    "q": "Do your best runway walk across the room.",
+    "s": 0
+  },
+  {
+    "id": "base-018",
+    "k": "dare",
+    "l": 1,
+    "q": "Make up a 15 second rap about {S}.",
+    "s": 15
+  },
+  {
+    "id": "base-019",
+    "k": "dare",
+    "l": 1,
+    "q": "Hold a plank for 20 seconds.",
+    "s": 20
+  },
+  {
+    "id": "base-020",
+    "k": "dare",
+    "l": 1,
+    "q": "Talk without moving your lips for 20 seconds.",
+    "s": 20
+  },
+  {
+    "id": "base-021",
+    "k": "dare",
+    "l": 1,
+    "q": "Tell a joke. If nobody laughs, choose another prompt or pass.",
+    "s": 0
+  },
+  {
+    "id": "base-022",
+    "k": "dare",
+    "l": 1,
+    "q": "Balance a shoe on your head for 10 seconds.",
+    "s": 10
+  },
+  {
+    "id": "base-023",
+    "k": "truth",
+    "l": 2,
+    "q": "Who here would you swap lives with for a day?",
+    "s": 0
+  },
+  {
+    "id": "base-024",
+    "k": "truth",
+    "l": 2,
+    "q": "What's the most spontaneous thing you've done for someone you liked?",
+    "s": 0
+  },
+  {
+    "id": "base-025",
+    "k": "truth",
+    "l": 2,
+    "q": "What's your biggest turn-off?",
+    "s": 0
+  },
+  {
+    "id": "base-026",
+    "k": "truth",
+    "l": 2,
+    "q": "What's the worst date you've ever been on?",
+    "s": 0
+  },
+  {
+    "id": "base-027",
+    "k": "truth",
+    "l": 2,
+    "q": "Have you ever texted the wrong person? What happened?",
+    "s": 0
+  },
+  {
+    "id": "base-028",
+    "k": "truth",
+    "l": 2,
+    "q": "Who here would be the worst roommate?",
+    "s": 0
+  },
+  {
+    "id": "base-029",
+    "k": "truth",
+    "l": 2,
+    "q": "What do you think is your best feature, and what's {S}'s?",
+    "s": 0
+  },
+  {
+    "id": "base-030",
+    "k": "truth",
+    "l": 2,
+    "q": "What's the longest you've kept a crush secret?",
+    "s": 0
+  },
+  {
+    "id": "base-031",
+    "k": "truth",
+    "l": 2,
+    "q": "What's the most embarrassing thing in your camera roll? Describe it.",
+    "s": 0
+  },
+  {
+    "id": "base-032",
+    "k": "truth",
+    "l": 2,
+    "q": "Who here has the best style, and who has the worst?",
+    "s": 0
+  },
+  {
+    "id": "base-033",
+    "k": "dare",
+    "l": 2,
+    "q": "Compliment everyone in the group.",
+    "s": 0
+  },
+  {
+    "id": "base-034",
+    "k": "dare",
+    "l": 2,
+    "q": "Let the group scroll through your camera roll for 20 seconds.",
+    "s": 20
+  },
+  {
+    "id": "base-035",
+    "k": "dare",
+    "l": 2,
+    "q": "Read your last text message in your most dramatic voice.",
+    "s": 0
+  },
+  {
+    "id": "base-036",
+    "k": "dare",
+    "l": 2,
+    "q": "Hold eye contact with {S} for 30 seconds without laughing.",
+    "s": 30
+  },
+  {
+    "id": "base-037",
+    "k": "dare",
+    "l": 2,
+    "q": "Whisper something in {S}'s ear that makes them laugh.",
+    "s": 0
+  },
+  {
+    "id": "base-038",
+    "k": "dare",
+    "l": 2,
+    "q": "Let {S} send a text from your phone to a contact they pick. You can veto once.",
+    "s": 0
+  },
+  {
+    "id": "base-039",
+    "k": "dare",
+    "l": 2,
+    "q": "Slow-dance with {S} for 15 seconds.",
+    "s": 15
+  },
+  {
+    "id": "base-040",
+    "k": "dare",
+    "l": 2,
+    "q": "Do an impression of someone in the room and let everyone guess who.",
+    "s": 0
+  },
+  {
+    "id": "base-041",
+    "k": "dare",
+    "l": 2,
+    "q": "Give {S} a hug that lasts a full 10 seconds.",
+    "s": 10
+  },
+  {
+    "id": "base-042",
+    "k": "dare",
+    "l": 2,
+    "q": "Tell {S} the first thing you noticed about them, honestly.",
+    "s": 0
+  },
+  {
+    "id": "base-043",
+    "k": "truth",
+    "l": 3,
+    "q": "Have you ever had a crush on someone in this room?",
+    "s": 0
+  },
+  {
+    "id": "base-044",
+    "k": "truth",
+    "l": 3,
+    "q": "What's your biggest regret from the last year?",
+    "s": 0
+  },
+  {
+    "id": "base-045",
+    "k": "truth",
+    "l": 3,
+    "q": "What's the most daring thing you've done at a party?",
+    "s": 0
+  },
+  {
+    "id": "base-046",
+    "k": "truth",
+    "l": 3,
+    "q": "Who here would you trust least with a secret?",
+    "s": 0
+  },
+  {
+    "id": "base-047",
+    "k": "truth",
+    "l": 3,
+    "q": "What's the worst thing you've done to a friend?",
+    "s": 0
+  },
+  {
+    "id": "base-048",
+    "k": "truth",
+    "l": 3,
+    "q": "What's your most embarrassing romantic moment?",
+    "s": 0
+  },
+  {
+    "id": "base-049",
+    "k": "truth",
+    "l": 3,
+    "q": "Have you ever stalked an ex online? Be honest.",
+    "s": 0
+  },
+  {
+    "id": "base-050",
+    "k": "truth",
+    "l": 3,
+    "q": "What's something you've never told anyone in this room?",
+    "s": 0
+  },
+  {
+    "id": "base-051",
+    "k": "truth",
+    "l": 3,
+    "q": "What's the pettiest reason you've ever ended things with someone?",
+    "s": 0
+  },
+  {
+    "id": "base-052",
+    "k": "truth",
+    "l": 3,
+    "q": "What's the most trouble you've caused someone else?",
+    "s": 0
+  },
+  {
+    "id": "base-053",
+    "k": "truth",
+    "l": 3,
+    "q": "Which person in this room would you swap phones with for a day, and which would you never?",
+    "s": 0
+  },
+  {
+    "id": "base-054",
+    "k": "truth",
+    "l": 3,
+    "q": "What's the biggest lie you've told on a date?",
+    "s": 0
+  },
+  {
+    "id": "base-055",
+    "k": "dare",
+    "l": 3,
+    "q": "Hand your unlocked phone to the person on your left for 60 seconds.",
+    "s": 60
+  },
+  {
+    "id": "base-056",
+    "k": "dare",
+    "l": 3,
+    "q": "Call the last person you texted and say 'I have a confession'. Hold for 10 seconds, then say 'just kidding'.",
+    "s": 10
+  },
+  {
+    "id": "base-057",
+    "k": "dare",
+    "l": 3,
+    "q": "Send a voice note singing happy birthday to a contact {S} picks, even if it's nobody's birthday.",
+    "s": 0
+  },
+  {
+    "id": "base-058",
+    "k": "dare",
+    "l": 3,
+    "q": "Let the group give you a new nickname. You answer to it for the rest of the game.",
+    "s": 0
+  },
+  {
+    "id": "base-059",
+    "k": "dare",
+    "l": 3,
+    "q": "Stand on a chair and give a 30 second motivational speech about drinking water.",
+    "s": 30
+  },
+  {
+    "id": "base-060",
+    "k": "dare",
+    "l": 3,
+    "q": "Perform a dramatic 30 second breakup scene with the nearest object.",
+    "s": 30
+  },
+  {
+    "id": "base-061",
+    "k": "dare",
+    "l": 3,
+    "q": "Swap phones with {S} for two rounds and reply to anything that pops up.",
+    "s": 0
+  },
+  {
+    "id": "base-062",
+    "k": "dare",
+    "l": 3,
+    "q": "Speak only in questions until your next turn. If you slip, start again.",
+    "s": 0
+  },
+  {
+    "id": "base-063",
+    "k": "dare",
+    "l": 3,
+    "q": "Post a photo of the group on your story with a caption the group writes.",
+    "s": 0
+  },
+  {
+    "id": "base-064",
+    "k": "dare",
+    "l": 3,
+    "q": "Wear something silly chosen by the group until the game ends.",
+    "s": 0
+  },
+  {
+    "id": "base-065",
+    "k": "dare",
+    "l": 3,
+    "q": "Beatbox or rap about {S}'s worst habit for 20 seconds.",
+    "s": 20
+  },
+  {
+    "id": "base-066",
+    "k": "dare",
+    "l": 3,
+    "q": "Reveal your screen time for today and defend it.",
+    "s": 0
+  },
+  {
+    "id": "base-067",
+    "k": "truth",
+    "l": 4,
+    "q": "What's the most attractive thing about {S}, honestly?",
+    "s": 0
+  },
+  {
+    "id": "base-068",
+    "k": "truth",
+    "l": 4,
+    "q": "Describe your best kiss ever.",
+    "s": 0
+  },
+  {
+    "id": "base-069",
+    "k": "truth",
+    "l": 4,
+    "q": "What's the wildest place you've hooked up?",
+    "s": 0
+  },
+  {
+    "id": "base-070",
+    "k": "truth",
+    "l": 4,
+    "q": "What's your biggest turn-on?",
+    "s": 0
+  },
+  {
+    "id": "base-071",
+    "k": "truth",
+    "l": 4,
+    "q": "What's something you've never tried in bed but want to?",
+    "s": 0
+  },
+  {
+    "id": "base-072",
+    "k": "truth",
+    "l": 4,
+    "q": "Who in this room would you most like to kiss?",
+    "s": 0
+  },
+  {
+    "id": "base-073",
+    "k": "truth",
+    "l": 4,
+    "q": "What's the most scandalous message you've ever sent?",
+    "s": 0
+  },
+  {
+    "id": "base-074",
+    "k": "truth",
+    "l": 4,
+    "q": "Is your number closer to 3, 10 or 30? Tell the truth.",
+    "s": 0
+  },
+  {
+    "id": "base-075",
+    "k": "truth",
+    "l": 4,
+    "q": "What's the most awkward thing that's happened in the bedroom?",
+    "s": 0
+  },
+  {
+    "id": "base-076",
+    "k": "truth",
+    "l": 4,
+    "q": "What's the first thing you notice about someone you're attracted to?",
+    "s": 0
+  },
+  {
+    "id": "base-077",
+    "k": "truth",
+    "l": 4,
+    "q": "Who here do you think is the best kisser?",
+    "s": 0
+  },
+  {
+    "id": "base-078",
+    "k": "truth",
+    "l": 4,
+    "q": "What's your go-to move to impress someone?",
+    "s": 0
+  },
+  {
+    "id": "base-079",
+    "k": "truth",
+    "l": 4,
+    "q": "Which celebrity would you take home?",
+    "s": 0
+  },
+  {
+    "id": "base-080",
+    "k": "truth",
+    "l": 4,
+    "q": "Describe your perfect date night, ending included.",
+    "s": 0
+  },
+  {
+    "id": "base-081",
+    "k": "truth",
+    "l": 4,
+    "q": "What's a secret fantasy you'd only tell this group?",
+    "s": 0
+  },
+  {
+    "id": "base-082",
+    "k": "truth",
+    "l": 4,
+    "q": "Have you ever sent a risky photo? Would you do it again?",
+    "s": 0
+  },
+  {
+    "id": "base-083",
+    "k": "dare",
+    "l": 4,
+    "q": "Whisper the most seductive sentence you can into {S}'s ear.",
+    "s": 0
+  },
+  {
+    "id": "base-084",
+    "k": "dare",
+    "l": 4,
+    "q": "Give {S} a slow 20 second neck massage, if they're up for it.",
+    "s": 20
+  },
+  {
+    "id": "base-085",
+    "k": "dare",
+    "l": 4,
+    "q": "Kiss {S}'s hand, cheek or neck. They choose, and either of you can say no.",
+    "s": 0
+  },
+  {
+    "id": "base-086",
+    "k": "dare",
+    "l": 4,
+    "q": "Sit on {S}'s lap for the next two rounds, if they say yes.",
+    "s": 0
+  },
+  {
+    "id": "base-087",
+    "k": "dare",
+    "l": 4,
+    "q": "Give {S} your best bedroom eyes for 20 seconds without breaking.",
+    "s": 20
+  },
+  {
+    "id": "base-088",
+    "k": "dare",
+    "l": 4,
+    "q": "Do a 15 second seductive dance for the whole group.",
+    "s": 15
+  },
+  {
+    "id": "base-089",
+    "k": "dare",
+    "l": 4,
+    "q": "Lose a layer: take off a sock, shoe, hat or jacket.",
+    "s": 0
+  },
+  {
+    "id": "base-090",
+    "k": "dare",
+    "l": 4,
+    "q": "Describe {S}'s looks like a romance novel narrator for 20 seconds.",
+    "s": 20
+  },
+  {
+    "id": "base-091",
+    "k": "dare",
+    "l": 4,
+    "q": "Tell someone in the room three things you find attractive about them.",
+    "s": 0
+  },
+  {
+    "id": "base-092",
+    "k": "dare",
+    "l": 4,
+    "q": "Trace a word on {S}'s back with one finger. They have to guess it.",
+    "s": 0
+  },
+  {
+    "id": "base-093",
+    "k": "dare",
+    "l": 4,
+    "q": "Kiss {S} for 10 seconds if you both agree. Otherwise a cheek kiss.",
+    "s": 10
+  },
+  {
+    "id": "base-094",
+    "k": "dare",
+    "l": 4,
+    "q": "Pass an ice cube to {S} using only your lips, if you both agree.",
+    "s": 0
+  },
+  {
+    "id": "base-095",
+    "k": "dare",
+    "l": 4,
+    "q": "Read the nearest label, menu or book out loud in your sexiest voice.",
+    "s": 0
+  },
+  {
+    "id": "base-096",
+    "k": "dare",
+    "l": 4,
+    "q": "Text your latest crush 'Thinking about you' and show the group once they reply.",
+    "s": 0
+  },
+  {
+    "id": "base-097",
+    "k": "dare",
+    "l": 4,
+    "q": "Choose a snack for the group, or pass.",
+    "s": 0
+  },
+  {
+    "id": "base-098",
+    "k": "dare",
+    "l": 4,
+    "q": "Slow-dance with {S}, close, for the whole chorus of a song. Their call to stop.",
+    "s": 30
+  },
+  {
+    "id": "base-099",
+    "k": "dare",
+    "l": 1,
+    "q": "Do your best celebrity impression until someone guesses who.",
+    "s": 0
+  },
+  {
+    "id": "base-100",
+    "k": "dare",
+    "l": 1,
+    "q": "Dance to a song the group picks for 15 seconds, no stopping.",
+    "s": 15
+  },
+  {
+    "id": "base-101",
+    "k": "dare",
+    "l": 1,
+    "q": "Talk like a news anchor until your next turn.",
+    "s": 0
+  },
+  {
+    "id": "base-102",
+    "k": "dare",
+    "l": 1,
+    "q": "Act out a movie scene in silence. The group has 30 seconds to guess it.",
+    "s": 30
+  },
+  {
+    "id": "base-103",
+    "k": "dare",
+    "l": 1,
+    "q": "Say the alphabet backwards. If you slip up, laugh it off or pass.",
+    "s": 0
+  },
+  {
+    "id": "base-104",
+    "k": "truth",
+    "l": 1,
+    "q": "What skill do you pretend to have?",
+    "s": 0
+  },
+  {
+    "id": "base-105",
+    "k": "truth",
+    "l": 1,
+    "q": "What’s the most ridiculous thing you’ve ever been scared of?",
+    "s": 0
+  },
+  {
+    "id": "base-106",
+    "k": "dare",
+    "l": 2,
+    "q": "Give a dramatic award speech for ‘Most Likely to Text Back Three Days Later’.",
+    "s": 0
+  },
+  {
+    "id": "base-107",
+    "k": "dare",
+    "l": 2,
+    "q": "Take a selfie with {S} making the face the group picks.",
+    "s": 0
+  },
+  {
+    "id": "base-108",
+    "k": "dare",
+    "l": 2,
+    "q": "Pitch the nearest object like a TV shopping host, as seductively as you can.",
+    "s": 20
+  },
+  {
+    "id": "base-109",
+    "k": "dare",
+    "l": 2,
+    "q": "Describe your ‘type’ in exactly three words.",
+    "s": 0
+  },
+  {
+    "id": "base-110",
+    "k": "truth",
+    "l": 2,
+    "q": "What’s the cringiest thing you’ve done to impress someone?",
+    "s": 0
+  },
+  {
+    "id": "base-111",
+    "k": "truth",
+    "l": 2,
+    "q": "Who here has the best laugh, and who has the worst?",
+    "s": 0
+  },
+  {
+    "id": "base-112",
+    "k": "truth",
+    "l": 2,
+    "q": "What’s the longest you’ve ignored a text on purpose?",
+    "s": 0
+  },
+  {
+    "id": "base-113",
+    "k": "dare",
+    "l": 3,
+    "q": "Do 30 seconds of stand-up about the last person who ghosted you.",
+    "s": 30
+  },
+  {
+    "id": "base-114",
+    "k": "dare",
+    "l": 3,
+    "q": "Let {S} choose your next prompt, or pass.",
+    "s": 0
+  },
+  {
+    "id": "base-115",
+    "k": "dare",
+    "l": 3,
+    "q": "Re-enact your worst first date. The group picks who plays the other person.",
+    "s": 0
+  },
+  {
+    "id": "base-116",
+    "k": "dare",
+    "l": 3,
+    "q": "Let the group pick an app on your phone. Defend why you use it so much.",
+    "s": 0
+  },
+  {
+    "id": "base-117",
+    "k": "dare",
+    "l": 3,
+    "q": "Trade an item of clothing with {S} until the next spin.",
+    "s": 0
+  },
+  {
+    "id": "base-118",
+    "k": "truth",
+    "l": 3,
+    "q": "What’s the last lie you told today?",
+    "s": 0
+  },
+  {
+    "id": "base-119",
+    "k": "truth",
+    "l": 3,
+    "q": "What’s the most you’ve ever spent on someone you liked?",
+    "s": 0
+  },
+  {
+    "id": "base-120",
+    "k": "truth",
+    "l": 3,
+    "q": "Which friendship in this room is secretly the most competitive?",
+    "s": 0
+  },
+  {
+    "id": "base-121",
+    "k": "dare",
+    "l": 4,
+    "q": "Say ‘I want you’ in five different tones. The group rates each from 1 to 10.",
+    "s": 0
+  },
+  {
+    "id": "base-122",
+    "k": "dare",
+    "l": 4,
+    "q": "Give {S} a 15 second shoulder rub, if they’re up for it.",
+    "s": 15
+  },
+  {
+    "id": "base-123",
+    "k": "dare",
+    "l": 4,
+    "q": "Compliment {S} on something that isn’t their looks, then something that is.",
+    "s": 0
+  },
+  {
+    "id": "base-124",
+    "k": "dare",
+    "l": 4,
+    "q": "Describe your ideal first kiss in a dramatic movie-trailer voice.",
+    "s": 20
+  },
+  {
+    "id": "base-125",
+    "k": "dare",
+    "l": 4,
+    "q": "Whisper your most outrageous pick-up line to {S}. They rate it out of 10.",
+    "s": 0
+  },
+  {
+    "id": "base-126",
+    "k": "truth",
+    "l": 4,
+    "q": "What’s the boldest move you’ve ever made on a crush?",
+    "s": 0
+  },
+  {
+    "id": "base-127",
+    "k": "truth",
+    "l": 4,
+    "q": "What’s your biggest ‘ick’ and your biggest ‘yes please’?",
+    "s": 0
+  },
+  {
+    "id": "base-128",
+    "k": "truth",
+    "l": 4,
+    "q": "What’s the most flirtatious thing {S} could say to you?",
+    "s": 0
+  },
+  {
+    "id": "base-129",
+    "k": "truth",
+    "l": 4,
+    "q": "What’s your most irresistible quality, honestly?",
+    "s": 0
+  }
+]

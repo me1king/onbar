@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/serverSupabase';
+import { DEFAULT_SPIN_BOTTLE_PROMPTS, parseSpinBottlePrompts } from '@/lib/spinBottlePrompts';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const database = createServerSupabaseClient();
   if (!database) {
-    return NextResponse.json({ error: 'Game settings are not configured.' }, { status: 503 });
+    return NextResponse.json({
+      groupVoteEnabled: false,
+      prompts: DEFAULT_SPIN_BOTTLE_PROMPTS
+    }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   const { data, error } = await database
@@ -22,13 +26,26 @@ export async function GET() {
 
   const value = data?.value;
   if (value !== undefined && value !== null
-    && (typeof value !== 'object' || Array.isArray(value)
-      || typeof (value as { groupVoteEnabled?: unknown }).groupVoteEnabled !== 'boolean')) {
+    && (typeof value !== 'object' || Array.isArray(value))) {
     console.error('[SpinBottleConfig] Published group-vote configuration is invalid.');
     return NextResponse.json({ error: 'Published game settings are invalid.' }, { status: 503 });
   }
 
+  const config = value as { groupVoteEnabled?: unknown; prompts?: unknown } | null | undefined;
+  if (config?.groupVoteEnabled !== undefined && typeof config.groupVoteEnabled !== 'boolean') {
+    console.error('[SpinBottleConfig] Published group-vote configuration is invalid.');
+    return NextResponse.json({ error: 'Published game settings are invalid.' }, { status: 503 });
+  }
+  const parsedPrompts = config?.prompts === undefined
+    ? { ok: true as const, prompts: DEFAULT_SPIN_BOTTLE_PROMPTS }
+    : parseSpinBottlePrompts(config.prompts);
+  if (!parsedPrompts.ok) {
+    console.error('[SpinBottleConfig] Published prompt settings are invalid:', parsedPrompts.error);
+    return NextResponse.json({ error: 'Published game prompts are invalid.' }, { status: 503 });
+  }
+
   return NextResponse.json({
-    groupVoteEnabled: value ? (value as { groupVoteEnabled: boolean }).groupVoteEnabled : false
+    groupVoteEnabled: config?.groupVoteEnabled === true,
+    prompts: parsedPrompts.prompts
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

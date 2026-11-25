@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { CheckCircle2, Loader2, Plus, RefreshCcw, Save, ShieldAlert, Sparkles, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -139,7 +140,8 @@ export default function SpinCampaignManager() {
           <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Spin the Bottle</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Control the campaign, set prize odds and limits, assign winners yourself, and track every issued code.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button asChild type="button" variant="outline" className="h-10 rounded-lg"><Link href="/lord/spin-game-prompts">Edit game prompts</Link></Button>
           <Button type="button" onClick={() => void loadCampaign()} variant="outline" className="h-10 rounded-lg"><RefreshCcw className="mr-2 h-4 w-4" />Refresh</Button>
           <Button type="button" onClick={() => void saveCampaign()} disabled={saving || enabledWeightTotal !== 100} className="h-10 rounded-lg"><Save className="mr-2 h-4 w-4" />{saving ? 'Saving…' : 'Save campaign'}</Button>
         </div>
