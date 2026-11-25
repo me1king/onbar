@@ -1,0 +1,1082 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Spin the Bottle Live</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&family=Unbounded:wght@500..900&display=swap" rel="stylesheet">
+<style>
+/* Layout: one column. Home picks how to play (one phone, host a room, join a room). Then a round felt table with players seated around the rim and an amber glass bottle in the middle that spins in sync on every phone. */
+:root{
+  --bg:#fff;
+  --panel:#fff;
+  --panel-2:#fff8ec;
+  --line:#e2e8f0;
+  --fg:#172033;
+  --mute:#64748b;
+  --felt:#bbf7d0;
+  --felt-2:#86efac;
+  --wood:#b45309;
+  --brass:#d97706;
+  --amber:#f59e0b;
+  --hot:#e11d48;
+  --ok:#16a34a;
+  --pink:#db2777;
+  --blue:#2563eb;
+  --f-display:'Unbounded',system-ui,sans-serif;
+  --f-body:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg)}
+body{
+  font-family:var(--f-body);font-size:16px;line-height:1.45;min-height:100vh;
+  background-image:radial-gradient(ellipse 90% 50% at 50% 0%,#fff8ec 0%,transparent 70%);
+  background-repeat:no-repeat;
+  padding-block:20px 56px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  font-variant-numeric:tabular-nums;
+}
+button{font:inherit;color:inherit}
+.shell{max-width:560px;margin-inline:auto;display:flex;flex-direction:column;gap:18px}
+.screen{display:flex;flex-direction:column;gap:18px}
+.wordmark{font-family:var(--f-display);font-weight:800;font-size:clamp(26px,8vw,40px);line-height:1;margin:0;letter-spacing:-.01em}
+.wordmark span{color:var(--amber)}
+.sub{margin:0;color:var(--mute)}
+h2{font-family:var(--f-display);font-weight:700;font-size:18px;margin:0}
+.lbl{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.note{font-size:14px;color:var(--mute);margin:0}
+.panel{background:var(--panel);border:1.5px solid var(--line);border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.btn{border:0;border-radius:14px;padding:14px 18px;min-height:52px;font-weight:800;font-size:17px;cursor:pointer;box-shadow:0 4px 0 rgba(15,23,42,.12);transition:transform .1s,box-shadow .1s,filter .15s;text-align:center}
+.btn:hover{filter:brightness(1.08)}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(15,23,42,.12)}
+.btn[disabled]{opacity:.45;cursor:not-allowed;filter:none}
+.btn-amber{background:var(--amber);color:#1a1205}
+.btn-ok{background:var(--ok);color:#06231a}
+.btn-hot{background:var(--hot);color:#fff}
+.btn-blue{background:var(--blue);color:#06121f}
+.btn-ghost{background:transparent;color:var(--fg);border:1.5px solid var(--line);box-shadow:none}
+.btn-sm{min-height:40px;padding:8px 14px;font-size:14px;border-radius:10px}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1 1 140px;min-width:0}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.topbar .wordmark{font-size:20px}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tools .btn{flex:none}
+.pill{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;border:1.5px solid var(--line);border-radius:999px;padding:5px 10px;color:var(--mute);white-space:nowrap}
+.pill.on{border-color:var(--ok);color:var(--ok)}
+.pill.off{border-color:var(--hot);color:var(--hot)}
+.input{width:100%;background:var(--bg);border:1.5px solid var(--line);color:var(--fg);border-radius:12px;padding:12px 14px;font:inherit;font-size:16px;min-width:0}
+.input::placeholder{color:var(--mute)}
+.field{display:flex;flex-direction:column;gap:6px}
+.warn{border:1.5px dashed var(--line);border-radius:14px;padding:12px 14px;font-size:14px;color:var(--mute)}
+.warn b{color:var(--fg)}
+.warn.pink{border-color:var(--pink)}
+.err{color:var(--hot);font-weight:700;font-size:14px;margin:0;min-height:20px}
+
+/* home */
+.modes{display:flex;flex-direction:column;gap:12px}
+.mode{display:flex;flex-direction:column;gap:2px;text-align:left;border:1.5px solid var(--line);background:var(--panel);border-radius:18px;padding:16px 18px;cursor:pointer;box-shadow:0 4px 0 rgba(15,23,42,.1)}
+.mode:hover{border-color:var(--amber)}
+.mode[disabled]{opacity:.45;cursor:not-allowed}
+.mode b{font-family:var(--f-display);font-size:17px;font-weight:700}
+.mode span{color:var(--mute);font-size:14px}
+
+/* setup + lobby */
+.addrow{display:flex;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;background:var(--panel-2);border:1.5px solid var(--line);border-radius:999px;padding:5px 8px 5px 6px;font-weight:700;max-width:100%}
+.chip.rm{padding-right:14px}
+.chip i{width:24px;height:24px;border-radius:50%;background:var(--pc);display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:800;color:#10151b;flex:none}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip button{border:0;background:var(--bg);color:var(--mute);width:24px;height:24px;border-radius:50%;cursor:pointer;line-height:1;font-size:15px;flex:none}
+.chip button:hover{color:var(--hot)}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.seg button{background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:10px 4px;cursor:pointer;font-weight:800;display:flex;flex-direction:column;gap:2px;align-items:center;min-width:0;font-size:14px}
+.seg button small{font-weight:500;color:var(--mute);font-size:11px;text-align:center}
+.seg button[aria-pressed="true"]{border-color:var(--amber);background:#fff1c2}
+.seg button[aria-pressed="true"].nl{border-color:var(--pink);background:#fce7f3}
+.seg button[disabled]{cursor:default}
+@media (max-width:420px){.seg{grid-template-columns:repeat(2,1fr)}}
+.check{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.check input{width:22px;height:22px;accent-color:var(--amber);margin-top:2px;flex:none}
+.codebox{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.code{font-family:var(--f-display);font-weight:800;font-size:clamp(40px,14vw,64px);letter-spacing:.14em;color:var(--amber);line-height:1}
+
+/* arena */
+.arena{position:relative;width:min(100%,480px);aspect-ratio:1;margin-inline:auto;container-type:inline-size;user-select:none;-webkit-user-select:none}
+.table{
+  position:absolute;inset:8%;border-radius:50%;
+  background:radial-gradient(circle at 50% 38%,var(--felt) 0%,var(--felt-2) 100%);
+  box-shadow:0 0 0 9px var(--wood),0 0 0 11px var(--brass),0 18px 34px rgba(15,23,42,.16),inset 0 0 40px rgba(15,23,42,.08);
+}
+.table::before{content:"";position:absolute;inset:9%;border-radius:50%;border:2px dashed rgba(15,23,42,.12)}
+.table::after{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,255,255,.08),transparent 55%)}
+.pl{position:absolute;width:0;height:0;--av:clamp(34px,12cqw,60px)}
+.av{
+  position:absolute;left:0;top:0;width:var(--av);height:var(--av);transform:translate(-50%,-50%);
+  border-radius:50%;background:var(--pc);color:#10151b;font-family:var(--f-display);font-weight:800;font-size:calc(var(--av)*.42);
+  display:grid;place-items:center;box-shadow:0 3px 0 rgba(0,0,0,.45),inset 0 -5px 0 rgba(0,0,0,.16);
+  transition:transform .18s,box-shadow .18s;z-index:2;
+}
+.pl.spinner .av{outline:2px dashed rgba(255,255,255,.75);outline-offset:3px}
+.pl.away .av{opacity:.35;filter:grayscale(1)}
+.pl.on .av{transform:translate(-50%,-50%) scale(1.22);box-shadow:0 0 0 4px var(--amber),0 0 30px 8px rgba(255,176,46,.55)}
+.pl .nm{position:absolute;left:0;top:calc(var(--av)/2 + 5px);transform:translateX(-50%);font-size:clamp(10px,3cqw,13px);font-weight:700;background:rgba(255,255,255,.95);color:var(--fg);padding:2px 8px;border-radius:99px;max-width:22cqw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:3}
+.pl.me .nm{background:var(--amber);color:#1a1205}
+.pl .sp{position:absolute;left:calc(var(--av)/2 - 8px);top:calc(var(--av)/-2 - 6px);min-width:20px;height:20px;border-radius:99px;background:var(--hot);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;padding-inline:5px;z-index:4}
+.bottle{
+  position:absolute;left:50%;top:50%;width:16cqw;height:54cqw;margin:0;padding:0;border:0;background:none;cursor:pointer;
+  transform:translate(-50%,-50%) rotate(0deg);transform-origin:50% 50%;filter:drop-shadow(0 10px 10px rgba(0,0,0,.5));z-index:1;touch-action:manipulation;
+}
+.bottle svg{width:100%;height:100%;display:block;overflow:visible}
+.who-spin{text-align:center;color:var(--mute);font-size:15px;min-height:22px}
+.who-spin b{color:var(--fg)}
+.spinbtn{font-family:var(--f-display);font-size:22px;letter-spacing:.04em;min-height:64px;width:100%}
+
+/* panel */
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0;animation:rise .3s ease-out both}
+@keyframes rise{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+.chosen{display:flex;align-items:center;gap:14px}
+.chosen .av2{width:56px;height:56px;border-radius:50%;background:var(--pc);color:#10151b;font-family:var(--f-display);font-weight:800;font-size:24px;display:grid;place-items:center;flex:none;box-shadow:0 3px 0 rgba(0,0,0,.45)}
+.chosen .big{font-family:var(--f-display);font-weight:800;font-size:clamp(22px,6vw,30px);line-height:1.1;overflow-wrap:anywhere}
+.tagrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tag{font-family:var(--f-display);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:8px;background:var(--amber);color:#1a1205}
+.tag.dare{background:var(--hot);color:#fff}
+.tag.truth{background:var(--blue);color:#06121f}
+.tag.nl{background:var(--pink);color:#fff}
+.q{font-size:clamp(20px,5.4vw,25px);font-weight:700;line-height:1.3;margin:0;text-wrap:balance;overflow-wrap:anywhere}
+.hint{margin:0;color:var(--mute);font-size:14px}
+.hint b{color:var(--fg)}
+.timer{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.timer .num{font-family:var(--f-display);font-size:30px;min-width:2.4ch}
+.bar{flex:1 1 120px;height:10px;background:var(--bg);border-radius:99px;overflow:hidden;border:1.5px solid var(--line)}
+.bar i{display:block;height:100%;width:100%;background:var(--amber)}
+.result{border-radius:16px;padding:14px 16px;border:1.5px solid var(--line);background:var(--panel-2)}
+.result b{display:block;font-family:var(--f-display);font-weight:700;font-size:18px;margin-bottom:2px}
+.result.good{border-color:var(--ok);background:#dcfce7}
+.result.bad{border-color:var(--hot);background:#ffe4e6}
+.lb{display:flex;flex-direction:column;gap:12px}
+.lbr{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center}
+.lbr .rk{font-family:var(--f-display);color:var(--mute)}
+.lbr .nm2{min-width:0}
+.lbr .nm2 b{display:block;overflow-wrap:anywhere}
+.lbr .nm2 small{color:var(--mute)}
+.lbr .meter{height:8px;border-radius:99px;background:var(--bg);margin-top:5px;overflow:hidden}
+.lbr .meter i{display:block;height:100%;background:var(--pc)}
+.lbr .sc{font-family:var(--f-display);font-weight:800;font-size:22px}
+.foot{text-align:center;color:var(--mute);font-size:13px;margin:0}
+.banner{background:#fff1f2;border:1.5px solid var(--hot);border-radius:14px;padding:12px 14px;font-size:14px}
+@media (prefers-reduced-motion:reduce){.card{animation:none}.av{transition:none}}
+.tw{background:linear-gradient(90deg,#fce7f3,#fff1f2);border:1.5px solid var(--pink);border-radius:12px;padding:10px 12px;font-weight:800;animation:pop .4s}
+@keyframes pop{from{transform:scale(.9);opacity:0}}
+.rx{display:flex;justify-content:center;gap:8px}
+.rx button{background:var(--panel-2);border:1.5px solid var(--line);border-radius:999px;font-size:22px;width:48px;height:48px;cursor:pointer;transition:transform .1s}
+.rx button:active{transform:scale(1.3)}
+.fl{position:absolute;font-size:34px;pointer-events:none;transform:translate(-50%,-50%);animation:fl 1.8s ease-out forwards;z-index:5}
+@keyframes fl{to{transform:translate(-50%,-280%) scale(1.5);opacity:0}}
+.aw{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.aw span{background:var(--panel-2);border:1.5px solid var(--line);border-radius:999px;padding:6px 12px;font-size:14px}
+.crown{background:linear-gradient(90deg,#fff7d6,#ffedab);border:1.5px solid var(--brass);border-radius:14px;padding:10px 12px;font-size:14px}
+.crown small{color:#92400e}
+.crown .sl{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.crown .sl button{background:rgba(255,255,255,.75);border:1px solid var(--brass);color:var(--fg);border-radius:999px;padding:5px 10px;font-size:13px;font-weight:700;cursor:pointer}
+@media (prefers-reduced-motion:reduce){.tw,.fl{animation:none}}
+</style>
+
+<main class="shell">
+
+  <!-- HOME -->
+  <section id="home" class="screen">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <h1 class="wordmark">Spin the <span>Bottle</span></h1>
+      <p class="sub">Spin the bottle, then choose truth or dare. Play locally on one phone.</p>
+    </div>
+    <div class="modes">
+      <button class="mode" id="m-host"><b>Host a room</b><span>Get a 4 letter code. Friends join on their own phones.</span></button>
+      <button class="mode" id="m-join"><b>Join a room</b><span>Type the code from the host's screen.</span></button>
+      <button class="mode" id="m-local"><b>One phone</b><span>Pass a single phone around the circle.</span></button>
+    </div>
+    <div class="warn" id="roomnote" hidden><b>Online multiplayer rooms are not available in this app yet.</b> Choose One phone to play locally.</div>
+    <div class="warn">Truths and dares are optional. Shots are optional and limited to two per player. Soft drinks appear only if selected before the game starts. Anyone can pass or stop at any time.</div>
+    <p class="foot">Adults 20+. Anyone can pass. Never drive after drinking.</p>
+  </section>
+
+  <!-- HOST FORM -->
+  <section id="hostf" class="screen" hidden>
+    <div class="topbar"><h2>Host a room</h2><button class="btn btn-ghost btn-sm" data-back>Back</button></div>
+    <div class="panel">
+      <div class="field"><label class="lbl" for="hname">Your name</label><input class="input" id="hname" maxlength="12" autocomplete="off" placeholder="e.g. Alex"></div>
+      <p class="err" id="herr"></p>
+      <button class="btn btn-amber" id="hgo">Create room</button>
+    </div>
+  </section>
+
+  <!-- JOIN FORM -->
+  <section id="joinf" class="screen" hidden>
+    <div class="topbar"><h2>Join a room</h2><button class="btn btn-ghost btn-sm" data-back>Back</button></div>
+    <div class="panel">
+      <div class="field"><label class="lbl" for="jcode">Room code</label><input class="input" id="jcode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" style="font-family:var(--f-display);font-size:28px;letter-spacing:.2em;text-transform:uppercase"></div>
+      <div class="field"><label class="lbl" for="jname">Your name</label><input class="input" id="jname" maxlength="12" autocomplete="off" placeholder="e.g. Sam"></div>
+      <p class="err" id="jerr"></p>
+      <button class="btn btn-amber" id="jgo">Join</button>
+    </div>
+  </section>
+
+  <!-- LOCAL SETUP -->
+  <section id="local" class="screen" hidden>
+    <div class="topbar"><h2>One phone</h2><button class="btn btn-ghost btn-sm" data-back>Back</button></div>
+    <div class="panel">
+      <span class="lbl">Players</span>
+      <form class="addrow" id="addform">
+        <input class="input" id="pname" type="text" maxlength="12" placeholder="Add a name" autocomplete="off" aria-label="Player name">
+        <button class="btn btn-amber btn-sm" type="submit">Add</button>
+      </form>
+      <div class="chips" id="chips"></div>
+      <p class="note" id="plnote"></p>
+    </div>
+    <div class="panel">
+      <span class="lbl">Intensity</span>
+      <div class="seg lvlseg" data-ctx="local"></div>
+      <div class="warn pink" id="lnote" hidden></div>
+      <label class="check" id="lvotecontrol" for="lvote"><input type="checkbox" id="lvote"><span><b>Group vote</b> <span class="note">Others judge each dare before it counts. If the group votes no, try another prompt—no drink is required.</span></span></label>
+      <p class="note" id="vote-config-note" hidden></p>
+      <label class="check" for="lsoft"><input type="checkbox" id="lsoft"><span><b>Soft drinks for this game</b> <span class="note">Select before starting to show soft drinks instead of shots.</span></span></label>
+      <p class="note">Alcohol is optional and for adults only. A player can make at most two alcohol drink choices per game; passing never requires a drink.</p>
+    </div>
+    <button class="btn btn-amber spinbtn" id="lstart">Start the game</button>
+  </section>
+
+  <!-- LOBBY (host + joined phones) -->
+  <section id="lobby" class="screen" hidden>
+    <div class="topbar"><h2>Lobby</h2><div class="tools"><span class="pill" id="lconn"></span><button class="btn btn-ghost btn-sm" id="lleave">Leave</button></div></div>
+    <div class="panel">
+      <span class="lbl">Room code</span>
+      <div class="codebox"><div class="code" id="lcode">----</div><button class="btn btn-ghost btn-sm" id="lcopy">Copy code</button></div>
+      <p class="note">Friends open this page on their phone, tap <b>Join a room</b> and type the code.</p>
+    </div>
+    <div class="panel">
+      <span class="lbl" id="lplbl">Players</span>
+      <div class="chips" id="lchips"></div>
+    </div>
+    <div class="panel">
+      <span class="lbl">Intensity</span>
+      <div class="seg lvlseg" data-ctx="lobby"></div>
+      <div class="warn pink" id="lobnote" hidden></div>
+      <label class="check" id="lobvotecontrol" for="lobvote"><input type="checkbox" id="lobvote"><span><b>Group vote</b> <span class="note">Others judge each dare before it counts.</span></span></label>
+      <p class="note" id="lobby-vote-config-note" hidden></p>
+      <label class="check" for="lobsoft"><input type="checkbox" id="lobsoft"><span><b>Soft drinks for this game</b> <span class="note">Select before starting to use soft drinks instead of shots.</span></span></label>
+      <p class="note">Alcohol is optional; each player can make at most two alcohol choices. Passing never requires a drink.</p>
+      <p class="note" id="lobwait" hidden>Waiting for the host to start.</p>
+    </div>
+    <button class="btn btn-amber spinbtn" id="lobstart">Start the game</button>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="screen" hidden>
+    <div class="topbar">
+      <h1 class="wordmark">Spin the <span>Bottle</span></h1>
+      <div class="tools">
+        <span class="pill" id="roompill" hidden></span>
+        <button class="btn btn-ghost btn-sm" id="mus">Music: off</button>
+        <button class="btn btn-ghost btn-sm" id="snd" aria-pressed="true">Sound on</button>
+        <button class="btn btn-ghost btn-sm" id="endbtn">End</button>
+      </div>
+    </div>
+    <div class="banner" id="hostgone" hidden>The host left the room. Tap Leave and start or join a new one.</div>
+    <div class="crown" id="crown" hidden></div>
+    <div class="who-spin" id="whospin"></div>
+    <div class="arena" id="arena">
+      <div class="table"></div>
+      <div id="seats"></div>
+      <button class="bottle" id="bottle" aria-label="Spin the bottle">
+        <svg viewBox="0 0 60 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="glass" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#6b3205"/>
+              <stop offset=".25" stop-color="#d9811a"/>
+              <stop offset=".5" stop-color="#ffc24d"/>
+              <stop offset=".78" stop-color="#c46a0c"/>
+              <stop offset="1" stop-color="#6b3205"/>
+            </linearGradient>
+            <linearGradient id="gold" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#8c6b22"/><stop offset=".5" stop-color="#f0cf75"/><stop offset="1" stop-color="#8c6b22"/>
+            </linearGradient>
+          </defs>
+          <path d="M24.5 12 L24.5 62 C24.5 82 9 92 9 114 L9 182 Q9 195 22 195 L38 195 Q51 195 51 182 L51 114 C51 92 35.5 82 35.5 62 L35.5 12 Z" fill="url(#glass)" stroke="#3b1c03" stroke-width="1.5"/>
+          <rect x="22.5" y="4" width="15" height="11" rx="2.5" fill="url(#gold)" stroke="#5a431a" stroke-width="1"/>
+          <rect x="9.8" y="122" width="40.4" height="44" fill="#f3e6c4" opacity=".95"/>
+          <rect x="9.8" y="122" width="40.4" height="4" fill="#c0392b"/>
+          <rect x="9.8" y="162" width="40.4" height="4" fill="#c0392b"/>
+          <circle cx="30" cy="144" r="9" fill="none" stroke="#7a2a1a" stroke-width="2"/>
+          <path d="M26 144 L30 138 L34 144 L30 150 Z" fill="#7a2a1a"/>
+          <path d="M14 118 C14 108 16 100 20 92" stroke="#fff" stroke-opacity=".38" stroke-width="3" fill="none" stroke-linecap="round"/>
+          <path d="M28.5 18 L28.5 60" stroke="#fff" stroke-opacity=".35" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div id="panel"></div>
+    <div class="rx" id="rx" aria-label="Reactions"><button data-e="🔥">🔥</button><button data-e="😂">😂</button><button data-e="😱">😱</button><button data-e="👏">👏</button><button data-e="🍻">🍻</button></div>
+  </section>
+
+  <!-- END -->
+  <section id="end" class="screen" hidden></section>
+</main>
+
+<script>
+(()=>{
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rnd=n=>Math.floor(Math.random()*n);
+const mod=(a,m)=>((a%m)+m)%m;
+const clean=s=>String(s||'').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g,'').trim().slice(0,12);
+const PAL=['#ff6b6b','#ffa94d','#ffd43b','#69db7c','#38d9a9','#4dabf7','#9775fa','#f783ac','#a9e34b','#66d9e8','#ff8787','#b197fc'];
+const col=c=>PAL[(((+c)|0)%PAL.length+PAL.length)%PAL.length];
+const LEVELS=[['Chill','easy fun'],['Spicy','flirty light'],['Wild','embarrassing'],['Naughty','18+ adult']];
+const MAX_ALCOHOL_CHOICES=2;
+const DECREES=["Everyone calls the monarch ‘Your Majesty’.","No saying anyone’s name. Use ‘darling’ instead.","Nobody may point with their fingers.","Every sentence must end with ‘please’.","Everyone speaks in a whisper.","Nobody may say ‘yes’ or ‘no’.","Everyone must clap once before they speak.","Nobody may say ‘I’ or ‘me’."];
+const NAUGHTY_NOTE="Naughty has flirty and sexual dares. Only play it with adults who are comfortable with that. Every card can be passed, and nobody should ever be pressured.";
+
+/* ---------- prompts. {S} = person who spun (asker). The card is for the person the bottle picked. l = level 1 to 4 ---------- */
+const T=(q,l=1)=>({k:'truth',l,q});
+const D=(q,l=1,s=0)=>({k:'dare',l,q,s});
+const PROMPTS=[
+/* level 1 */
+T("What's the most embarrassing song on your playlist?"),
+T("What's the weirdest thing you do when you're home alone?"),
+T("What small lie do you tell all the time?"),
+T("Who here would you want next to you in a zombie apocalypse, and why?"),
+T("What's the worst haircut you've ever had?"),
+T("What's the last thing you searched on your phone?"),
+T("What food combo do you love that other people find disgusting?"),
+T("What's your most awkward memory from school?"),
+T("Who here is the best dancer, and who is the worst?"),
+T("What's the most childish thing you still do?"),
+D("Do your best impression of {S} for 15 seconds."),
+D("Speak in an accent of your choice until your next turn."),
+D("Do 10 jumping jacks."),
+D("Show the last photo you took."),
+D("Let {S} draw a tiny doodle on your hand."),
+D("Sing the chorus of any song, loudly."),
+D("Do your best runway walk across the room."),
+D("Make up a 15 second rap about {S}.",1,15),
+D("Hold a plank for 20 seconds.",1,20),
+D("Talk without moving your lips for 20 seconds.",1,20),
+D("Tell a joke. If nobody laughs, choose another prompt or pass."),
+D("Balance a shoe on your head for 10 seconds.",1,10),
+/* level 2 */
+T("Who here would you swap lives with for a day?",2),
+T("What's the most spontaneous thing you've done for someone you liked?",2),
+T("What's your biggest turn-off?",2),
+T("What's the worst date you've ever been on?",2),
+T("Have you ever texted the wrong person? What happened?",2),
+T("Who here would be the worst roommate?",2),
+T("What do you think is your best feature, and what's {S}'s?",2),
+T("What's the longest you've kept a crush secret?",2),
+T("What's the most embarrassing thing in your camera roll? Describe it.",2),
+T("Who here has the best style, and who has the worst?",2),
+D("Compliment everyone in the group.",2),
+D("Let the group scroll through your camera roll for 20 seconds.",2,20),
+D("Read your last text message in your most dramatic voice.",2),
+D("Hold eye contact with {S} for 30 seconds without laughing.",2,30),
+D("Whisper something in {S}'s ear that makes them laugh.",2),
+D("Let {S} send a text from your phone to a contact they pick. You can veto once.",2),
+D("Slow-dance with {S} for 15 seconds.",2,15),
+D("Do an impression of someone in the room and let everyone guess who.",2),
+D("Give {S} a hug that lasts a full 10 seconds.",2,10),
+D("Tell {S} the first thing you noticed about them, honestly.",2),
+/* level 3 */
+T("Have you ever had a crush on someone in this room?",3),
+T("What's your biggest regret from the last year?",3),
+T("What's the most daring thing you've done at a party?",3),
+T("Who here would you trust least with a secret?",3),
+T("What's the worst thing you've done to a friend?",3),
+T("What's your most embarrassing romantic moment?",3),
+T("Have you ever stalked an ex online? Be honest.",3),
+T("What's something you've never told anyone in this room?",3),
+T("What's the pettiest reason you've ever ended things with someone?",3),
+T("What's the most trouble you've caused someone else?",3),
+T("Which person in this room would you swap phones with for a day, and which would you never?",3),
+T("What's the biggest lie you've told on a date?",3),
+D("Hand your unlocked phone to the person on your left for 60 seconds.",3,60),
+D("Call the last person you texted and say 'I have a confession'. Hold for 10 seconds, then say 'just kidding'.",3,10),
+D("Send a voice note singing happy birthday to a contact {S} picks, even if it's nobody's birthday.",3),
+D("Let the group give you a new nickname. You answer to it for the rest of the game.",3),
+D("Stand on a chair and give a 30 second motivational speech about drinking water.",3,30),
+D("Perform a dramatic 30 second breakup scene with the nearest object.",3,30),
+D("Swap phones with {S} for two rounds and reply to anything that pops up.",3),
+D("Speak only in questions until your next turn. If you slip, start again.",3),
+D("Post a photo of the group on your story with a caption the group writes.",3),
+D("Wear something silly chosen by the group until the game ends.",3),
+D("Beatbox or rap about {S}'s worst habit for 20 seconds.",3,20),
+D("Reveal your screen time for today and defend it.",3),
+/* level 4: naughty, adults who are comfortable. Always passable */
+T("What's the most attractive thing about {S}, honestly?",4),
+T("Describe your best kiss ever.",4),
+T("What's the wildest place you've hooked up?",4),
+T("What's your biggest turn-on?",4),
+T("What's something you've never tried in bed but want to?",4),
+T("Who in this room would you most like to kiss?",4),
+T("What's the most scandalous message you've ever sent?",4),
+T("Is your number closer to 3, 10 or 30? Tell the truth.",4),
+T("What's the most awkward thing that's happened in the bedroom?",4),
+T("What's the first thing you notice about someone you're attracted to?",4),
+T("Who here do you think is the best kisser?",4),
+T("What's your go-to move to impress someone?",4),
+T("Which celebrity would you take home?",4),
+T("Describe your perfect date night, ending included.",4),
+T("What's a secret fantasy you'd only tell this group?",4),
+T("Have you ever sent a risky photo? Would you do it again?",4),
+D("Whisper the most seductive sentence you can into {S}'s ear.",4),
+D("Give {S} a slow 20 second neck massage, if they're up for it.",4,20),
+D("Kiss {S}'s hand, cheek or neck. They choose, and either of you can say no.",4),
+D("Sit on {S}'s lap for the next two rounds, if they say yes.",4),
+D("Give {S} your best bedroom eyes for 20 seconds without breaking.",4,20),
+D("Do a 15 second seductive dance for the whole group.",4,15),
+D("Lose a layer: take off a sock, shoe, hat or jacket.",4),
+D("Describe {S}'s looks like a romance novel narrator for 20 seconds.",4,20),
+D("Tell someone in the room three things you find attractive about them.",4),
+D("Trace a word on {S}'s back with one finger. They have to guess it.",4),
+D("Kiss {S} for 10 seconds if you both agree. Otherwise a cheek kiss.",4,10),
+D("Pass an ice cube to {S} using only your lips, if you both agree.",4),
+D("Read the nearest label, menu or book out loud in your sexiest voice.",4),
+D("Text your latest crush 'Thinking about you' and show the group once they reply.",4),
+D("Choose a snack for the group, or pass.",4),
+D("Slow-dance with {S}, close, for the whole chorus of a song. Their call to stop.",4,30),
+/* more cards */
+D("Do your best celebrity impression until someone guesses who."),
+D("Dance to a song the group picks for 15 seconds, no stopping.",1,15),
+D("Talk like a news anchor until your next turn."),
+D("Act out a movie scene in silence. The group has 30 seconds to guess it.",1,30),
+D("Say the alphabet backwards. If you slip up, laugh it off or pass."),
+T("What skill do you pretend to have?"),
+T("What’s the most ridiculous thing you’ve ever been scared of?"),
+D("Give a dramatic award speech for ‘Most Likely to Text Back Three Days Later’.",2),
+D("Take a selfie with {S} making the face the group picks.",2),
+D("Pitch the nearest object like a TV shopping host, as seductively as you can.",2,20),
+D("Describe your ‘type’ in exactly three words.",2),
+T("What’s the cringiest thing you’ve done to impress someone?",2),
+T("Who here has the best laugh, and who has the worst?",2),
+T("What’s the longest you’ve ignored a text on purpose?",2),
+D("Do 30 seconds of stand-up about the last person who ghosted you.",3,30),
+D("Let {S} choose your next prompt, or pass.",3),
+D("Re-enact your worst first date. The group picks who plays the other person.",3),
+D("Let the group pick an app on your phone. Defend why you use it so much.",3),
+D("Trade an item of clothing with {S} until the next spin.",3),
+T("What’s the last lie you told today?",3),
+T("What’s the most you’ve ever spent on someone you liked?",3),
+T("Which friendship in this room is secretly the most competitive?",3),
+D("Say ‘I want you’ in five different tones. The group rates each from 1 to 10.",4),
+D("Give {S} a 15 second shoulder rub, if they’re up for it.",4,15),
+D("Compliment {S} on something that isn’t their looks, then something that is.",4),
+D("Describe your ideal first kiss in a dramatic movie-trailer voice.",4,20),
+D("Whisper your most outrageous pick-up line to {S}. They rate it out of 10.",4),
+T("What’s the boldest move you’ve ever made on a crush?",4),
+T("What’s your biggest ‘ick’ and your biggest ‘yes please’?",4),
+T("What’s the most flirtatious thing {S} could say to you?",4),
+T("What’s your most irresistible quality, honestly?",4)
+];
+
+/* ---------- local prefs ---------- */
+const KEY='spin-the-bottle-live-v1';
+let cfg={name:'',players:['Alex','Sam','Jordan','Riley'],lvl:2,soft:false};
+try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s&&typeof s==='object'){cfg=Object.assign(cfg,s);if(!Array.isArray(cfg.players))cfg.players=['Alex','Sam']}}catch(e){}
+cfg.soft=new URLSearchParams(location.search).get('drinkMode')==='soft';
+cfg.lvl=Math.min(4,Math.max(1,(+cfg.lvl)|0||2));
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(cfg))}catch(e){}};
+let adminGroupVoteEnabled=false,groupVoteSettingsLoaded=false,groupVoteSettingsError=false;
+
+/* ---------- state ---------- */
+let mode='home';       // home | local | host | joining | client
+let room=null,S=null,H=null,code='';
+let curScreen='',actN=0,hostGoneT=null,joinT=null;
+let angle=0,raf=0,anim=false,lastSpinId=0,seatKey='',timer=null;
+
+/* ======================= ENGINE (runs on the host or on one phone) ======================= */
+/*ENGINE*/
+function newPlayer(id,n,c){return{id,n,c,s:0,d:0,pa:0,aw:0}}
+function nextIdx(from){
+  const n=S.ps.length;
+  for(let k=1;k<=n;k++){const i=(from+k)%n;if(!S.ps[i].aw)return i}
+  return (from+1)%n;
+}
+function pickPrompt(kind){
+  const pool=PROMPTS.map((p,i)=>i).filter(i=>PROMPTS[i].k===kind&&PROMPTS[i].l<=S.lvl);
+  let fresh=pool.filter(i=>!H.used.has(i));
+  if(!fresh.length){pool.forEach(i=>H.used.delete(i));fresh=pool}
+  const bag=[];fresh.forEach(i=>{const w=PROMPTS[i].l===S.lvl?3:1;for(let k=0;k<w;k++)bag.push(i)});
+  const i=bag[rnd(bag.length)];H.used.add(i);return i;
+}
+function startSpin(){
+  const els=S.ps.map((p,i)=>i).filter(i=>i!==S.sp&&!S.ps[i].aw);
+  const tg=els[rnd(els.length)];
+  const id=(S.spin?S.spin.id:0)+1,dur=4200+rnd(2400);
+  S.spin={id,tg,turns:3+rnd(4),dir:Math.random()<.5?1:-1,dur};
+  S.phase='spinning';S.pk=-1;S.ci=-1;S.res=null;S.tw=null;
+  commit();
+  H.timers.push(setTimeout(()=>{
+    if(S&&S.phase==='spinning'&&S.spin&&S.spin.id===id){S.phase='landed';S.pk=tg;commit()}
+  },dur+600));
+}
+function resetScores(){S.ps.forEach(p=>{p.s=0;p.d=0;p.pa=0;p.st=0;p.bs=0});S.kg=null;S.vt=null}
+function dethrone(){if(S.kg&&S.kg.i===S.pk){S.kg=null;return 1}return 0}
+function doneIt(){const pk=S.ps[S.pk];pk.d++;pk.st=(pk.st|0)+1;pk.bs=Math.max(pk.bs|0,pk.st);let cr=0;if(!S.kg&&pk.st>=2){S.kg={i:S.pk,r:rnd(DECREES.length),left:4};cr=1}S.res={k:'do',n:0,cr};S.phase='result'}
+function failIt(){const pk=S.ps[S.pk];pk.st=0;S.res={k:'retry',n:0,dt:0,vt:1};S.phase='result'}
+function finishVote(){const v=Object.values(S.vt||{}),y=v.filter(x=>x==='y').length;(y>=v.length-y)?doneIt():failIt()}
+function act(who,a){
+  if(!S||!H)return;
+  const ph=S.phase,pk=S.pk>=0?S.ps[S.pk]:null;
+  switch(a.t){
+    case 'react':{
+      if(who<0&&mode!=='local')return;
+      if(!['🔥','😂','😱','👏','🍻'].includes(a.v))return;
+      S.rx={n:(S.rx?S.rx.n:0)+1,w:mode==='local'?(S.pk>=0?S.pk:S.sp):who,e:a.v};
+      S.seq++;if(mode==='host')pres({S:snapshot()});render();return}
+    case 'vote':{
+      if(ph!=='vote'||(mode!=='local'&&who===S.pk)||(a.v!=='y'&&a.v!=='n'))return;
+      if(mode==='local'){a.v==='y'?doneIt():failIt();break}
+      if(who<0)return;
+      S.vt=S.vt||{};S.vt[who]=a.v;
+      if(Object.keys(S.vt).length>=S.ps.filter((p,i)=>i!==S.pk&&!p.aw).length)finishVote();
+      break}
+    case 'skipvote':
+      if(ph!=='vote'||who!==H.hostIdx)return;
+      finishVote();break;
+    case 'slip':{
+      if(!S.kg||(who<0&&mode!=='local'))return;
+      const t=+a.v;if(!(t>=0&&t<S.ps.length)||t===S.kg.i)return;
+      S.ps[t].st=0;S.ps[t].pa++;S.rx={n:(S.rx?S.rx.n:0)+1,w:t,e:'🚨'};
+      S.seq++;if(mode==='host')pres({S:snapshot()});render();return}
+    case 'spin':
+      if(ph!=='ready'||who!==S.sp||S.ps.filter((p,i)=>i!==S.sp&&!p.aw).length<1)return;
+      startSpin();return;
+    case 'choose':
+      if(ph!=='landed'||who!==S.pk||(a.v!=='truth'&&a.v!=='dare'))return;
+      S.ci=pickPrompt(a.v);S.tw=Math.random()<.2?['all','mirror'][rnd(2)]:null;S.phase='prompt';break;
+    case 'do':
+      if(ph!=='prompt'||who!==S.pk)return;
+      if(PROMPTS[S.ci]?.k==='dare'&&adminGroupVoteEnabled&&S.vote&&S.ps.some((p,i)=>i!==S.pk&&!p.aw)){S.vt={};S.phase='vote';break}
+      doneIt();break;
+    case 'drink':{
+      if(ph!=='prompt'||who!==S.pk||(!S.soft&&pk.s>=MAX_ALCOHOL_CHOICES))return;
+      if(!S.soft)pk.s++;pk.st=0;S.res={k:'drink',n:S.soft?0:1,dt:dethrone()};S.phase='result';break}
+    case 'pass':
+      if((ph!=='landed'&&ph!=='prompt')||who!==S.pk)return;
+      pk.pa++;pk.st=0;S.res={k:'pass',n:0,dt:0};S.phase='result';break;
+    case 'next':
+      if(ph!=='result'||who<0)return;
+      S.turns++;if(S.kg&&--S.kg.left<=0)S.kg=null;S.sp=nextIdx(S.sp);S.phase='ready';S.pk=-1;S.ci=-1;S.res=null;break;
+    case 'end':
+      if(who!==H.hostIdx)return;
+      S.phase='over';break;
+    case 'again':
+      if(who!==H.hostIdx||ph!=='over')return;
+      resetScores();S.phase='ready';S.sp=rnd(S.ps.length);S.pk=-1;S.ci=-1;S.res=null;S.turns=0;H.used.clear();break;
+    default:return;
+  }
+  commit();
+}
+/*END ENGINE*/
+
+function snapshot(){return JSON.parse(JSON.stringify(S))}
+function commit(){
+  S.seq++;
+  if(mode==='host')pres({S:snapshot()});
+  render();
+}
+function pres(patch){try{if(room)room.presence(patch).catch(()=>{})}catch(e){}}
+
+/* ---------- audio ---------- */
+let ac=null,soundOn=true;
+function unlock(){try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume()}catch(e){}}
+function tone(f,d,type='square',v=.05){if(!soundOn)return;try{if(!ac)return;const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.value=f;g.gain.value=v;g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+d);o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d)}catch(e){}}
+const tick=()=>tone(1400,.03,'square',.04);
+const chime=()=>{tone(660,.25,'sine',.1);setTimeout(()=>tone(880,.35,'sine',.1),120)};
+const buzz=ms=>{try{navigator.vibrate&&navigator.vibrate(ms)}catch(e){}};
+
+/* ---------- screens ---------- */
+const SCREENS=['home','hostf','joinf','local','lobby','game','end'];
+function show(id){
+  SCREENS.forEach(k=>{$('#'+k).hidden=k!==id});
+  if(curScreen!==id){curScreen=id;window.scrollTo(0,0)}
+  if(id!=='game'){lastRx=null;lastRes=-1;lastPH=''}
+  if(id!=='game'&&id!=='end')stopMusic();
+}
+document.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>show('home'));
+
+/* ---------- room plumbing ---------- */
+const myPeer=()=>{try{const p=room&&room.peers().find(p=>p.isMe&&p.sameTab);return p?p.peer:null}catch(e){return null}};
+const myIdx=()=>{if(mode==='local')return -1;const id=myPeer();return id?S.ps.findIndex(p=>p.id===id):-1};
+function genCode(){const a='ACDEFGHJKLMNPQRTUVWXY34679';let s='';for(let i=0;i<4;i++)s+=a[rnd(a.length)];return s}
+
+async function initRoom(){
+  try{if(window.claude&&window.claude.use)room=await window.claude.use('room')}catch(e){room=null}
+  if(room){
+    try{room.onPeers(onPeers,()=>{})}catch(e){}
+    try{room.onConnection(()=>{if(S)renderConn()},()=>{})}catch(e){}
+  }
+  $('#roomnote').hidden=!!room;
+  $('#m-host').disabled=!room;$('#m-join').disabled=!room;
+}
+function onPeers(ch){
+  if(mode==='host'&&S){processActs(ch);syncRoster()}
+  else if(mode==='joining'||mode==='client')followHost(ch.peers);
+}
+function processActs(ch){
+  [...ch.joined,...ch.updated].forEach(p=>{
+    if(p.isMe||p.kind!=='viewer')return;
+    const pr=p.presence;
+    if(!pr||pr.g!==S.code||!pr.act||typeof pr.act!=='object')return;
+    const a=pr.act,i=+a.i|0;
+    if(i<=(H.seen[p.peer]||0))return;
+    H.seen[p.peer]=i;
+    const who=S.ps.findIndex(x=>x.id===p.peer);
+    if(who>=0)act(who,{t:String(a.t||''),v:a.v==null?null:String(a.v)});
+  });
+}
+function syncRoster(){
+  const peers=room.peers().filter(p=>p.kind==='viewer'&&(!p.isMe||p.sameTab)&&p.presence&&p.presence.g===S.code&&p.presence.n);
+  const ids=new Set(peers.map(p=>p.peer));
+  let ch=false;
+  const mine=peers.find(p=>p.isMe);
+  if(mine&&!S.ps.some(p=>p.id===mine.peer)){S.ps.unshift(newPlayer(mine.peer,clean(mine.presence.n)||'Host',0));S.ps.forEach((p,i)=>p.c=i);H.hostIdx=0;ch=true}
+  const canAdd=S.phase==='lobby'||S.phase==='ready'||S.phase==='over';
+  peers.forEach(p=>{
+    if(S.ps.some(x=>x.id===p.peer))return;
+    const nm=clean(p.presence.n)||'Player';
+    const back=S.ps.find(x=>x.aw&&x.n===nm);
+    if(back){back.id=p.peer;back.aw=0;ch=true;return}
+    if(canAdd&&S.ps.length<12){S.ps.push(newPlayer(p.peer,nm,S.ps.length));ch=true}
+  });
+  for(let i=S.ps.length-1;i>=0;i--){
+    const pl=S.ps[i];
+    if(ids.has(pl.id))continue;
+    if(S.phase==='lobby'&&i!==0){S.ps.splice(i,1);S.ps.forEach((p,k)=>p.c=k);ch=true}
+    else if(!pl.aw){pl.aw=1;ch=true}
+  }
+  if(S.phase!=='lobby'&&S.phase!=='over'&&S.ps.length){
+    if(S.ps[S.sp]&&S.ps[S.sp].aw&&S.phase==='ready'){S.sp=nextIdx(S.sp);ch=true}
+    if((S.phase==='landed'||S.phase==='prompt'||S.phase==='vote')&&S.pk>=0&&S.ps[S.pk].aw){S.ps[S.pk].pa++;S.res={k:'away',n:0};S.phase='result';ch=true}
+  }
+  H.hostIdx=S.ps.findIndex(p=>p.id===myPeer());
+  if(ch)commit();
+}
+function followHost(peers){
+  const h=peers.find(p=>p.kind==='viewer'&&!p.isMe&&p.presence&&p.presence.h===1&&p.presence.g===code&&p.presence.S);
+  if(h){
+    clearTimeout(hostGoneT);hostGoneT=null;$('#hostgone').hidden=true;
+    if(h.presence.S!==S){
+      S=h.presence.S;
+      if(mode==='joining'){mode='client';clearTimeout(joinT)}
+      render();
+    }
+  }else if(mode==='client'&&!hostGoneT){
+    hostGoneT=setTimeout(()=>{hostGoneT=null;if(mode==='client')$('#hostgone').hidden=false},3500);
+  }
+}
+function renderConn(){
+  const on=room&&room.connected();
+  const el=$('#lconn');el.textContent=on?'Connected':'Reconnecting';el.className='pill '+(on?'on':'off');
+  const rp=$('#roompill');rp.hidden=mode!=='host'&&mode!=='client';rp.textContent='Room '+code;
+}
+
+/* ---------- home ---------- */
+$('#m-host').onclick=()=>{$('#hname').value=cfg.name||'';$('#herr').textContent='';show('hostf')};
+$('#m-join').onclick=()=>{$('#jname').value=cfg.name||'';$('#jerr').textContent='';show('joinf')};
+$('#m-local').onclick=()=>{renderLocal();show('local')};
+
+$('#hgo').onclick=async()=>{
+  if(!groupVoteSettingsLoaded)return;
+  await loadGroupVoteConfig();
+  if(!groupVoteSettingsLoaded)return;
+  const nm=clean($('#hname').value);
+  if(!nm){$('#herr').textContent='Type your name first.';return}
+  if(!room){$('#herr').textContent='Phone rooms are not available in this view.';return}
+  unlock();cfg.name=nm;save();
+  code=genCode();mode='host';
+  H={seen:{},used:new Set(),timers:[],hostIdx:-1};
+  S={code,lvl:cfg.lvl,soft:!!cfg.soft,vote:adminGroupVoteEnabled&&!!cfg.vote,ps:[],phase:'lobby',sp:0,pk:-1,spin:null,ci:-1,res:null,seq:1,turns:0};
+  pres({g:code,n:nm,c:0,h:1,act:null,S:snapshot()});
+  renderConn();render();
+  setTimeout(()=>{if(mode==='host')syncRoster()},400);
+  setTimeout(()=>{if(mode==='host')syncRoster()},1500);
+};
+$('#jcode').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')});
+$('#jgo').onclick=()=>{
+  const c=$('#jcode').value.trim().toUpperCase(),nm=clean($('#jname').value);
+  if(c.length!==4){$('#jerr').textContent='The code has 4 characters.';return}
+  if(!nm){$('#jerr').textContent='Type your name first.';return}
+  if(!room){$('#jerr').textContent='Phone rooms are not available in this view.';return}
+  unlock();cfg.name=nm;save();
+  code=c;mode='joining';S=null;
+  $('#jerr').textContent='Looking for the room...';
+  pres({g:code,n:nm,c:0,h:null,act:null,S:null});
+  clearTimeout(joinT);
+  joinT=setTimeout(()=>{
+    if(mode==='joining'){
+      mode='home';pres({g:null,n:null,c:null,h:null,act:null,S:null});
+      $('#jerr').textContent="No room with that code. Check the code, and that you opened the shared link while signed in.";
+    }
+  },7000);
+  followHost(room.peers());
+};
+function leave(){
+  clearTimeout(joinT);clearTimeout(hostGoneT);hostGoneT=null;
+  if(H){H.timers.forEach(clearTimeout)}
+  cancelAnimationFrame(raf);clearTimer();anim=false;
+  if(mode==='host'||mode==='client'||mode==='joining')pres({g:null,n:null,c:null,h:null,act:null,S:null});
+  mode='home';S=null;H=null;seatKey='';angle=0;lastSpinId=0;
+  $('#hostgone').hidden=true;
+  show('home');
+}
+
+/* ---------- level selector (shared by local + lobby) ---------- */
+function renderLevels(el,lvl,enabled,onPick){
+  el.innerHTML=LEVELS.map((l,i)=>`<button type="button" data-v="${i+1}" class="${i===3?'nl':''}" aria-pressed="${lvl===i+1}" ${enabled?'':'disabled'}>${l[0]}<small>${l[1]}</small></button>`).join('');
+  if(enabled)el.onclick=e=>{const b=e.target.closest('button');if(b)onPick(+b.dataset.v)};
+  else el.onclick=null;
+}
+
+/* ---------- one phone setup ---------- */
+function renderLocal(){
+  $('#chips').innerHTML=cfg.players.map((p,i)=>`<span class="chip rm" style="--pc:${col(i)}"><i>${esc(p.charAt(0).toUpperCase())}</i><span>${esc(p)}</span><button type="button" data-rm="${i}" aria-label="Remove ${esc(p)}">&times;</button></span>`).join('');
+  $('#plnote').textContent=cfg.players.length<2?'Add at least 2 players.':cfg.players.length+' players, up to 12.';
+  $('#lstart').disabled=cfg.players.length<2;
+  renderLevels($('#local .lvlseg'),cfg.lvl,true,v=>{cfg.lvl=v;save();renderLocal()});
+  const ln=$('#lnote');ln.hidden=cfg.lvl!==4;ln.textContent=NAUGHTY_NOTE;
+  $('#lsoft').checked=!!cfg.soft;
+  $('#lvotecontrol').hidden=!adminGroupVoteEnabled;
+  $('#lvote').checked=adminGroupVoteEnabled&&!!cfg.vote;
+  $('#vote-config-note').hidden=!groupVoteSettingsError;
+  $('#vote-config-note').textContent='Group-vote settings could not be loaded. Group vote will stay off for this game.';
+  $('#lstart').disabled=cfg.players.length<2||!groupVoteSettingsLoaded;
+}
+$('#addform').addEventListener('submit',e=>{
+  e.preventDefault();
+  const i=$('#pname'),v=clean(i.value);
+  if(!v)return;
+  if(cfg.players.length>=12||cfg.players.some(p=>p.toLowerCase()===v.toLowerCase())){i.value='';return}
+  cfg.players.push(v);i.value='';save();renderLocal();i.focus();
+});
+$('#chips').addEventListener('click',e=>{const t=e.target.closest('[data-rm]');if(t){cfg.players.splice(+t.dataset.rm,1);save();renderLocal()}});
+$('#lsoft').onchange=e=>{cfg.soft=e.target.checked;save()};
+$('#lstart').onclick=async()=>{
+  if(!groupVoteSettingsLoaded)return;
+  await loadGroupVoteConfig();
+  if(!groupVoteSettingsLoaded)return;
+  unlock();clearTimer();mode='local';
+  H={seen:{},used:new Set(),timers:[],hostIdx:0};
+  S={code:'',lvl:cfg.lvl,soft:!!cfg.soft,vote:adminGroupVoteEnabled&&!!cfg.vote,ps:cfg.players.map((n,i)=>newPlayer('L'+i,n,i)),phase:'ready',sp:0,pk:-1,spin:null,ci:-1,res:null,seq:1,turns:0};
+  S.sp=rnd(S.ps.length);
+  seatKey='';angle=0;lastSpinId=0;
+  render();
+};
+
+/* ---------- lobby ---------- */
+function renderLobby(){
+  const host=mode==='host';
+  $('#lcode').textContent=S.code;
+  $('#lchips').innerHTML=S.ps.map(p=>`<span class="chip" style="--pc:${col(p.c)}"><i>${esc((p.n||'?').charAt(0).toUpperCase())}</i><span>${esc(p.n)}${p.id===myPeer()?' (you)':''}</span></span>`).join('')||'<span class="note">Waiting for players...</span>';
+  $('#lplbl').textContent='Players ('+S.ps.length+')';
+  renderLevels($('#lobby .lvlseg'),S.lvl,host,v=>{S.lvl=v;cfg.lvl=v;save();commit()});
+  const nn=$('#lobnote');nn.hidden=S.lvl!==4;nn.textContent=NAUGHTY_NOTE;
+  const sf=$('#lobsoft');sf.checked=!!S.soft;sf.disabled=!host;
+  $('#lobvotecontrol').hidden=!adminGroupVoteEnabled;
+  $('#lobby-vote-config-note').hidden=!groupVoteSettingsError;
+  $('#lobby-vote-config-note').textContent='Group-vote settings could not be loaded. Group vote will stay off for this game.';
+  const vf=$('#lobvote');vf.checked=adminGroupVoteEnabled&&!!S.vote;vf.disabled=!host||!adminGroupVoteEnabled;
+  $('#lobstart').hidden=!host;$('#lobstart').disabled=S.ps.length<2;
+  $('#lobwait').hidden=host;
+  $('#lleave').textContent=host?'Close room':'Leave';
+  renderConn();
+}
+$('#lobsoft').onchange=e=>{if(mode==='host'){S.soft=e.target.checked;cfg.soft=S.soft;save();commit()}};
+$('#lobstart').onclick=async()=>{
+  if(mode!=='host'||S.ps.length<2||!groupVoteSettingsLoaded)return;
+  await loadGroupVoteConfig();
+  if(mode!=='host'||S.ps.length<2||!groupVoteSettingsLoaded)return;
+  S.vote=adminGroupVoteEnabled&&!!S.vote;
+  unlock();syncRoster();
+  S.phase='ready';S.sp=rnd(S.ps.length);S.turns=0;S.pk=-1;S.ci=-1;S.res=null;
+  commit();
+};
+$('#lleave').onclick=leave;
+$('#lcopy').onclick=()=>{try{navigator.clipboard.writeText(S.code).then(()=>{$('#lcopy').textContent='Copied'},()=>{})}catch(e){}};
+
+/* ---------- game rendering ---------- */
+const segDeg=()=>360/S.ps.length;
+const idxAt=a=>{const n=S.ps.length;return mod(Math.round(a/segDeg()),n)};
+function setAngle(){$('#bottle').style.transform=`translate(-50%,-50%) rotate(${angle}deg)`}
+function buildSeats(){
+  const n=S.ps.length,R=36;
+  $('#seats').innerHTML=S.ps.map((p,i)=>{
+    const a=i*360/n*Math.PI/180;
+    return `<div class="pl" id="pl${i}" style="left:${(50+R*Math.sin(a)).toFixed(2)}%;top:${(50-R*Math.cos(a)).toFixed(2)}%;--pc:${col(p.c)}"><div class="av">${esc((p.n||'?').charAt(0).toUpperCase())}</div><div class="nm">${esc(p.n)}</div><div class="sp" hidden></div></div>`;
+  }).join('');
+}
+function highlightSeat(i){S.ps.forEach((_,k)=>{const el=$('#pl'+k);if(el)el.classList.toggle('on',k===i)})}
+function startAnim(sp){
+  cancelAnimationFrame(raf);lastSpinId=sp.id;
+  const n=S.ps.length,seg=360/n,tgt=mod(sp.tg*seg,360);
+  const a0=angle;
+  let delta=sp.dir===1?mod(tgt-a0,360):mod(a0-tgt,360);
+  delta+=360*sp.turns;
+  const a1=a0+sp.dir*delta,D=sp.dur,t0=performance.now();
+  let lastI=idxAt(a0);
+  anim=true;whoosh();
+  const step=ts=>{
+    const t=Math.min(D,ts-t0);
+    const p=(1-Math.exp(-5*t/D))/(1-Math.exp(-5));
+    angle=a0+(a1-a0)*p;setAngle();
+    const i=idxAt(angle);
+    if(i!==lastI){lastI=i;tick();highlightSeat(i)}
+    if(t<D)raf=requestAnimationFrame(step);
+    else{anim=false;angle=a1;setAngle();highlightSeat(sp.tg);buzz(25)}
+  };
+  raf=requestAnimationFrame(step);
+}
+function render(){
+  if(!S)return;
+  if(S.phase==='lobby'){show('lobby');renderLobby();return}
+  if(S.phase==='over'){show('end');renderEnd();return}
+  show('game');renderGame();
+}
+function renderGame(){
+  const key=S.ps.map(p=>p.id+'|'+p.n+'|'+p.c).join('~');
+  if(key!==seatKey){seatKey=key;buildSeats()}
+  const mi=myIdx(),local=mode==='local';
+  mTens=S.phase==='spinning';
+  if(mus!=='off'&&!mTimer)startMusic();
+  {const rn=S.rx?S.rx.n:0;if(lastRx==null)lastRx=rn;else if(rn!==lastRx){lastRx=rn;if(S.rx)floatRx(S.rx.w,S.rx.e)}}
+  if(S.phase==='result'&&S.spin&&lastRes!==S.spin.id){lastRes=S.spin.id;if(S.res&&S.res.k==='do')fanfare();else wah()}
+  {const cw=$('#crown');
+   if(S.kg&&S.ps[S.kg.i]){const m=S.ps[S.kg.i];cw.hidden=false;
+    cw.innerHTML=`👑 <b style="color:${col(m.c)}">${esc(m.n)}</b> is the Monarch. Decree: <b>${esc(DECREES[S.kg.r])}</b> <small>${S.kg.left} spin${S.kg.left===1?'':'s'} left. Choosing a drink gives up the crown; passing is always okay.</small><div class="sl">`+S.ps.map((p,i)=>i===S.kg.i||p.aw?'':`<button data-slip="${i}">🚨 ${esc(p.n)} slipped</button>`).join('')+'</div>';
+   }else cw.hidden=true}
+  S.ps.forEach((p,i)=>{
+    const el=$('#pl'+i);if(!el)return;
+    el.classList.toggle('spinner',i===S.sp);
+    el.classList.toggle('me',i===mi);
+    el.classList.toggle('away',!!p.aw);
+    const sp=el.querySelector('.sp');sp.hidden=!(p.d>0);sp.textContent=(p.d|0);
+  });
+  if(S.phase==='spinning'){
+    if(S.spin&&S.spin.id!==lastSpinId)startAnim(S.spin);
+  }else if(!anim){
+    if(S.pk>=0){angle=S.pk*segDeg();setAngle();highlightSeat(S.pk);chimeOnce()}
+    else highlightSeat(-1);
+  }
+  const sp=S.ps[S.sp];
+  $('#whospin').innerHTML=`<b style="color:${col(sp.c)}">${esc(sp.n)}</b> ${local||mi!==S.sp?'spins':'<b>(you)</b> spin'}`;
+  $('#endbtn').textContent=(mode==='client')?'Leave':'End game';
+  $('#endbtn').hidden=false;
+  $('#hostgone').hidden=$('#hostgone').hidden;
+  renderConn();
+  renderPanel();
+}
+let lastChimeSeq=-1;
+function chimeOnce(){if(S.phase==='landed'&&S.spin&&lastChimeSeq!==S.spin.id){lastChimeSeq=S.spin.id;hit()}}
+const nameOf=i=>i>=0&&S.ps[i]?esc(S.ps[i].n):'';
+function cardText(){const c=PROMPTS[S.ci];if(!c)return'';return c.q.replace(/\{S\}/g,S.ps[S.sp].n)}
+function renderPanel(){
+  const P0=$('#panel'),P={set innerHTML(h){if(h!==lastPH){lastPH=h;P0.innerHTML=h}}},ph=S.phase,local=mode==='local',mi=myIdx();
+  const isSp=local||mi===S.sp,isPk=local||mi===S.pk;
+  const pk=S.pk>=0?S.ps[S.pk]:null,sp=S.ps[S.sp];
+  if(ph==='ready'){
+    P.innerHTML=isSp
+      ?`<button class="btn btn-amber spinbtn" data-act="spin">Spin</button><p class="foot" style="margin-top:10px">Tap the bottle or the button. Try Music for beats.</p>`
+      :`<div class="card"><h2>${esc(sp.n)} is about to spin</h2><p class="hint">Get ready. The bottle spins on every phone.</p></div>`;
+  }else if(ph==='spinning'){
+    P.innerHTML=`<button class="btn btn-amber spinbtn" disabled>Spinning...</button>`;
+  }else if(ph==='landed'){
+    const head=`<span class="lbl">The bottle chose</span><div class="chosen" style="--pc:${col(pk.c)}"><div class="av2">${esc((pk.n||'?').charAt(0).toUpperCase())}</div><div class="big">${esc(pk.n)}${(!local&&isPk)?' (you)':''}</div></div>`;
+    P.innerHTML=`<div class="card">${head}${isPk
+      ?`<p class="hint"><b>${esc(sp.n)}</b> asks. Pick one:</p><div class="row"><button class="btn btn-hot" data-act="choose" data-v="dare">Dare</button><button class="btn btn-blue" data-act="choose" data-v="truth">Truth</button></div><button class="btn btn-ghost btn-sm" data-act="pass">Pass (no drink)</button>`
+      :`<p class="hint">${esc(pk.n)} is choosing Truth or Dare...</p>`}</div>`;
+  }else if(ph==='prompt'){
+    const c=PROMPTS[S.ci],canDrink=S.soft||pk.s<MAX_ALCOHOL_CHOICES;
+    P.innerHTML=`<div class="card">
+      <div class="tagrow"><span class="tag ${c.k}">${c.k==='dare'?'Dare':'Truth'}</span>${c.l===4?'<span class="tag nl">18+</span>':''}<span class="hint">for <b style="color:${col(pk.c)}">${esc(pk.n)}</b>, asked by ${esc(sp.n)}</span></div>
+      ${S.tw?`<div class="tw">${S.tw==='all'?'🎉 Group challenge: everyone can join if they want.':'🪞 Mirror: '+esc(sp.n)+' can join if they want.'}</div>`:''}
+      <p class="q">${esc(cardText())}</p>
+      ${c.s?`<div class="timer"><button class="btn btn-amber btn-sm" id="tbtn" data-act="timer">Start ${c.s}s</button><span class="num" id="tnum">${c.s}</span><div class="bar"><i id="tbar"></i></div></div>`:''}
+      ${isPk
+        ?`<div class="row"><button class="btn btn-ok" data-act="do">I'll do it</button><button class="btn btn-hot" data-act="drink"${canDrink?'':' disabled'}>${canDrink?(S.soft?'Take a soft drink 🥤':'Take a shot 🥃'):'Shot limit reached'}</button></div><button class="btn btn-ghost btn-sm" data-act="pass">Pass (no drink)</button>`
+        :`<p class="hint">Waiting for <b>${esc(pk.n)}</b> to choose a challenge or pass.</p>`}
+    </div>`;
+  }else if(ph==='vote'){
+    const vs=S.vt||{},ny=Object.values(vs).length,tot=S.ps.filter((p,i)=>i!==S.pk&&!p.aw).length,mine=vs[mi];
+    const hl=v=>mine===v?' style="outline:3px solid var(--amber)"':'';
+    P.innerHTML=`<div class="card"><div class="tagrow"><span class="tag ${PROMPTS[S.ci].k}">Group vote</span></div>
+      <p class="q">${esc(cardText())}</p>
+      <p class="hint">Did <b style="color:${col(pk.c)}">${esc(pk.n)}</b> nail it? ${local?'Decide together, then tap.':ny+' of '+tot+' voted.'}</p>
+      ${(isPk&&!local)?'<p class="hint">The group is judging you...</p>':`<div class="row"><button class="btn btn-ok" data-act="vote" data-v="y"${hl('y')}>✅ Nailed it</button><button class="btn btn-hot" data-act="vote" data-v="n"${hl('n')}>❌ Not convinced</button></div>`}
+      ${mode==='host'?'<button class="btn btn-ghost btn-sm" data-act="skipvote">Finish vote now</button>':''}</div>`;
+  }else if(ph==='result'){
+    const r=S.res||{k:'do',n:0};
+    let t,k,s;
+    if(r.k==='do'){t='Nicely done.';k='good';s=`${pk.n} took it on. No drink.${pk.st>1?` 🔥 ${pk.st} in a row.`:''}${r.cr?` 👑 ${pk.n} is now the Monarch!`:''}`}
+    else if(r.k==='drink'){t=`${pk.n} takes ${S.soft?'a soft drink':'a shot'}`;k='good';s=`This choice is optional.${r.dt?' 👑 Dethroned!':''}`}
+    else if(r.k==='pass'){t=`${pk.n} passes`;k='';s=`No drink is required.${r.dt?' 👑 Dethroned!':''}`}
+    else if(r.k==='retry'){t='No drink required';k='';s=`The group voted to try another prompt.${r.dt?' 👑 Dethroned!':''}`}
+    else{t=`${pk.n} stepped away`;k='';s='Moving on.'}
+    const nx=S.ps[nextIdx(S.sp)];
+    P.innerHTML=`<div class="card"><div class="result ${k}"><b>${esc(t)}</b>${esc(s)}</div><button class="btn btn-amber" data-act="next">Next spin: ${esc(nx.n)}</button></div>`;
+  }
+}
+
+/* ---------- sending a move ---------- */
+function expected(t){return (t==='spin')?S.sp:(t==='next'||t==='end'||t==='again')?(H?H.hostIdx:0):S.pk}
+function send(t,v){
+  if(!S)return;
+  if(mode==='client'){actN++;pres({act:{i:actN,t,v:v||null}});return}
+  let who;
+  if(mode==='local')who=(t==='next'||t==='end'||t==='again'||t==='react'||t==='vote'||t==='skipvote')?0:expected(t);
+  else who=(t==='next')?Math.max(0,myIdx()):myIdx();
+  if(mode==='host'&&H)H.hostIdx=S.ps.findIndex(p=>p.id===myPeer());
+  act(who,{t,v:v||null});
+}
+$('#panel').addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b||b.disabled)return;
+  const a=b.dataset.act;
+  if(a==='timer'){startTimer();return}
+  unlock();send(a,b.dataset.v);
+});
+$('#bottle').onclick=()=>{if(S&&S.phase==='ready'){unlock();const mi=myIdx();if(mode==='local'||mi===S.sp)send('spin')}};
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&S&&!$('#game').hidden&&S.phase==='ready'&&!/INPUT|TEXTAREA|BUTTON/.test(document.activeElement.tagName)){
+    const mi=myIdx();if(mode==='local'||mi===S.sp){e.preventDefault();unlock();send('spin')}
+  }
+});
+$('#snd').onclick=e=>{soundOn=!soundOn;e.currentTarget.textContent=soundOn?'Sound on':'Sound off';e.currentTarget.setAttribute('aria-pressed',String(soundOn));unlock()};
+$('#endbtn').onclick=()=>{if(mode==='client')leave();else send('end')};
+
+/* timer (local to each phone) */
+function clearTimer(){if(timer){clearInterval(timer);timer=null}}
+function startTimer(){
+  if(timer||!S||S.ci<0)return;
+  const total=PROMPTS[S.ci].s;let left=total;
+  const num=$('#tnum'),bar=$('#tbar'),btn=$('#tbtn');if(!num||!bar||!btn)return;
+  btn.disabled=true;
+  bar.style.transition='none';bar.style.width='100%';void bar.offsetWidth;bar.style.transition='width '+total+'s linear';bar.style.width='0%';
+  timer=setInterval(()=>{
+    left--;num.textContent=Math.max(left,0);if(left>0&&left<=3)tone(1000,.08,'square',.08);
+    if(left<=0){clearTimer();tone(880,.4,'sine',.12);buzz(120);num.textContent='Time';btn.disabled=false;btn.textContent='Again'}
+  },1000);
+}
+
+/* ---------- end ---------- */
+function renderEnd(){
+  clearTimer();
+  const P=S.ps.map(p=>Object.assign({},p));
+  const sorted=P.slice().sort((a,b)=>b.d-a.d);
+  const max=Math.max(1,sorted[0].d);
+  const host=mode==='host'||mode==='local';
+  $('#end').innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:6px"><h1 class="wordmark">Game <span>over</span></h1><p class="sub">${S.turns|0} spins played.</p></div>
+    <div class="panel"><h2>Final tally</h2><div class="lb">
+      ${sorted.map((p,i)=>`<div class="lbr" style="--pc:${col(p.c)}"><span class="rk">${i+1}</span><div class="nm2"><b>${esc(p.n)}</b><small>${p.d|0} challenge${p.d===1?'':'s'} done &middot; ${p.s|0} optional alcohol choice${p.s===1?'':'s'}</small><div class="meter"><i style="width:${Math.round((p.d|0)/max*100)}%"></i></div></div><span class="sc">${p.d|0}</span></div>`).join('')}
+    </div><p class="note">Challenges determine the score. Drinking is optional, isn't scored, and anyone may pass.</p></div>
+    <div class="row">
+      ${host?'<button class="btn btn-amber" id="again">Play again</button>':'<p class="note">Waiting for the host to start another round, or leave.</p>'}
+      <button class="btn btn-ghost" id="back">${mode==='local'?'Change players':(host?'Close room':'Leave')}</button>
+    </div>
+    <p class="foot">Get home safe.</p>`;
+  const ag=$('#again');if(ag)ag.onclick=async()=>{await loadGroupVoteConfig();if(S)S.vote=adminGroupVoteEnabled&&!!S.vote;send('again')};
+  $('#back').onclick=()=>{if(mode==='local'){mode='home';S=null;H=null;seatKey='';renderLocal();show('local')}else leave()};
+}
+
+/* ---------- music + sound effects (all synthesized, no audio files) ---------- */
+const GEN={
+ afro:{n:'Afro',bpm:106,root:55,k:'x..x..x...x..x..',h:'..x...x...x...x.',c:'....x.......x...',b:'x..x..x.x..x..x.',pr:[0,0,3,2]},
+ club:{n:'Club',bpm:124,root:49,k:'x...x...x...x...',h:'..x...x...x...x.',c:'....x.......x...',b:'.x.x.x.x.x.x.x.x',pr:[0,3,2,4]},
+ lounge:{n:'Lounge',bpm:88,root:52,k:'x.......x.x.....',h:'x.x.x.x.x.x.x.x.',c:'........x.......',b:'x.....x...x.....',pr:[0,2,3,1]}};
+const SCL=[0,3,5,7,10];
+let mus=GEN[cfg.mus]?cfg.mus:'off',mTimer=null,mT=0,mS=0,mTens=false,nbuf=null,lastRx=null,lastRes=-1,lastPH='',rxT=0;
+const hz=(r,i)=>r*Math.pow(2,(SCL[i%5]+12*Math.floor(i/5))/12);
+function noise(t,d,type,f,v){
+  if(!ac)return;
+  if(!nbuf){nbuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate);const a=nbuf.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=Math.random()*2-1}
+  const s=ac.createBufferSource(),fl=ac.createBiquadFilter(),g=ac.createGain();
+  s.buffer=nbuf;fl.type=type;fl.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+  s.connect(fl);fl.connect(g);g.connect(ac.destination);s.start(t);s.stop(t+d);
+}
+function osc(t,f0,f1,d,type,v){
+  if(!ac)return;
+  const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);
+  if(f1!==f0)o.frequency.exponentialRampToValueAtTime(f1,t+d);
+  g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+  o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+d+.02);
+}
+function mStep(s,t){
+  const g=GEN[mus],i=s%16,bar=(s>>4)%4,r=g.root,bn=hz(r,g.pr[bar]);
+  if(g.k[i]==='x')osc(t,150,45,.18,'sine',.22);
+  if(g.h[i]==='x'||(mTens&&i%2))noise(t,.04,'highpass',7000,mTens?.05:.035);
+  if(g.c[i]==='x')noise(t,.12,'bandpass',1800,.09);
+  if(g.b[i]==='x')osc(t,bn,bn,.2,'triangle',.18);
+  const ld=hz(r*4,(mTens?(i/2+bar)%8:g.pr[bar]+2)|0);
+  if(mTens&&i%2===0)osc(t,ld,ld,.1,'square',.03);
+  else if(!mTens&&i%4===2)osc(t,ld,ld,.12,'sine',.04);
+}
+function sched(){
+  if(!ac||mus==='off')return;
+  const dt=60/GEN[mus].bpm/4*(mTens?.85:1);
+  while(mT<ac.currentTime+.2){if(soundOn)mStep(mS,mT);mT+=dt;mS++}
+}
+function startMusic(){unlock();if(!ac||mTimer||mus==='off')return;mT=ac.currentTime+.05;mS=0;mTimer=setInterval(sched,60)}
+function stopMusic(){clearInterval(mTimer);mTimer=null}
+function musLabel(){$('#mus').textContent='Music: '+(mus==='off'?'off':GEN[mus].n)}
+$('#mus').onclick=()=>{unlock();const o=['off','afro','club','lounge'];mus=o[(o.indexOf(mus)+1)%4];cfg.mus=mus;save();stopMusic();startMusic();musLabel()};
+musLabel();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMusic();else if(mus!=='off'&&S&&!$('#game').hidden)startMusic()});
+function whoosh(){if(!soundOn||!ac)return;const t=ac.currentTime;noise(t,1.1,'bandpass',700,.1);osc(t,180,1300,.9,'sawtooth',.035)}
+function hit(){if(!soundOn||!ac)return;const t=ac.currentTime;for(let k=0;k<6;k++)noise(t+k*.07,.05,'bandpass',900+k*250,.08);osc(t+.45,160,50,.3,'sine',.3);setTimeout(chime,430)}
+function fanfare(){if(!soundOn||!ac)return;const t=ac.currentTime;[523,659,784,1047].forEach((f,k)=>osc(t+k*.1,f,f,.25,'square',.06))}
+function wah(){if(!soundOn||!ac)return;const t=ac.currentTime;osc(t,330,140,.7,'sawtooth',.07);osc(t+.05,247,105,.7,'sawtooth',.05)}
+
+/* ---------- reactions ---------- */
+function floatRx(w,e){
+  const a=$('#arena'),s=$('#pl'+w);if(!a)return;
+  const d=document.createElement('span');d.className='fl';d.textContent=e;
+  d.style.left=s?s.style.left:'50%';d.style.top=s?s.style.top:'50%';
+  a.appendChild(d);setTimeout(()=>d.remove(),1800);tone(500+rnd(400),.06,'sine',.05);
+}
+$('#rx').onclick=e=>{const b=e.target.closest('button');if(!b||!S||Date.now()-rxT<350)return;rxT=Date.now();unlock();send('react',b.dataset.e)};
+
+$('#lvote').onchange=e=>{cfg.vote=adminGroupVoteEnabled&&e.target.checked;save()};
+$('#lobvote').onchange=e=>{if(mode==='host'&&adminGroupVoteEnabled){S.vote=e.target.checked;cfg.vote=S.vote;save();commit()}};
+let slT=0;
+$('#crown').onclick=e=>{const b=e.target.closest('[data-slip]');if(!b||!S||Date.now()-slT<700)return;slT=Date.now();unlock();send('slip',b.dataset.slip)};
+
+/* boot */
+async function loadGroupVoteConfig(){
+  groupVoteSettingsLoaded=false;
+  groupVoteSettingsError=false;
+  adminGroupVoteEnabled=false;
+  try{
+    const response=await fetch('/api/games/spin-the-bottle/config',{cache:'no-store'});
+    const result=await response.json();
+    if(!response.ok||typeof result.groupVoteEnabled!=='boolean')throw new Error(result.error||'Invalid game settings response.');
+    adminGroupVoteEnabled=result.groupVoteEnabled;
+  }catch(error){
+    groupVoteSettingsError=true;
+    console.error('[SpinBottle] Could not load group-vote settings:',error);
+    $('#vote-config-note').textContent='Group-vote settings could not be loaded. Group vote will stay off for this game.';
+    $('#lobby-vote-config-note').textContent='Group-vote settings could not be loaded. Group vote will stay off for this game.';
+  }finally{
+    groupVoteSettingsLoaded=true;
+    renderLocal();
+    $('#vote-config-note').hidden=!groupVoteSettingsError;
+    $('#lobby-vote-config-note').hidden=!groupVoteSettingsError;
+    if(S&&mode==='host')renderLobby();
+  }
+}
+renderLocal();
+show('home');
+initRoom();
+loadGroupVoteConfig();
+})();
+</script>
+
+</body></html>

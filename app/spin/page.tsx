@@ -39,32 +39,17 @@ export default function SpinCampaignPage() {
 
   React.useEffect(() => {
     let active = true;
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 8000);
-    fetch('/api/spin-campaign', { cache: 'no-store', signal: controller.signal })
+    fetch('/api/spin-campaign', { cache: 'no-store' })
       .then(async response => {
         const data = await response.json() as { campaign?: PublicCampaign | null; error?: string };
         if (!response.ok) throw new Error(data.error || 'Campaign details could not be loaded.');
         if (active) setCampaign(data.campaign || null);
       })
       .catch(loadError => {
-        if (active) setError(
-          loadError instanceof Error && loadError.name === 'AbortError'
-            ? 'Campaign details took too long to load. Please try again.'
-            : loadError instanceof Error
-              ? loadError.message
-              : 'Campaign details could not be loaded.'
-        );
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Campaign details could not be loaded.');
       })
-      .finally(() => {
-        window.clearTimeout(timeout);
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
   const spin = async (event: React.FormEvent) => {
@@ -72,17 +57,13 @@ export default function SpinCampaignPage() {
     if (!campaign || spinning || result) return;
     setSpinning(true);
     setError(null);
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 15_000);
     try {
       const response = await fetch('/api/spin-campaign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'spin', phone, ageConfirmed, termsAccepted }),
-        signal: controller.signal
+        body: JSON.stringify({ action: 'spin', phone, ageConfirmed, termsAccepted })
       });
       const data = await response.json() as { prize?: SpinResult; error?: string };
-      window.clearTimeout(timeout);
       if (!response.ok || !data.prize) throw new Error(data.error || 'Your spin could not be completed.');
       const prizeIndex = campaign.prizes.findIndex(prize => prize.id === data.prize?.id);
       if (prizeIndex < 0) throw new Error('The winning prize is not available on the campaign wheel. Please contact support.');
@@ -91,16 +72,8 @@ export default function SpinCampaignPage() {
       await new Promise(resolve => window.setTimeout(resolve, 2600));
       setResult(data.prize);
     } catch (spinError) {
-      setError(
-        spinError instanceof Error && spinError.name === 'AbortError'
-          ? 'The campaign server took too long to respond. Please check your connection and try again.'
-          : spinError instanceof Error
-            ? spinError.message
-            : 'Your spin could not be completed.'
-      );
+      setError(spinError instanceof Error ? spinError.message : 'Your spin could not be completed.');
     } finally {
-      window.clearTimeout(timeout);
-      controller.abort();
       setSpinning(false);
     }
   };
@@ -108,19 +81,7 @@ export default function SpinCampaignPage() {
   const copyCode = async () => {
     if (!result) return;
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(result.code);
-      } else {
-        const input = document.createElement('textarea');
-        input.value = result.code;
-        input.style.position = 'fixed';
-        input.style.opacity = '0';
-        document.body.appendChild(input);
-        input.select();
-        const copiedSuccessfully = document.execCommand('copy');
-        document.body.removeChild(input);
-        if (!copiedSuccessfully) throw new Error('Clipboard copy was blocked.');
-      }
+      await navigator.clipboard.writeText(result.code);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch (copyError) {
@@ -146,13 +107,6 @@ export default function SpinCampaignPage() {
           <div className="mt-10 rounded-2xl border border-white/10 bg-white/5 p-6">
             <p className="font-bold">{error ? 'Campaign unavailable' : 'This campaign is not open right now.'}</p>
             <p className="mt-2 text-sm leading-6 text-white/65">{error || 'Check back during the promotion dates. Online ordering is open 24/7.'}</p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-xs font-black uppercase tracking-wide text-slate-950 hover:bg-amber-400"
-            >
-              Check again
-            </button>
           </div>
         ) : (
           <>
