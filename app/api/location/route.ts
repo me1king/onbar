@@ -163,7 +163,7 @@ export async function POST(request: Request) {
         ? consentedAt
         : existingSignup?.email_updates_consent_at || null,
       consent_version: emailUpdatesConsent
-        ? 'checkout-launch-offer-v1'
+        ? 'waitlist-launch-offer-v1'
         : existingSignup?.consent_version || null,
       unsubscribed_at: emailUpdatesConsent ? null : existingSignup?.unsubscribed_at || null,
       source: /^[a-z0-9 _-]{1,60}$/i.test(cleanText(body.source, 60)) ? cleanText(body.source, 60) : 'direct',

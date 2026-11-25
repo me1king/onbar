@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, CheckCircle2, Clock3, RefreshCw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { useAdmin } from '@/context/AdminContext';
-import CheckoutLaunchOfferControl from '@/components/admin/CheckoutLaunchOfferControl';
+import WaitlistLaunchOfferControl from '@/components/admin/WaitlistLaunchOfferControl';
 
 type ChecklistStatus = 'not_started' | 'in_progress' | 'blocked' | 'verified' | 'not_applicable';
 
@@ -217,7 +217,7 @@ export default function LaunchReadinessPage() {
         </div>
       </header>
 
-      {canManage && <CheckoutLaunchOfferControl />}
+      {canManage && <WaitlistLaunchOfferControl />}
 
       {(error || data?.warning) && (
         <div role="alert" className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">

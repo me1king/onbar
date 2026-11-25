@@ -24,7 +24,7 @@ function fromEatInput(value: string) {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '';
 }
 
-export default function CheckoutLaunchOfferControl() {
+export default function WaitlistLaunchOfferControl() {
   const [offer, setOffer] = React.useState<Offer | null>(null);
   const [savedOffer, setSavedOffer] = React.useState<Offer | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -34,7 +34,7 @@ export default function CheckoutLaunchOfferControl() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/checkout-launch-offer', { cache: 'no-store' });
+      const response = await fetch('/api/admin/waitlist-launch-offer', { cache: 'no-store' });
       const result = await response.json() as { offer?: Offer; error?: string };
       if (!response.ok || !result.offer) throw new Error(result.error || 'Launch offer settings could not be loaded.');
       setOffer(result.offer);
@@ -58,7 +58,7 @@ export default function CheckoutLaunchOfferControl() {
     setSaving(true);
     setNotice(null);
     try {
-      const response = await fetch('/api/admin/checkout-launch-offer', {
+      const response = await fetch('/api/admin/waitlist-launch-offer', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: offer.enabled, launchAt: offer.launchAt })
@@ -82,9 +82,9 @@ export default function CheckoutLaunchOfferControl() {
     <Card className="space-y-4 rounded-2xl border-amber-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-800"><CalendarClock size={15} /> Checkout launch announcement</p>
-          <h2 className="mt-2 text-xl font-black text-slate-950">Post-order launch offer</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Show a launch-time message and optional email/area signup on the normal order confirmation page. The form only collects town and area—never GPS.</p>
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-800"><CalendarClock size={15} /> Waitlist launch announcement</p>
+          <h2 className="mt-2 text-xl font-black text-slate-950">Waitlist launch offer</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Show the launch time and mystery-gift details to customers joining the area waitlist. They share only their saved town and area—not GPS coordinates.</p>
         </div>
         {loading ? <Loader2 className="h-5 w-5 animate-spin text-slate-400" /> : (
           <Button type="button" onClick={() => void save()} disabled={!changed || saving || !offer} className="h-10 shrink-0 rounded-xl">
@@ -112,7 +112,7 @@ export default function CheckoutLaunchOfferControl() {
       )}
 
       {notice && <p role={notice.type === 'error' ? 'alert' : 'status'} className={`rounded-xl p-3 text-sm ${notice.type === 'error' ? 'bg-rose-50 text-rose-800' : 'bg-emerald-50 text-emerald-800'}`}>{notice.text}</p>}
-      <p className="text-xs leading-5 text-slate-500">The offer automatically stops appearing once its launch time has passed. Signup consent is required; admins can manage new signups in the waitlist panel.</p>
+      <p className="text-xs leading-5 text-slate-500">The offer automatically stops appearing once its launch time has passed. Customers must opt in to email updates; manage new signups in the waitlist panel.</p>
     </Card>
   );
 }

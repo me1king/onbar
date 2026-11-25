@@ -12,13 +12,11 @@ import { useSettings } from "@/lib/useSettings";
 import ReceiptPrintButton from "@/components/receipt/ReceiptPrintButton";
 import { generateReceiptPDF } from "@/lib/receiptService";
 import DeliveryCountdown from "@/components/tracking/DeliveryCountdown";
-import LaunchOfferSignup from "@/components/checkout/LaunchOfferSignup";
 
 interface Order {
     id: number;
     customer_name: string;
     customer_phone: string;
-    customer_email?: string | null;
     total_price: number;
     status: string;
     created_at: string;
@@ -417,14 +415,6 @@ function SuccessContent() {
                     </p>
                 )}
             </div>
-
-            {order && !isPaymentFailed && (
-                <LaunchOfferSignup
-                    orderEmail={order.customer_email}
-                    phone={order.customer_phone}
-                    deliveryArea={order.delivery_area}
-                />
-            )}
 
             {order && !isPaymentFailed && (
                 <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left">

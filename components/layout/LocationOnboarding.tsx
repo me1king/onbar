@@ -9,7 +9,13 @@ import {
   type LocationArea,
   type LocationWaitlistContent
 } from '@/lib/locationCatalog';
+import {
+  DEFAULT_WAITLIST_LAUNCH_OFFER,
+  formatWaitlistLaunchTime,
+  parseWaitlistLaunchOffer
+} from '@/lib/waitlistLaunchOffer';
 import { supabase } from '@/lib/supabaseClient';
+import WaitlistDeveloperSuggestion from '@/components/waitlist/WaitlistDeveloperSuggestion';
 
 interface SavedLocation extends Omit<LocationArea, 'latitude' | 'longitude'> {
   serviceAvailable: boolean;
@@ -85,13 +91,15 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   const [customAreaMode, setCustomAreaMode] = useState(false);
   const [locationAreas, setLocationAreas] = useState<ConfiguredLocationArea[]>(LOCATION_AREAS);
   const [waitlistContent, setWaitlistContent] = useState<LocationWaitlistContent>(DEFAULT_LOCATION_WAITLIST_CONTENT);
+  const [launchOffer, setLaunchOffer] = useState(DEFAULT_WAITLIST_LAUNCH_OFFER);
+  const [launchOfferStatus, setLaunchOfferStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [notificationConsent, setNotificationConsent] = useState(false);
   const [preciseLocationConsent, setPreciseLocationConsent] = useState(false);
   const [exactLocationShareConsent, setExactLocationShareConsent] = useState(false);
   const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
-  const [waitlistWelcome, setWaitlistWelcome] = useState<{ email: string; phone: string; city: string; area: string } | null>(null);
+  const [waitlistWelcome, setWaitlistWelcome] = useState<{ email: string; phone: string; city: string; area: string; giftEligible: boolean } | null>(null);
 
   const counties = useMemo(() => [...new Set(locationAreas.map((item) => item.county))].sort(), [locationAreas]);
   const areasForCounty = useMemo(
@@ -103,6 +111,28 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
   useEffect(() => {
     manualSelection.current = { county, area };
   }, [county, area]);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/waitlist-launch-offer', { cache: 'no-store' })
+      .then(async response => {
+        const result = await response.json() as { enabled?: unknown; launchAt?: unknown; error?: string };
+        if (!response.ok) throw new Error(result.error || 'Waitlist launch details could not be loaded.');
+        const offer = parseWaitlistLaunchOffer({ enabled: result.enabled, launchAt: result.launchAt });
+        if (!offer) throw new Error('Waitlist launch details are invalid.');
+        if (active) {
+          setLaunchOffer(offer);
+          setLaunchOfferStatus('ready');
+        }
+      })
+      .catch(error => {
+        console.error('[LocationOnboarding] Could not load the waitlist launch offer:', error);
+        if (active) setLaunchOfferStatus('error');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!ready || location || isOpen || suppressLauncher) return;
@@ -452,6 +482,7 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
           email,
           phone,
           notificationConsent,
+          emailUpdatesConsent: launchOfferStatus === 'ready' && launchOffer.enabled && notificationConsent,
           preciseLocationConsent,
           preciseLatitude: preciseLocation?.latitude,
           preciseLongitude: preciseLocation?.longitude,
@@ -466,7 +497,8 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
         city: location.city,
-        area: location.area
+        area: location.area,
+        giftEligible: launchOfferStatus === 'ready' && launchOffer.enabled && notificationConsent
       });
       setStatus(result.preciseLocationCaptured
         ? `You’re on the ${location.city} launch list. Your rounded location was added to the aggregated demand map.`
@@ -696,6 +728,19 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
               <form onSubmit={submitWaitlist} className="mt-5 space-y-3">
                 <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">{waitlistContent.heading}</h3>
                 <p className="text-sm leading-relaxed text-slate-600">{waitlistContent.message}</p>
+                {launchOfferStatus === 'ready' && launchOffer.enabled && (
+                  <div className="rounded-xl border border-amber-300 bg-gradient-to-br from-amber-50 to-white p-4 text-amber-950">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-800">Official launch · Nairobi time</p>
+                    <p className="mt-1 text-base font-black">We officially launch {formatWaitlistLaunchTime(launchOffer.launchAt)} (EAT).</p>
+                    <p className="mt-2 text-xs leading-relaxed">Join the waitlist today and get a mystery gift on your first eligible paid order. Use this same email when you create or sign in to your account.</p>
+                  </div>
+                )}
+                {launchOfferStatus === 'loading' && (
+                  <p role="status" className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">Checking the current launch offer…</p>
+                )}
+                {launchOfferStatus === 'error' && (
+                  <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">We couldn’t confirm the current launch gift details. You can still join for area availability; gift eligibility will be confirmed once the launch offer is available.</p>
+                )}
                 {(waitlistContent.rewardTitle || waitlistContent.rewardDetails) && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-950">
                     {waitlistContent.rewardTitle && <p className="font-bold">{waitlistContent.rewardTitle}</p>}
@@ -712,13 +757,15 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
                 </label>
                 <label className="flex items-start gap-2 text-xs leading-relaxed text-slate-600">
                   <input type="checkbox" checked={notificationConsent} onChange={(event) => setNotificationConsent(event.target.checked)} className="mt-0.5" />
-                  I agree to be contacted about Onbar availability and launches in this area.
+                  {launchOfferStatus === 'ready' && launchOffer.enabled
+                    ? 'I agree to receive email about Onbar availability, the official launch, and mystery-gift details.'
+                    : 'I agree to be contacted about Onbar availability and launches in this area.'}
                 </label>
                 <label className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-slate-700">
                   <input type="checkbox" checked={preciseLocationConsent} onChange={(event) => setPreciseLocationConsent(event.target.checked)} className="mt-0.5" />
                   <span><b>Optional: improve the launch-demand map.</b> If enabled, your browser shares a GPS reading accurate to 250 m or better. We round it to a roughly 100 m grid, store no exact GPS point, and show only anonymous grouped counts to admins. Your name and contact details are not shown on the map. You can leave this off.</span>
                 </label>
-                <button type="submit" disabled={busy || !notificationConsent} className="w-full rounded-2xl bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white disabled:opacity-50">
+                <button type="submit" disabled={busy || !notificationConsent || launchOfferStatus === 'loading'} className="w-full rounded-2xl bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white disabled:opacity-50">
                   {busy ? 'Joining waitlist…' : 'Notify me'}
                 </button>
               </form>
@@ -731,11 +778,21 @@ export default function LocationOnboarding({ suppressLauncher = false }: { suppr
                 <p className="mt-2 text-sm leading-relaxed text-slate-700">
                   We’ve saved your place for {waitlistWelcome?.area}, {waitlistWelcome?.city}. We’ll reach out when Online Bar is ready in your area.
                 </p>
+                {waitlistWelcome?.giftEligible && (
+                  <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                    <p className="text-sm font-black">You’re eligible for a mystery gift on your first eligible paid order.</p>
+                    <p className="mt-1 text-xs leading-relaxed">Create or sign in to your Online Bar account with {waitlistWelcome.email} so we can match your waitlist signup.</p>
+                  </div>
+                )}
                 {waitlistWelcome?.email && <p className="mt-3 text-xs font-semibold text-slate-600">Launch updates: {waitlistWelcome.email}</p>}
                 <p className="mt-3 border-t border-emerald-100 pt-3 text-xs leading-relaxed text-slate-500">
                   Your signup is recorded with its join date in our waitlist team’s admin list.
                 </p>
               </section>
+            )}
+
+            {location && !location.serviceAvailable && (
+              <WaitlistDeveloperSuggestion defaultEmail={email || (waitlistSubmitted ? waitlistWelcome?.email || '' : '')} />
             )}
 
             {status && <p role="status" className="mt-4 rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">{status}</p>}

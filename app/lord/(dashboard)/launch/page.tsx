@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, CheckCircle2, Clock3, RefreshCw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { useAdmin } from '@/context/AdminContext';
 import PublicLaunchGateControl from '@/components/admin/PublicLaunchGateControl';
-import CheckoutLaunchOfferControl from '@/components/admin/CheckoutLaunchOfferControl';
+import WaitlistLaunchOfferControl from '@/components/admin/WaitlistLaunchOfferControl';
 
 type ChecklistStatus = 'not_started' | 'in_progress' | 'blocked' | 'verified' | 'not_applicable';
 
@@ -218,7 +218,7 @@ export default function LaunchReadinessPage() {
         </div>
       </header>
 
-      {(role === 'owner' || role === 'admin' || permissions.can_manage_settings) && <CheckoutLaunchOfferControl />}
+      {(role === 'owner' || role === 'admin' || permissions.can_manage_settings) && <WaitlistLaunchOfferControl />}
       {(role === 'owner' || role === 'admin') && <PublicLaunchGateControl />}
 
       {(error || data?.warning) && (
