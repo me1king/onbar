@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 
   const { data: order, error } = await database
     .from('orders')
-    .select('id, customer_name, customer_phone, total_price, status, payment_method, checkout_request_id, delivery_area, created_at, note, user_id, session_id')
+    .select('id, customer_name, customer_phone, customer_email, total_price, status, payment_method, checkout_request_id, delivery_area, created_at, note, user_id, session_id')
     .eq('id', orderId)
     .maybeSingle();
   if (error) {
@@ -108,6 +108,7 @@ export async function GET(request: Request) {
       id: order.id,
       customer_name: order.customer_name,
       customer_phone: order.customer_phone,
+      customer_email: order.customer_email,
       total_price: order.total_price,
       status: order.status,
       payment_method: order.payment_method,

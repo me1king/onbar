@@ -14,6 +14,7 @@ type LocationPayload = {
   email?: unknown;
   phone?: unknown;
   notificationConsent?: unknown;
+  emailUpdatesConsent?: unknown;
   locationConsent?: unknown;
   preciseLocationConsent?: unknown;
   preciseLatitude?: unknown;
@@ -136,7 +137,7 @@ export async function POST(request: Request) {
     if (waitlistUserId === false) return NextResponse.json({ error: 'Your sign-in could not be verified.' }, { status: 401 });
 
     const { data: existing, error: lookupError } = await database.from('market_waitlist')
-      .select('id,user_id,city,area')
+      .select('id,user_id,city,area,status,email_updates_consent,email_updates_consent_at,consent_version,unsubscribed_at')
       .eq('email', email)
       .limit(100);
     if (lookupError) {
@@ -147,6 +148,8 @@ export async function POST(request: Request) {
       signup.city.toLowerCase() === city.toLowerCase()
       && signup.area.toLowerCase() === area.toLowerCase()
     );
+    const emailUpdatesConsent = body.emailUpdatesConsent === true;
+    const consentedAt = new Date().toISOString();
     const values = {
       email,
       phone: phone || null,
@@ -155,11 +158,20 @@ export async function POST(request: Request) {
       city,
       area,
       notification_consent: true,
+      email_updates_consent: emailUpdatesConsent || existingSignup?.email_updates_consent === true,
+      email_updates_consent_at: emailUpdatesConsent
+        ? consentedAt
+        : existingSignup?.email_updates_consent_at || null,
+      consent_version: emailUpdatesConsent
+        ? 'checkout-launch-offer-v1'
+        : existingSignup?.consent_version || null,
+      unsubscribed_at: emailUpdatesConsent ? null : existingSignup?.unsubscribed_at || null,
       source: /^[a-z0-9 _-]{1,60}$/i.test(cleanText(body.source, 60)) ? cleanText(body.source, 60) : 'direct',
       user_id: waitlistUserId || existingSignup?.user_id || null,
-      status: 'WAITLIST',
-      notified_at: null,
-      updated_at: new Date().toISOString()
+      status: existingSignup?.status === 'UNSUBSCRIBED'
+        ? emailUpdatesConsent ? 'WAITLIST' : 'UNSUBSCRIBED'
+        : existingSignup?.status || 'WAITLIST',
+      updated_at: consentedAt
     };
     const result = existingSignup
       ? await database.from('market_waitlist').update(values).eq('id', existingSignup.id).select('id').single()

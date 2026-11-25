@@ -1,4 +1,8 @@
 ALTER TABLE public.market_waitlist
+    ADD COLUMN IF NOT EXISTS email_updates_consent BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS email_updates_consent_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS consent_version TEXT,
+    ADD COLUMN IF NOT EXISTS unsubscribed_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS account_created_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS first_order_id BIGINT REFERENCES public.orders(id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS first_order_at TIMESTAMPTZ,
