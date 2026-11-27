@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { ArrowRight, Gift, Sparkles, X } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
@@ -9,22 +10,14 @@ import { supabase } from '@/lib/supabaseClient';
 export default function WaitlistGiftExperience() {
   const [eligible, setEligible] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const pathname = usePathname();
+  const previousPathname = useRef(pathname);
 
-  const refreshGiftStatus = useCallback(async (session: Session | null) => {
+  const loadGiftStatus = useCallback(async (session: Session | null) => {
     if (!session) {
       setEligible(false);
       setWelcomeOpen(false);
       return;
-    }
-
-    const conversionResponse = await fetch('/api/waitlist/account-conversion', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      cache: 'no-store'
-    });
-    if (!conversionResponse.ok) {
-      const result = await conversionResponse.json() as { error?: string };
-      throw new Error(result.error || 'Waitlist account conversion could not be recorded.');
     }
 
     const response = await fetch('/api/waitlist/gift-status', {
@@ -40,6 +33,24 @@ export default function WaitlistGiftExperience() {
     setEligible(result.eligible === true);
     setWelcomeOpen(result.shouldShowWelcome === true);
   }, []);
+
+  const refreshGiftStatus = useCallback(async (session: Session | null) => {
+    if (!session) {
+      await loadGiftStatus(null);
+      return;
+    }
+
+    const conversionResponse = await fetch('/api/waitlist/account-conversion', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      cache: 'no-store'
+    });
+    if (!conversionResponse.ok) {
+      const result = await conversionResponse.json() as { error?: string };
+      throw new Error(result.error || 'Waitlist account conversion could not be recorded.');
+    }
+    await loadGiftStatus(session);
+  }, [loadGiftStatus]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -73,6 +84,19 @@ export default function WaitlistGiftExperience() {
       subscription.unsubscribe();
     };
   }, [refreshGiftStatus]);
+
+  useEffect(() => {
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
+    if (!supabase) return;
+
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) throw error;
+        return loadGiftStatus(data.session);
+      })
+      .catch(error => console.error('[WaitlistGiftExperience] Could not refresh gift status after navigation:', error));
+  }, [loadGiftStatus, pathname]);
 
   const dismissWelcome = async () => {
     setWelcomeOpen(false);

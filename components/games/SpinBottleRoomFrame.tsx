@@ -136,7 +136,7 @@ export default function SpinBottleRoomFrame({ className = '' }: { className?: st
       title="Spin the Bottle Live"
       src={gameUrl}
       className={`block min-h-[720px] w-full border-0 ${className}`}
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-forms"
       referrerPolicy="no-referrer"
     />
   );

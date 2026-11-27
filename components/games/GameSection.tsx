@@ -120,7 +120,7 @@ export default function GameSection() {
                   title={selectedGame.title}
                   src={selectedGame.src}
                   className="block h-[min(1000px,calc(100dvh-180px))] min-h-[720px] w-full border-0"
-                  sandbox="allow-scripts"
+                  sandbox="allow-scripts allow-forms"
                   referrerPolicy="no-referrer"
                 />
               )}
