@@ -121,7 +121,7 @@ export async function recordWaitlistAccountConversion(user: User, origin: string
       .toString()
       .trim()
       .split(/\s+/)[0] || 'there';
-    const shopUrl = new URL('/market', origin).toString();
+    const shopUrl = new URL('/shop', origin).toString();
     try {
       await sendTransactionalEmail({
         to: email,

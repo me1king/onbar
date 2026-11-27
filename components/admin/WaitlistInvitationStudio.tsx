@@ -25,7 +25,7 @@ export default function WaitlistInvitationStudio() {
     || permissions.can_manage_communications === true
     || permissions.can_manage_customer_care === true;
   const ready = Boolean(subject.trim() && message.trim());
-  const previewSignupUrl = 'https://www.onlinebar.co.ke/auth?mode=signup&email=alex%40example.com&next=%2Fmarket';
+  const previewSignupUrl = 'https://www.onlinebar.co.ke/auth?mode=signup&email=alex%40example.com&next=%2Fshop';
   const previewMessage = `${message
     .replaceAll('{{name}}', 'Alex')
     .replaceAll('{{signup_link}}', previewSignupUrl)}${message.includes('{{signup_link}}') || message.includes(previewSignupUrl) ? '' : `\n\nCreate your Online Bar account: ${previewSignupUrl}`}`;

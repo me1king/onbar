@@ -349,7 +349,7 @@ async function sendWaitlistJoinInvitation(input: {
   const signup = new URL('/auth', input.origin);
   signup.searchParams.set('mode', 'signup');
   signup.searchParams.set('email', input.member.email);
-  signup.searchParams.set('next', '/market');
+  signup.searchParams.set('next', '/shop');
   const signupUrl = signup.toString();
   const firstName = input.member.full_name?.trim().split(/\s+/)[0] || 'there';
   const personalizedSubject = input.subject.replaceAll('{{name}}', firstName);
@@ -503,7 +503,7 @@ async function sendWaitlistInvitationToMember(input: {
   };
   const signup = new URL('/auth', input.origin);
   signup.searchParams.set('mode', 'signup');
-  signup.searchParams.set('next', '/market');
+  signup.searchParams.set('next', '/shop');
   if (member.email) signup.searchParams.set('email', member.email);
   const signupUrl = signup.toString();
   const firstName = member.full_name?.trim().split(/\s+/)[0] || 'there';

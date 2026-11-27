@@ -12,6 +12,7 @@ export default function WaitlistGiftExperience() {
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const pathname = usePathname();
   const previousPathname = useRef(pathname);
+  const isAdminRoute = pathname?.startsWith('/lord') || pathname?.startsWith('/admin');
 
   const loadGiftStatus = useCallback(async (session: Session | null) => {
     if (!session) {
@@ -126,12 +127,12 @@ export default function WaitlistGiftExperience() {
 
   return (
     <>
-      {eligible && (
+      {eligible && !isAdminRoute && (
         <div className="sticky top-0 z-[110] border-b border-amber-300 bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-100 px-4 py-2.5 text-slate-950 shadow-sm">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-xs sm:text-sm">
             <Gift size={16} className="shrink-0 text-amber-900" />
             <p className="font-bold">Your waitlist mystery gift is ready for your first paid order—no extra charge.</p>
-            <Link href="/market" className="inline-flex items-center gap-1 font-black underline underline-offset-2">
+            <Link href="/shop" className="inline-flex items-center gap-1 font-black underline underline-offset-2">
               Start shopping <ArrowRight size={14} />
             </Link>
           </div>
@@ -163,10 +164,10 @@ export default function WaitlistGiftExperience() {
               Thanks for joining the waitlist. Your first paid order will include a surprise gift at no extra charge.
             </p>
             <Link
-              href="/market"
+              href="/shop"
               onClick={event => {
                 event.preventDefault();
-                void dismissWelcome().then(() => window.location.assign('/market'));
+                void dismissWelcome().then(() => window.location.assign('/shop'));
               }}
               className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800"
             >

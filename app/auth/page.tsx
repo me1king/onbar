@@ -11,7 +11,7 @@ function getSafeReturnPath(value: string | string[] | undefined) {
   try {
     const target = new URL(candidate, 'https://onlinebar.invalid');
     if (target.origin !== 'https://onlinebar.invalid'
-      || !['/merchant/onboarding', '/market'].includes(target.pathname)) return undefined;
+      || !['/merchant/onboarding', '/market', '/shop'].includes(target.pathname)) return undefined;
     return `${target.pathname}${target.search}${target.hash}`;
   } catch {
     return undefined;

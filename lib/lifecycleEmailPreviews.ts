@@ -113,7 +113,7 @@ export function renderWaitlistLaunchEmail(input: {
 }) {
   const subject = WAITLIST_LAUNCH_SUBJECT;
   const baseUrl = getPublicBaseUrl();
-  const shopUrl = `${baseUrl}/market`;
+  const shopUrl = `${baseUrl}/shop`;
   const text = `${WAITLIST_LAUNCH_MESSAGE}\n\n1. Open the app and browse what’s available near you.\n2. Pick your order: drinks, mixers, ice, snacks and street food.\n3. We bring it to your door. Track your rider in the app.\n\nA welcome gift, on us: ${WAITLIST_LAUNCH_GIFT_MESSAGE}\n\nStart ordering: ${shopUrl}\n\n18+ only for alcohol products. ID is checked at the door. Please drink responsibly.\n\nYou’re receiving this because you joined the Online Bar waitlist and opted in to email updates. Unsubscribe: ${input.unsubscribeUrl}`;
   const heroImageUrl = escapeHtml(input.heroImageUrl);
   const escapedShopUrl = escapeHtml(shopUrl);
