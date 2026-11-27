@@ -349,20 +349,24 @@ async function sendWaitlistJoinInvitation(input: {
   const signup = new URL('/auth', input.origin);
   signup.searchParams.set('mode', 'signup');
   signup.searchParams.set('email', input.member.email);
+  signup.searchParams.set('next', '/market');
   const signupUrl = signup.toString();
-  const personalizedMessage = renderWaitlistJoinInvitation(input.message, input.member.full_name || '', signupUrl);
+  const firstName = input.member.full_name?.trim().split(/\s+/)[0] || 'there';
+  const personalizedSubject = input.subject.replaceAll('{{name}}', firstName);
+  const personalizedMessage = renderWaitlistJoinInvitation(input.message, firstName, signupUrl);
   const deliveredMessage = personalizedMessage;
   const unsubscribeUrl = `${input.origin}/newsletter/unsubscribe?token=${encodeURIComponent(createMarketingUnsubscribeToken(input.member.email))}`;
   const emailResult = await sendTransactionalEmail({
     from: config.from,
     to: input.member.email,
-    subject: input.subject,
+    subject: personalizedSubject,
     text: `${deliveredMessage}\n\nYou received this because you opted in to Online Bar event email updates. Unsubscribe: ${unsubscribeUrl}`,
     html: renderWaitlistCampaignEmail({
-      subject: input.subject,
+      subject: personalizedSubject,
       message: deliveredMessage,
       signupUrl,
-      unsubscribeUrl
+      unsubscribeUrl,
+      buttonLabel: 'Create account & start shopping'
     }),
     idempotencyKey: `waitlist-invite-${input.campaignId}-${input.member.id}`
   });
@@ -494,10 +498,17 @@ async function sendWaitlistInvitationToMember(input: {
   const result = {
     sent: [] as CustomerNotificationChannel[],
     failed: [] as CustomerNotificationChannel[],
-    trackingFailed: [] as CustomerNotificationChannel[]
+    trackingFailed: [] as CustomerNotificationChannel[],
+    statusUpdateFailed: false
   };
-  const signupUrl = `${input.origin}/auth?mode=signup`;
-  const renderedMessage = renderWaitlistJoinInvitation(input.message, member.full_name || '', signupUrl);
+  const signup = new URL('/auth', input.origin);
+  signup.searchParams.set('mode', 'signup');
+  signup.searchParams.set('next', '/market');
+  if (member.email) signup.searchParams.set('email', member.email);
+  const signupUrl = signup.toString();
+  const firstName = member.full_name?.trim().split(/\s+/)[0] || 'there';
+  const personalizedSubject = input.subject.replaceAll('{{name}}', firstName);
+  const renderedMessage = renderWaitlistJoinInvitation(input.message, firstName, signupUrl);
   const channelNotice = '\n\nWe’re sending this through Gmail for now while we finish setting up SMS and WhatsApp. Thanks for your patience.';
   const smsMessage = `${renderedMessage}${channelNotice}\n\nReply STOP to opt out of SMS updates.`;
   const whatsappMessage = `${renderedMessage}${channelNotice}`;
@@ -515,7 +526,7 @@ async function sendWaitlistInvitationToMember(input: {
         if (suppression) throw new Error('This address is suppressed and cannot receive email.');
         await sendWaitlistJoinInvitation({
           member,
-          subject: input.subject,
+          subject: personalizedSubject,
           message: input.message,
           origin: input.origin,
           campaignId: input.campaignId
@@ -537,7 +548,7 @@ async function sendWaitlistInvitationToMember(input: {
           memberId: member.id,
           channel,
           sent: false,
-          subject: input.subject,
+          subject: personalizedSubject,
           error: detail
         });
       } catch (trackingError) {
@@ -554,7 +565,7 @@ async function sendWaitlistInvitationToMember(input: {
         memberId: member.id,
         channel,
         sent: true,
-        subject: input.subject
+        subject: personalizedSubject
       });
     } catch (trackingError) {
       console.error(`[AdminWaitlist] ${channel} invitation was sent but its result could not be recorded for signup ${member.id}:`, trackingError);
@@ -564,12 +575,16 @@ async function sendWaitlistInvitationToMember(input: {
 
   if (result.sent.length && member.status === 'WAITLIST') {
     const updatedAt = new Date().toISOString();
-    const { error } = await database.from('market_waitlist')
+    const { data, error } = await database.from('market_waitlist')
       .update({ status: 'INVITED', notified_at: updatedAt, updated_at: updatedAt })
       .eq('id', member.id)
       .eq('status', 'WAITLIST')
-      .neq('status', 'UNSUBSCRIBED');
-    if (error) console.error('[AdminWaitlist] Invitation sent but waitlist status could not be updated:', error);
+      .select('id')
+      .maybeSingle();
+    if (error || !data) {
+      result.statusUpdateFailed = true;
+      console.error('[AdminWaitlist] Invitation sent but waitlist status could not be updated:', error || 'The member status changed before the invitation update.');
+    }
   }
   return result;
 }
@@ -791,7 +806,8 @@ export async function POST(request: Request) {
         invited: 0,
         sent: 0,
         failed: delivery.failed.length,
-        trackingFailedChannels: delivery.trackingFailed
+        trackingFailedChannels: delivery.trackingFailed,
+        statusUpdateFailed: delivery.statusUpdateFailed
       }, { status: 503 });
     }
     return NextResponse.json({
@@ -800,9 +816,10 @@ export async function POST(request: Request) {
       sentChannels: delivery.sent,
       failed: delivery.failed.length,
       failedChannels: delivery.failed,
-      trackingFailedChannels: delivery.trackingFailed
+      trackingFailedChannels: delivery.trackingFailed,
+      statusUpdateFailed: delivery.statusUpdateFailed
     }, {
-      status: delivery.failed.length ? 207 : 200,
+      status: delivery.failed.length || delivery.statusUpdateFailed ? 207 : 200,
       headers: { 'Cache-Control': 'no-store' }
     });
   }
@@ -836,6 +853,7 @@ export async function POST(request: Request) {
   let failed = 0;
   let sent = 0;
   let trackingFailed = 0;
+  let statusUpdateFailed = 0;
   for (let offset = 0; offset < members.length; offset += 20) {
     const batch = members.slice(offset, offset + 20);
     const results = await Promise.all(batch.map(member => sendWaitlistInvitationToMember({
@@ -850,9 +868,10 @@ export async function POST(request: Request) {
     sent += results.reduce((total, result) => total + result.sent.length, 0);
     failed += results.reduce((total, result) => total + result.failed.length, 0);
     trackingFailed += results.reduce((total, result) => total + result.trackingFailed.length, 0);
+    statusUpdateFailed += results.filter(result => result.statusUpdateFailed).length;
   }
-  return NextResponse.json({ invited, sent, failed, trackingFailed, eligible: members.length }, {
-    status: failed ? 207 : 200,
+  return NextResponse.json({ invited, sent, failed, trackingFailed, statusUpdateFailed, eligible: members.length }, {
+    status: failed || statusUpdateFailed ? 207 : 200,
     headers: { 'Cache-Control': 'no-store' }
   });
 }

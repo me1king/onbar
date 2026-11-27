@@ -10,7 +10,8 @@ function getSafeReturnPath(value: string | string[] | undefined) {
   if (!candidate?.startsWith('/') || candidate.startsWith('//')) return undefined;
   try {
     const target = new URL(candidate, 'https://onlinebar.invalid');
-    if (target.origin !== 'https://onlinebar.invalid' || target.pathname !== '/merchant/onboarding') return undefined;
+    if (target.origin !== 'https://onlinebar.invalid'
+      || !['/merchant/onboarding', '/market'].includes(target.pathname)) return undefined;
     return `${target.pathname}${target.search}${target.hash}`;
   } catch {
     return undefined;

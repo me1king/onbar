@@ -7,7 +7,8 @@ import { useAdmin } from '@/context/AdminContext';
 import {
   DEFAULT_WAITLIST_INVITATION_MESSAGE,
   DEFAULT_WAITLIST_INVITATION_SUBJECT,
-  WAITLIST_INVITATION_DRAFT_STORAGE_KEY
+  WAITLIST_INVITATION_DRAFT_STORAGE_KEY,
+  upgradeWaitlistInvitationDraft
 } from '@/lib/waitlistInvitationDraft';
 
 export default function WaitlistInvitationStudio() {
@@ -24,10 +25,11 @@ export default function WaitlistInvitationStudio() {
     || permissions.can_manage_communications === true
     || permissions.can_manage_customer_care === true;
   const ready = Boolean(subject.trim() && message.trim());
-  const previewSignupUrl = 'https://www.onlinebar.co.ke/auth?mode=signup';
+  const previewSignupUrl = 'https://www.onlinebar.co.ke/auth?mode=signup&email=alex%40example.com&next=%2Fmarket';
   const previewMessage = `${message
     .replaceAll('{{name}}', 'Alex')
     .replaceAll('{{signup_link}}', previewSignupUrl)}${message.includes('{{signup_link}}') || message.includes(previewSignupUrl) ? '' : `\n\nCreate your Online Bar account: ${previewSignupUrl}`}`;
+  const previewSubject = subject.replaceAll('{{name}}', 'Alex');
 
   useEffect(() => {
     try {
@@ -37,8 +39,9 @@ export default function WaitlistInvitationStudio() {
         if (typeof draft === 'object' && draft !== null
           && 'subject' in draft && typeof draft.subject === 'string'
           && 'message' in draft && typeof draft.message === 'string') {
-          setSubject(draft.subject.slice(0, 200));
-          setMessage(draft.message.slice(0, 5000)
+          const upgraded = upgradeWaitlistInvitationDraft(draft.subject, draft.message);
+          setSubject(upgraded.subject.slice(0, 200));
+          setMessage(upgraded.message.slice(0, 5000)
             .replace(/\bADD DATE\b|\bADD TIME\b|ADD PRIVATE VENUE DETAILS/gi, '')
             .replace(/\n{3,}/g, '\n\n'));
         }
@@ -91,16 +94,16 @@ export default function WaitlistInvitationStudio() {
           message
         })
       });
-      const data = await response.json() as { invited?: number; sent?: number; failed?: number; trackingFailed?: number; eligible?: number; error?: string };
+      const data = await response.json() as { invited?: number; sent?: number; failed?: number; trackingFailed?: number; statusUpdateFailed?: number; eligible?: number; error?: string };
       if (!response.ok && response.status !== 207) {
         throw new Error(data.error || 'The invitation campaign could not be sent.');
       }
 
       setResult({
-        type: data.failed || data.trackingFailed ? 'error' : 'success',
+        type: data.failed || data.trackingFailed || data.statusUpdateFailed ? 'error' : 'success',
         message: data.failed
-          ? `Invited ${data.invited || 0} of ${data.eligible || 0} people. ${data.failed} email deliveries failed.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}`
-          : `Invited ${data.invited || 0} people with active email consent.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}`
+          ? `Invited ${data.invited || 0} of ${data.eligible || 0} people. ${data.failed} email deliveries failed.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}${data.statusUpdateFailed ? ` ${data.statusUpdateFailed} waitlist statuses could not be updated.` : ''}`
+          : `Invited ${data.invited || 0} people with active email consent.${data.trackingFailed ? ` ${data.trackingFailed} delivery results could not be counted.` : ''}${data.statusUpdateFailed ? ` ${data.statusUpdateFailed} waitlist statuses could not be updated.` : ''}`
       });
     } catch (error) {
       console.error('[WaitlistInvitationStudio] Could not send invitation campaign:', error);
@@ -186,7 +189,7 @@ export default function WaitlistInvitationStudio() {
         <aside className="h-fit overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 bg-slate-950 px-5 py-4">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-300">Email preview</p>
-            <h2 className="mt-2 break-words text-lg font-black text-white">{subject || 'Your subject will appear here'}</h2>
+            <h2 className="mt-2 break-words text-lg font-black text-white">{previewSubject || 'Your subject will appear here'}</h2>
           </div>
           <div className="space-y-4 p-5">
             <p className="text-[10px] font-semibold text-slate-500">To: One selected member or all New members with active email consent</p>

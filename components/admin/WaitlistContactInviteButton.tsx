@@ -5,7 +5,8 @@ import { Send } from 'lucide-react';
 import {
   DEFAULT_WAITLIST_INVITATION_MESSAGE,
   DEFAULT_WAITLIST_INVITATION_SUBJECT,
-  WAITLIST_INVITATION_DRAFT_STORAGE_KEY
+  WAITLIST_INVITATION_DRAFT_STORAGE_KEY,
+  upgradeWaitlistInvitationDraft
 } from '@/lib/waitlistInvitationDraft';
 
 interface WaitlistContactInviteButtonProps {
@@ -35,9 +36,10 @@ function readInvitationDraft() {
     throw new Error('Add an email subject and message in the invitation studio before inviting this person.');
   }
 
+  const upgraded = upgradeWaitlistInvitationDraft(draft.subject, draft.message);
   return {
-    subject: draft.subject.slice(0, 200),
-    message: draft.message.slice(0, 5000)
+    subject: upgraded.subject.slice(0, 200),
+    message: upgraded.message.slice(0, 5000)
       .replace(/\bADD DATE\b|\bADD TIME\b|ADD PRIVATE VENUE DETAILS/gi, '')
       .replace(/\n{3,}/g, '\n\n')
   };
@@ -91,15 +93,17 @@ export default function WaitlistContactInviteButton({
         sentChannels?: string[];
         failedChannels?: string[];
         trackingFailedChannels?: string[];
+        statusUpdateFailed?: boolean;
       };
       if (!response.ok && response.status !== 207) throw new Error(result.error || 'The invitation could not be sent.');
       const details = [
         result.sentChannels?.length ? `Sent by ${result.sentChannels.join(', ')}.` : '',
         result.failedChannels?.length ? `Could not send by ${result.failedChannels.join(', ')}.` : '',
-        result.trackingFailedChannels?.length ? `Delivery count could not be saved for ${result.trackingFailedChannels.join(', ')}.` : ''
+        result.trackingFailedChannels?.length ? `Delivery count could not be saved for ${result.trackingFailedChannels.join(', ')}.` : '',
+        result.statusUpdateFailed ? 'Invitation sent, but the waitlist status could not be updated. Refresh the page.' : ''
       ].filter(Boolean).join(' ');
       setNotice({
-        type: result.failedChannels?.length || result.trackingFailedChannels?.length ? 'error' : 'success',
+        type: result.failedChannels?.length || result.trackingFailedChannels?.length || result.statusUpdateFailed ? 'error' : 'success',
         message: details || 'Invitation sent.'
       });
       onSent();
